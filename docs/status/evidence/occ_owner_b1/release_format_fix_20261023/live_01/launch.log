@@ -1,0 +1,1356 @@
+[INFO] [launch]: All log files can be found below /home/adamliao/.ros/log/2026-10-23-10-29-34-595697-adamliao-X870-EAGLE-WIFI7-758023
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [ign gazebo-1]: process started with pid [758073]
+[INFO] [parameter_bridge-2]: process started with pid [758075]
+[INFO] [parameter_bridge-3]: process started with pid [758078]
+[INFO] [depth_image_republisher.py-4]: process started with pid [758080]
+[INFO] [camera_info_alias.py-5]: process started with pid [758082]
+[INFO] [sensor_preprocessor_node.py-6]: process started with pid [758084]
+[INFO] [parameter_bridge-7]: process started with pid [758086]
+[INFO] [pickup_box_spawner_node.py-8]: process started with pid [758088]
+[INFO] [scene_viz_node.py-9]: process started with pid [758090]
+[INFO] [luggage_detector_node.py-10]: process started with pid [758092]
+[INFO] [semantic_segmenter_node.py-11]: process started with pid [758094]
+[INFO] [semantic_point_filter_node.py-12]: process started with pid [758096]
+[INFO] [scene_manager_node.py-13]: process started with pid [758098]
+[INFO] [waypoint_generator_node.py-14]: process started with pid [758100]
+[INFO] [motion_planner_node.py-15]: process started with pid [758102]
+[INFO] [trajectory_selector_node.py-16]: process started with pid [758104]
+[INFO] [validate_route_node-17]: process started with pid [758106]
+[INFO] [cargo_volume_mapper_node.py-18]: process started with pid [758108]
+[INFO] [placement_planner_node.py-19]: process started with pid [758110]
+[INFO] [vacuum_controller_node.py-20]: process started with pid [758112]
+[INFO] [container_tf_publisher-21]: process started with pid [758114]
+[INFO] [robot_state_publisher-22]: process started with pid [758116]
+[INFO] [create-23]: process started with pid [758118]
+[INFO] [create-24]: process started with pid [758120]
+[INFO] [create-25]: process started with pid [758122]
+[INFO] [spawner-26]: process started with pid [758124]
+[parameter_bridge-3] [INFO] [1792722575.688591577] [camera_bridge]: Creating GZ->ROS Bridge: [/d435/image (gz.msgs.Image) -> /d435/image (sensor_msgs/msg/Image)] (Lazy 0)
+[parameter_bridge-3] [INFO] [1792722575.691445944] [camera_bridge]: Creating GZ->ROS Bridge: [/d435/depth_image (gz.msgs.Image) -> /d435/depth_image (sensor_msgs/msg/Image)] (Lazy 0)
+[parameter_bridge-3] [INFO] [1792722575.691847435] [camera_bridge]: Creating GZ->ROS Bridge: [/d435/camera_info (gz.msgs.CameraInfo) -> /d435/camera_info (sensor_msgs/msg/CameraInfo)] (Lazy 0)
+[parameter_bridge-3] [INFO] [1792722575.692510020] [camera_bridge]: Creating GZ->ROS Bridge: [/livox/scan/points (gz.msgs.PointCloudPacked) -> /livox/scan/points (sensor_msgs/msg/PointCloud2)] (Lazy 0)
+[robot_state_publisher-22] [INFO] [1792722575.698767375] [robot_state_publisher]: got segment camera_color_frame
+[robot_state_publisher-22] [INFO] [1792722575.698857756] [robot_state_publisher]: got segment camera_color_optical_frame
+[robot_state_publisher-22] [INFO] [1792722575.698863858] [robot_state_publisher]: got segment camera_depth_frame
+[robot_state_publisher-22] [INFO] [1792722575.698867044] [robot_state_publisher]: got segment camera_depth_optical_frame
+[robot_state_publisher-22] [INFO] [1792722575.698869709] [robot_state_publisher]: got segment camera_link
+[robot_state_publisher-22] [INFO] [1792722575.698872735] [robot_state_publisher]: got segment d555_link
+[robot_state_publisher-22] [INFO] [1792722575.698875720] [robot_state_publisher]: got segment eef_mount_adapter
+[robot_state_publisher-22] [INFO] [1792722575.698878516] [robot_state_publisher]: got segment elfin_base
+[robot_state_publisher-22] [INFO] [1792722575.698881171] [robot_state_publisher]: got segment elfin_base_link
+[robot_state_publisher-22] [INFO] [1792722575.698884166] [robot_state_publisher]: got segment elfin_dummy_gripper
+[robot_state_publisher-22] [INFO] [1792722575.698887242] [robot_state_publisher]: got segment elfin_end_link
+[robot_state_publisher-22] [INFO] [1792722575.698889827] [robot_state_publisher]: got segment elfin_link1
+[robot_state_publisher-22] [INFO] [1792722575.698892512] [robot_state_publisher]: got segment elfin_link2
+[robot_state_publisher-22] [INFO] [1792722575.698895267] [robot_state_publisher]: got segment elfin_link3
+[robot_state_publisher-22] [INFO] [1792722575.698897792] [robot_state_publisher]: got segment elfin_link4
+[robot_state_publisher-22] [INFO] [1792722575.698900617] [robot_state_publisher]: got segment elfin_link5
+[robot_state_publisher-22] [INFO] [1792722575.698903653] [robot_state_publisher]: got segment elfin_link6
+[robot_state_publisher-22] [INFO] [1792722575.698906318] [robot_state_publisher]: got segment livox_frame
+[robot_state_publisher-22] [INFO] [1792722575.698908793] [robot_state_publisher]: got segment livox_imu_frame
+[robot_state_publisher-22] [INFO] [1792722575.698911568] [robot_state_publisher]: got segment mid360_mount_frame
+[robot_state_publisher-22] [INFO] [1792722575.698914534] [robot_state_publisher]: got segment suction_contact_frame
+[robot_state_publisher-22] [INFO] [1792722575.698917259] [robot_state_publisher]: got segment suction_panel
+[robot_state_publisher-22] [INFO] [1792722575.698920044] [robot_state_publisher]: got segment world
+[parameter_bridge-2] [INFO] [1792722575.712253284] [clock_bridge]: Creating GZ->ROS Bridge: [/clock (gz.msgs.Clock) -> /clock (rosgraph_msgs/msg/Clock)] (Lazy 0)
+[validate_route_node-17] [INFO] [1792722575.717331034] [moveit_robot_model.robot_model]: Loading robot model 'S20'...
+[validate_route_node-17] [INFO] [1792722575.717922926] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
+[spawner-26] [INFO] [1792722576.016292455] [spawner_joint_state_broadcaster]: waiting for service /controller_manager/list_controllers to become available...
+[validate_route_node-17] [INFO] [1792722576.030422514] [validate_route_v2]: validate_route_v2 ready (model root S20, 6 variables)
+[container_tf_publisher-21] [INFO] [1792722576.091639622] [container_tf_publisher]: Static TF from /tmp/elfin-master-pack-baseline-g3/docs/status/evidence/occ_owner_b1/release_format_fix_20261023/live_01/scene_tf_used.yaml (5 transforms): world->pedestal_link, world->pickup_platform_link, pickup_platform_link->pickup_platform_top, world->container_link, container_link->container_opening_frame
+[container_tf_publisher-21] [INFO] [1792722576.091925553] [container_tf_publisher]: task ROI (this node only): center=[-0.0, -1.059, 0.41] dims=[1.49, 1.97, 1.48] yaw=-1.5708 opening=[-0.27, -0.314, 0.44] aperture=1.326x1.412
+[sensor_preprocessor_node.py-6] [INFO] [1792722576.119182532] [sensor_preprocessor]: sensor_preprocessor ready (depth-primary): frame=camera_depth_optical_frame pair_tolerance=0.000s wait_deadline=0.060s maxlen=15/1.0s compressed=False input_qos=reliable camera_info_shared=True
+[sensor_preprocessor_node.py-6] [WARN] [1792722576.119534429] [sensor_preprocessor]: camera_info_shared: /camera/depth/camera_info describes both colour and aligned depth; observations are flagged info_aliased
+[luggage_detector_node.py-10] [WARN] [1792722576.130646431] [luggage_detector]: scene_tf_config is ignored on DetectLuggage (catalog/scene_tf is spawn-only)
+[pickup_box_spawner_node.py-8] [INFO] [1792722576.140833470] [pickup_box_spawner]: pickup_box_spawner ready (visual_kind=mesh size_mode=catalog)
+[luggage_detector_node.py-10] [INFO] [1792722576.144504736] [luggage_detector]: luggage_detector subscribing to /luggage/semantic/cargo_points
+[luggage_detector_node.py-10] [INFO] [1792722576.146112953] [luggage_detector]: luggage_detector ready (platform-free, semantic=True, support_mode=auto, platform_z=omitted, crop_to_workspace=False, retries=4 period=0.25s suitcase_wait=0.0s, estimate=single-flight)
+[waypoint_generator_node.py-14] [INFO] [1792722576.152377381] [waypoint_generator]: waypoint_generator ready (clearances {'pre_grasp': 0.3, 'approach': 0.25, 'attach': 0.0, 'pick_retreat': 0.35, 'pre_grasp_min': 0.2, 'approach_min': 0.08}, place_slot_frame=elfin_base_link)
+[semantic_point_filter_node.py-12] [INFO] [1792722576.160757257] [semantic_point_filter]: semantic_point_filter ready (extrinsics=identity, cargo_labels=[2])
+[trajectory_selector_node.py-16] [INFO] [1792722576.173007745] [trajectory_selector]: trajectory_selector up
+[scene_viz_node.py-9] [INFO] [1792722576.177317140] [scene_viz]: scene_viz ready (container=airport_container_real_aprime)
+[placement_planner_node.py-19] [INFO] [1792722576.200930335] [placement_planner]: atlas runtime gate on (dir=reachability_atlas, w=0.3, hard_reject=True)
+[scene_manager_node.py-13] [INFO] [1792722576.210285028] [scene_manager]: scene_manager ready
+[placement_planner_node.py-19] [INFO] [1792722576.212566480] [placement_planner]: placement_planner ready (aperture_y=(-0.928, 0.398), corridor=request_box, geometry_hash=cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856)
+[motion_planner_node.py-15] [INFO] [1792722576.241735802] [motion_planner]: motion_planner up (move_group probed on first PlanMotion)
+[vacuum_controller_node.py-20] [INFO] [1792722576.277389179] [vacuum_controller]: vacuum_controller ready (backend=sim, panel=suction_contact_frame)
+[vacuum_controller_node.py-20] [INFO] [1792722576.278199895] [vacuum_controller]: current_box cleared
+[create-25] [INFO] [1792722576.311449116] [ros_gz_sim]: Requested creation of entity.
+[create-25] [INFO] [1792722576.311595003] [ros_gz_sim]: OK creation of entity.
+[create-24] [INFO] [1792722576.411561301] [ros_gz_sim]: Requested creation of entity.
+[create-24] [INFO] [1792722576.411681900] [ros_gz_sim]: OK creation of entity.
+[INFO] [create-25]: process has finished cleanly [pid 758122]
+[create-23] [INFO] [1792722576.511690899] [ros_gz_sim]: Requested creation of entity.
+[create-23] [INFO] [1792722576.511813852] [ros_gz_sim]: OK creation of entity.
+[INFO] [create-24]: process has finished cleanly [pid 758120]
+[cargo_volume_mapper_node.py-18] [INFO] [1792722576.614820761] [cargo_volume_mapper]: cargo_volume_mapper ready (inner 1.49x1.97x1.48 m, res 0.05, geometry_hash cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856, cloud=/luggage/semantic/cargo_points_untracked)
+[INFO] [create-23]: process has finished cleanly [pid 758118]
+[INFO] [launch.user]: spawn_robot: create S20
+[INFO] [create-27]: process started with pid [758910]
+[create-27] [INFO] [1792722576.839424488] [ros_gz_sim]: Requested creation of entity.
+[create-27] [INFO] [1792722576.839477940] [ros_gz_sim]: OK creation of entity.
+[INFO] [create-27]: process has finished cleanly [pid 758910]
+[INFO] [wait_controller_manager-28]: process started with pid [758933]
+[wait_controller_manager-28] wait_controller_manager: ok /controller_manager/list_controllers after 0.25s
+[ign gazebo-1] [INFO] [1792722578.035787316] [GazeboSimROS2ControlPlugin]: robot_param_node is robot_state_publisher
+[ign gazebo-1] [INFO] [1792722578.035814798] [GazeboSimROS2ControlPlugin]: robot_param_node is robot_description
+[ign gazebo-1] [INFO] [1792722578.073371269] [gz_ros2_control]: connected to service!! robot_state_publisher asking for robot_description
+[INFO] [wait_controller_manager-28]: process has finished cleanly [pid 758933]
+[luggage_detector_node.py-10] [WARN] [1792722578.727211954] [luggage_detector]: New publisher discovered on topic '/luggage/semantic/mask', offering incompatible QoS. No messages will be received from it. Last incompatible policy: RELIABILITY
+[semantic_segmenter_node.py-11] [INFO] [1792722578.746465310] [semantic_segmenter]: suction-panel mask 12517 px source=urdf_chain
+[semantic_segmenter_node.py-11] [INFO] [1792722578.746634671] [semantic_segmenter]: semantic_segmenter ready (backend=bbox_fill:/home/adamliao/work/elfin_humble_ws/yolov8s-world.pt, prompts=8, self_body=urdf_chain, temporal_window=5, publish_overlay=False, confidence_threshold=0.200, cargo_min_confidence=0.200, robot_arm_confidence_threshold=0.500)
+[semantic_segmenter_node.py-11] [WARN] [1792722578.747067611] [semantic_segmenter]: New subscription discovered on topic '/luggage/semantic/mask', requesting incompatible QoS. No messages will be sent to it. Last incompatible policy: RELIABILITY
+[ign gazebo-1] [INFO] [1792722579.125072329] [gz_ros2_control]: Received URDF from param server
+[ign gazebo-1] [INFO] [1792722579.128296056] [gz_ros2_control]: [gz_ros2_control] Fixed joint ['world_base'] (Entity='90') is skipped.
+[ign gazebo-1] [INFO] [1792722579.131365592] [gz_ros2_control]: The position_proportional_gain has been set to: 0.8
+[ign gazebo-1] [INFO] [1792722579.144651312] [gz_ros2_control]: [jcc] capture mode='window' active=1 dir='/tmp/elfin-master-pack-baseline-g3/docs/status/evidence/occ_owner_b1/release_format_fix_20261023/live_01/joint_capture'
+[ign gazebo-1] [INFO] [1792722579.144811946] [gz_ros2_control]: Loading joint: elfin_joint1
+[ign gazebo-1] [INFO] [1792722579.144832585] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1792722579.144841302] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722579.144897478] [gz_ros2_control]: 			 found initial value: 1.880600
+[ign gazebo-1] [INFO] [1792722579.144904712] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1792722579.144926363] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1792722579.144928938] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722579.145039287] [gz_ros2_control]: Loading joint: elfin_joint2
+[ign gazebo-1] [INFO] [1792722579.145043044] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1792722579.145045248] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722579.145049095] [gz_ros2_control]: 			 found initial value: -1.773600
+[ign gazebo-1] [INFO] [1792722579.145051840] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1792722579.145053964] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1792722579.145055818] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722579.145076176] [gz_ros2_control]: Loading joint: elfin_joint3
+[ign gazebo-1] [INFO] [1792722579.145078902] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1792722579.145081116] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722579.145083550] [gz_ros2_control]: 			 found initial value: -1.049100
+[ign gazebo-1] [INFO] [1792722579.145085985] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1792722579.145087999] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1792722579.145090033] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722579.145095533] [gz_ros2_control]: Loading joint: elfin_joint4
+[ign gazebo-1] [INFO] [1792722579.145097597] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1792722579.145099441] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722579.145101635] [gz_ros2_control]: 			 found initial value: 4.443900
+[ign gazebo-1] [INFO] [1792722579.145103899] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1792722579.145106063] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1792722579.145107796] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722579.145113267] [gz_ros2_control]: Loading joint: elfin_joint5
+[ign gazebo-1] [INFO] [1792722579.145115220] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1792722579.145116994] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722579.145120100] [gz_ros2_control]: 			 found initial value: 1.772100
+[ign gazebo-1] [INFO] [1792722579.145122314] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1792722579.145124488] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1792722579.145126241] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722579.145131211] [gz_ros2_control]: Loading joint: elfin_joint6
+[ign gazebo-1] [INFO] [1792722579.145133756] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1792722579.145135609] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722579.145137423] [gz_ros2_control]: 			 found initial value: 1.847300
+[ign gazebo-1] [INFO] [1792722579.145139476] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1792722579.145141240] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1792722579.145143053] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722579.145476285] [resource_manager]: Initialize hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1792722579.145625808] [resource_manager]: Successful initialization of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1792722579.145667657] [resource_manager]: 'configure' hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1792722579.145669841] [gz_ros2_control]: System Successfully configured!
+[ign gazebo-1] [INFO] [1792722579.145675973] [resource_manager]: Successful 'configure' of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1792722579.145679630] [resource_manager]: 'activate' hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1792722579.145683277] [resource_manager]: Successful 'activate' of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1792722579.145687064] [gz_ros2_control]: Loading controller_manager
+[ign gazebo-1] [INFO] [1792722579.272184075] [controller_manager]: Loading controller 'joint_state_broadcaster'
+[spawner-26] [INFO] [1792722579.277756432] [spawner_joint_state_broadcaster]: [94mLoaded [1mjoint_state_broadcaster[0m
+[ign gazebo-1] [INFO] [1792722579.278439276] [controller_manager]: Configuring controller 'joint_state_broadcaster'
+[ign gazebo-1] [INFO] [1792722579.278514528] [joint_state_broadcaster]: 'joints' or 'interfaces' parameter is empty. All available state interfaces will be published
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mIgnition Gazebo Server v[0m[1;32m6.18.0[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLoading SDF world file[[0m[1;32m/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/share/luggage_gazebo/worlds/airport_loading.sdf[0m[1;32m].[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing entity system service on [[0m[1;32m/[0m[1;32mentity/system/add[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mCreate service on [[0m[1;32m/world/airport_loading/create[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mRemove service on [[0m[1;32m/world/airport_loading/remove[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPose service on [[0m[1;32m/world/airport_loading/set_pose[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPose service on [[0m[1;32m/world/airport_loading/set_pose_vector[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLight configuration service on [[0m[1;32m/world/airport_loading/light_config[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPhysics service on [[0m[1;32m/world/airport_loading/set_physics[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mSphericalCoordinates service on [[0m[1;32m/world/airport_loading/set_spherical_coordinates[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mEnable collision service on [[0m[1;32m/world/airport_loading/enable_collision[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mDisable collision service on [[0m[1;32m/world/airport_loading/disable_collision[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mMaterial service on [[0m[1;32m/world/airport_loading/visual_config[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mMaterial service on [[0m[1;32m/world/airport_loading/wheel_slip[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLoaded level [[0m[1;32m3[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing world controls on [[0m[1;32m/world/airport_loading[0m[1;32m/control], [[0m[1;32m/world/airport_loading[0m[1;32m/control/state] and [[0m[1;32m/world/airport_loading[0m[1;32m/playback/control][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing GUI information on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mgui/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mWorld [[0m[1;32mairport_loading[0m[1;32m] initialized with [[0m[1;32m1ms[0m[1;32m] physics profile.[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing world SDF generation service on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mgenerate_world_sdf[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing world names on [[0m[1;32m/gazebo/worlds[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource path add service on [[0m[1;32m/gazebo/resource_paths/add[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource path get service on [[0m[1;32m/gazebo/resource_paths/get[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource path resolve service on [[0m[1;32m/gazebo/resource_paths/resolve[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource paths published on [[0m[1;32m/gazebo/resource_paths[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServer control service on [[0m[1;32m/server_control[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mFound no publishers on /stats, adding root stats topic[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mFound no publishers on /clock, adding root clock topic[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLoading plugin [[0m[1;32mignition-rendering-ogre2[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing scene information on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mscene/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing graph information on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mscene/graph[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing full state on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mstate[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing full state (async) on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mstate_async[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [WARN] [1792722579.312108442] [gz_ros2_control]:  Desired controller update period (0.01 s) is slower than the gazebo simulation period (0.001 s).
+[ign gazebo-1] libEGL warning: egl: failed to create dri2 screen
+[ign gazebo-1] libEGL warning: egl: failed to create dri2 screen
+[spawner-26] [INFO] [1792722579.762699406] [spawner_joint_state_broadcaster]: [92mConfigured and activated [1mjoint_state_broadcaster[0m
+[INFO] [spawner-26]: process has finished cleanly [pid 758124]
+[INFO] [spawner-29]: process started with pid [759157]
+[ign gazebo-1] [INFO] [1792722582.138790199] [controller_manager]: Loading controller 'elfin_arm_controller'
+[ign gazebo-1] [WARN] [1792722582.146425935] [elfin_arm_controller]: [Deprecated]: "allow_nonzero_velocity_at_trajectory_end" is set to true. The default behavior will change to false.
+[spawner-29] [INFO] [1792722582.155435945] [spawner_elfin_arm_controller]: [94mLoaded [1melfin_arm_controller[0m
+[ign gazebo-1] [INFO] [1792722582.156384582] [controller_manager]: Configuring controller 'elfin_arm_controller'
+[ign gazebo-1] [INFO] [1792722582.156476646] [elfin_arm_controller]: No specific joint names are used for command interfaces. Using 'joints' parameter.
+[ign gazebo-1] [INFO] [1792722582.156487827] [elfin_arm_controller]: Command interfaces are [position] and state interfaces are [position velocity].
+[ign gazebo-1] [INFO] [1792722582.156498858] [elfin_arm_controller]: Using 'splines' interpolation method.
+[ign gazebo-1] [INFO] [1792722582.157096801] [elfin_arm_controller]: Controller state will be published at 50.00 Hz.
+[ign gazebo-1] [INFO] [1792722582.158405200] [elfin_arm_controller]: Action status changes will be monitored at 20.00 Hz.
+[spawner-29] [INFO] [1792722582.189056379] [spawner_elfin_arm_controller]: [92mConfigured and activated [1melfin_arm_controller[0m
+[INFO] [spawner-29]: process has finished cleanly [pid 759157]
+[INFO] [observe_pose_hold.py-30]: process started with pid [759260]
+[INFO] [move_group-31]: process started with pid [759262]
+[move_group-31] [INFO] [1792722582.383726444] [moveit_rdf_loader.rdf_loader]: Loaded robot model in 0 seconds
+[move_group-31] [INFO] [1792722582.383785456] [moveit_robot_model.robot_model]: Loading robot model 'S20'...
+[move_group-31] [INFO] [1792722582.383792109] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
+[move_group-31] [INFO] [1792722582.867129718] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Publishing maintained planning scene on 'monitored_planning_scene'
+[move_group-31] [INFO] [1792722582.867232914] [moveit.ros_planning_interface.moveit_cpp]: Listening to 'joint_states' for joint states
+[move_group-31] [INFO] [1792722582.867788857] [moveit_ros.current_state_monitor]: Listening to joint states on topic 'joint_states'
+[move_group-31] [INFO] [1792722582.868168827] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/attached_collision_object' for attached collision objects
+[move_group-31] [INFO] [1792722582.868180389] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting planning scene monitor
+[move_group-31] [INFO] [1792722582.868438117] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/planning_scene'
+[move_group-31] [INFO] [1792722582.868451002] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting world geometry update monitor for collision objects, attached objects, octomap updates.
+[move_group-31] [INFO] [1792722582.868759686] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'collision_object'
+[move_group-31] [INFO] [1792722582.869066307] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'planning_scene_world' for planning scene world geometry
+[move_group-31] [WARN] [1792722582.869409207] [moveit.ros.occupancy_map_monitor.middleware_handle]: Resolution not specified for Octomap. Assuming resolution = 0.1 instead
+[move_group-31] [ERROR] [1792722582.869420288] [moveit.ros.occupancy_map_monitor.middleware_handle]: No 3D sensor plugin(s) defined for octomap updates
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPublishing scene information on [[0m[1;32m/world/airport_loading/scene/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPublishing entity deletions on [[0m[1;32m/world/airport_loading/scene/deletion[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPublishing state changes on [[0m[1;32m/world/airport_loading/state[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPublishing pose messages on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mpose/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPublishing dynamic pose messages on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mdynamic_pose/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [INFO] [1792722583.532083231] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792722583.532150729] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792722583.653054753] [moveit.ros_planning_interface.moveit_cpp]: Loading planning pipeline 'ompl'
+[move_group-31] [INFO] [1792722583.658738050] [moveit.ros_planning.planning_pipeline]: Using planning interface 'OMPL'
+[move_group-31] [INFO] [1792722583.659907446] [moveit_ros.add_time_optimal_parameterization]: Param 'ompl.path_tolerance' was not set. Using default value: 0.100000
+[move_group-31] [INFO] [1792722583.659919458] [moveit_ros.add_time_optimal_parameterization]: Param 'ompl.resample_dt' was not set. Using default value: 0.100000
+[move_group-31] [INFO] [1792722583.659921693] [moveit_ros.add_time_optimal_parameterization]: Param 'ompl.min_angle_change' was not set. Using default value: 0.001000
+[move_group-31] [INFO] [1792722583.659930189] [moveit_ros.fix_workspace_bounds]: Param 'ompl.default_workspace_bounds' was not set. Using default value: 10.000000
+[move_group-31] [INFO] [1792722583.659936501] [moveit_ros.fix_start_state_bounds]: Param 'ompl.start_state_max_bounds_error' was set to 0.100000
+[move_group-31] [INFO] [1792722583.659938324] [moveit_ros.fix_start_state_bounds]: Param 'ompl.start_state_max_dt' was not set. Using default value: 0.500000
+[move_group-31] [INFO] [1792722583.659942262] [moveit_ros.fix_start_state_collision]: Param 'ompl.start_state_max_dt' was not set. Using default value: 0.500000
+[move_group-31] [INFO] [1792722583.659944516] [moveit_ros.fix_start_state_collision]: Param 'ompl.jiggle_fraction' was set to 0.050000
+[move_group-31] [INFO] [1792722583.659946730] [moveit_ros.fix_start_state_collision]: Param 'ompl.max_sampling_attempts' was not set. Using default value: 100
+[move_group-31] [INFO] [1792722583.659950577] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Add Time Optimal Parameterization'
+[move_group-31] [INFO] [1792722583.659952220] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Resolve constraint frames to robot links'
+[move_group-31] [INFO] [1792722583.659953363] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Workspace Bounds'
+[move_group-31] [INFO] [1792722583.659954505] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State Bounds'
+[move_group-31] [INFO] [1792722583.659955537] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State In Collision'
+[move_group-31] [INFO] [1792722583.659956559] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State Path Constraints'
+[move_group-31] [WARN] [1792722583.662405388] [rcl.logging_rosout]: Publisher already registered for provided node name. If this is due to multiple nodes with the same name then all logs for that logger name will go out over the existing publisher. As soon as any node with that name is destructed it will unregister the publisher, preventing any further logs for that name from being published on the rosout topic.
+[move_group-31] [INFO] [1792722583.671481032] [moveit.plugins.moveit_simple_controller_manager]: Added FollowJointTrajectory controller for elfin_arm_controller
+[move_group-31] [INFO] [1792722583.671599466] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722583.671611489] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722583.671889035] [moveit_ros.trajectory_execution_manager]: Trajectory execution is not managing controllers
+[move_group-31] [INFO] [1792722583.671898803] [move_group.move_group]: MoveGroup debug mode is ON
+[move_group-31] [INFO] [1792722583.680875710] [move_group.move_group]: 
+[move_group-31] 
+[move_group-31] ********************************************************
+[move_group-31] * MoveGroup using: 
+[move_group-31] *     - ApplyPlanningSceneService
+[move_group-31] *     - ClearOctomapService
+[move_group-31] *     - CartesianPathService
+[move_group-31] *     - ExecuteTrajectoryAction
+[move_group-31] *     - GetPlanningSceneService
+[move_group-31] *     - KinematicsService
+[move_group-31] *     - MoveAction
+[move_group-31] *     - MotionPlanService
+[move_group-31] *     - QueryPlannersService
+[move_group-31] *     - StateValidationService
+[move_group-31] ********************************************************
+[move_group-31] 
+[move_group-31] [INFO] [1792722583.680901770] [moveit_move_group_capabilities_base.move_group_context]: MoveGroup context using planning plugin ompl_interface/OMPLPlanner
+[move_group-31] [INFO] [1792722583.680906599] [moveit_move_group_capabilities_base.move_group_context]: MoveGroup context initialization complete
+[move_group-31] [96mLoading 'move_group/ApplyPlanningSceneService'...
+[move_group-31] [0m[96mLoading 'move_group/ClearOctomapService'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupCartesianPathService'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupExecuteTrajectoryAction'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupGetPlanningSceneService'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupKinematicsService'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupMoveAction'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupPlanService'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupQueryPlannersService'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupStateValidationService'...
+[move_group-31] [0m[92m
+[move_group-31] You can start planning now!
+[move_group-31] 
+[move_group-31] [WARN] [1792722583.808319704] [moveit_planning_scene.planning_scene]: Tried to remove world object 'airport_container_real_aprime', but it does not exist in this scene.
+[move_group-31] [WARN] [1792722583.810400036] [moveit_planning_scene.planning_scene]: Tried to remove world object 'robot_pedestal', but it does not exist in this scene.
+[scene_manager_node.py-13] [INFO] [1792722583.826786380] [scene_manager]: auto sync_static_scene: static scene synced (airport_container_real_aprime, 148 triangles)
+[ign gazebo-1] [INFO] [1792722584.041313464] [elfin_arm_controller]: Goal reached, success!
+[observe_pose_hold.py-30] [INFO] [1792722584.091006548] [observe_pose_hold]: Held pose 'pickup_observe_sim' error_code=0
+[INFO] [observe_pose_hold.py-30]: process has finished cleanly [pid 759260]
+[semantic_segmenter_node.py-11] [WARN] [1792722584.861619823] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722589.920120337] [semantic_segmenter]: self-body mesh mask is empty
+[trajectory_selector_node.py-16] [INFO] [1792722591.096999224] [trajectory_selector]: route budget 180s for 1 box(es) (DIAGNOSTIC override of frozen 60s)
+[vacuum_controller_node.py-20] [INFO] [1792722591.203695359] [vacuum_controller]: current_box cleared
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mContact system publishing on [0m[1;32m/obs/box_contact[0m[1;32m[0m
+[pickup_box_spawner_node.py-8] [INFO] [1792722593.845260283] [pickup_box_spawner]: Spawned pickup_box_0001_inch20 visual=mesh/suitcase_loafbrr size=0.350x0.530x0.220 gt=0.328x0.517x0.209 mass=5.67kg yaw=1.571 rad mode=catalog
+[vacuum_controller_node.py-20] [INFO] [1792722593.845702481] [vacuum_controller]: current_box id=pickup_box_0001_inch20 gen=2 (no measured geometry yet)
+[semantic_segmenter_node.py-11] [INFO] [1792722593.845721547] [semantic_segmenter]: semantic_segmenter: epoch reset generation=2 id='pickup_box_0001_inch20'
+[luggage_detector_node.py-10] [INFO] [1792722593.864317316] [luggage_detector]: luggage_detector: waiting for suitcase RGB update (pickup_box_0001_inch20)
+[luggage_detector_node.py-10] [INFO] [1792722594.028851956] [luggage_detector]: luggage_detector: window ok on retry 1/4
+[pickup_box_spawner_node.py-8] [INFO] [1792722594.640747447] [pickup_box_spawner]: sync_detected_pickup_box: measured 0.514x0.333x0.218 onto pickup_box_0001_inch20 (gen 2)
+[vacuum_controller_node.py-20] [INFO] [1792722594.641344849] [vacuum_controller]: current_box id=pickup_box_0001_inch20 measured=0.514x0.333x0.218 gen=2
+[move_group-31] [INFO] [1792722595.076373628] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-31] [INFO] [1792722595.076523963] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-31] [INFO] [1792722595.078948857] [moveit_move_group_default_capabilities.move_action_capability]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
+[move_group-31] [INFO] [1792722595.079721260] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnect]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[semantic_segmenter_node.py-11] [WARN] [1792722595.104067914] [semantic_segmenter]: self-body mesh mask is empty
+[move_group-31] [INFO] [1792722595.126309992] [moveit_move_group_default_capabilities.move_action_capability]: Motion plan was computed successfully.
+[move_group-31] [INFO] [1792722595.554642914] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792722595.554779984] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 1 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792722595.555238763] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 6 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792722595.565154188] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792722595.565229721] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 3 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792722595.566758267] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 28 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792722595.576845938] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792722595.576913325] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 4 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792722595.578593969] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 37 points (followed 100.000000% of requested trajectory)
+[waypoint_generator_node.py-14] [INFO] [1792722595.777247226] [waypoint_generator]: validity: route valid support=airport_container_real_aprime ransit-28c53641-e6a53c00(ok); averse-8a794cc7-cd980943(ok); escend-080fac53-2814f641(ok); etreat-a5ed361c-edd46b4f(ok)
+[move_group-31] [INFO] [1792722595.814058425] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792722595.814140500] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792722595.814162241] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722595.814172190] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722595.814237284] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792722595.819031266] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792722595.819084767] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722595.819098924] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722595.819344469] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792722595.819555980] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792722595.819609080] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792722595.819691436] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792722595.819707196] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[semantic_segmenter_node.py-11] [WARN] [1792722600.124943235] [semantic_segmenter]: self-body mesh mask is empty
+[ign gazebo-1] [INFO] [1792722604.695254992] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792722604.720069713] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792722604.724960268] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792722604.725028888] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-31] [INFO] [1792722604.732769522] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792722604.732825789] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792722604.732845206] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722604.732858821] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722604.732888989] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792722604.735026458] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792722604.735045985] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722604.735053389] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722604.735220095] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792722604.735283806] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792722604.735308392] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792722604.735402170] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792722604.735424562] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[semantic_segmenter_node.py-11] [WARN] [1792722605.139586136] [semantic_segmenter]: self-body mesh mask is empty
+[ign gazebo-1] [INFO] [1792722605.774751389] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792722605.785567380] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792722605.794988328] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792722605.795045456] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-31] [INFO] [1792722605.820062661] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792722605.820105993] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792722605.820119759] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722605.820127053] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722605.820149856] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792722605.824968414] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792722605.824995496] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722605.825005505] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722605.825218628] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792722605.825348003] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792722605.825390815] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792722605.825487257] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792722605.825502236] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ign gazebo-1] [INFO] [1792722608.077363160] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792722608.125659636] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792722608.127427385] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792722608.127481818] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[ign gazebo-1] [1;33m[Wrn] [Component.hh:127] [0m[1;33mTrying to serialize component with data type [[0m[1;33mSt10shared_ptrIN3sdf3v127ElementEE[0m[1;33m], which doesn't have [0m[1;33m`operator<<`. Component will not be serialized.[0m[1;33m[0m
+[semantic_segmenter_node.py-11] [WARN] [1792722610.612710240] [semantic_segmenter]: self-body mesh mask is empty
+[move_group-31] [INFO] [1792722610.972806980] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792722610.972891070] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792722610.972911729] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722610.972921638] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722610.972954390] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792722610.980090499] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792722610.980116278] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722610.980124664] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722610.980297221] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792722610.980373886] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792722610.980417569] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792722610.980503060] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792722610.980511186] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mContact system publishing on [0m[1;32m/obs/box_contact[0m[1;32m[0m
+[ign gazebo-1] [INFO] [1792722614.041669611] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792722614.080726904] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792722614.081811538] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792722614.081851574] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[trajectory_selector_node.py-16] [INFO] [1792722614.305133973] [trajectory_selector]: atlas load: atlas_scene_mismatch (scene_tf hash mismatch (atlas=b40c85ae, current=603f9b65))
+[trajectory_selector_node.py-16] [INFO] [1792722614.393180604] [trajectory_selector]: route: atlas order seeded=0 reachable=0 marginal=0 near_status1=0 near_unknown=163 other_status1=0 other_unknown=487 dropped=0 near_cut=-0.985 executable_first=True
+[trajectory_selector_node.py-16] [INFO] [1792722614.394497589] [trajectory_selector]: route: select place-v2-2 slots=650 hash=cb41f55f2437
+[trajectory_selector_node.py-16] [INFO] [1792722614.556847634] [trajectory_selector]: route: anchors [('portal', [1.319, -1.87, 2.569, -2.276, -1.569, -0.252]), ('slot_approach', [1.499, -0.53, 0.636, -1.683, -1.57, -0.072]), ('slot_upper', [1.499, -0.509, 0.699, -1.766, -1.57, -0.072])] home [1.741, -1.736, -1.448, 4.756, 1.577, -1.417]
+[trajectory_selector_node.py-16] [INFO] [1792722614.597233113] [trajectory_selector]: route: ANCHOR_PAYLOAD_COLLISION carrying-slot_upper-6734bfb6 region=slot_upper q=[1.499, -0.509, 0.699, -1.766, -1.57, -0.072] (no MoveGroup call)
+[trajectory_selector_node.py-16] [INFO] [1792722614.597811078] [trajectory_selector]: route: ANCHOR_PAYLOAD_COLLISION carrying-slot_approach-e4ac4fe3 region=slot_approach q=[1.499, -0.53, 0.636, -1.683, -1.57, -0.072] (no MoveGroup call)
+[trajectory_selector_node.py-16] [INFO] [1792722614.598908437] [trajectory_selector]: route: planning candidate 13 (179.92s left)
+[move_group-31] [INFO] [1792722615.005785428] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-31] [INFO] [1792722615.005859959] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-31] [INFO] [1792722615.011780635] [moveit_move_group_default_capabilities.move_action_capability]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
+[move_group-31] [INFO] [1792722615.012235607] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnect]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[semantic_segmenter_node.py-11] [WARN] [1792722615.723970448] [semantic_segmenter]: self-body mesh mask is empty
+[move_group-31] [WARN] [1792722617.015290194] [moveit.ompl_planning.model_based_planning_context]: Planning timed out: 2.0s ≥ 2.0s
+[move_group-31] [INFO] [1792722617.015320993] [moveit.ompl_planning.model_based_planning_context]: Unable to solve the planning problem
+[move_group-31] [INFO] [1792722617.015344968] [moveit_move_group_default_capabilities.move_action_capability]: Timeout reached
+[trajectory_selector_node.py-16] [ERROR] [1792722617.018309144] [trajectory_selector]: edge joint failed PORTAL_TRANSIT from=[1.741, -1.736, -1.448, 4.756, 1.577, -1.417] to=[1.319, -1.87, 2.569, -2.276, -1.569, -0.252] code=-6
+[move_group-31] [INFO] [1792722617.019381916] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-31] [INFO] [1792722617.019486103] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-31] [INFO] [1792722617.021834903] [moveit_move_group_default_capabilities.move_action_capability]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
+[move_group-31] [INFO] [1792722617.022475286] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnect]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[move_group-31] [INFO] [1792722618.943505335] [moveit_move_group_default_capabilities.move_action_capability]: Motion plan was computed successfully.
+[move_group-31] [INFO] [1792722620.145347243] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792722620.145510653] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 12 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792722620.206764134] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 117 points (followed 96.666667% of requested trajectory)
+[move_group-31] [INFO] [1792722620.229288355] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792722620.229401520] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 12 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792722620.291725659] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 117 points (followed 96.666667% of requested trajectory)
+[move_group-31] [INFO] [1792722620.309406545] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-31] [INFO] [1792722620.309470166] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-31] [INFO] [1792722620.314156984] [moveit_move_group_default_capabilities.move_action_capability]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
+[move_group-31] [INFO] [1792722620.314839818] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnect]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[semantic_segmenter_node.py-11] [WARN] [1792722620.742332060] [semantic_segmenter]: self-body mesh mask is empty
+[move_group-31] [INFO] [1792722622.253607900] [moveit_move_group_default_capabilities.move_action_capability]: Motion plan was computed successfully.
+[move_group-31] [INFO] [1792722624.318112616] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792722624.318245999] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 12 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792722624.332754494] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 121 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792722624.374103267] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792722624.374194881] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 1 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792722624.374989226] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 9 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792722624.384050832] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792722624.384089035] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 1 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792722624.385185151] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 9 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792722624.398412470] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792722624.398443659] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 1 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792722624.399192668] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 9 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792722624.407563446] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792722624.407590186] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 1 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792722624.408298007] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 9 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792722624.418399794] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792722624.418494474] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 12 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792722624.434719040] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 121 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792722624.448011061] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-31] [INFO] [1792722624.448083679] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-31] [INFO] [1792722624.449099383] [moveit_move_group_default_capabilities.move_action_capability]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
+[move_group-31] [INFO] [1792722624.449766998] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnect]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[move_group-31] [INFO] [1792722624.627275567] [moveit_move_group_default_capabilities.move_action_capability]: Motion plan was computed successfully.
+[trajectory_selector_node.py-16] route chain goal=[-4.785, -0.477] entry=['carrying-home-5291b049', 'carrying-portal-d3c959', 'carrying-slot_approach', 'carrying-slot_upper-cf', 'carrying-slot-d0500f2c'] twin=[1.499, -0.477] retreat=['unloaded-slot-c7c3c15c', 'unloaded-slot_upper-f8', 'unloaded-slot_approach', 'unloaded-portal-d3c959', 'unloaded-home-d518a0bd']
+[trajectory_selector_node.py-16] [INFO] [1792722625.551435803] [trajectory_selector]: route: candidate 13 planned route-b-132315cac677
+[trajectory_selector_node.py-16] [INFO] [1792722625.551615043] [trajectory_selector]: route: certifying 8 edges
+[semantic_segmenter_node.py-11] [WARN] [1792722625.761605657] [semantic_segmenter]: self-body mesh mask is empty
+[trajectory_selector_node.py-16] [INFO] [1792722627.456440686] [trajectory_selector]: validity: route valid support=airport_container_real_aprime ransit-11f77500-f0fbc8cd(ok); averse-42546e9b-ce94b15e(ok); insert-4c3e4657-a9f0f3de(ok); escend-28f1bd45-e89af060(ok); etreat-f404ca23-741f4e0f(ok); etreat-b43a7e2e-3ed569d9(ok); etreat-0444c593-09dbf3a0(ok); return-0b84d3bd-65d7030c(ok)
+[trajectory_selector_node.py-16] [INFO] [1792722627.542002297] [trajectory_selector]: route: certify wall 1.851s service 1.739s edges=8
+[trajectory_selector_node.py-16] [INFO] [1792722627.547247013] [trajectory_selector]: route: certification pass
+[move_group-31] [ERROR] [1792722627.604256824] [moveit_robot_state.robot_state]: Attached body 'b-payload' not found
+[move_group-31] [WARN] [1792722627.604302761] [moveit_planning_scene.planning_scene]: Tried to remove world object 'b-payload', but it does not exist in this scene.
+[trajectory_selector_node.py-16] [INFO] [1792722629.684598374] [trajectory_selector]: validity: route valid support=airport_container_real_aprime ransit-11f77500-f0fbc8cd(ok); averse-42546e9b-ce94b15e(ok); insert-4c3e4657-a9f0f3de(ok); escend-28f1bd45-e89af060(ok); etreat-f404ca23-741f4e0f(ok); etreat-b43a7e2e-3ed569d9(ok); etreat-0444c593-09dbf3a0(ok); return-0b84d3bd-65d7030c(ok)
+[trajectory_selector_node.py-16] [INFO] [1792722629.772144534] [trajectory_selector]: route: certify wall 1.856s service 1.719s edges=8
+[move_group-31] [INFO] [1792722629.886985192] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792722629.887057890] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792722629.887074591] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722629.887084240] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722629.887169862] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792722629.890961555] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792722629.890985560] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722629.890993285] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722629.891206108] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792722629.891671530] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792722629.891724641] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792722629.891823478] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792722629.891834899] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[semantic_segmenter_node.py-11] [WARN] [1792722630.779550015] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722635.798892098] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722640.816028212] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722645.837536287] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722650.855618633] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722655.875879684] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722660.890796874] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722665.909401190] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722670.936685200] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722675.952066333] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722680.974202284] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722685.989655898] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722691.021020827] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722696.031157996] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722701.057467775] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722706.082312944] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722711.093380257] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722716.127570006] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722721.131878225] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722726.155273696] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722731.173451138] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722736.195506311] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722741.210244220] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722746.234185590] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722751.251213259] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722756.272555169] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722761.292471956] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722766.311784337] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722771.327341732] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722776.346287184] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722781.365270476] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722786.387525285] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722791.406481555] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722796.431266585] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722801.448746608] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722806.468279530] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722811.482857307] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722816.507071457] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722821.526733717] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722826.546729067] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722831.562917840] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722836.580621285] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722841.602507705] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722846.622898244] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722851.640576839] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722856.658097498] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722861.682770458] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722866.699472573] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722871.721375614] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722876.739052794] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722881.758967899] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722886.777446586] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722891.801023745] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722896.821548448] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722901.846026074] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722906.875320778] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722911.886472154] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722916.904625208] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722921.928133641] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722926.944339128] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722931.965377336] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722936.987985345] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722942.007600091] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722947.026804367] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722952.048825415] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722957.063594105] [semantic_segmenter]: self-body mesh mask is empty
+[ign gazebo-1] [INFO] [1792722961.433732144] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792722961.447923142] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792722961.453655059] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792722961.453710444] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-31] [INFO] [1792722961.840226987] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792722961.840295778] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792722961.840315415] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722961.840326576] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722961.840356964] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792722961.843744440] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792722961.843788032] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722961.843799694] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722961.844048525] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792722961.844187258] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792722961.844236301] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792722961.844298148] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792722961.844310922] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[semantic_segmenter_node.py-11] [WARN] [1792722962.079985367] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722967.106104962] [semantic_segmenter]: self-body mesh mask is empty
+[ign gazebo-1] [INFO] [1792722969.412964168] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792722969.444625335] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792722969.453268846] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792722969.453308942] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-31] [INFO] [1792722969.843833855] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792722969.843902034] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792722969.843917443] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722969.843927693] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722969.843957148] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792722969.853002020] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792722969.853045993] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722969.853055892] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722969.853234891] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792722969.853316526] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792722969.853351372] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792722969.853408900] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792722969.853418519] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ign gazebo-1] [INFO] [1792722970.974784410] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792722971.003547809] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792722971.004830698] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792722971.004890442] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-31] [INFO] [1792722971.395312589] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792722971.395382983] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792722971.395402249] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722971.395413531] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722971.395446072] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792722971.395508941] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792722971.395549067] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722971.395560519] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722971.395756310] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792722971.395846030] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792722971.395892578] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792722971.395966718] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792722971.395975836] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[semantic_segmenter_node.py-11] [WARN] [1792722972.127679978] [semantic_segmenter]: self-body mesh mask is empty
+[ign gazebo-1] [INFO] [1792722972.454874512] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792722972.496150088] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792722972.504914779] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792722972.504983699] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-31] [ERROR] [1792722972.555837267] [moveit_robot_state.robot_state]: Attached body 'pickup_box' not found
+[move_group-31] [WARN] [1792722972.555867424] [moveit_planning_scene.planning_scene]: Tried to remove world object 'pickup_box', but it does not exist in this scene.
+[move_group-31] [INFO] [1792722972.747614948] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792722972.747679199] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792722972.747693466] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722972.747703245] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722972.747734494] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792722972.754832678] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792722972.754859509] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722972.754867935] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722972.755035963] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792722972.755107349] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792722972.755134139] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792722972.755229069] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792722972.755250029] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ign gazebo-1] [INFO] [1792722973.816299978] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792722973.855383022] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792722973.856394698] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792722973.856445023] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-31] [INFO] [1792722974.248817174] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792722974.248889300] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792722974.248905160] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722974.248914638] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722974.248942060] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792722974.256483865] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792722974.256524932] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722974.256535462] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722974.256713079] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792722974.256791106] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792722974.256822917] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792722974.256879694] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792722974.256888942] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ign gazebo-1] [INFO] [1792722975.376316618] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792722975.407055628] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792722975.416529753] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792722975.416598843] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-31] [INFO] [1792722975.832188157] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792722975.832271555] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792722975.832287976] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722975.832310499] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722975.832339474] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792722975.836392660] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792722975.836419441] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722975.836428518] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722975.836753804] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792722975.836876356] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792722975.836909309] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792722975.836990513] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792722975.837000642] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[semantic_segmenter_node.py-11] [WARN] [1792722977.150181088] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722982.168017991] [semantic_segmenter]: self-body mesh mask is empty
+[ign gazebo-1] [INFO] [1792722983.143007623] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792722983.187269325] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792722983.192938172] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792722983.192982766] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-31] [INFO] [1792722983.606070299] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792722983.606172993] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792722983.606196808] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722983.606210174] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722983.606279004] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792722983.612972612] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792722983.613010123] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722983.613021154] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722983.613209450] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792722983.613420049] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792722983.613470004] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792722983.613589089] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792722983.613602415] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[semantic_segmenter_node.py-11] [WARN] [1792722987.189853989] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722992.215661117] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792722997.238486496] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723002.279758374] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723007.301317094] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723012.318278317] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723017.344277579] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723022.364700990] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723027.385946970] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723032.407766397] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723037.430454270] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723042.451016408] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723047.474252331] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723052.488545068] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723057.509207892] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723062.529738316] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723067.550167922] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723072.570756972] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723077.593939347] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723082.611511428] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723087.631452740] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723092.647985749] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723097.670477067] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723102.694732208] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723107.711633454] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723112.733337200] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723117.750304088] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723122.771396725] [semantic_segmenter]: self-body mesh mask is empty
+[ign gazebo-1] [INFO] [1792723124.759107991] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792723124.766204350] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792723124.769188101] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792723124.769244969] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[semantic_segmenter_node.py-11] [WARN] [1792723128.092859770] [semantic_segmenter]: self-body mesh mask is empty
+[move_group-31] [INFO] [1792723129.727053930] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-31] [INFO] [1792723129.727157657] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-31] [INFO] [1792723129.736300192] [moveit_move_group_default_capabilities.move_action_capability]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
+[move_group-31] [INFO] [1792723129.736773919] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnect]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[move_group-31] [INFO] [1792723129.758121459] [moveit_move_group_default_capabilities.move_action_capability]: Motion plan was computed successfully.
+[trajectory_selector_node.py-16] [INFO] [1792723129.974306964] [trajectory_selector]: validity: route valid support=airport_container_real_aprime ransit-0118f6e9-b3362c6b(ok)
+[trajectory_selector_node.py-16] [INFO] [1792723129.977747340] [trajectory_selector]: route: certify wall 0.048s service 0.031s edges=1
+[move_group-31] [ERROR] [1792723129.979301564] [moveit_robot_state.robot_state]: Attached body 'b-payload' not found
+[move_group-31] [WARN] [1792723129.979337572] [moveit_planning_scene.planning_scene]: Tried to remove world object 'b-payload', but it does not exist in this scene.
+[move_group-31] [INFO] [1792723130.049788730] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792723130.049886575] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792723130.049907945] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723130.049919086] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723130.049967929] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792723130.056378811] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792723130.056421952] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723130.056435578] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723130.056633693] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792723130.056772827] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792723130.056812903] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792723130.056922871] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792723130.056937759] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[semantic_segmenter_node.py-11] [WARN] [1792723133.115279407] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723138.136503374] [semantic_segmenter]: self-body mesh mask is empty
+[ign gazebo-1] [INFO] [1792723139.201142615] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792723139.207265551] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792723139.211284953] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792723139.211354726] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[pickup_box_spawner_node.py-8] [INFO] [1792723140.349878585] [pickup_box_spawner]: Finalized Gazebo model 'pickup_box_0001_inch20' without deletion (total=1)
+[vacuum_controller_node.py-20] [INFO] [1792723140.350038348] [vacuum_controller]: current_box cleared
+[semantic_segmenter_node.py-11] [INFO] [1792723140.361535613] [semantic_segmenter]: semantic_segmenter: epoch reset generation=3 id=''
+[vacuum_controller_node.py-20] [INFO] [1792723140.634031743] [vacuum_controller]: current_box cleared
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mContact system publishing on [0m[1;32m/obs/box_contact[0m[1;32m[0m
+[pickup_box_spawner_node.py-8] [INFO] [1792723143.168651595] [pickup_box_spawner]: Spawned pickup_box_0002_inch20 visual=mesh/suitcase_loafbrr size=0.350x0.530x0.220 gt=0.328x0.517x0.209 mass=5.67kg yaw=1.571 rad mode=catalog
+[semantic_segmenter_node.py-11] [INFO] [1792723143.168940442] [semantic_segmenter]: semantic_segmenter: epoch reset generation=4 id='pickup_box_0002_inch20'
+[vacuum_controller_node.py-20] [INFO] [1792723143.169039771] [vacuum_controller]: current_box id=pickup_box_0002_inch20 gen=4 (no measured geometry yet)
+[luggage_detector_node.py-10] [INFO] [1792723143.187810661] [luggage_detector]: luggage_detector: waiting for suitcase RGB update (pickup_box_0002_inch20)
+[semantic_segmenter_node.py-11] [WARN] [1792723143.269044940] [semantic_segmenter]: self-body mesh mask is empty
+[pickup_box_spawner_node.py-8] [INFO] [1792723143.588916724] [pickup_box_spawner]: sync_detected_pickup_box: measured 0.512x0.334x0.217 onto pickup_box_0002_inch20 (gen 4)
+[vacuum_controller_node.py-20] [INFO] [1792723143.589147421] [vacuum_controller]: current_box id=pickup_box_0002_inch20 measured=0.512x0.334x0.217 gen=4
+[move_group-31] [INFO] [1792723143.612606330] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-31] [INFO] [1792723143.612686993] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-31] [INFO] [1792723143.619843727] [moveit_move_group_default_capabilities.move_action_capability]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
+[move_group-31] [INFO] [1792723143.620434656] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnect]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[move_group-31] [INFO] [1792723143.651375034] [moveit_move_group_default_capabilities.move_action_capability]: Motion plan was computed successfully.
+[move_group-31] [INFO] [1792723143.748059264] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792723143.748125740] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 1 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792723143.748539384] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 6 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792723143.757170420] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792723143.757210736] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 3 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792723143.758503514] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 28 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792723143.767883880] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792723143.768078208] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 4 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792723143.769770513] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 37 points (followed 100.000000% of requested trajectory)
+[waypoint_generator_node.py-14] [INFO] [1792723143.957048037] [waypoint_generator]: validity: route valid support=airport_container_real_aprime ransit-bd32e2af-c6f88652(ok); averse-c2e5c7de-e81392b4(ok); escend-5c885d50-6b36e749(ok); etreat-8f96b4ba-a9a2606b(ok)
+[move_group-31] [INFO] [1792723143.987408337] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792723143.987515490] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792723143.987537521] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723143.987547580] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723143.987585622] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792723143.989782092] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792723143.989827969] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723143.989839531] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723143.990051973] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792723143.990191538] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792723143.990230822] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792723143.990336432] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792723143.990355849] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[semantic_segmenter_node.py-11] [WARN] [1792723148.286266396] [semantic_segmenter]: self-body mesh mask is empty
+[ign gazebo-1] [INFO] [1792723152.697068124] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792723152.740616630] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792723152.747196541] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792723152.747249622] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-31] [INFO] [1792723152.771074353] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792723152.771160967] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792723152.771181076] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723152.771191906] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723152.771220981] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792723152.777348847] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792723152.777383182] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723152.777393972] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723152.777580916] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792723152.777680284] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792723152.777712515] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792723152.777779693] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792723152.777788680] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[semantic_segmenter_node.py-11] [WARN] [1792723153.309570066] [semantic_segmenter]: self-body mesh mask is empty
+[ign gazebo-1] [INFO] [1792723153.818214914] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792723153.827993644] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792723153.828310504] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792723153.828362673] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-31] [INFO] [1792723153.848333465] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792723153.848398739] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792723153.848415831] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723153.848425139] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723153.848457069] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792723153.848507034] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792723153.848534446] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723153.848541860] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723153.848715198] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792723153.848804327] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792723153.848834304] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792723153.848905839] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792723153.848920066] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ign gazebo-1] [INFO] [1792723156.101162918] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792723156.149071662] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792723156.151157833] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792723156.151222205] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mContact system publishing on [0m[1;32m/obs/box_contact[0m[1;32m[0m
+[move_group-31] [INFO] [1792723158.734961841] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792723158.735060819] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792723158.735084043] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723158.735097658] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723158.735134448] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792723158.735207506] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792723158.735239938] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723158.735251269] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723158.735434606] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792723158.735619076] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792723158.735658290] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792723158.735729345] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792723158.735739804] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[semantic_segmenter_node.py-11] [WARN] [1792723158.839507780] [semantic_segmenter]: self-body mesh mask is empty
+[ign gazebo-1] [INFO] [1792723161.798375452] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792723161.835958370] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792723161.838526343] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792723161.838605413] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[trajectory_selector_node.py-16] [INFO] [1792723162.130853988] [trajectory_selector]: route: atlas order seeded=0 reachable=0 marginal=0 near_status1=0 near_unknown=12 other_status1=0 other_unknown=390 dropped=0 near_cut=-0.985 executable_first=True
+[trajectory_selector_node.py-16] [INFO] [1792723162.132170792] [trajectory_selector]: route: select place-v2-4 slots=402 hash=cb41f55f2437
+[trajectory_selector_node.py-16] [INFO] [1792723162.447744854] [trajectory_selector]: route: anchors [('portal', [4.054, -1.656, -2.25, 5.482, 1.575, -0.658]), ('portal', [0.428, -1.486, 2.25, -2.337, -1.565, -1.143]), ('portal', [4.054, -1.656, -2.247, 5.469, 1.567, 2.483]), ('portal', [0.429, -1.485, 2.247, -2.33, -1.577, -4.283])] home [1.742, -1.735, -1.45, 4.756, 1.577, -1.418]
+[trajectory_selector_node.py-16] [INFO] [1792723162.491509609] [trajectory_selector]: route: planning candidate 0 (180.00s left)
+[move_group-31] [INFO] [1792723162.874062160] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-31] [INFO] [1792723162.874148223] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-31] [INFO] [1792723162.878404855] [moveit_move_group_default_capabilities.move_action_capability]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
+[move_group-31] [INFO] [1792723162.878950839] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnect]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[semantic_segmenter_node.py-11] [WARN] [1792723163.866890914] [semantic_segmenter]: self-body mesh mask is empty
+[move_group-31] [WARN] [1792723164.879132594] [moveit.ompl_planning.model_based_planning_context]: Planning timed out: 2.0s ≥ 2.0s
+[move_group-31] [INFO] [1792723164.879163602] [moveit.ompl_planning.model_based_planning_context]: Unable to solve the planning problem
+[move_group-31] [INFO] [1792723164.879188289] [moveit_move_group_default_capabilities.move_action_capability]: Timeout reached
+[trajectory_selector_node.py-16] [ERROR] [1792723164.881245185] [trajectory_selector]: edge joint failed PORTAL_TRANSIT from=[1.742, -1.735, -1.45, 4.756, 1.577, -1.418] to=[4.054, -1.656, -2.25, 5.482, 1.575, -0.658] code=-6
+[move_group-31] [INFO] [1792723164.882603177] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-31] [INFO] [1792723164.882662589] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-31] [INFO] [1792723164.890936218] [moveit_move_group_default_capabilities.move_action_capability]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
+[move_group-31] [INFO] [1792723164.891931303] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnect]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[move_group-31] [WARN] [1792723166.892526378] [moveit.ompl_planning.model_based_planning_context]: Planning timed out: 2.0s ≥ 2.0s
+[move_group-31] [INFO] [1792723166.892559361] [moveit.ompl_planning.model_based_planning_context]: Unable to solve the planning problem
+[move_group-31] [INFO] [1792723166.892586422] [moveit_move_group_default_capabilities.move_action_capability]: Timeout reached
+[trajectory_selector_node.py-16] [ERROR] [1792723166.894491891] [trajectory_selector]: edge joint failed PORTAL_TRANSIT from=[1.742, -1.735, -1.45, 4.756, 1.577, -1.418] to=[0.428, -1.486, 2.25, -2.337, -1.565, -1.143] code=-6
+[move_group-31] [INFO] [1792723166.896041576] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-31] [INFO] [1792723166.896116918] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-31] [INFO] [1792723166.896184196] [moveit_move_group_default_capabilities.move_action_capability]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
+[move_group-31] [INFO] [1792723166.897115540] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnect]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[semantic_segmenter_node.py-11] [WARN] [1792723168.884321215] [semantic_segmenter]: self-body mesh mask is empty
+[move_group-31] [INFO] [1792723168.993158179] [moveit_move_group_default_capabilities.move_action_capability]: Motion plan was computed successfully.
+[move_group-31] [INFO] [1792723169.885850613] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-31] [INFO] [1792723169.885940634] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-31] [INFO] [1792723169.889234282] [moveit_move_group_default_capabilities.move_action_capability]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
+[move_group-31] [INFO] [1792723169.890283228] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnect]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[move_group-31] [INFO] [1792723170.212730796] [moveit_move_group_default_capabilities.move_action_capability]: Motion plan was computed successfully.
+[trajectory_selector_node.py-16] [INFO] [1792723171.730830596] [trajectory_selector]: route: ANCHOR_PAYLOAD_COLLISION carrying-staging-8cbdb369 region=staging q=[3.113, -0.833, -2.408, 4.812, 1.577, -1.599] (no MoveGroup call)
+[trajectory_selector_node.py-16] [INFO] [1792723171.731498662] [trajectory_selector]: route: ANCHOR_PAYLOAD_COLLISION carrying-staging-d00d0f23 region=staging q=[-1.184, -2.309, 2.407, -1.663, -1.568, -2.755] (no MoveGroup call)
+[trajectory_selector_node.py-16] [INFO] [1792723171.731623638] [trajectory_selector]: route: ANCHOR_PAYLOAD_COLLISION carrying-staging-958a95d2 region=staging q=[-0.854, -2.433, 2.425, -1.558, -1.567, -2.425] (no MoveGroup call)
+[trajectory_selector_node.py-16] [INFO] [1792723171.731732214] [trajectory_selector]: route: ANCHOR_PAYLOAD_COLLISION carrying-staging-b4833f8d region=staging q=[-0.527, -2.129, 2.359, -1.798, -1.565, -2.097] (no MoveGroup call)
+[trajectory_selector_node.py-16] [INFO] [1792723171.731837764] [trajectory_selector]: route: ANCHOR_PAYLOAD_COLLISION carrying-staging-24ec4b71 region=staging q=[3.493, -1.013, -2.36, 4.946, 1.577, -1.219] (no MoveGroup call)
+[trajectory_selector_node.py-16] [INFO] [1792723171.731953904] [trajectory_selector]: route: ANCHOR_PAYLOAD_COLLISION carrying-staging-65966767 region=staging q=[4.199, -0.756, -2.422, 4.754, 1.574, -0.514] (no MoveGroup call)
+[trajectory_selector_node.py-16] [INFO] [1792723171.732602422] [trajectory_selector]: route: ANCHOR_PAYLOAD_COLLISION carrying-staging-aa93bd24 region=staging q=[3.724, -0.749, -2.139, 4.462, 1.576, -0.988] (no MoveGroup call)
+[trajectory_selector_node.py-16] [INFO] [1792723171.732805667] [trajectory_selector]: route: ANCHOR_PAYLOAD_COLLISION carrying-staging-793d352e region=staging q=[-0.854, -2.392, 2.137, -1.311, -1.567, -2.425] (no MoveGroup call)
+[trajectory_selector_node.py-16] [INFO] [1792723171.732934220] [trajectory_selector]: route: ANCHOR_PAYLOAD_COLLISION carrying-staging-0ce1de60 region=staging q=[-0.261, -2.386, 2.42, -1.604, -1.565, -1.832] (no MoveGroup call)
+[trajectory_selector_node.py-16] [INFO] [1792723171.733581296] [trajectory_selector]: route: ANCHOR_PAYLOAD_COLLISION carrying-staging-c1b5eab1 region=staging q=[3.724, -0.709, -2.427, 4.71, 1.576, -0.988] (no MoveGroup call)
+[trajectory_selector_node.py-16] [INFO] [1792723171.858044745] [trajectory_selector]: route: anchors [('portal', [4.054, -1.656, -2.25, 5.482, 1.575, -0.658]), ('portal', [0.428, -1.486, 2.25, -2.337, -1.565, -1.143]), ('portal', [4.054, -1.656, -2.247, 5.469, 1.567, 2.483]), ('portal', [0.429, -1.485, 2.247, -2.33, -1.577, -4.283]), ('portal', [4.054, -1.655, -2.25, 5.482, 1.575, -0.658]), ('slot_approach', [1.099, -0.389, 0.345, -1.532, -1.568, -0.472]), ('slot_upper', [1.099, -0.388, 0.445, -1.634, -1.568, -0.472])] home [1.742, -1.735, -1.45, 4.756, 1.577, -1.418]
+[trajectory_selector_node.py-16] [INFO] [1792723171.899143962] [trajectory_selector]: route: planning candidate 1 (170.35s left)
+[move_group-31] [INFO] [1792723172.469576503] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792723172.470008972] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 11 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792723172.481739478] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 111 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792723172.528616899] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792723172.528880648] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 1 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792723172.529644204] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 9 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792723172.541228022] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792723172.541266505] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 1 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792723172.542076359] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 9 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792723172.638338558] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792723172.638396578] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 1 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792723172.639201723] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 9 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792723172.648877768] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792723172.648967508] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 1 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792723172.649871019] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 9 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792723172.662800556] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Received request to compute Cartesian path
+[move_group-31] [INFO] [1792723172.662853326] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Attempting to follow 11 waypoints for link 'suction_contact_frame' using a step of 0.010000 m and jump threshold 0.000000 (in global reference frame)
+[move_group-31] [INFO] [1792723172.673699578] [moveit_move_group_default_capabilities.cartersian_path_service_capability]: Computed Cartesian path with 111 points (followed 100.000000% of requested trajectory)
+[move_group-31] [INFO] [1792723172.687344980] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-31] [INFO] [1792723172.687407820] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-31] [INFO] [1792723172.689224881] [moveit_move_group_default_capabilities.move_action_capability]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
+[move_group-31] [INFO] [1792723172.689998095] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnect]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[move_group-31] [INFO] [1792723172.736184937] [moveit_move_group_default_capabilities.move_action_capability]: Motion plan was computed successfully.
+[move_group-31] [INFO] [1792723172.938177277] [moveit_move_group_default_capabilities.move_action_capability]: Received request
+[move_group-31] [INFO] [1792723172.938296623] [moveit_move_group_default_capabilities.move_action_capability]: executing..
+[move_group-31] [INFO] [1792723172.941654342] [moveit_move_group_default_capabilities.move_action_capability]: Planning request received for MoveGroup action. Forwarding to planning pipeline.
+[move_group-31] [INFO] [1792723172.942425182] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnect]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[move_group-31] [INFO] [1792723172.969350495] [moveit_move_group_default_capabilities.move_action_capability]: Motion plan was computed successfully.
+[trajectory_selector_node.py-16] route chain goal=[1.099, -0.368] entry=['carrying-home-b9d66e69', 'carrying-portal-b785f4', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-d0860ba3'] twin=[4.458, -2.774] retreat=['unloaded-slot-feb3680e', 'unloaded-slot_upper-65', 'unloaded-slot_approach', 'unloaded-portal-b785f4', 'unloaded-home-35a719f0']
+[trajectory_selector_node.py-16] [INFO] [1792723173.200135915] [trajectory_selector]: route: candidate 1 planned route-b-f871f941817c
+[trajectory_selector_node.py-16] [INFO] [1792723173.200353427] [trajectory_selector]: route: certifying 8 edges
+[semantic_segmenter_node.py-11] [WARN] [1792723173.912934871] [semantic_segmenter]: self-body mesh mask is empty
+[trajectory_selector_node.py-16] [INFO] [1792723174.039093590] [trajectory_selector]: validity: route valid support=airport_container_real_aprime ransit-3158c822-e035ea76(ok); averse-a6cc0ad4-5a77333d(ok); insert-90581663-2eed036b(ok); escend-f6614503-e4ae1c73(ok); etreat-a45c29a4-4db5da98(ok); etreat-14ea5844-8823f745(ok); etreat-84510147-32e57a58(ok); return-e9f03441-4cdfa4fe(ok)
+[trajectory_selector_node.py-16] [INFO] [1792723174.074217801] [trajectory_selector]: route: certify wall 0.860s service 0.708s edges=8
+[trajectory_selector_node.py-16] [INFO] [1792723174.077006312] [trajectory_selector]: route: certification pass
+[move_group-31] [ERROR] [1792723174.133078125] [moveit_robot_state.robot_state]: Attached body 'b-payload' not found
+[move_group-31] [WARN] [1792723174.133137368] [moveit_planning_scene.planning_scene]: Tried to remove world object 'b-payload', but it does not exist in this scene.
+[trajectory_selector_node.py-16] [INFO] [1792723175.261106735] [trajectory_selector]: validity: route valid support=airport_container_real_aprime ransit-3158c822-e035ea76(ok); averse-a6cc0ad4-5a77333d(ok); insert-90581663-2eed036b(ok); escend-f6614503-e4ae1c73(ok); etreat-a45c29a4-4db5da98(ok); etreat-14ea5844-8823f745(ok); etreat-84510147-32e57a58(ok); return-e9f03441-4cdfa4fe(ok)
+[trajectory_selector_node.py-16] [INFO] [1792723175.295946468] [trajectory_selector]: route: certify wall 0.817s service 0.701s edges=8
+[move_group-31] [INFO] [1792723175.404118302] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792723175.404234472] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792723175.404255872] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723175.404267945] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723175.404329702] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792723175.412859346] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792723175.412895164] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723175.412907598] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723175.413091987] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792723175.413293959] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792723175.413335769] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792723175.413429827] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792723175.413443382] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[semantic_segmenter_node.py-11] [WARN] [1792723178.922457707] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723183.946313754] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723188.964720637] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723193.986720561] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723199.007971302] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723204.026590125] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723209.048092095] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723214.064751751] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723219.086427182] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723224.107150929] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723229.128687792] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723234.147136494] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723239.171202150] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723244.185974093] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723249.210625053] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723254.230591689] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723259.247063064] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723264.271708867] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723269.295618664] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723274.317790609] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723279.328165449] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723284.345750506] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723289.367806586] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723294.390852038] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1792723299.414673719] [semantic_segmenter]: self-body mesh mask is empty
+[ign gazebo-1] [INFO] [1792723301.226578112] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792723301.265766187] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792723301.266725233] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792723301.266774867] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-31] [INFO] [1792723301.687028299] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792723301.687101769] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792723301.687116647] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723301.687126185] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723301.687155080] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792723301.689110984] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792723301.689135330] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723301.689143275] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723301.689320711] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792723301.689413186] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792723301.689442692] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792723301.689511462] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792723301.689521141] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[semantic_segmenter_node.py-11] [WARN] [1792723304.428861233] [semantic_segmenter]: self-body mesh mask is empty
+[luggage_detector_node.py-10] [WARN] [1792723306.410593635] [luggage_detector]: luggage_detector: stream DETECT_TOO_FEW_POINTS (n=42)
+[ign gazebo-1] [INFO] [1792723308.328431490] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792723308.339833964] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792723308.348497371] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792723308.348539651] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-31] [INFO] [1792723308.730066752] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792723308.730132547] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792723308.730147966] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723308.730160460] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723308.730194163] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792723308.738695263] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792723308.738736611] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723308.738748013] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723308.738935047] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792723308.739036429] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792723308.739081064] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792723308.739162177] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792723308.739174000] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[semantic_segmenter_node.py-11] [WARN] [1792723309.456175476] [semantic_segmenter]: self-body mesh mask is empty
+[ign gazebo-1] [INFO] [1792723310.038426339] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792723310.039362792] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792723310.048512731] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792723310.048570510] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-31] [INFO] [1792723310.448727412] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Received goal request
+[move_group-31] [INFO] [1792723310.448796162] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution request received
+[move_group-31] [INFO] [1792723310.448807534] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723310.448816240] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723310.448845275] [moveit_ros.trajectory_execution_manager]: Validating trajectory with allowed_start_tolerance 0.05
+[move_group-31] [INFO] [1792723310.448895180] [moveit_ros.trajectory_execution_manager]: Starting trajectory execution ...
+[move_group-31] [INFO] [1792723310.448936047] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723310.448945946] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792723310.449134052] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: sending trajectory to elfin_arm_controller
+[ign gazebo-1] [INFO] [1792723310.449225806] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792723310.449255833] [elfin_arm_controller]: Accepted new action goal
+[move_group-31] [INFO] [1792723310.449311548] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: elfin_arm_controller started execution
+[move_group-31] [INFO] [1792723310.449320866] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Goal request accepted!
+[ign gazebo-1] [INFO] [1792723311.588520645] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792723311.599498034] [moveit.simple_controller_manager.follow_joint_trajectory_controller_handle]: Controller 'elfin_arm_controller' successfully finished
+[move_group-31] [INFO] [1792723311.602008248] [moveit_ros.trajectory_execution_manager]: Completed trajectory execution with status SUCCEEDED ...
+[move_group-31] [INFO] [1792723311.602062471] [moveit_move_group_default_capabilities.execute_trajectory_action_capability]: Execution completed: SUCCEEDED
+[move_group-31] [ERROR] [1792723311.649062580] [moveit_robot_state.robot_state]: Attached body 'pickup_box' not found
+[move_group-31] [WARN] [1792723311.649096785] [moveit_planning_scene.planning_scene]: Tried to remove world object 'pickup_box', but it does not exist in this scene.
+[semantic_segmenter_node.py-11] [WARN] [1792723314.574644838] [semantic_segmenter]: self-body mesh mask is empty
+[move_group-31] [INFO] [1792723316.671615109] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[validate_route_node-17] [INFO] [1792723316.671620289] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[parameter_bridge-3] [INFO] [1792723316.671636409] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[parameter_bridge-2] [INFO] [1792723316.671640447] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[robot_state_publisher-22] [INFO] [1792723316.671641088] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[parameter_bridge-7] [INFO] [1792723316.671637642] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[luggage_detector_node.py-10] [ERROR] [1792723316.674139630] [luggage_detector]: luggage_detector estimate failed: Failed to publish: publisher's context is invalid, at ./src/rcl/publisher.c:389
+[luggage_detector_node.py-10] Failed to publish log message to rosout: publisher's context is invalid, at ./src/rcl/publisher.c:389
+[ign gazebo-1] [INFO] [1792723316.690847532] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[ign gazebo-1] [INFO] [1792723316.690922804] [controller_manager]: Shutdown request received....
+[ign gazebo-1] [INFO] [1792723316.690983780] [controller_manager]: Shutting down all controllers in the controller manager.
+[ign gazebo-1] [INFO] [1792723316.691012534] [controller_manager]: Deactivating controller 'joint_state_broadcaster'
+[ign gazebo-1] [INFO] [1792723316.691045186] [controller_manager]: Shutting down controller 'joint_state_broadcaster'
+[ign gazebo-1] [INFO] [1792723316.691074141] [controller_manager]: Deactivating controller 'elfin_arm_controller'
+[ign gazebo-1] [INFO] [1792723316.691101623] [controller_manager]: Shutting down controller 'elfin_arm_controller'
+[ign gazebo-1] [INFO] [1792723316.691125738] [resource_manager]: 'deactivate' hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1792723316.691138442] [resource_manager]: Successful 'deactivate' of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1792723316.691140837] [resource_manager]: 'shutdown' hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1792723316.691144203] [resource_manager]: Successful 'shutdown' of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1792723316.691146147] [controller_manager]: Shutting down the controller manager.
+[trajectory_selector_node.py-16] Traceback (most recent call last):
+[trajectory_selector_node.py-16]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/trajectory_selector_node.py", line 774, in <module>
+[trajectory_selector_node.py-16]     main()
+[trajectory_selector_node.py-16]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/trajectory_selector_node.py", line 766, in main
+[trajectory_selector_node.py-16]     executor.spin()
+[trajectory_selector_node.py-16]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 323, in spin
+[trajectory_selector_node.py-16]     self.spin_once()
+[trajectory_selector_node.py-16]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 863, in spin_once
+[trajectory_selector_node.py-16]     self._spin_once_impl(timeout_sec)
+[trajectory_selector_node.py-16]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 844, in _spin_once_impl
+[trajectory_selector_node.py-16]     handler, entity, node = self.wait_for_ready_callbacks(
+[trajectory_selector_node.py-16]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[trajectory_selector_node.py-16]     return next(self._cb_iter)
+[trajectory_selector_node.py-16]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 653, in _wait_for_ready_callbacks
+[trajectory_selector_node.py-16]     wait_set = _rclpy.WaitSet(
+[trajectory_selector_node.py-16] rclpy._rclpy_pybind11.RCLError: failed to initialize wait set: the given context is not valid, either rcl_init() was not called or rcl_shutdown() was called., at ./src/rcl/wait.c:130
+[move_group-31] [INFO] [1792723316.697003740] [moveit.ros_planning_interface.moveit_cpp]: Deleting MoveItCpp
+[container_tf_publisher-21] Traceback (most recent call last):
+[container_tf_publisher-21]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_description/lib/luggage_description/container_tf_publisher", line 5, in <module>
+[container_tf_publisher-21]     main()
+[container_tf_publisher-21]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_description/local/lib/python3.10/dist-packages/luggage_description/scene_tf_publisher.py", line 180, in main
+[container_tf_publisher-21]     rclpy.spin(node)
+[container_tf_publisher-21]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 229, in spin
+[container_tf_publisher-21]     executor.spin_once()
+[container_tf_publisher-21]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 808, in spin_once
+[move_group-31] [INFO] [1792723316.697643742] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Stopped publishing maintained planning scene.
+[container_tf_publisher-21]     self._spin_once_impl(timeout_sec)
+[container_tf_publisher-21]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 797, in _spin_once_impl
+[container_tf_publisher-21]     handler, entity, node = self.wait_for_ready_callbacks(timeout_sec=timeout_sec)
+[container_tf_publisher-21]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[container_tf_publisher-21]     return next(self._cb_iter)
+[container_tf_publisher-21]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 681, in _wait_for_ready_callbacks
+[container_tf_publisher-21]     raise ExternalShutdownException()
+[container_tf_publisher-21] rclpy.executors.ExternalShutdownException
+[move_group-31] [INFO] [1792723316.698420563] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Stopping world geometry monitor
+[move_group-31] [INFO] [1792723316.698807416] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Stopping planning scene monitor
+[move_group-31] Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+[move_group-31]          at line 127 in ./src/class_loader.cpp
+[camera_info_alias.py-5] Traceback (most recent call last):
+[camera_info_alias.py-5]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/camera_info_alias.py", line 53, in <module>
+[camera_info_alias.py-5]     main()
+[camera_info_alias.py-5]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/camera_info_alias.py", line 40, in main
+[camera_info_alias.py-5]     rclpy.spin(node)
+[camera_info_alias.py-5]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 229, in spin
+[camera_info_alias.py-5]     executor.spin_once()
+[camera_info_alias.py-5]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 808, in spin_once
+[camera_info_alias.py-5]     self._spin_once_impl(timeout_sec)
+[camera_info_alias.py-5]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 797, in _spin_once_impl
+[camera_info_alias.py-5]     handler, entity, node = self.wait_for_ready_callbacks(timeout_sec=timeout_sec)
+[camera_info_alias.py-5]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[camera_info_alias.py-5]     return next(self._cb_iter)
+[camera_info_alias.py-5]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 681, in _wait_for_ready_callbacks
+[camera_info_alias.py-5]     raise ExternalShutdownException()
+[camera_info_alias.py-5] rclpy.executors.ExternalShutdownException
+[depth_image_republisher.py-4] Traceback (most recent call last):
+[depth_image_republisher.py-4]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/depth_image_republisher.py", line 80, in <module>
+[depth_image_republisher.py-4]     main()
+[depth_image_republisher.py-4]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/depth_image_republisher.py", line 67, in main
+[depth_image_republisher.py-4]     rclpy.spin(node)
+[depth_image_republisher.py-4]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 229, in spin
+[depth_image_republisher.py-4]     executor.spin_once()
+[depth_image_republisher.py-4]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 808, in spin_once
+[depth_image_republisher.py-4]     self._spin_once_impl(timeout_sec)
+[depth_image_republisher.py-4]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 797, in _spin_once_impl
+[depth_image_republisher.py-4]     handler, entity, node = self.wait_for_ready_callbacks(timeout_sec=timeout_sec)
+[depth_image_republisher.py-4]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[depth_image_republisher.py-4]     return next(self._cb_iter)
+[depth_image_republisher.py-4]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 681, in _wait_for_ready_callbacks
+[depth_image_republisher.py-4]     raise ExternalShutdownException()
+[depth_image_republisher.py-4] rclpy.executors.ExternalShutdownException
+[placement_planner_node.py-19] Traceback (most recent call last):
+[placement_planner_node.py-19]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_packing/lib/luggage_packing/placement_planner_node.py", line 1162, in <module>
+[placement_planner_node.py-19]     main()
+[placement_planner_node.py-19]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_packing/lib/luggage_packing/placement_planner_node.py", line 1158, in main
+[placement_planner_node.py-19]     rclpy.shutdown()
+[placement_planner_node.py-19]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[placement_planner_node.py-19]     _shutdown(context=context)
+[placement_planner_node.py-19]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[placement_planner_node.py-19]     return context.shutdown()
+[placement_planner_node.py-19]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[placement_planner_node.py-19]     self.__context.shutdown()
+[placement_planner_node.py-19] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[semantic_segmenter_node.py-11] Traceback (most recent call last):
+[semantic_segmenter_node.py-11]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_segmenter_node.py", line 672, in main
+[move_group-31] Stack trace (most recent call last):
+[semantic_segmenter_node.py-11]     rclpy.spin(node)
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 229, in spin
+[semantic_segmenter_node.py-11]     executor.spin_once()
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 808, in spin_once
+[semantic_segmenter_node.py-11]     self._spin_once_impl(timeout_sec)
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 805, in _spin_once_impl
+[semantic_segmenter_node.py-11]     raise handler.exception()
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/task.py", line 272, in _execute_coroutine_step
+[semantic_segmenter_node.py-11]     result = coro.send(None)
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 488, in handler
+[semantic_segmenter_node.py-11]     await call_coroutine(entity, arg)
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 407, in _execute_subscription
+[semantic_segmenter_node.py-11]     await await_or_execute(sub.callback, msg)
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 110, in await_or_execute
+[semantic_segmenter_node.py-11]     return callback(*args)
+[semantic_segmenter_node.py-11]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_segmenter_node.py", line 513, in _on_image
+[semantic_segmenter_node.py-11]     self._mask_pub.publish(adapters.mask_msg_from_array(
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/publisher.py", line 70, in publish
+[semantic_segmenter_node.py-11]     self.__publisher.publish(msg)
+[semantic_segmenter_node.py-11] rclpy._rclpy_pybind11.RCLError: Failed to publish: publisher's context is invalid, at ./src/rcl/publisher.c:389
+[semantic_segmenter_node.py-11] 
+[semantic_segmenter_node.py-11] During handling of the above exception, another exception occurred:
+[semantic_segmenter_node.py-11] 
+[semantic_segmenter_node.py-11] Traceback (most recent call last):
+[semantic_segmenter_node.py-11]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_segmenter_node.py", line 681, in <module>
+[semantic_segmenter_node.py-11]     main()
+[semantic_segmenter_node.py-11]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_segmenter_node.py", line 677, in main
+[semantic_segmenter_node.py-11]     rclpy.shutdown()
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[semantic_segmenter_node.py-11]     _shutdown(context=context)
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[semantic_segmenter_node.py-11]     return context.shutdown()
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[semantic_segmenter_node.py-11]     self.__context.shutdown()
+[semantic_segmenter_node.py-11] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[move_group-31] #16   Object "", at 0xffffffffffffffff, in 
+[scene_manager_node.py-13] Traceback (most recent call last):
+[scene_manager_node.py-13]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/scene_manager_node.py", line 287, in main
+[scene_manager_node.py-13]     executor.spin()
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 323, in spin
+[scene_manager_node.py-13]     self.spin_once()
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 863, in spin_once
+[scene_manager_node.py-13]     self._spin_once_impl(timeout_sec)
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 844, in _spin_once_impl
+[scene_manager_node.py-13]     handler, entity, node = self.wait_for_ready_callbacks(
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[move_group-31] #15   Object "/opt/ros/humble/lib/moveit_ros_move_group/move_group", at 0x601587a25724, in 
+[scene_manager_node.py-13]     return next(self._cb_iter)
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 653, in _wait_for_ready_callbacks
+[scene_manager_node.py-13]     wait_set = _rclpy.WaitSet(
+[scene_manager_node.py-13] rclpy._rclpy_pybind11.RCLError: failed to initialize wait set: the given context is not valid, either rcl_init() was not called or rcl_shutdown() was called., at ./src/rcl/wait.c:130
+[scene_manager_node.py-13] 
+[scene_manager_node.py-13] During handling of the above exception, another exception occurred:
+[scene_manager_node.py-13] 
+[scene_manager_node.py-13] Traceback (most recent call last):
+[scene_manager_node.py-13]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/scene_manager_node.py", line 297, in <module>
+[scene_manager_node.py-13]     main()
+[scene_manager_node.py-13]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/scene_manager_node.py", line 293, in main
+[scene_manager_node.py-13]     rclpy.shutdown()
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[scene_manager_node.py-13]     _shutdown(context=context)
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[scene_manager_node.py-13]     return context.shutdown()
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[scene_manager_node.py-13]     self.__context.shutdown()
+[scene_manager_node.py-13] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[scene_viz_node.py-9] Traceback (most recent call last):
+[scene_viz_node.py-9]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/scene_viz_node.py", line 424, in <module>
+[scene_viz_node.py-9]     main()
+[scene_viz_node.py-9]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/scene_viz_node.py", line 420, in main
+[scene_viz_node.py-9]     rclpy.shutdown()
+[scene_viz_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[scene_viz_node.py-9]     _shutdown(context=context)
+[scene_viz_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[scene_viz_node.py-9]     return context.shutdown()
+[scene_viz_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[scene_viz_node.py-9]     self.__context.shutdown()
+[scene_viz_node.py-9] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[waypoint_generator_node.py-14] Traceback (most recent call last):
+[waypoint_generator_node.py-14]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/waypoint_generator_node.py", line 769, in <module>
+[motion_planner_node.py-15] Traceback (most recent call last):
+[motion_planner_node.py-15]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/motion_planner_node.py", line 1380, in <module>
+[waypoint_generator_node.py-14]     main()
+[waypoint_generator_node.py-14]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/waypoint_generator_node.py", line 765, in main
+[waypoint_generator_node.py-14]     rclpy.shutdown()
+[waypoint_generator_node.py-14]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[waypoint_generator_node.py-14]     _shutdown(context=context)
+[waypoint_generator_node.py-14]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[waypoint_generator_node.py-14]     return context.shutdown()
+[waypoint_generator_node.py-14]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[waypoint_generator_node.py-14]     self.__context.shutdown()
+[waypoint_generator_node.py-14] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[motion_planner_node.py-15]     main()
+[motion_planner_node.py-15]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/motion_planner_node.py", line 1376, in main
+[motion_planner_node.py-15]     rclpy.shutdown()
+[motion_planner_node.py-15]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[motion_planner_node.py-15]     _shutdown(context=context)
+[motion_planner_node.py-15]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[motion_planner_node.py-15]     return context.shutdown()
+[motion_planner_node.py-15]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[motion_planner_node.py-15]     self.__context.shutdown()
+[motion_planner_node.py-15] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[vacuum_controller_node.py-20] Traceback (most recent call last):
+[vacuum_controller_node.py-20]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/vacuum_controller_node.py", line 695, in <module>
+[vacuum_controller_node.py-20]     main()
+[vacuum_controller_node.py-20]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/vacuum_controller_node.py", line 691, in main
+[vacuum_controller_node.py-20]     rclpy.shutdown()
+[vacuum_controller_node.py-20]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[vacuum_controller_node.py-20]     _shutdown(context=context)
+[vacuum_controller_node.py-20]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[vacuum_controller_node.py-20]     return context.shutdown()
+[vacuum_controller_node.py-20]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[vacuum_controller_node.py-20]     self.__context.shutdown()
+[vacuum_controller_node.py-20] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[cargo_volume_mapper_node.py-18] Traceback (most recent call last):
+[cargo_volume_mapper_node.py-18]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py", line 967, in <module>
+[cargo_volume_mapper_node.py-18]     main()
+[cargo_volume_mapper_node.py-18]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py", line 963, in main
+[cargo_volume_mapper_node.py-18]     rclpy.shutdown()
+[cargo_volume_mapper_node.py-18]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[cargo_volume_mapper_node.py-18]     _shutdown(context=context)
+[cargo_volume_mapper_node.py-18]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[cargo_volume_mapper_node.py-18]     return context.shutdown()
+[cargo_volume_mapper_node.py-18]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[cargo_volume_mapper_node.py-18]     self.__context.shutdown()
+[cargo_volume_mapper_node.py-18] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[luggage_detector_node.py-10] Traceback (most recent call last):
+[luggage_detector_node.py-10]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py", line 2606, in main
+[luggage_detector_node.py-10]     executor.spin()
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 323, in spin
+[luggage_detector_node.py-10]     self.spin_once()
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 863, in spin_once
+[luggage_detector_node.py-10]     self._spin_once_impl(timeout_sec)
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 844, in _spin_once_impl
+[luggage_detector_node.py-10]     handler, entity, node = self.wait_for_ready_callbacks(
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[luggage_detector_node.py-10]     return next(self._cb_iter)
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 653, in _wait_for_ready_callbacks
+[luggage_detector_node.py-10]     wait_set = _rclpy.WaitSet(
+[luggage_detector_node.py-10] rclpy._rclpy_pybind11.RCLError: failed to initialize wait set: the given context is not valid, either rcl_init() was not called or rcl_shutdown() was called., at ./src/rcl/wait.c:130
+[luggage_detector_node.py-10] 
+[luggage_detector_node.py-10] During handling of the above exception, another exception occurred:
+[luggage_detector_node.py-10] 
+[luggage_detector_node.py-10] Traceback (most recent call last):
+[luggage_detector_node.py-10]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py", line 2613, in <module>
+[luggage_detector_node.py-10]     main()
+[luggage_detector_node.py-10]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py", line 2609, in main
+[luggage_detector_node.py-10]     rclpy.shutdown()
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[luggage_detector_node.py-10]     _shutdown(context=context)
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[luggage_detector_node.py-10]     return context.shutdown()
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[luggage_detector_node.py-10]     self.__context.shutdown()
+[luggage_detector_node.py-10] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[pickup_box_spawner_node.py-8] Traceback (most recent call last):
+[pickup_box_spawner_node.py-8]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/pickup_box_spawner_node.py", line 1007, in <module>
+[pickup_box_spawner_node.py-8]     main()
+[pickup_box_spawner_node.py-8]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/pickup_box_spawner_node.py", line 1003, in main
+[pickup_box_spawner_node.py-8]     rclpy.shutdown()
+[pickup_box_spawner_node.py-8]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[pickup_box_spawner_node.py-8]     _shutdown(context=context)
+[pickup_box_spawner_node.py-8]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[pickup_box_spawner_node.py-8]     return context.shutdown()
+[pickup_box_spawner_node.py-8]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[pickup_box_spawner_node.py-8]     self.__context.shutdown()
+[pickup_box_spawner_node.py-8] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[semantic_point_filter_node.py-12] Traceback (most recent call last):
+[semantic_point_filter_node.py-12]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_point_filter_node.py", line 866, in main
+[semantic_point_filter_node.py-12]     executor.spin()
+[semantic_point_filter_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 323, in spin
+[semantic_point_filter_node.py-12]     self.spin_once()
+[semantic_point_filter_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 863, in spin_once
+[semantic_point_filter_node.py-12]     self._spin_once_impl(timeout_sec)
+[semantic_point_filter_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 844, in _spin_once_impl
+[semantic_point_filter_node.py-12]     handler, entity, node = self.wait_for_ready_callbacks(
+[semantic_point_filter_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[semantic_point_filter_node.py-12]     return next(self._cb_iter)
+[semantic_point_filter_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 653, in _wait_for_ready_callbacks
+[semantic_point_filter_node.py-12]     wait_set = _rclpy.WaitSet(
+[semantic_point_filter_node.py-12] rclpy._rclpy_pybind11.RCLError: failed to initialize wait set: the given context is not valid, either rcl_init() was not called or rcl_shutdown() was called., at ./src/rcl/wait.c:130
+[semantic_point_filter_node.py-12] 
+[semantic_point_filter_node.py-12] During handling of the above exception, another exception occurred:
+[semantic_point_filter_node.py-12] 
+[semantic_point_filter_node.py-12] Traceback (most recent call last):
+[semantic_point_filter_node.py-12]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_point_filter_node.py", line 877, in <module>
+[semantic_point_filter_node.py-12]     main()
+[semantic_point_filter_node.py-12]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_point_filter_node.py", line 873, in main
+[semantic_point_filter_node.py-12]     rclpy.shutdown()
+[semantic_point_filter_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[semantic_point_filter_node.py-12]     _shutdown(context=context)
+[semantic_point_filter_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[semantic_point_filter_node.py-12]     return context.shutdown()
+[semantic_point_filter_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[semantic_point_filter_node.py-12]     self.__context.shutdown()
+[semantic_point_filter_node.py-12] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[move_group-31] #14   Source "../csu/libc-start.c", line 392, in __libc_start_main_impl [0x72c3b3e29e3f]
+[move_group-31] #13   Source "../sysdeps/nptl/libc_start_call_main.h", line 58, in __libc_start_call_main [0x72c3b3e29d8f]
+[move_group-31] #12   Object "/opt/ros/humble/lib/moveit_ros_move_group/move_group", at 0x601587a2465b, in 
+[move_group-31] #11   Object "/opt/ros/humble/lib/moveit_ros_move_group/move_group", at 0x601587a26709, in 
+[move_group-31] #10   Object "/opt/ros/humble/lib/libmoveit_cpp.so.2.5.9", at 0x72c3b4aad876, in moveit_cpp::MoveItCpp::~MoveItCpp()
+[move_group-31] #9    Object "/opt/ros/humble/lib/libmoveit_cpp.so.2.5.9", at 0x72c3b4aabba9, in 
+[move_group-31] #8    Object "/opt/ros/humble/lib/libmoveit_trajectory_execution_manager.so.2.5.9", at 0x72c3b3d8d3b5, in trajectory_execution_manager::TrajectoryExecutionManager::~TrajectoryExecutionManager()
+[move_group-31] #7    Object "/opt/ros/humble/lib/libmoveit_trajectory_execution_manager.so.2.5.9", at 0x72c3b3da02d9, in 
+[move_group-31] #6    Object "/opt/ros/humble/lib/librclcpp.so", at 0x72c3b470eb8c, in rclcpp::Node::~Node()
+[move_group-31] #5    Object "/opt/ros/humble/lib/librclcpp.so", at 0x72c3b470eb2e, in rclcpp::Node::~Node()
+[move_group-31] #4    Object "/opt/ros/humble/lib/librclcpp.so", at 0x72c3b46e9d39, in 
+[move_group-31] #3    Object "/opt/ros/humble/lib/librclcpp.so", at 0x72c3b47180b9, in 
+[move_group-31] #2    Object "/opt/ros/humble/lib/librclcpp.so", at 0x72c3b4718000, in rclcpp::node_interfaces::NodeBase::~NodeBase()
+[move_group-31] #1    Object "/opt/ros/humble/lib/librclcpp.so", at 0x72c3b46e9d39, in 
+[move_group-31] #0    Object "/opt/ros/humble/lib/librclcpp.so", at 0x72c3b46eeb31, in rclcpp::CallbackGroup::~CallbackGroup()
+[move_group-31] Segmentation fault (Address not mapped to object [0x72c3a82d2798])
+[semantic_point_filter_node.py-12] The following exception was never retrieved: cannot use Destroyable because destruction was requested
+[ERROR] [sensor_preprocessor_node.py-6]: process has died [pid 758084, exit code -11, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/sensor_preprocessor_node.py --ros-args -r __node:=sensor_preprocessor --params-file /tmp/elfin-master-pack-baseline-g3/install/luggage_perception/share/luggage_perception/config/sensor_preprocessor.yaml --params-file /tmp/launch_params_gmzp64d0 --params-file /tmp/launch_params_blvjlye7'].
+[INFO] [parameter_bridge-3]: process has finished cleanly [pid 758078]
+[INFO] [parameter_bridge-2]: process has finished cleanly [pid 758075]
+[INFO] [parameter_bridge-7]: process has finished cleanly [pid 758086]
+[INFO] [robot_state_publisher-22]: process has finished cleanly [pid 758116]
+[INFO] [validate_route_node-17]: process has finished cleanly [pid 758106]
+[ERROR] [depth_image_republisher.py-4]: process has died [pid 758080, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/depth_image_republisher.py --ros-args -r __node:=depth_image_republisher --params-file /tmp/launch_params_8oykhjgk'].
+[ERROR] [scene_viz_node.py-9]: process has died [pid 758090, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/scene_viz_node.py --ros-args -r __node:=scene_viz --params-file /tmp/launch_params_r18vpety'].
+[ERROR] [camera_info_alias.py-5]: process has died [pid 758082, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/camera_info_alias.py --ros-args -r __node:=camera_info_alias --params-file /tmp/launch_params_k1jn73sc'].
+[ERROR] [scene_manager_node.py-13]: process has died [pid 758098, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/scene_manager_node.py --ros-args -r __node:=scene_manager --params-file /tmp/launch_params_6obm_doe'].
+[ERROR] [container_tf_publisher-21]: process has died [pid 758114, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_description/lib/luggage_description/container_tf_publisher --ros-args -r __node:=container_tf_publisher --params-file /tmp/launch_params_nd_i9ulq'].
+[ERROR] [pickup_box_spawner_node.py-8]: process has died [pid 758088, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/pickup_box_spawner_node.py --ros-args --params-file /tmp/launch_params_xsoz3j_o'].
+[ERROR] [semantic_point_filter_node.py-12]: process has died [pid 758096, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_point_filter_node.py --ros-args -r __node:=semantic_point_filter --params-file /tmp/elfin-master-pack-baseline-g3/install/luggage_perception/share/luggage_perception/config/semantic_segmenter.yaml --params-file /tmp/launch_params_rb_w1ibs'].
+[ERROR] [cargo_volume_mapper_node.py-18]: process has died [pid 758108, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py --ros-args -r __node:=cargo_volume_mapper --params-file /tmp/launch_params_9ddm2b9w'].
+[ERROR] [placement_planner_node.py-19]: process has died [pid 758110, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_packing/lib/luggage_packing/placement_planner_node.py --ros-args -r __node:=placement_planner --params-file /tmp/launch_params_d6n50h09 --params-file /tmp/launch_params_mbkp02gp'].
+[ERROR] [vacuum_controller_node.py-20]: process has died [pid 758112, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/vacuum_controller_node.py --ros-args -r __node:=vacuum_controller --params-file /tmp/launch_params_z6bjzcwh'].
+[ERROR] [luggage_detector_node.py-10]: process has died [pid 758092, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py --ros-args --params-file /tmp/launch_params_o2577h5g'].
+[INFO] [ign gazebo-1]: process has finished cleanly [pid 758073]
+[INFO] [launch]: process[ign gazebo-1] was required: shutting down launched system
+[INFO] [move_group-31]: sending signal 'SIGINT' to process[move_group-31]
+[INFO] [trajectory_selector_node.py-16]: sending signal 'SIGINT' to process[trajectory_selector_node.py-16]
+[INFO] [motion_planner_node.py-15]: sending signal 'SIGINT' to process[motion_planner_node.py-15]
+[INFO] [waypoint_generator_node.py-14]: sending signal 'SIGINT' to process[waypoint_generator_node.py-14]
+[INFO] [semantic_segmenter_node.py-11]: sending signal 'SIGINT' to process[semantic_segmenter_node.py-11]
+[ERROR] [trajectory_selector_node.py-16]: process has died [pid 758104, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/trajectory_selector_node.py --ros-args -r __node:=trajectory_selector --params-file /tmp/launch_params_vngd5a6p --params-file /tmp/launch_params_g2ccuw_n'].
+[ERROR] [motion_planner_node.py-15]: process has died [pid 758102, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/motion_planner_node.py --ros-args -r __node:=motion_planner --params-file /tmp/launch_params_5ewpef56 --params-file /tmp/launch_params_2ufngl50'].
+[ERROR] [waypoint_generator_node.py-14]: process has died [pid 758100, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/waypoint_generator_node.py --ros-args -r __node:=waypoint_generator --params-file /tmp/launch_params_can6ezo2'].
+[ERROR] [semantic_segmenter_node.py-11]: process has died [pid 758094, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_segmenter_node.py --ros-args -r __node:=semantic_segmenter --params-file /tmp/elfin-master-pack-baseline-g3/install/luggage_perception/share/luggage_perception/config/semantic_segmenter.yaml --params-file /tmp/launch_params_ztl517mc'].
+[ERROR] [move_group-31]: process has died [pid 759262, exit code -11, cmd '/opt/ros/humble/lib/moveit_ros_move_group/move_group --ros-args -r __node:=move_group --params-file /tmp/launch_params_cwgtep_m --params-file /tmp/launch_params_qnkv212t --params-file /tmp/launch_params_7oi1183v'].
+[move_group-31] [0m
