@@ -305,3 +305,22 @@ def test_typed_client_uses_scope_only_for_complete_unloaded_certificate(action_r
         with pytest.raises(ContractError, match="MISSING_PEER"):
             TypedDriverAdapter.plan_motion(adapter, MotionSegmentV2(), 1.0, admission=admission)
     assert len(submitted) == 1
+
+
+
+def test_occupancy_commit_does_not_require_placement_but_requires_mapper(action_runtime):
+    actions, reports, providers, _now = action_runtime
+    gate = actions.gate("occupancy_commit")
+    assert gate.peers == ("cargo_volume_mapper",)
+    with pytest.raises(ContractError, match="MISSING_PEER"):
+        gate.require_ready(providers)
+    actions.observe(reports["cargo_volume_mapper"])
+    token = gate.admit(providers, "commit-verified-box")
+    gate.require_admission(token, providers, "commit-verified-box")
+    with pytest.raises(ContractError, match="MISSING_PEER"):
+        actions.full.require_ready(providers)
+    reports["cargo_volume_mapper"]["incarnation"] = "restarted"
+    with pytest.raises(ContractError, match="PEER_RESTART"):
+        actions.observe(reports["cargo_volume_mapper"])
+    with pytest.raises(ContractError, match="PEER_RESTART"):
+        gate.require_admission(token, providers, "commit-verified-box")

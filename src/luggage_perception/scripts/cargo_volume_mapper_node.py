@@ -401,7 +401,9 @@ class CargoVolumeMapperNode(Node):
                 runtime.authorize_legacy_effect()
             else:
                 admission = runtime.admit_request(
-                    request_id, endpoint=endpoint)
+                    request_id, endpoint=endpoint,
+                    scope=("occupancy_commit" if endpoint == "/cargo_map/add_placed_box_v2"
+                           else None))
                 runtime.authorize_effect(admission, request_id)
         except ContractError as error:
             response.success = False

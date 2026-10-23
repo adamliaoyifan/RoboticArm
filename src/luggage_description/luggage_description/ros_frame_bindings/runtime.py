@@ -305,14 +305,18 @@ class NodeRuntime:
             self.gate.transitions = []
         self._write_transitions(transitions)
         with self._lock:
-            scoped_gate = self.action_readiness.unloaded
-            scope_evidence = {
-                "readiness": scoped_gate.reason(self._providers()),
-                "required_peers": list(scoped_gate.peers),
-                "received_monotonic": {peer: value["received"]
-                                       for peer, value in scoped_gate.reports.items()},
-                "transitions": list(scoped_gate.transitions),
-            }
+            scope_evidence = {}
+            for name, gate in (("unloaded_motion", self.action_readiness.unloaded),
+                               ("occupancy_commit", self.action_readiness.occupancy_commit)):
+                if gate is not None:
+                    scope_evidence[name] = {
+                        "readiness": gate.reason(self._providers()),
+                        "required_peers": list(gate.peers),
+                        "received_monotonic": {peer: value["received"]
+                                               for peer, value in gate.reports.items()},
+                        "transitions": list(gate.transitions),
+                    }
+
         return {
             "peer": self.peer,
             "readiness": self._readiness(),
@@ -320,7 +324,7 @@ class NodeRuntime:
             "counters": dict(self.counters),
             "transitions": transitions,
             "heartbeat_sequence": self._heartbeat.sequence,
-            "scopes": {"unloaded_motion": scope_evidence},
+            "scopes": scope_evidence,
             "lease_epochs": dict(self.gate.lease_epochs),
             "receive_trace": list(self.receive_trace),
         }

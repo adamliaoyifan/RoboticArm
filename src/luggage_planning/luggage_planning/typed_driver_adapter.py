@@ -471,9 +471,12 @@ class TypedDriverAdapter:
             RemovePlacedBoxV2, "/cargo_map/remove_placed_box_v2",
             callback_group=group)
 
-    def _call(self, client, request, timeout_sec):
+    def _call(self, client, request, timeout_sec, *, scope=None):
         """Readiness-gated synchronous call; None on timeout/unavailable."""
-        self.runtime.require_graph_ready()
+        if scope is None:
+            self.runtime.require_graph_ready()
+        else:
+            self.runtime.require_graph_ready(scope=scope)
         if not client.wait_for_service(timeout_sec=2.0):
             raise ContractError("MISSING_ENDPOINT", client.srv_name,
                                 "v2 service", "unavailable")
@@ -631,7 +634,7 @@ class TypedDriverAdapter:
             request.verified_center_container = [
                 float(v) for v in verified_center_container]
             request.verify_tolerance_m = float(verify_tolerance_m)
-        return self._call(self._add_placed, request, 15.0)
+        return self._call(self._add_placed, request, 15.0, scope="occupancy_commit")
 
     def remove_placed_box(self, *, slot, size_wdh, expected_map_revision,
                           geometry_hash):

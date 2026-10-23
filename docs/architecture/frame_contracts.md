@@ -413,3 +413,9 @@ and receive timestamp later than the set-pose response, then confirm XY within
 the existing2s budget. A recent pre-command cache value is not confirmation.
 Persistent XY error still refuses at5mm, Z remains observational; rejected
 candidates and exact command/read boundaries are evidence, not planning input.
+
+The verify-anchored occupancy commit uses an independent `occupancy_commit`
+gate on cargo mapper and its registered driver at both client and server.
+Placement is not a dependency of committing a physically verified obstacle.
+This does not bypass slot/frame/geometry/revision/verify validation inside the
+mapper transaction; next placement retains full-graph readiness.
