@@ -236,7 +236,7 @@ class TestReturnObserveEvidence(unittest.TestCase):
         from copy import deepcopy
         host = SimpleNamespace(
             _place_state="VERIFIED", _args=SimpleNamespace(plan_only=False),
-            _exit_yaw={}, dumps=[], _frame_runtime=SimpleNamespace(snapshot=lambda: {"peer": "driver"}))
+            _exit_yaw={}, dumps=[], _frame_runtime_handle=SimpleNamespace(snapshot=lambda: {"peer": "driver"}))
         def dump(trial, **kwargs):
             host.dumps.append(deepcopy(trial))
         def home():

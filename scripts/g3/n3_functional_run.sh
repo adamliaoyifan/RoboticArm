@@ -48,8 +48,20 @@ if busy:
 PYPEERS
 if [[ $? -ne 0 ]]; then log "ROS peer slot busy"; exit 2; fi
 LPID=""
+HEARTBEAT_PID=""
 cleanup() {
   local status=$?
+  if [[ -n "$HEARTBEAT_PID" ]]; then
+    kill -TERM "$HEARTBEAT_PID" 2>/dev/null || true
+    for _ in $(seq 1 25); do
+      kill -0 "$HEARTBEAT_PID" 2>/dev/null || break
+      sleep 0.1
+    done
+    if kill -0 "$HEARTBEAT_PID" 2>/dev/null; then
+      kill -KILL "$HEARTBEAT_PID" 2>/dev/null || true
+    fi
+    wait "$HEARTBEAT_PID" 2>/dev/null || true
+  fi
   if [[ -n "$LPID" ]]; then
     if [[ -d "$OUT/joint_capture/ctl" ]]; then
       : > "$OUT/joint_capture/ctl/stop"
@@ -197,7 +209,21 @@ log "gain verify OK (0.8)"
 
 python3 "$WS/scripts/g3/attachment_preflight.py" "$OUT" > "$OUT/preflight.log" 2>&1
 if [[ $? -ne 0 ]]; then log "pre-case capture/readiness gate failed"; exit 7; fi
+python3 "$WS/scripts/g3/runtime_heartbeat_capture.py" "$OUT/heartbeat_capture" \
+  > "$OUT/heartbeat_capture.log" 2>&1 &
+HEARTBEAT_PID=$!
+for _ in $(seq 1 20); do
+  [[ -f "$OUT/heartbeat_capture/ready.json" ]] && break
+  sleep 0.25
+ done
+if [[ ! -f "$OUT/heartbeat_capture/ready.json" ]]; then
+  log "independent heartbeat capture not ready; no box attempted"; exit 8
+fi
 if [[ "${PHASE2_STARTUP_ONLY:-0}" == "1" ]]; then
+  if [[ "${PHASE2_RETURN_REHEARSAL:-0}" == "1" ]]; then
+    python3 "$WS/scripts/g3/return_evidence_rehearsal.py" "$OUT" \
+      > "$OUT/return_rehearsal.log" 2>&1 || exit 8
+  fi
   log "startup-only rehearsal complete; no box attempted"
   exit 0
 fi

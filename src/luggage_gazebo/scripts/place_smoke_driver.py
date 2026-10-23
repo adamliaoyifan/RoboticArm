@@ -3452,10 +3452,13 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         # Preserve release/verification and replay data BEFORE entering HOME.
         # A readiness exception must never discard the successful upstream case.
         trial.place_state = self._place_state
+        timing = trial.extras.setdefault("return_boundary_timings", {})
+        timing["checkpoint_start_monotonic"] = time.monotonic()
         self._dump_place(trial, extra=extras, debug=debug)
+        timing["checkpoint_end_monotonic"] = time.monotonic()
         self._set_state("HOME")
         if not self._args.plan_only:
-            runtime = getattr(self, "_frame_runtime", None)
+            runtime = getattr(self, "_frame_runtime_handle", None)
             if runtime is not None:
                 trial.extras["return_readiness_before"] = runtime.snapshot()
             try:
@@ -3793,8 +3796,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         trial.extras["follow_skipped_delta"] = (
             self._follow_skipped() - self._follow_skipped0)
 
+        trial.extras["return_boundary_timings"] = {"debug_start_monotonic": time.monotonic()}
         debug = self._capture_success_debug(
             trial, slot, slot_meta, pose_drift or pose_release)
+        trial.extras["return_boundary_timings"]["debug_end_monotonic"] = time.monotonic()
         trial.extras.setdefault("place_debug", {})["gt_ply"] = "gt_interior_box.ply"
 
         self._return_observe_with_evidence(trial, extras, debug)

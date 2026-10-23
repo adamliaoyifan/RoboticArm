@@ -161,6 +161,8 @@ class NodeRuntime:
         if identity_endpoints(self.registry) != self.identity["endpoints"]:
             reject("PEER_IDENTITY_MISMATCH", "endpoints",
                    identity_endpoints(self.registry), self.identity["endpoints"])
+        from collections import deque
+        self.receive_trace = deque(maxlen=256)
         self.counters = {}
         self.transitions_path = transitions_path
         # Isolated colcon installs give every package its own prefix
@@ -207,13 +209,20 @@ class NodeRuntime:
         if self.suppress_peer_observation:
             self._count("PEER_OBSERVATION_SUPPRESSED")
             return
+        import time
+        trace = {"received_monotonic": time.monotonic(),
+                 "peer": str(message.peer), "sequence": int(message.heartbeat_sequence),
+                 "status": "decoding"}
+        self.receive_trace.append(trace)
         try:
             report = report_from_message(message, self.registry)
             if report["peer"] == self.peer:
                 return
             with self._lock:
                 self.action_readiness.observe(report)
+            trace["status"] = "accepted"
         except ContractError as error:
+            trace.update(status=error.code, field=error.field)
             self._count(error.code)
             # [ST09-I] traceability: the expected/received pair is the
             # whole story for overlay rejections (a bare code sent a
@@ -224,6 +233,7 @@ class NodeRuntime:
                                  str(error.expected)[:160],
                                  str(error.received)[:160]))
         except Exception as error:  # noqa: BLE001 - a bad peer must not kill the node
+            trace["status"] = "INVALID_PROCESS_REPORT"
             self._count("INVALID_PROCESS_REPORT")
             self.node.get_logger().warning(
                 "runtime identity report failed to decode: %s" % (error,))
@@ -312,6 +322,7 @@ class NodeRuntime:
             "heartbeat_sequence": self._heartbeat.sequence,
             "scopes": {"unloaded_motion": scope_evidence},
             "lease_epochs": dict(self.gate.lease_epochs),
+            "receive_trace": list(self.receive_trace),
         }
 
 
