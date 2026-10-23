@@ -721,7 +721,12 @@ class TypedDriverAdapter:
         submissions after the refusal.
         """
         import time as _time
-        self.runtime.require_graph_ready()
+        from luggage_description.runtime_action_readiness import certified_motion_scope
+        scope = certified_motion_scope(admission)
+        if scope is None:
+            self.runtime.require_graph_ready()
+        else:
+            self.runtime.require_graph_ready(scope=scope)
         if not self._plan.wait_for_server(timeout_sec=2.0):
             return False, "plan_motion_v2 unavailable", None
         from luggage_msgs.action import PlanMotionV2

@@ -182,7 +182,11 @@ class NodeRuntime:
         self.gate = ReadinessGate(
             self.identity,
             [peer for peer in self.peers if peer != self.peer],
-            install_root, lease_seconds=lease_seconds)
+            install_root, lease_seconds=lease_seconds,
+            renewable_peers=[peer for peer in self.peers
+                             if peer == "placement_planner" and peer != self.peer])
+        from luggage_description.runtime_action_readiness import ActionReadiness
+        self.action_readiness = ActionReadiness(self.gate, self.registry, self.peer)
         self._live_providers = live_providers
         # Rehearsal fault injection. While set, peer heartbeats are counted
         # and dropped so require_graph_ready fails closed without touching
@@ -208,7 +212,7 @@ class NodeRuntime:
             if report["peer"] == self.peer:
                 return
             with self._lock:
-                self.gate.observe(report)
+                self.action_readiness.observe(report)
         except ContractError as error:
             self._count(error.code)
             # [ST09-I] traceability: the expected/received pair is the
@@ -240,18 +244,20 @@ class NodeRuntime:
             return error.code
 
     # -- admission -------------------------------------------------------
-    def admit_request(self, request_id, endpoint=None, client=None):
+    def admit_request(self, request_id, endpoint=None, client=None, *, scope=None):
         """Admit a request under the current graph; returns the admission token."""
         with self._lock:
-            token = self.gate.admit(self._providers(), request_id,
+            token = self.action_readiness.gate(scope).admit(self._providers(), request_id,
                                     endpoint=endpoint, client=client)
+        token["scope"] = scope
         self._count("ADMITTED")
         return token
 
     def authorize_effect(self, admission, request_id):
         """Recheck readiness and the token immediately before an effect."""
         with self._lock:
-            self.gate.require_admission(admission, self._providers(), request_id)
+            self.action_readiness.gate(admission.get("scope")).require_admission(
+                admission, self._providers(), request_id)
         self._count("EFFECT_AUTHORIZED")
 
     def authorize_legacy_effect(self):
@@ -260,10 +266,10 @@ class NodeRuntime:
             self.gate.require_ready(self._providers())
         self._count("LEGACY_EFFECT_AUTHORIZED")
 
-    def require_graph_ready(self):
+    def require_graph_ready(self, *, scope=None):
         """Client-side enforcement: a driver requests only against a live graph."""
         with self._lock:
-            self.gate.require_ready(self._providers())
+            self.action_readiness.gate(scope).require_ready(self._providers())
         self._count("GRAPH_READY_CHECK")
 
     def readiness(self):
@@ -288,6 +294,15 @@ class NodeRuntime:
             transitions = self.gate.transitions
             self.gate.transitions = []
         self._write_transitions(transitions)
+        with self._lock:
+            scoped_gate = self.action_readiness.unloaded
+            scope_evidence = {
+                "readiness": scoped_gate.reason(self._providers()),
+                "required_peers": list(scoped_gate.peers),
+                "received_monotonic": {peer: value["received"]
+                                       for peer, value in scoped_gate.reports.items()},
+                "transitions": list(scoped_gate.transitions),
+            }
         return {
             "peer": self.peer,
             "readiness": self._readiness(),
@@ -295,6 +310,8 @@ class NodeRuntime:
             "counters": dict(self.counters),
             "transitions": transitions,
             "heartbeat_sequence": self._heartbeat.sequence,
+            "scopes": {"unloaded_motion": scope_evidence},
+            "lease_epochs": dict(self.gate.lease_epochs),
         }
 
 

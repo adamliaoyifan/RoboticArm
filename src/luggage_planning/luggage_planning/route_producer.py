@@ -2059,6 +2059,19 @@ class RouteProducer(object):
             return False, "PAYLOAD_LOST", {"attached": False}
         return True, "", {"age_s": round(age_s, 3), "attached": True}
 
+    def _live_vacuum_unloaded(self):
+        """An unloaded certificate cannot hide an attached or unknown payload."""
+        fetch = getattr(self, "vacuum_state_fn", None)
+        state = fetch() if callable(fetch) else None
+        if not state:
+            return False, "VACUUM_STATE_UNAVAILABLE", {}
+        age_s = max(0.0, (self._clock_ns() - int(state.get("received_ns") or 0)) / 1e9)
+        if age_s > VACUUM_STATE_FRESHNESS_S:
+            return False, "VACUUM_STATE_STALE", {"age_s": age_s}
+        if bool(state.get("attached")):
+            return False, "PAYLOAD_STILL_ATTACHED", {"attached": True}
+        return True, "OK", {"age_s": age_s, "attached": False}
+
     def ensure_cycle_start_state(self, *, joints, request_scene_revision,
                                  vacuum_state=None):
         """[ST09-I S5.7-6 §2 minimal] Cycle-start adjudication.
@@ -2376,6 +2389,10 @@ class RouteProducer(object):
             elif claimed_state == "unloaded" and phase != "unloaded":
                 return False, "PHASE_TRANSITION_REQUIRED", {
                     "phase": phase}
+            elif claimed_state == "unloaded":
+                live_ok, live_reason, live_detail = self._live_vacuum_unloaded()
+                if not live_ok:
+                    return False, live_reason, live_detail
         snapshot = selection["snapshot"]
         if str(scene_revision) != str(
                 getattr(snapshot, "scene_revision", "")):
@@ -2695,6 +2712,11 @@ class RouteProducer(object):
                 return self._fail("MAP_STALE",
                                   [{"snapshot": int(snapshot.map_revision),
                                     "caller_latest": latest_map_revision}])
+        request["frozen_map"] = {
+            "map_revision": int(snapshot.map_revision),
+            "snapshot_digest": str(snapshot.digest()),
+            "scene_revision": str(scene_revision),
+        }
         reset_scene = getattr(self.edge_builder, "reset_scene", None)
         row = {"pose_name": pose_name}
         rows = []

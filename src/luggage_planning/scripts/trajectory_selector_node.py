@@ -548,7 +548,8 @@ class TrajectorySelectorNode(Node):
             try:
                 admission = self._frame_runtime.admit_request(
                     str(getattr(request, "request_id", "") or ""),
-                    endpoint="/trajectory_selector/goto_robot_pose_v2")
+                    endpoint="/trajectory_selector/goto_robot_pose_v2",
+                    scope="unloaded_motion")
             except ContractError as error:
                 response.success = False
                 response.reason_code = error.code
@@ -604,6 +605,7 @@ class TrajectorySelectorNode(Node):
         response.route_digest = str(result.get("path_hash") or "")
         if response.already_there:
             return response
+        response.detail = json.dumps({"frozen_map": result.get("request", {}).get("frozen_map")})
         response.certification_id = str(
             result["certification"].digest())
         response.admission_map_revision = int(

@@ -228,3 +228,51 @@ class TestLandedBoxRetention(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(_smoke_module() is None, "ROS driver deps unavailable")
+class TestReturnObserveEvidence(unittest.TestCase):
+    def _host(self, error=None, ok=True):
+        from copy import deepcopy
+        host = SimpleNamespace(
+            _place_state="VERIFIED", _args=SimpleNamespace(plan_only=False),
+            _exit_yaw={}, dumps=[], _frame_runtime=SimpleNamespace(snapshot=lambda: {"peer": "driver"}))
+        def dump(trial, **kwargs):
+            host.dumps.append(deepcopy(trial))
+        def home():
+            if error is not None:
+                raise error
+            return ok, "home verdict", None
+        host._dump_place = dump
+        host._set_state = lambda state: setattr(host, "_place_state", state)
+        host._home_arm = home
+        host.home_arm_code = lambda: "EXIT_FAILED"
+        trial = SimpleNamespace(extras={"release_kinematic": {"verdict": "declared_xy_confirmed"},
+                                       "verify": {"verdict": "ok"}}, fail_code="", place_state="")
+        return host, trial
+
+    def test_contract_exception_preserves_successful_upstream_and_failure(self):
+        from luggage_description.frame_contracts import ContractError
+        host, trial = self._host(ContractError("PEER_LEASE_EXPIRED", "peer", "fresh", "stale"))
+        _smoke_module().PlaceSmokeDriver._return_observe_with_evidence(host, trial, {}, None)
+        self.assertEqual(len(host.dumps), 2)
+        self.assertEqual(host.dumps[0].place_state, "VERIFIED")
+        self.assertEqual(host.dumps[0].extras["verify"]["verdict"], "ok")
+        self.assertEqual(host.dumps[1].extras["return_exception"]["code"], "PEER_LEASE_EXPIRED")
+        self.assertEqual(trial.fail_code, "RETURN_OBSERVE_EXCEPTION")
+
+    def test_unexpected_exception_is_persisted_before_reraise(self):
+        host, trial = self._host(RuntimeError("injected"))
+        with self.assertRaisesRegex(RuntimeError, "injected"):
+            _smoke_module().PlaceSmokeDriver._return_observe_with_evidence(host, trial, {}, None)
+        self.assertEqual(len(host.dumps), 2)
+        self.assertEqual(host.dumps[-1].extras["return_exception"]["type"], "RuntimeError")
+
+    def test_return_verdict_and_scope_evidence_are_retained(self):
+        for ok in (True, False):
+            host, trial = self._host(ok=ok)
+            _smoke_module().PlaceSmokeDriver._return_observe_with_evidence(host, trial, {}, None)
+            self.assertEqual(trial.extras["return_observe"], "home verdict")
+            self.assertIn("return_readiness_before", trial.extras)
+            self.assertIn("return_readiness_after", trial.extras)
+            self.assertEqual(trial.fail_code, "" if ok else "EXIT_FAILED")

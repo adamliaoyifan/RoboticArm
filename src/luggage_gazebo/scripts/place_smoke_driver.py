@@ -3447,6 +3447,42 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             return None
         return self._abort(trial, "CONTACT_CAPTURE_NOT_READY", True, extra=extras)
 
+    def _return_observe_with_evidence(self, trial, extras, debug):
+        """Durable release/verify checkpoint before the fallible HOME boundary."""
+        # Preserve release/verification and replay data BEFORE entering HOME.
+        # A readiness exception must never discard the successful upstream case.
+        trial.place_state = self._place_state
+        self._dump_place(trial, extra=extras, debug=debug)
+        self._set_state("HOME")
+        if not self._args.plan_only:
+            runtime = getattr(self, "_frame_runtime", None)
+            if runtime is not None:
+                trial.extras["return_readiness_before"] = runtime.snapshot()
+            try:
+                goto_ok, goto_msg, _ = self._home_arm()
+            except Exception as error:  # boundary evidence, then ordinary failure ledger
+                from luggage_description.frame_contracts import ContractError
+                trial.extras["return_exception"] = {
+                    "type": type(error).__name__, "message": str(error),
+                    "code": getattr(error, "code", ""),
+                    "field": getattr(error, "field", ""),
+                }
+                trial.fail_code = "RETURN_OBSERVE_EXCEPTION"
+                trial.place_state = self._place_state
+                if runtime is not None:
+                    trial.extras["return_readiness_after"] = runtime.snapshot()
+                self._dump_place(trial, extra=extras, debug=debug)
+                if not isinstance(error, ContractError):
+                    raise
+                return
+            trial.extras["return_observe"] = goto_msg
+            trial.extras["return_route"] = dict(getattr(self, "_last_goto_route", None) or {})
+            trial.extras["exit_yaw"] = dict(self._exit_yaw or {})
+            if runtime is not None:
+                trial.extras["return_readiness_after"] = runtime.snapshot()
+            if not goto_ok:
+                trial.fail_code = self.home_arm_code()
+
     def run_place_from_carry(self, pick_msg, trial, slot, slot_meta):
         self._probe_joints = None
         self._last_submitted_leg = None
@@ -3761,13 +3797,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             trial, slot, slot_meta, pose_drift or pose_release)
         trial.extras.setdefault("place_debug", {})["gt_ply"] = "gt_interior_box.ply"
 
-        self._set_state("HOME")
-        if not self._args.plan_only:
-            goto_ok, goto_msg, _ = self._home_arm()
-            trial.extras["return_observe"] = goto_msg
-            trial.extras["exit_yaw"] = dict(self._exit_yaw or {})
-            if not goto_ok:
-                trial.fail_code = self.home_arm_code()
+        self._return_observe_with_evidence(trial, extras, debug)
         trial.place_state = self._place_state
         self._dump_place(trial, extra=extras, debug=debug)
         if (not self._args.plan_only) and getattr(self._args, "use_vacuum", False):

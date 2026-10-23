@@ -1212,6 +1212,8 @@ class PickRetreatEvalDriver(Node):
             "route_digest": admission["route_digest"],
             "certification_id": admission["certification_id"],
             "scene_revision": str(self._frame_scene_revision or ""),
+            "admission_map_revision": admission["admission_map_revision"],
+            "planner_detail": str(getattr(result, "detail", "") or ""),
         }
         return True, ""
 

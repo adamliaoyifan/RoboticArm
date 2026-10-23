@@ -736,11 +736,19 @@ class MotionPlannerNode(Node):
         if getattr(self, "_frame_runtime", None) is not None:
             # Motion effect: the v2 chain is admitted end to end or refused.
             from luggage_description.frame_contracts import ContractError
+            from luggage_description.runtime_action_readiness import certified_motion_scope
+            goal = goal_handle.request
+            scope = certified_motion_scope({
+                "route_digest": str(goal.route_digest or ""),
+                "certification_id": str(goal.certification_id or ""),
+                "leg_digest": str(goal.admission_leg_digest or ""),
+                "load_state": str(goal.admission_load_state or ""),
+            })
             try:
                 admission = self._frame_runtime.admit_request(
                     str(getattr(goal_handle.request.segment, "request_id", "")
                         or ""),
-                    endpoint="/motion_planner/plan_motion_v2")
+                    endpoint="/motion_planner/plan_motion_v2", scope=scope)
                 self._frame_runtime.authorize_effect(
                     admission, str(
                         getattr(goal_handle.request.segment, "request_id", "")

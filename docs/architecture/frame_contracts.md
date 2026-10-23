@@ -266,7 +266,7 @@ identity records. Sim and hardware launch profiles share that resolver.
 missing peers/endpoint graphs disable admission; restart, changed identity,
 expired lease, duplicate provider or mixed type revoke readiness. A v1 request
 cannot pass this primitive. Heartbeat metadata and readiness are excluded from
-immutable fingerprints. A heartbeat arriving after a lease gap revokes admission
+immutable fingerprints. Except for the explicitly renewable planning lease described below, a heartbeat arriving after a lease gap revokes admission
 even if no request was made during the gap. Explicit `readmit` increments the
 admission generation and requires fresh reports; old request tokens remain
 invalid. This operation does not authorize a cycle or release carried payload.
@@ -378,3 +378,26 @@ capacity is handled upstream. Collision, edge and certification checks remain.
 Bounds remain diagnostic: 10% total size growth, height only away from contact,
 5mm away-position uncertainty, +/-5deg suction-pivot yaw, zero XY translation
 uncertainty, exact roll/pitch under the vertical box/contact-normal contract.
+
+### Action-scoped readiness (2026-10-23)
+
+The immutable wire identity still describes the full graph. Certified unloaded
+named-pose execution admits only selector, motion planner, vacuum, scene, cargo
+map and driver peers; placement and waypoint production are not dependencies of
+this action. Independent gates observe from startup, preserving relevant lease
+gaps, incarnation changes, endpoint ownership and token generation. The executor
+still verifies the full certificate, exact leg/load phase, fresh detached vacuum,
+scene and map immediately before submission. Empty/forged certificates do not
+authorize a smaller dependency set. Placement and next-box requests retain the
+full-graph check. Only placement-planner lease expiry is renewable for a new
+request: a late valid heartbeat advances its lease epoch and permanently voids
+any token issued in the prior epoch. Missing/stale heartbeats cannot admit a
+new request; restart/identity/provenance mismatch still latch closed.
+
+Return planning freezes the current post-commit occupancy snapshot as a value,
+records its digest/revision, and uses it throughout building and certification.
+The map already changes only via explicit mutation services; return performs no
+placement computation or integration. Physical occupancy events and revision
+changes remain visible to execution revalidation and can revoke the route.
+The next placement request reads the latest map rather than reusing return's
+snapshot. A frozen planning input never licenses ignoring a new obstacle.

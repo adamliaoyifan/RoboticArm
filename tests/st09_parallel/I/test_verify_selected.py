@@ -71,6 +71,7 @@ class _Producer(object):
     _selection_phase = staticmethod(RouteProducer._selection_phase)
     _live_attachment_matches = RouteProducer._live_attachment_matches
     _live_vacuum_holds = RouteProducer._live_vacuum_holds
+    _live_vacuum_unloaded = RouteProducer._live_vacuum_unloaded
     transition_admission_phase = RouteProducer.transition_admission_phase
 
     def _revalidate(self, route, snapshot, edges, allow_unconfirmed=False):
@@ -431,6 +432,7 @@ def test_release_boundary_phase_transition_activates_unloaded():
         leg_load_state="unloaded")[:2] == (False, "PHASE_TRANSITION_REQUIRED")
     ok, reason, _detail = _transition(producer)
     assert ok and reason == "OK"
+    producer.vacuum_state_fn = lambda: {"attached": False, "received_ns": 0}
     live, reason, _detail = _admission(
         producer, leg_digest="leg-retreat", leg_load_state="unloaded")
     assert live and reason == "OK"
@@ -573,3 +575,21 @@ def test_stage_timings_attribution_search_is_the_residue():
     assert timings["certify_ms"] == 3.0
     assert timings["revalidate_ms"] == 1.0
     assert timings["search_ms"] == 1.0
+
+
+def test_unloaded_execution_refuses_attached_unknown_or_stale_vacuum():
+    producer = _live_producer()
+    producer.last_selection["edges"][0].load_state = "unloaded"
+    producer.last_selection["phase"] = "unloaded"
+    edge = producer.last_selection["edges"][0]
+    for state, expected in [
+        (None, "VACUUM_STATE_UNAVAILABLE"),
+        ({"attached": True, "received_ns": 0}, "PAYLOAD_STILL_ATTACHED"),
+        ({"attached": False, "received_ns": -10_000_000_000}, "VACUUM_STATE_STALE"),
+        ({"attached": False, "received_ns": 0}, "OK"),
+    ]:
+        producer.vacuum_state_fn = lambda: state
+        live, reason, _detail = _admission(
+            producer, leg_digest=edge.trajectory.digest(), leg_load_state="unloaded")
+        assert reason == expected
+        assert live == (expected == "OK")
