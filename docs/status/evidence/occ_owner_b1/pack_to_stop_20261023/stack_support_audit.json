@@ -1,0 +1,91 @@
+{
+  "kind": "offline support-window isolation, not exact live request replay",
+  "map_revision": 6,
+  "resolution": 0.05,
+  "measured_preview_wdh": [
+    0.5119644969724824,
+    0.33269262505931646,
+    0.21754178025965842
+  ],
+  "state_counts": {
+    "unknown": 750,
+    "free": 30,
+    "occupied": 420
+  },
+  "height_counts": {
+    "0.0": 780,
+    "0.25": 420
+  },
+  "rows": [
+    {
+      "scale": 1.0,
+      "rotated": false,
+      "xy_m": [
+        0.5119644969724824,
+        0.33269262505931646
+      ],
+      "grid_cells": [
+        11,
+        7
+      ],
+      "raised_windows": 540,
+      "fully_known_raised_windows": 2,
+      "unknown_raised_windows": 538,
+      "max_top_contact_ratio": 1.0
+    },
+    {
+      "scale": 1.0,
+      "rotated": true,
+      "xy_m": [
+        0.33269262505931646,
+        0.5119644969724824
+      ],
+      "grid_cells": [
+        7,
+        11
+      ],
+      "raised_windows": 644,
+      "fully_known_raised_windows": 8,
+      "unknown_raised_windows": 636,
+      "max_top_contact_ratio": 1.0
+    },
+    {
+      "scale": 1.1,
+      "rotated": false,
+      "xy_m": [
+        0.5631609466697306,
+        0.3659618875652481
+      ],
+      "grid_cells": [
+        12,
+        8
+      ],
+      "raised_windows": 513,
+      "fully_known_raised_windows": 0,
+      "unknown_raised_windows": 513,
+      "max_top_contact_ratio": 0.875
+    },
+    {
+      "scale": 1.1,
+      "rotated": true,
+      "xy_m": [
+        0.3659618875652481,
+        0.5631609466697306
+      ],
+      "grid_cells": [
+        8,
+        12
+      ],
+      "raised_windows": 618,
+      "fully_known_raised_windows": 0,
+      "unknown_raised_windows": 618,
+      "max_top_contact_ratio": 0.875
+    }
+  ],
+  "limits": [
+    "Only sliding support window check. No hull/IK/route certification.",
+    "1.1 diagnostic applies dimension growth only, excludes yaw/offset; exact live conservative request was not captured.",
+    "Nominal support windows do not prove a legal robust stacked placement."
+  ],
+  "mechanism": "TypedDriverAdapter replaces placement box_wdh with conservative dimensions; same dimensions generate support window. Any unknown cell with raised peak rejects before min_support_ratio0.6."
+}
