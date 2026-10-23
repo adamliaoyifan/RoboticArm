@@ -125,6 +125,9 @@ def fixtures():
             shift=phase*.05
             yield dict(base,name='yaw%d_phase%g'%(yaw,phase),boxes=[dict(
                 center=[shift,shift,.1],size=[.24,.18,.2],yaw=math.radians(yaw))])
+    for height in (.203,.2175,.229):
+        yield dict(base,name='thickness_%g'%height,boxes=[dict(
+            center=[0.,0.,height/2],size=[.24,.18,height],yaw=0.)])
     for phase in (0,.25,.5,.75):
         shift=phase*.05
         yield dict(base,name='gap_2cm_phase%g'%phase,boxes=[
