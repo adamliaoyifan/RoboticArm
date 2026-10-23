@@ -1,0 +1,4 @@
+[11:08:22] launch pid=764463 out=/tmp/elfin-master-pack-baseline-g3/docs/status/evidence/occ_owner_b1/release_xy_only_20261023/rehearsal_01 run_id=n3func_110819
+[11:08:27] gain verify OK (0.8)
+[11:08:32] startup-only rehearsal complete; no box attempted
+[11:08:34] runner exit=0
