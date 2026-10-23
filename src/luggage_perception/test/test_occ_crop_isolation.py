@@ -1,6 +1,9 @@
 """Synthetic two-branch replay; these fixtures are not recorded camera frames."""
 from collections import namedtuple
-from dataclasses import fields
+from dataclasses import fields, asdict
+from pathlib import Path
+from luggage_description.suction_contact_model import load_suction_contact_model
+from luggage_perception.suction_patch_evaluator import SuctionPatchEvaluator
 import hashlib
 import numpy as np
 import pytest
@@ -26,6 +29,12 @@ def test_pick_top_and_shared_cloud_unchanged(scene_x,frame):
     payload=bytes(message.data);identity=(message.header.frame_id,message.header.stamp.sec,message.header.stamp.nanosec)
     baseline=estimate_dynamic_top_surface(depth,mask,intr,transform,stamp=frame+1,frame='container_link')
     assert baseline.reason=='ok'
+    model_path=Path(__file__).resolve().parents[2]/'luggage_description/config/suction_contact_model.yaml'
+    evaluator=SuctionPatchEvaluator(load_suction_contact_model(str(model_path)))
+    evaluator.update(depth,intr,transform,baseline,instance_region=mask,stamp=frame+1,frame_id='container_link')
+    suction_before=asdict(evaluator.copy_output());suctions=suction_before['accepted']+suction_before['rejected']
+    assert suctions
+    suction_before.pop('timing_ms')
     decoded=cloud_points_from_msg(message);copy=decoded.copy();decoded.setflags(write=False)
     mapper=CargoVolumeMapper((1.,1.,1.),(0,0,.5),0,.05,max_raycast_points=20)
     result=apply_integrate(mapper,decoded,None)
@@ -39,6 +48,9 @@ def test_pick_top_and_shared_cloud_unchanged(scene_x,frame):
             for x,y in zip(a,b):equal(x,y)
         else:assert a==b
     for f in fields(baseline):equal(getattr(baseline,f.name),getattr(after,f.name))
+    evaluator.update(depth,intr,transform,after,instance_region=mask,stamp=frame+1,frame_id='container_link')
+    suction_after=asdict(evaluator.copy_output());suction_after.pop('timing_ms')
+    assert suction_before==suction_after
     assert bytes(message.data)==payload
     assert (message.header.frame_id,message.header.stamp.sec,message.header.stamp.nanosec)==identity
     np.testing.assert_array_equal(decoded,copy)
