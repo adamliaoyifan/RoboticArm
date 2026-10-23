@@ -339,7 +339,10 @@ class FrameMigrationMap(unittest.TestCase):
             # The declared v1 shim (world pose) and the v2 container path
             # produce identical voxels and one revision semantics.
             container = dict(translation=(1.5, -0.4, 0.2), yaw=0.3)
-            world_center = (0.8, 0.1, .53 + .30 + 0.16)
+            # The equivalence fixture must actually overlap the 1.0x0.6m
+            # container after undoing this transform. The old (0.8,0.1)
+            # fixture mapped outside it and predates zero-voxel refusal.
+            world_center = (1.5, -0.4, .53 + .30 + 0.16)
             world_yaw = 0.9
             c1, y1, s1 = normalize_ledger_slot(
                 world_center, world_yaw, list(WDH), source_frame='world',

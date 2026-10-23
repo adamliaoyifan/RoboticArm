@@ -69,12 +69,14 @@ def test_explicit_manifest_is_passed_to_strict_profile_gate(monkeypatch):
                         dict(manifest_arg='/frozen/manifest.yaml',check_atlas=True))]
 
 
+@pytest.mark.parametrize('grid_resolution', ['', '0.01', '0.05'])
 @pytest.mark.parametrize('enabled_by', ['start_placement','start_placement_prior'])
-def test_placement_launch_starts_required_providers_with_shared_identity(monkeypatch, enabled_by):
+def test_placement_launch_starts_required_providers_with_shared_identity(monkeypatch, enabled_by, grid_resolution):
     from luggage_planning import hardware_placement_launch
     from luggage_description.runtime_graph import STACK_PEERS, endpoint_registry, resolve_peers
     module=launch_module()
     context=LaunchContext()
+    context.launch_configurations["cargo_map_resolution_m"]=grid_resolution
     context.launch_configurations.update({enabled_by: 'true', 'start_planning':'true'})
     peers=resolve_peers('hardware_pick_driver', stack=STACK_PEERS)
     frame=dict(frame_runtime=True,frame_peers=','.join(peers),frame_identity_json='frozen')
@@ -91,6 +93,9 @@ def test_placement_launch_starts_required_providers_with_shared_identity(monkeyp
         assert params['frame_identity_json']=='frozen'
         assert params['use_sim_time'] is False
     assert nodes[0]['parameters'][0]['require_confirmed_map'] is True
+    expected=float(grid_resolution) if grid_resolution else .01
+    assert nodes[0]['parameters'][0]['resolution']==expected
+    assert nodes[1]['parameters'][0]['floor_prior_resolution']==expected
     assert nodes[2]['parameters'][0]['corridor_planner']=='graph'
 
 

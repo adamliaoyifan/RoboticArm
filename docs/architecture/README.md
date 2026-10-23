@@ -18,6 +18,7 @@ preference.
 - [Frame contracts](frame_contracts.md): staged v2 interface inventory, strict
   offline checks and geometric comparison cases; live migration is gated
   separately and is not implied by an offline pass.
+- [Cargo grid](cargo_grid.md): shared configurable OCC/surface resolution, single owner and precision semantics.
 - [Placement](placement.md): live candidate generation, stacking on known
   support, flatten-first scoring, occupancy-aware place motion, and how
   the solver reads `surface_2d`.

@@ -42,3 +42,22 @@ def test_malformed_or_unjoinable_volume_refused(field,value):
 def test_inactive_hull_cell_not_exported_as_obstacle():
     surface,volume=fixture();volume.active=[False]*5
     assert blocked_volume_runs(volume,surface)==()
+
+
+def test_fine_owner_volume_above_legacy_million_cell_limit_is_admitted():
+    # A free volume produces no obstacles but must pass the shared 8M bound.
+    from types import SimpleNamespace
+    import json
+    nx=ny=nz=101
+    record=dict(scene_revision='s',geometry_hash='g',map_revision=1,
+                resolution_m=.01,origin_xy_container=[0.,0.],
+                floor_z_container=0.,ceiling_z_container=1.01,
+                state=[['free']*ny for _ in range(nx)])
+    surface=SimpleNamespace(record=lambda:record,
+        confirmation_json=json.dumps(dict(acquisition_stamp_ns=42)))
+    volume=SimpleNamespace(success=True,frame_id='container_link',scene_revision='s',
+        geometry_hash='g',map_revision=1,acquisition_stamp_ns=42,map_source='measured',
+        occupancy_confirmed=True,has_pending_changes=False,dimensions_xyz=(nx,ny,nz),
+        states=bytes([1])*(nx*ny*nz),active=[True]*(nx*ny*nz),
+        resolution_m=.01,origin_container=[0.,0.,0.])
+    assert blocked_volume_runs(volume,surface)==()

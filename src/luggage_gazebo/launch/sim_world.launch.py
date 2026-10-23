@@ -58,6 +58,8 @@ from luggage_description.scene_tf_config_utils import (
 from luggage_gazebo.platform_model import platform_sdf
 from luggage_description.xacro_robot_with_scene_base import expand_and_patch
 
+from luggage_description.cargo_grid_parameters import resolve_resolution
+
 WORLD_NAME = "airport_loading"
 _PROFILE_SENTINEL = "__profile__"
 
@@ -112,6 +114,7 @@ def _default_launch_values():
         # reaches the searcher; 0.0 keeps the frozen n*60s contract.
         "diagnostic_route_budget_s": "0.0",
         "attachment_geometry_config": "",
+        "cargo_map_resolution_m": "",
         "named_pose_duration": "4.0",
         "named_pose_max_vel": "1.0",
         "velocity_scaling": "0.3",
@@ -1206,6 +1209,7 @@ def _launch_setup(context):
             parameters=[{
                 "use_sim_time": True,
                 "cargo_cloud_topic": "/luggage/semantic/cargo_points_untracked",
+                "resolution": resolve_resolution(cfg["cargo_map_resolution_m"]),
                 "base_frame": "container_link",
                 "cloud_buffer_size": 12,
                 "freshness_window_sec": 0.20,
@@ -1225,6 +1229,7 @@ def _launch_setup(context):
                 "scene_tf_config": scene_tf_config,
                 # 0 keeps the historical flush-wall hull gate; the
                 # place-only profile configures 0.01 (>=10 mm clearance).
+                "floor_prior_resolution": resolve_resolution(cfg["cargo_map_resolution_m"]),
                 "hull_margin": float(cfg["hull_margin"]),
                 "min_support_ratio": float(cfg["min_support_ratio"]),
                 "last_result_max_candidates": int(
@@ -1455,6 +1460,8 @@ def generate_launch_description():
                 "Route budget scale: 60 s times this box count "
                 "(1 box 60 s, 3 boxes 180 s).",
             ),
+            profile_arg("cargo_map_resolution_m",
+                        "Shared OCC/surface grid metres; empty uses cargo_grid.yaml."),
             profile_arg("attachment_geometry_config",
                         "Attachment-owned diagnostic geometry policy YAML."),
             profile_arg(

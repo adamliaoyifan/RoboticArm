@@ -4,14 +4,17 @@
 from __future__ import division
 
 import math
+from copy import deepcopy
+from array import array
 
 from luggage_description.container_geometry import (
-    contains_point,
     cuboid_from_inner_size,
     hull_edges,
     normalize_descriptor,
 )
 from luggage_perception.voxel_log_odds import LogOddsGrid
+from luggage_description.cargo_grid_contract import CargoGridSpec
+from luggage_perception.cargo_grid_projection import active_mask, surface_columns, occupancy_counts
 
 try:
     import octomap
@@ -133,13 +136,11 @@ class CargoVolumeMapper:
         self.geometry_descriptor = dict(geometry_descriptor or {})
         self.geometry_hash = str(
             geometry_hash or self.geometry_descriptor.get("geometry_hash", ""))
-        self.resolution = float(resolution)
+        self._grid_spec = CargoGridSpec.create(inner_size, resolution)
         self.inner_l, self.inner_w, self.inner_h = [float(v) for v in inner_size]
         self.center = [float(v) for v in center_base]
         self.yaw = float(yaw)
-        self.nx = max(1, int(math.ceil(self.inner_l / self.resolution)))
-        self.ny = max(1, int(math.ceil(self.inner_w / self.resolution)))
-        self.nz = max(1, int(math.ceil(self.inner_h / self.resolution)))
+        self.nx, self.ny, self.nz = self._grid_spec.dimensions_xyz
         self.occupancy_params = dict(occupancy_params or {})
         # Cap on the number of points used for free-space raycasting (the
         # per-point ray walk is the integrate bottleneck). None = no cap.
@@ -159,6 +160,11 @@ class CargoVolumeMapper:
         self._placed_boxes = []
         self._build_active_mask()
         self.reset()
+
+    @property
+    def resolution(self):
+        """Frozen grid spacing; only construction may establish it."""
+        return self._grid_spec.resolution_m
 
     def _load_hull(self):
         if self.geometry_descriptor:
@@ -202,39 +208,24 @@ class CargoVolumeMapper:
         """Clear voxel state without changing the commit revision."""
         total = self.nx * self.ny * self.nz
         self._occupancy = LogOddsGrid(total, **self.occupancy_params)
-        self._grid = self._occupancy.states()
-        self._source = [SOURCE_NONE] * total
-        self._labels = [0] * total
-        self._instance_ids = [0] * total
+        self._grid = bytearray(self._occupancy.states())
+        self._source = bytearray(total)
+        self._labels = array("q", [0]) * total
+        self._instance_ids = array("q", [0]) * total
         # Independent sensor evidence: a per-voxel shadow log-odds value
         # the sensor's own hits/misses accumulate, plus its latest label
         # and instance. The shadow is updated unconditionally — geometry
         # locks protect the live grid, never this ledger — so retracting a
         # committed box restores the sensor's *latest* word exactly as if
         # the geometry had never been there (control-equivalence).
-        self._sensor_seen = [False] * total
-        self._sensor_values = [0.0] * total
-        self._sensor_labels = [0] * total
-        self._sensor_instance_ids = [0] * total
+        self._sensor_seen = bytearray(total)
+        self._sensor_values = array("d", [0.0]) * total
+        self._sensor_labels = array("q", [0]) * total
+        self._sensor_instance_ids = array("q", [0]) * total
 
     def _build_active_mask(self):
         """Index the enclosing AABB; deactivate voxels outside the 7-face hull."""
-        total = self.nx * self.ny * self.nz
-        self._active = [True] * total
-        for iz in range(self.nz):
-            for iy in range(self.ny):
-                for ix in range(self.nx):
-                    local = self._voxel_center_local(ix, iy, iz)
-                    # Mapper-local origin is the usable-volume center; the
-                    # kernel hull is ``container_link``. Do not use mapper
-                    # world here: eval dumps may place the grid in base_link.
-                    mid_z = 0.5 * (self._hull.floor_z + self._hull.ceiling_z)
-                    inside = contains_point(
-                        self._hull, (local[0], local[1], local[2] + mid_z))
-                    if inside and self._hull_local_inside is not None:
-                        inside = self._hull_local_inside(*local)
-                    if not inside:
-                        self._active[self._index(ix, iy, iz)] = False
+        self._active = active_mask(self)
 
     def _index(self, ix, iy, iz):
         return ix + self.nx * (iy + self.ny * iz)
@@ -847,26 +838,7 @@ class CargoVolumeMapper:
             self._revision += 1
 
     def stats(self):
-        unknown = 0
-        free = 0
-        occupied = 0
-        total = 0
-        inactive = 0
-        label_dist = {}
-        for i, cell in enumerate(self._grid):
-            if self._active is not None and not self._active[i]:
-                inactive += 1
-                continue
-            total += 1
-            if cell == UNKNOWN:
-                unknown += 1
-            elif cell == FREE:
-                free += 1
-            elif cell == OCCUPIED:
-                occupied += 1
-                if self._labels[i] > 0:
-                    lbl = self._labels[i]
-                    label_dist[lbl] = label_dist.get(lbl, 0) + 1
+        total, inactive, unknown, free, occupied, label_dist = occupancy_counts(self)
         voxel_vol = self.resolution ** 3
         return {
             "total_voxels": total,
@@ -943,66 +915,13 @@ class CargoVolumeMapper:
         """
         half_l = self.inner_l * 0.5
         half_w = self.inner_w * 0.5
-        height = [[0.0] * self.ny for _ in range(self.nx)]
-        clearance = [[self.inner_h] * self.ny for _ in range(self.nx)]
-        state = [["unknown"] * self.ny for _ in range(self.nx)]
-        known_ratio = [[0.0] * self.ny for _ in range(self.nx)]
-        confidence = [["none"] * self.ny for _ in range(self.nx)]
-        semantic_label = [[0] * self.ny for _ in range(self.nx)]
-
-        for ix in range(self.nx):
-            for iy in range(self.ny):
-                top_occ = None
-                top_source = SOURCE_NONE
-                observed = 0
-                has_unknown = False
-                label_counts = {}
-                active_in_col = 0
-                for iz in range(self.nz):
-                    idx = self._index(ix, iy, iz)
-                    if self._active is not None and not self._active[idx]:
-                        continue
-                    active_in_col += 1
-                    cell = self._grid[idx]
-                    if cell == UNKNOWN:
-                        has_unknown = True
-                        continue
-                    observed += 1
-                    if cell == OCCUPIED:
-                        top_occ = iz
-                        top_source = self._source[idx]
-                        lbl = self._labels[idx]
-                        if lbl > 0:
-                            label_counts[lbl] = label_counts.get(lbl, 0) + 1
-                if top_occ is not None:
-                    surface = (top_occ + 1) * self.resolution
-                    surface = min(surface, self.inner_h)
-                    height[ix][iy] = surface
-                    clearance[ix][iy] = max(0.0, self.inner_h - surface)
-                    state[ix][iy] = "occupied"
-                    if top_source == SOURCE_SENSOR:
-                        confidence[ix][iy] = "sensor"
-                    elif top_source == SOURCE_GEOMETRY:
-                        confidence[ix][iy] = "geometry"
-                    else:
-                        confidence[ix][iy] = "sensor"
-                    if label_counts:
-                        semantic_label[ix][iy] = max(
-                            label_counts, key=label_counts.get)
-                elif not has_unknown:
-                    state[ix][iy] = "free"
-                    confidence[ix][iy] = "sensor"
-                else:
-                    state[ix][iy] = "unknown"
-                    confidence[ix][iy] = "none"
-                known_ratio[ix][iy] = (
-                    float(observed) / float(active_in_col) if active_in_col else 0.0)
+        columns = surface_columns(self)
 
         return {
             "frame": "container_local",
             "map_revision": self._revision,
             "geometry_hash": self.geometry_hash,
-            "geometry_descriptor": dict(self.geometry_descriptor),
+            "geometry_descriptor": deepcopy(self.geometry_descriptor),
             "resolution": self.resolution,
             "nx": self.nx,
             "ny": self.ny,
@@ -1012,15 +931,15 @@ class CargoVolumeMapper:
             "origin_local": [-half_l, -half_w],
             "center_base": list(self.center),
             "yaw": self.yaw,
-            "height": height,
-            "clearance": clearance,
-            "state": state,
-            "known_ratio": known_ratio,
-            "confidence": confidence,
-            "semantic_label": semantic_label,
+            "height": columns["height"],
+            "clearance": columns["clearance"],
+            "state": columns["state"],
+            "known_ratio": columns["known_ratio"],
+            "confidence": columns["confidence"],
+            "semantic_label": columns["semantic_label"],
         }
 
-    def surface_contract_v2(self, scene_revision, request_id):
+    def surface_contract_v2(self, scene_revision, request_id, *, projection=None):
         """F06 v2: strict container-origin surface record for this map.
 
         ``surface_z_container`` is measured from the container origin
@@ -1034,7 +953,7 @@ class CargoVolumeMapper:
 
         floor = self.center[2] - 0.5 * self.inner_h
         ceiling = self.center[2] + 0.5 * self.inner_h
-        legacy = self.surface_map_2d()
+        legacy = self.surface_map_2d() if projection is None else projection
         surface_z, state, confidence, relative = [], [], [], []
         for ix in range(self.nx):
             z_row, s_row, c_row, r_row = [], [], [], []

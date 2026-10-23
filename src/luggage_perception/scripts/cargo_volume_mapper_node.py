@@ -59,7 +59,6 @@ from luggage_description.frame_diagnostics import (
 )
 from luggage_description.ros_frame_bindings.poses import pose_from_message
 from luggage_description.scene_tf_config_utils import (
-    container_hull_local_inside_fn,
     container_inner_ceiling_z,
     container_inner_dimensions,
     container_inner_floor_z,
@@ -122,7 +121,8 @@ class CargoVolumeMapperNode(Node):
         map_group = MutuallyExclusiveCallbackGroup()
 
         self.declare_parameter("scene_tf_config", "")
-        self.declare_parameter("resolution", 0.05)
+        from luggage_description.cargo_grid_parameters import declare_resolution
+        grid_resolution = declare_resolution(self)
         self.declare_parameter("occupancy_params_yaml", "")
         self.declare_parameter(
             "cargo_cloud_topic", "/luggage/semantic/cargo_points_untracked")
@@ -162,8 +162,7 @@ class CargoVolumeMapperNode(Node):
             (inner_l, inner_w, inner_h),
             (0.0, 0.0, volume_center_z),
             0.0,
-            resolution=float(self.get_parameter("resolution").value),
-            hull_local_inside=container_hull_local_inside_fn(scene),
+            resolution=grid_resolution,
             geometry_descriptor=descriptor,
             max_raycast_points=int(
                 self.get_parameter("max_raycast_points").value),

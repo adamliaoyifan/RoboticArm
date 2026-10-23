@@ -53,3 +53,8 @@ Full contract: `docs/architecture/placement.md`. Hull identity and the
   the cartesian fraction gate, or has no IK. Select among collision-free
   paths by cost with dimension, safety, and efficiency terms. An empty set
   is a motion/path fail-closed reason, not `BIN_FULL`.
+
+## Cargo-grid resolution
+
+- OCC XYZ and derived surface XY share the startup-only cargo_grid.yaml resolution (default0.01m); launch overrides feed the mapper and floor prior together. No consumer resamples unknown cells into observed support.
+- Store apply_update remains the sole production map mutation boundary. Resolution is immutable after allocation; restart establishes a new epoch. See docs/architecture/cargo_grid.md.

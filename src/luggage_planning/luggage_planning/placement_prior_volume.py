@@ -1,6 +1,7 @@
 """Admit exact owner volume and preserve every unknown/occupied active voxel."""
 import json
 import math
+from luggage_description.cargo_grid_contract import MAX_VOLUME_CELLS
 
 
 def blocked_volume_runs(response, confirmed_surface):
@@ -20,7 +21,7 @@ def blocked_volume_runs(response, confirmed_surface):
             response.has_pending_changes):
         raise ValueError('volume/surface identity or confirmation mismatch')
     nx, ny, nz = response.dimensions_xyz
-    if min(nx,ny,nz) <= 0 or nx*ny*nz > 1_000_000:
+    if min(nx,ny,nz) <= 0 or nx*ny*nz > MAX_VOLUME_CELLS:
         raise ValueError('volume dimensions exceed bounded contract')
     states, active = tuple(response.states), tuple(response.active)
     if (len(states) != nx*ny*nz or len(active) != len(states) or

@@ -1,5 +1,5 @@
 """Copy owner voxel data under the caller's map serialization boundary."""
-MAX_VOLUME_CELLS = 1_000_000
+from luggage_description.cargo_grid_contract import MAX_VOLUME_CELLS
 
 
 def copy_volume(mapper):
@@ -12,4 +12,4 @@ def copy_volume(mapper):
                 origin_container=(-mapper.inner_l/2, -mapper.inner_w/2,
                                   mapper.center[2]-mapper.inner_h/2),
                 dimensions_xyz=(mapper.nx,mapper.ny,mapper.nz),
-                states=bytes(mapper._grid), active=tuple(mapper._active))
+                states=bytes(mapper._grid), active=tuple(bool(v) for v in mapper._active))

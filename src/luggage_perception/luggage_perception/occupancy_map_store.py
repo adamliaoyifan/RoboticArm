@@ -35,6 +35,7 @@ pass a controllable one). No cross-restart continuity: a restart is a new
 epoch and retried pre-restart updates fail with ``EPOCH_MISMATCH``.
 """
 
+from copy import deepcopy
 import threading
 import time
 import uuid
@@ -398,7 +399,7 @@ class OccupancyMapStore(object):
             "frame": "container_local",
             "map_revision": s.identity.revision,
             "geometry_hash": s.geometry_hash,
-            "geometry_descriptor": self._mapper.geometry_descriptor,
+            "geometry_descriptor": deepcopy(self._mapper.geometry_descriptor),
             "resolution": s.resolution,
             "nx": s.nx,
             "ny": s.ny,
@@ -955,7 +956,7 @@ class OccupancyMapStore(object):
 
     def _build_snapshot(self):
         base = self._mapper.surface_map_2d()
-        contract = self._mapper.surface_contract_v2("snap", "snap")
+        contract = self._mapper.surface_contract_v2("snap", "snap", projection=base)
         fields = self._pending.surface_fields()
 
         def frozen_anchor(anchor):

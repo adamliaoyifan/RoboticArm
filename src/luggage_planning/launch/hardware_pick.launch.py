@@ -251,7 +251,8 @@ def _placement_service_nodes(context, *args, **kwargs):
         frame=_frame_runtime_params(context),
         scene=LaunchConfiguration("scene_tf_config"),
         atlas=LaunchConfiguration("atlas_runtime_config"),
-        poses=LaunchConfiguration("robot_poses_config"))
+        poses=LaunchConfiguration("robot_poses_config"),
+        cargo_map_resolution_m=LaunchConfiguration("cargo_map_resolution_m", default="").perform(context))
 
 
 def _certification_nodes(context, *args, **kwargs):
@@ -512,6 +513,8 @@ def _launch_description():
                 "plan_only", default_value="false",
                 description="Disable CPS startup and MoveIt execution; use a vacuum stub for offline interface checks."),
             DeclareLaunchArgument("start_placement_prior", default_value="false"),
+            DeclareLaunchArgument("cargo_map_resolution_m", default_value="",
+                                  description="Shared OCC/surface spacing; startup-only."),
             DeclareLaunchArgument("start_placement", default_value="false",
                 description="Start typed OCC, placement and Select providers; also enabled by start_placement_prior."),
             DeclareLaunchArgument(

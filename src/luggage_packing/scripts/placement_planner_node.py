@@ -145,7 +145,8 @@ class PlacementPlannerNode(Node):
         # hull. Default 0 preserves the historical flush-wall behavior; eval
         # profiles configure 0.01 (plan acceptance: >=10 mm).
         self.declare_parameter("hull_margin", 0.0)
-        self.declare_parameter("floor_prior_resolution", 0.05)
+        from luggage_description.cargo_grid_parameters import declare_resolution
+        declare_resolution(self, "floor_prior_resolution")
         # Cap on candidates serialized into the latched last_result dump
         # (eval drivers retry over the retained list; 24 is the historical
         # visualization-sized default).
