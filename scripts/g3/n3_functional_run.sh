@@ -17,6 +17,13 @@ OUT="${PHASE2_RUN_OUT:-$WS/docs/status/evidence/occ_owner_b1/attachment_geometry
 RUN_ID="n3func_$(date +%H%M%S)"
 DEADLINE=$(( $(date +%s) + 5400 ))
 DIAG_ROUTE_BUDGET_S=180
+# Run bounds only; product geometry, budgets and refusal gates stay unchanged.
+export PHASE2_MAX_BOXES="${PHASE2_MAX_BOXES:-3}"
+export PHASE2_DRIVER_TIMEOUT_S="${PHASE2_DRIVER_TIMEOUT_S:-4200}"
+if [[ ! "$PHASE2_MAX_BOXES" =~ ^[1-9][0-9]*$ || ! "$PHASE2_DRIVER_TIMEOUT_S" =~ ^[1-9][0-9]*$ ]]; then
+  echo "max boxes and driver timeout must be positive integers" >&2
+  exit 2
+fi
 mkdir -p "$OUT"
 export ROS_DOMAIN_ID=7
 
@@ -144,7 +151,9 @@ manifest = dict(
     start=datetime.datetime.now().astimezone().isoformat(),
     revision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ws, text=True).strip(),
     dirty=subprocess.check_output(["git", "status", "--porcelain"], cwd=ws, text=True).splitlines(),
-    mode="non-scored phase-2 n=3 functional diagnostic", domain=7,
+    mode="non-scored functional packing diagnostic", domain=7,
+    max_boxes=int(os.environ["PHASE2_MAX_BOXES"]),
+    driver_timeout_s=int(os.environ["PHASE2_DRIVER_TIMEOUT_S"]),
     selector_budget_s=180, attachment_max_age_s=60,
     prior_adopted=False, seed=0, catalog="inch20", driver_hashes=hashes,
     lifecycle_module=lifecycle.__file__,
@@ -233,18 +242,18 @@ fi
 export JOINT_CAPTURE_DIR="$OUT/joint_capture"
 export JOINT_CAPTURE_MODE="window"
 export JOINT_CAPTURE_POST_S="5"
-log "driver start (n=3)"
+log "driver start (max_boxes=$PHASE2_MAX_BOXES timeout_s=$PHASE2_DRIVER_TIMEOUT_S)"
 driver_diagnostic_args=()
 if [[ "${PHASE2_SELECTION_ONLY:-0}" == "1" ]]; then
   driver_diagnostic_args+=(--diagnostic-selection-only)
   log "selection-only diagnostic: stop after selection before carry"
 fi
-timeout --signal=INT 4200 ros2 run luggage_gazebo pack_eval_driver.py \
+timeout --signal=INT "$PHASE2_DRIVER_TIMEOUT_S" ros2 run luggage_gazebo pack_eval_driver.py \
   "${driver_diagnostic_args[@]}" \
   --frame-runtime --frame-peer pack_eval_driver \
   --observe-pose pickup_observe_sim \
   --sequence-ids inch20 \
-  --max-boxes 3 \
+  --max-boxes "$PHASE2_MAX_BOXES" \
   --goto-timeout 60 \
   --plan-timeout 180 \
   --select-budget-s "$DIAG_ROUTE_BUDGET_S" \
