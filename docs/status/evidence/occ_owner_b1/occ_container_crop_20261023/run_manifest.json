@@ -1,0 +1,29 @@
+{
+  "revision": "2eba5b6e08c62e759b73142f1625a3d1e5cb39c9",
+  "implementation": "9efed002",
+  "performance_revision": "b7ac4371",
+  "dirty": [],
+  "environment": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+  "verification": {
+    "unit_tests": 244,
+    "subtests": 87,
+    "service_pass": 12,
+    "service_parked": 4,
+    "suction_isolation_pass": 21,
+    "ray_comparisons": 90000,
+    "grid_oracles": 72,
+    "performance_workloads": 30,
+    "repeat": 30,
+    "warmup": 5
+  },
+  "complete_deployment_gate": "not_evaluated",
+  "missing": [
+    "matching historical ULD descriptor and required crossing scene",
+    "full real top/suction replay and measured performance matrix",
+    "ROS end-to-end performance matrix"
+  ],
+  "capture_complete": true,
+  "replay_possible": true,
+  "scope": "implementation/offline gates passed; deployment replay incomplete",
+  "simulator_started": false
+}

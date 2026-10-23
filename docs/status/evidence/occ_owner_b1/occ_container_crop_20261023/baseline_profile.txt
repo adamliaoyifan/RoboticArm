@@ -1,0 +1,23 @@
+         71826898 function calls in 15.974 seconds
+
+   Ordered by: cumulative time
+   List reduced from 76 to 15 due to restriction <15>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.003    0.003   15.974   15.974 /tmp/elfin-occ-crop-g1/docs/status/evidence/occ_owner_b1/occ_container_crop_20261023/baseline/integration.py:263(apply_integrate)
+        2    0.001    0.000   15.260    7.630 /tmp/elfin-occ-crop-g1/docs/status/evidence/occ_owner_b1/occ_container_crop_20261023/baseline/mapper.py:840(stats)
+        2    1.691    0.846   15.235    7.618 /tmp/elfin-occ-crop-g1/docs/status/evidence/occ_owner_b1/occ_container_crop_20261023/baseline/mapper.py:860(_frontier_indices)
+  8424708    9.575    0.000   12.954    0.000 /tmp/elfin-occ-crop-g1/docs/status/evidence/occ_owner_b1/occ_container_crop_20261023/baseline/mapper.py:874(_has_observed_neighbor)
+ 58814449    3.975    0.000    3.975    0.000 /tmp/elfin-occ-crop-g1/docs/status/evidence/occ_owner_b1/occ_container_crop_20261023/baseline/mapper.py:230(_index)
+        1    0.052    0.052    0.656    0.656 /tmp/elfin-occ-crop-g1/docs/status/evidence/occ_owner_b1/occ_container_crop_20261023/baseline/mapper.py:445(integrate_points)
+     2043    0.131    0.000    0.450    0.000 /tmp/elfin-occ-crop-g1/docs/status/evidence/occ_owner_b1/occ_container_crop_20261023/baseline/mapper.py:424(_raycast_indices)
+   491084    0.196    0.000    0.263    0.000 /tmp/elfin-occ-crop-g1/docs/status/evidence/occ_owner_b1/occ_container_crop_20261023/baseline/mapper.py:233(_world_to_local)
+   491084    0.109    0.000    0.153    0.000 /tmp/elfin-occ-crop-g1/docs/status/evidence/occ_owner_b1/occ_container_crop_20261023/baseline/mapper.py:242(_local_to_voxel)
+     7562    0.004    0.000    0.043    0.000 /tmp/elfin-occ-crop-g1/docs/status/evidence/occ_owner_b1/occ_container_crop_20261023/baseline/mapper.py:347(mark_occupied_world)
+        1    0.038    0.038    0.038    0.038 {method 'tolist' of 'numpy.ndarray' objects}
+   982168    0.033    0.000    0.033    0.000 {built-in method math.sin}
+   982168    0.033    0.000    0.033    0.000 {built-in method math.cos}
+        2    0.020    0.010    0.024    0.012 /tmp/elfin-occ-crop-g1/src/luggage_perception/luggage_perception/cargo_grid_projection.py:65(occupancy_counts)
+     7562    0.007    0.000    0.019    0.000 /tmp/elfin-occ-crop-g1/docs/status/evidence/occ_owner_b1/occ_container_crop_20261023/baseline/mapper.py:356(mark_occupied_voxel)
+
+
