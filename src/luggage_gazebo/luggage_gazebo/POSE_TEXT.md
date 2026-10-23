@@ -37,3 +37,11 @@ Verification: test_pose_text.py covers text conventions and bad inputs;
 test_release_pose_stream.py verifies live/offline equivalence and unchanged
 freshness refusal gates. Raw diagnostic evidence is under
 `docs/status/evidence/occ_owner_b1/release_pose_publication_20261023/`.
+
+Kinematic release position acceptance (user directive2026-10-23): planar XY
+Euclidean error <=5mm. Z error, including >50mm, is observation-only at this
+boundary; final settle/verification retain their own gates. The record keeps
+exact declared pose, observed xyzw7, signed XYZ delta, XY/3D norms and set_pose
+request/response simulation/host timestamps. Existing set_pose, valid identity
+and fresh-message requirements remain. This does not add a post-command sample
+barrier or change the planned release-gap or payload envelope.

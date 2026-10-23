@@ -80,7 +80,7 @@ class KinematicReleaseTest(unittest.TestCase):
         host = _KinHost(presence=pose7)
         ok, msg, rec = self._run(host)
         self.assertTrue(ok, msg)
-        self.assertEqual(rec["verdict"], "declared_state_confirmed")
+        self.assertEqual(rec["verdict"], "declared_xy_confirmed")
         # One declared transition; presence re-read fresh-only.
         self.assertEqual(
             [c[0] for c in host.calls], ["set_pose", "presence_read"])
@@ -118,8 +118,30 @@ class KinematicReleaseTest(unittest.TestCase):
         host = _KinHost(presence=pose7, mismatch=0.02)
         ok, msg, rec = self._run(host)
         self.assertFalse(ok)
-        self.assertIn("kinematic pose mismatch", msg)
+        self.assertIn("kinematic xy mismatch", msg)
         self.assertAlmostEqual(rec["declared_vs_world_m"], 0.02, places=6)
+
+    def test_large_positive_and_negative_z_are_observation_only(self):
+        for dz in (0.052, 0.15, -0.15):
+            pose7 = [-2.027, 0.462, 0.6388 + dz, 0, 0, 0, 1]
+            ok, msg, record = self._run(_KinHost(presence=pose7))
+            self.assertTrue(ok, msg)
+            self.assertEqual(record["position_acceptance_axes"], "xy")
+            self.assertAlmostEqual(record["declared_vs_world_z_m"], dz)
+            self.assertAlmostEqual(record["declared_vs_world_xy_m"],
+                                   (0.003**2 + 0.002**2)**0.5)
+            self.assertEqual(record["observed_pose_xyzw7"], pose7)
+            self.assertIn("set_pose_request", record)
+            self.assertIn("set_pose_response", record)
+
+    def test_diagonal_xy_over_5mm_rejected_even_with_large_z(self):
+        # Each component is below5mm, but planar distance exceeds5mm.
+        pose7 = [-2.026, 0.464, 0.7388, 0, 0, 0, 1]
+        ok, msg, record = self._run(_KinHost(presence=pose7))
+        self.assertFalse(ok)
+        self.assertIn("kinematic xy mismatch", msg)
+        self.assertGreater(record["declared_vs_world_xy_m"], 0.005)
+        self.assertAlmostEqual(record["declared_vs_world_z_m"], 0.1)
 
     def test_release_mode_default_is_kinematic(self):
         text = open(os.path.join(_SCRIPTS, "place_smoke_driver.py"),

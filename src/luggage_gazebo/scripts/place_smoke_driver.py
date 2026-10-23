@@ -3130,7 +3130,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         reliability, or landing accuracy — those stay on the separate
         dynamic track. The support/end-state conditions are still
         checked: the declared pose must match the slot's support rest
-        and the world must confirm it (<=5 mm).
+        and fresh world XY must match within 5 mm. Per user directive
+        2026-10-23, Z discrepancy is recorded, not an acceptance gate;
+        descend intentionally retains a release gap before set_pose.
         """
         pose_world = (slot_meta or {}).get("pose_world") or {}
         expected = pose_world.get("position")
@@ -3140,8 +3142,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         declared = [float(expected[0]), float(expected[1]),
                     float(expected[2]), 0.0, 0.0, yaw]
         record = {"mode": "kinematic",
-                  "declared_pose_rpy6": [round(v, 6) for v in declared]}
+                  "declared_pose_rpy6": list(declared),
+                  "position_acceptance_axes": "xy",
+                  "position_tolerance_m": 0.005,
+                  "set_pose_request": {"sim_s": self.ros_now_sec(),
+                                       "wall_s": time.time(),
+                                       "monotonic_s": time.monotonic()}}
         ok, msg = self._set_model_pose_declared(model, declared)
+        record["set_pose_response"] = {"sim_s": self.ros_now_sec(),
+                                       "wall_s": time.time(),
+                                       "monotonic_s": time.monotonic()}
         record["set_pose"] = msg
         if not ok:
             return False, "kinematic set_pose refused: %s" % msg, record
@@ -3151,11 +3161,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         if pose7 is None:
             return False, "kinematic presence refused (%s)" % (
                 evidence.get("reason")), record
-        err = math.dist(declared[:3], pose7[:3])
-        record["declared_vs_world_m"] = round(err, 6)
-        if err > 0.005:
-            return False, "kinematic pose mismatch %.4f m" % err, record
-        record["verdict"] = "declared_state_confirmed"
+        delta = [float(pose7[i]) - declared[i] for i in range(3)]
+        xy_error = math.hypot(delta[0], delta[1])
+        record["observed_pose_xyzw7"] = list(pose7)
+        record["declared_to_world_delta_xyz_m"] = delta
+        record["declared_vs_world_m"] = math.dist(declared[:3], pose7[:3])
+        record["declared_vs_world_xy_m"] = xy_error
+        record["declared_vs_world_z_m"] = delta[2]
+        if xy_error > record["position_tolerance_m"]:
+            return False, "kinematic xy mismatch %.4f m" % xy_error, record
+        record["verdict"] = "declared_xy_confirmed"
         return True, "kinematic", record
 
     def _set_model_pose_declared(self, model, pose_rpy6):
