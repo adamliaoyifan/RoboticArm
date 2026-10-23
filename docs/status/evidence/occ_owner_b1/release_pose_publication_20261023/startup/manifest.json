@@ -1,0 +1,23 @@
+{
+  "start": "2026-10-23T10:11:51.908732+08:00",
+  "revision": "f1a5898d6f7940314a4f2dccfcbba739af617f05",
+  "dirty": [
+    "?? pydeps-frozen"
+  ],
+  "mode": "non-scored phase-2 n=3 functional diagnostic",
+  "domain": 7,
+  "selector_budget_s": 180,
+  "attachment_max_age_s": 60,
+  "prior_adopted": false,
+  "seed": 0,
+  "catalog": "inch20",
+  "driver_hashes": {
+    "scripts/pack_eval_driver.py": "c64626a6799cd03c85110cb9135603d82c5f3553e0f77dffc01a466353ebd6ea",
+    "scripts/place_smoke_driver.py": "d32b39a138646a6a7c86e7214ae3086f68ca5c5e8df3efdd6380f29986561cf7"
+  },
+  "lifecycle_module": "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/local/lib/python3.10/dist-packages/luggage_gazebo/driver_executor.py",
+  "envelope_config_sha256": "3fa5139862ff950eb84ed5e139752e4d9776ded7d75007ba8ee9209cecae9956",
+  "acceptance": "all three boxes verified, committed and map-confirmed; MAX_BOXES; exit 0; no executor runtime failure",
+  "aggregation": "AND over three boxes in one suite; no success-rate estimate from one suite",
+  "diagnostic_selection_only": false
+}
