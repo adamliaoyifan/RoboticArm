@@ -146,7 +146,19 @@ SAME_LAYER_CLEARANCE_M = 0.05
 
 
 def _rect_corners(cx, cy, yaw, length, width):
-    """Corners of a yawed footprint. length follows yaw, width is across."""
+    """Corners of a yawed footprint in CONVEX order.
+
+    G3 HULL-GATES (evidence 2026-10-25): the historical crossed order
+    ((hl,hw),(hl,-hw),(-hl,hw),(-hl,-hw)) walks a self-intersecting
+    bowtie, so the edge normals this feeds to ``_polygon_overlaps`` lose
+    the footprint's width axis -- diagonally separated rectangles read as
+    overlapping (sampled false positives at 0/5/45/90 deg, evidence
+    ``placement_hull_gates_g3_20261024``). Convex order restores the
+    exact rectangle axis set; ``_polygon_overlaps`` itself is unchanged
+    and stays exact for convex inputs. Only false-positive overlaps are
+    removed (true overlaps project identically), so same-layer clearance
+    can only gain legal gaps, never lose a detected penetration.
+    """
     cosine = math.cos(float(yaw))
     sine = math.sin(float(yaw))
     half_l = 0.5 * float(length)
@@ -154,7 +166,7 @@ def _rect_corners(cx, cy, yaw, length, width):
     corners = []
     for local_x, local_y in (
             (half_l, half_w), (half_l, -half_w),
-            (-half_l, half_w), (-half_l, -half_w)):
+            (-half_l, -half_w), (-half_l, half_w)):
         corners.append((
             float(cx) + cosine * local_x - sine * local_y,
             float(cy) + sine * local_x + cosine * local_y,
@@ -416,11 +428,13 @@ def _default_params():
 def _surface_hull(surface_map):
     """Rehydrate the chamfered hull kernel from the map's descriptor.
 
-    Returns ``None`` when the map carries no usable descriptor (legacy
-    fixtures); hull legality then stays with the injected validator, exactly
-    as before ST09-A. A descriptor that fails normalization is foreign — the
-    node's fail-closed identity gates own that case, so here it also degrades
-    to ``None`` without raising.
+    Returns ``None`` only when the map carries no descriptor at all
+    (legacy cuboid fixtures; hull legality then stays with the injected
+    validator, exactly as before ST09-A). A map that CARRIES a descriptor
+    which fails normalization is foreign, not legacy: silently answering
+    from rectangle semantics would be a fail-open degrade, so G3
+    HULL-GATES makes it a named error (the node path already fails
+    closed on geometry-hash mismatch before reaching here).
     """
     descriptor = surface_map.get("geometry_descriptor")
     if not descriptor:
@@ -428,8 +442,11 @@ def _surface_hull(surface_map):
     try:
         from luggage_description.container_geometry import normalize_descriptor
         return normalize_descriptor(descriptor)
-    except Exception:
-        return None
+    except Exception as error:
+        raise ValueError(
+            "HULL_DESCRIPTOR_INVALID: the surface map carries a geometry "
+            "descriptor that does not normalize (%s); refusing rectangle "
+            "fallback" % error) from error
 
 
 def _depth_datum(surface_map, hull):
@@ -492,19 +509,30 @@ def _support_tilt_ratio(cell_heights, peak, tol):
 
 
 def _hull_legal(center_container, footprint, box_h, hull, margin):
-    """Exact seven-face oriented-box legality through the aperture door.
+    """Exact seven-face oriented-box legality for a FINAL placement.
+
+    G3 HULL-GATES (evidence 2026-10-25): final containment is full
+    closed-hull containment -- the -X aperture face included -- with the
+    caller's ``hull_margin`` charged to walls, ceiling and the chamfer
+    only. The floor keeps its by-design contact (``floor_margin`` 0): a
+    floor-resting box touches the floor, and charging the margin there
+    rejects every floor slot (an empty container answered BIN_FULL under
+    ``hull_margin=0.01`` -- counterexample saved under evidence
+    ``placement_hull_gates_g3_20261024``). Route transit through the
+    aperture keeps its own predicate
+    (``contains_oriented_box_through_aperture``) at the corridor and
+    waypoint call sites; it never comes through here.
 
     Returns ``(legal, margin_detail)``; ``margin_detail`` names each margin
     class separately (static walls incl. the chamfered face share the hull
     kernel's inset, top clearance and support contact keep their own
     parameters) so consumers can audit which bound moved.
     """
-    from luggage_description.container_geometry import (
-        contains_oriented_box_through_aperture,
-    )
+    from luggage_description.container_geometry import contains_oriented_box
     size = (float(footprint[0]), float(footprint[1]), float(box_h))
-    legal = contains_oriented_box_through_aperture(
-        hull, center_container, size, yaw=0.0, margin=float(margin))
+    legal = contains_oriented_box(
+        hull, center_container, size, yaw=0.0, margin=float(margin),
+        floor_margin=0.0)
     return bool(legal), {
         "hull_static_wall_and_chamfer_m": float(margin),
     }

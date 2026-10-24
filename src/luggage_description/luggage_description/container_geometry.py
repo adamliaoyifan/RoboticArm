@@ -407,6 +407,28 @@ def _within_closed_faces(
     return y <= y_max_at_z(geometry, z, margin=clearance) + EPS
 
 
+def _within_closed_faces_floored(
+    geometry: ContainerGeometry,
+    point: Sequence[float],
+    clearance: float,
+    floor_clearance: float,
+) -> bool:
+    """``_within_closed_faces`` with an independent floor clearance.
+
+    ``contains_oriented_box(floor_margin=...)`` uses this so a final
+    placement can keep floor contact while walls/ceiling/chamfer hold
+    their margin. Every other face keeps ``clearance``.
+    """
+    x, y, z = [float(value) for value in point]
+    if x > geometry.half_x - clearance + EPS:
+        return False
+    if y < -geometry.half_y + clearance - EPS or y > geometry.half_y - clearance + EPS:
+        return False
+    if z < geometry.floor_z + floor_clearance - EPS or z > geometry.ceiling_z - clearance + EPS:
+        return False
+    return y <= y_max_at_z(geometry, z, margin=clearance) + EPS
+
+
 def contains_point_through_aperture(
     geometry: ContainerGeometry,
     point: Sequence[float],
@@ -451,13 +473,29 @@ def contains_oriented_box(
     size: Sequence[float],
     yaw: float = 0.0,
     margin: float = 0.0,
+    floor_margin: float | None = None,
 ) -> bool:
+    """Full closed-hull containment of one oriented box (all 8 corners).
+
+    ``floor_margin`` (default: ``margin``) exempts a floor-resting box
+    from the floor margin while walls, ceiling and the chamfer keep
+    ``margin``: final placements touch the floor by design, and charging
+    the margin there rejects every floor slot (G3 HULL-GATES evidence:
+    empty container answered BIN_FULL under hull_margin=0.01). Distance
+    semantics are unchanged everywhere else.
+    """
     if any(float(value) <= 0.0 for value in size):
         raise ValueError("box size values must be positive")
-    return all(
-        contains_point(geometry, corner, margin=margin)
-        for corner in oriented_box_corners(center, size, yaw)
-    )
+    clearance = max(0.0, float(margin))
+    floor_clearance = (clearance if floor_margin is None
+                       else max(0.0, float(floor_margin)))
+    for x, y, z in oriented_box_corners(center, size, yaw):
+        if x < -geometry.half_x + clearance - EPS:
+            return False
+        if not _within_closed_faces_floored(
+                geometry, (x, y, z), clearance, floor_clearance):
+            return False
+    return True
 
 
 def contains_oriented_box_through_aperture(
