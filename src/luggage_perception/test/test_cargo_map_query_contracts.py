@@ -214,6 +214,17 @@ def test_bad_query_fields_and_deep_immutability():
             snapshot.get_cell(CellKey('epoch', 10000, 0, 0))
 
 
+def test_query_generation_detaches_legacy_ratio_rows():
+    s = store()
+    with s.acquire_query_snapshot() as snapshot:
+        data = snapshot._data()
+        original = data.map_snapshot.known_ratio[0][0]
+        s.v1_surface_dict()['known_ratio'][0][0] = .777
+        assert data.map_snapshot.known_ratio[0][0] == original
+        with pytest.raises(TypeError):
+            data.map_snapshot.known_ratio[0][0] = .888
+
+
 def test_block_seams_cow_and_full_fact_digest():
     s = store(.01, .34)
     before = s.acquire_query_snapshot()._data()

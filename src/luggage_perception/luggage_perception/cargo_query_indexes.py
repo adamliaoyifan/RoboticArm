@@ -4,7 +4,7 @@ Only initialize/apply_delta/reset mutate the owner. Queries use detached,
 deeply immutable summaries. Native array operations never change primary OCC.
 """
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 import hashlib
 import json
@@ -302,10 +302,16 @@ class QueryIndexOwner:
             map_snapshot.last_settle, map_snapshot.ledger_details),
             separators=(',', ':'), sort_keys=True).encode())
         identity = QueryIdentity(*map_snapshot.identity, root.hexdigest())
+        # Legacy MapSnapshot.known_ratio contains nested list rows. Preserve
+        # its existing exports, but never introduce those writable aliases
+        # into the new immutable query generation.
+        query_map = replace(map_snapshot, known_ratio=tuple(
+            tuple(row) if isinstance(row, (list, tuple)) else row
+            for row in map_snapshot.known_ratio))
         return QuerySnapshotData(identity, grid, self._blocks,
             MappingProxyType({k: tuple(sorted(v)) for k, v in self._sensor_blocks.items()}),
             MappingProxyType({k: self._box_blocks.get(k, ()) for k in self._known_box_ids
-                              if k not in self._ambiguous_box_ids}), summary.values, map_snapshot,
+                              if k not in self._ambiguous_box_ids}), summary.values, query_map,
             self._cursor_secret, owner_evidence_bytes=sum(len(b) for b in self._fact_blocks),
             unbound_geometry_count=len(mapper._placed_boxes)-len(self._box_blocks))
 

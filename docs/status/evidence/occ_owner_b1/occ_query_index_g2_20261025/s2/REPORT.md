@@ -29,3 +29,7 @@ S2 implementation checkpoint, not S2/G2 overall PASS. Full requested small/large
 source /opt/ros/humble/setup.bash
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=.:$PYTHONPATH python3 -m pytest -q src/luggage_perception/test/test_cargo_voxel_delta.py src/luggage_perception/test/test_cargo_query_indexes.py src/luggage_perception/test/test_cargo_map_query_contracts.py src/luggage_perception/test/test_frontier_count_vectorized.py src/luggage_perception/test/test_occupancy_map_store.py src/luggage_perception/test/test_occupancy_map_store_projection.py src/luggage_perception/test/test_voxel_log_odds.py src/luggage_perception/test/test_cargo_grid_projection.py
 ```
+
+## Follow-up: legacy row alias isolation
+
+The full d03fc5bc suite above passed 91 tests + 2 subtests. A later deep-immutability audit reproduced a preexisting legacy known_ratio alias: changing a v1 export row also changes the legacy MapSnapshot row. No primary OCC cell changes. New QuerySnapshotData now freezes its own row tuples via a detached map metadata record; old public read values/types and primary facts are unchanged. Focused follow-up: 21 passed, 3 concurrency tests deselected (ratio_isolation_tests.log); this is not a new whole-suite or performance PASS. Replay under failures/legacy_ratio_alias works on the baseline (legacy alias), d03fc5bc (legacy and query alias), and the corrected query clone (legacy alias only). Frozen d03fc5bc post-commit replay matched all 10,000 baseline transaction rows; T0 confirms clean product and unchanged source through that run.

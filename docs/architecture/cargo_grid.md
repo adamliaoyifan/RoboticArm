@@ -123,3 +123,7 @@ index/history data to a conservatively charged 512MiB. Resource refusal rejects
 new query sessions and preserves already admitted old results; physical facts
 still commit, and an explicit reset rebuilds failed current derived indexes.
 RSS and retained-size estimates must still be measured in acceptance workloads.
+
+The existing legacy known_ratio row exports have a mutable-row alias. New query
+generations detach and tuple-freeze those rows in their metadata record; they do
+not inherit that legacy alias or change existing public read values/types.
