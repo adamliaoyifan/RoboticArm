@@ -95,7 +95,10 @@ positions are not identities. Missing/ambiguous bindings are named failures.
 
 Distance policy `SEPARATE_UNKNOWN` returns independent occupied and unknown
 results. `OCCUPIED_ONLY` leaves unknown unqueried. MATCH is exact to voxel
-volume with smallest-flat-index tie breaking. NO_MATCH proves no target cells;
+volume with smallest-flat-index tie breaking. NO_MATCH proves no target cells.
+The block/leaf heap exposes one pending leaf per block in stable lower-bound
+order. It preserves global visit order and work charging while avoiding
+heap entries for leaves pruned before visitation.
 RADIUS_CLEAR has no exact distance and carries only its proved lower bound.
 Outside/budget errors never certify safety. Defaults: up to 256 points,
 radius .30m (maximum map diagonal), two million examined cells, 50,000 blocks

@@ -167,6 +167,19 @@ def _nearest(handle, data, point, state, radius, work, counts, lower_squared, vo
     nx, ny, _ = data.grid.shape
     r = data.grid.resolution
     origin = np.asarray(data.grid.origin)
+    # Each block exposes only its next leaf to the global heap. Sorted
+    # bounds and stable leaf IDs preserve the original global visit order
+    # without allocating heap entries for leaves that are never visited.
+    leaf_cursors = {}
+
+    def push_next_leaf(block_id):
+        order, bounds, position = leaf_cursors[block_id]
+        if position < len(order):
+            index = int(order[position])
+            if bounds[index] <= best_squared:
+                heapq.heappush(queue, (float(bounds[index]), block_id, index))
+                leaf_cursors[block_id][2] += 1
+
     while queue:
         lower, block_id, leaf = heapq.heappop(queue)
         if lower > best_squared:
@@ -201,8 +214,10 @@ def _nearest(handle, data, point, state, radius, work, counts, lower_squared, vo
         if leaf == -1:
             delta = np.maximum(np.maximum(leaf_low-point, point-leaf_high), 0.)
             bounds = np.einsum('ij,ij->i', delta, delta)
-            for index in np.flatnonzero(bounds <= best_squared):
-                heapq.heappush(queue, (float(bounds[index]), block_id, int(index)))
+            order = np.flatnonzero(bounds <= best_squared)
+            order = order[np.argsort(bounds[order], kind='stable')]
+            leaf_cursors[block_id] = [order, bounds, 0]
+            push_next_leaf(block_id)
             continue
         start, end = starts[leaf], ends[leaf]
         offsets = offsets[start:end]
@@ -220,6 +235,7 @@ def _nearest(handle, data, point, state, radius, work, counts, lower_squared, vo
         if (minimum < best_squared or (minimum == best_squared
                 and (best is None or flat_id < best[0]))):
             best_squared, best = minimum, (flat_id, block, offset)
+        push_next_leaf(block_id)
     if best is None:
         return DistanceMatch('RADIUS_CLEAR', False, lower_bound_m=radius)
     return DistanceMatch('MATCH', True, math.sqrt(best_squared), math.sqrt(best_squared),
