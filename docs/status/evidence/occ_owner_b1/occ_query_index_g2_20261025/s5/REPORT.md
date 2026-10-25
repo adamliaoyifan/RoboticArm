@@ -53,3 +53,16 @@ Product revision is **4b402706**, paired baseline **b33dda91**. Later commits on
 - All5CLI commands now exist,27CLI argument/help/timing-summary behavioral checks pass. Startup concurrency rehearsals01/02 exposed fixture JSON-parameter encoding and endpoint-name errors, fixed in71f56963/b07756c0; no scored unit consumed and evidence retained. Later capture fixes preserve sent/pending requests, unsent writes and passive callback boundaries.
 
 **Overall G2: not PASS; active work remains.** Formal query/T1, remaining write/placement groups, concurrency formal/replay and evidence health are unfinished or failed. No n=3, packing-capacity, sustained reliability or production integration claim.
+
+
+## Verified continuation — 2026-10-25 15:41
+
+Final product regression at a52be3af: **152 tests +2 subtests pass**, covering all five core query modules, real typed serialization, existing Store/confirmation/anchor/projection/commit/logodds and b33 frontier fallback. No skips in this command. Packing/Attachment/prior regression remains236pass plus1failure reproduced onb33.
+
+Formal placement_matrix_01 completed all18groups; all36baseline/candidate latency groups pass, P95range .006753–2.441790s (<5s). All612 response pairs have exactly equal deserialized fields, including all candidates/order/scores/reasons/slots. One raw CDR mismatch r0.05_b5_hit/020 contains only undefined alignment bytes; originalraw mismatch remains in producer manifest. Separate placement_semantic_inspection_01 produced bya52be3af checks all fields without reexecuting or changing the producer. A real-message regression proves padding changes preserve values and a changed slot is rejected. This completes the measured placement output/latency matrix, not wholeG2 certification.
+
+Capture health diagnosis: SIGUSR1/SIGUSR2 alone leave original idle rcl_wait asleep; prior dump arrived only after termination woke it (actual dump .615s). New test-only read-only builtin GetParameters wake9d731669/fc3afe83 makes capture durable BEFORE stop. Runtime_rehearsal09 verifiescapture_complete=true and cleanownedexit; timeout regression ensures failedwake cannot skipcleanup. No productioncallbacks/timers/groups/workers changed.
+
+GC diagnostic records83generation2 pauses, max39.427ms; surface trace-on pauses up to33.814ms versusoff .660ms. This is observed GC/order alignment, not proof of all causal overhead. Balanced seeded adjacentpairorder897ef38c is frozen beforetiming. Snapshot events now use preallocated atomicbuffersb8bebfaf instead ofretained per-call containers; two focusedtests verify data/overflow and no per-event trackedcontainers. Runtime10 capture/resourcespass but T1 still fails frontier1.117 and absentinstance1.216 ratios; do not start formalquerycertification or claim instrumentationgatepassed. No thresholdchanged, no samplesdeleted.
+
+Write_matrix_01 still running: 22 completedgroups at this checkpoint, 21FAIL. Unfinished groups not_evaluated. Concurrency formal/full semanticreplay also unfinished. Taskactive; no overallPASS or productionmerge.
