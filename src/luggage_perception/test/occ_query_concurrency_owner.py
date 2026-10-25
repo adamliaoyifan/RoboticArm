@@ -59,6 +59,22 @@ def main():
     events=deque(maxlen=100_000);nodes=[];stop_requested=[]
     def event(stage,**values):
         events.append(dict(stage=stage,monotonic_ns=time.perf_counter_ns(),thread=threading.get_ident(),**values))
+    def trace_method(cls,name):
+        original=getattr(cls,name)
+        def traced(instance,*values,**kwargs):
+            request_id=''
+            if values:
+                query=getattr(values[0],'query',None)
+                request_id=getattr(query,'request_id',getattr(values[0],'view_request_id',''))
+            event(name+'_begin',request_id=request_id)
+            try:return original(instance,*values,**kwargs)
+            finally:event(name+'_end',request_id=request_id)
+        setattr(cls,name,traced)
+    for name in ('_on_stats','_on_volume','_on_integrate','_integrate_view'):
+        trace_method(module.CargoVolumeMapperNode,name)
+    if importlib.util.find_spec('luggage_perception.cargo_map_query_service') is not None:
+        from luggage_perception.cargo_map_query_service import MapQueryService
+        trace_method(MapQueryService,'_execute')
     original_report=NodeRuntime._on_report
     def report(runtime,message):
         original_report(runtime,message)
@@ -97,6 +113,7 @@ def main():
         assert len(m._placed_boxes)==args.boxes
         save(out/'ready.json',dict(identity=identity,peers=peers,boxes=args.boxes,
             floor_z=m._hull.floor_z,ceiling_z=m._hull.ceiling_z,shape=[m.nx,m.ny,m.nz],
+            query_resources=dict(s._query_registry.resource_summary()) if hasattr(s,'_query_registry') else {},
             map_revision=s.identity.revision,epoch=s.identity.epoch,content_digest=s.identity.content_digest))
     module.CargoVolumeMapperNode.__init__=initialize
     def capture(*_):
@@ -113,6 +130,8 @@ def main():
             save(out/'boundary.json',dict(stats=m.stats(),surface=node._store.v1_surface_dict(),
                 ledger=node._store.committed_dict('container_link',None)))
         save(out/'runtime.json',node._frame_runtime.snapshot())
+        if hasattr(node._store,'_query_registry'):
+            save(out/'query_resources.json',dict(node._store._query_registry.resource_summary()))
         save(out/'capture.json',dict(capture_complete=True,replay_possible=True,
             captured_ns=time.time_ns(),input='frozen source + ready + client cloud/requests',
             window='client heartbeat 10s pre/5s post; consistent owner map after drain'))
