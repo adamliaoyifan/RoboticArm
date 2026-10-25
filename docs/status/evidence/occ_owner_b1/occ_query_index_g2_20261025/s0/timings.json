@@ -1,0 +1,88 @@
+{
+  "stage": "S0",
+  "scored": false,
+  "samples_per_group": 1,
+  "groups": [
+    {
+      "resolution": 0.05,
+      "shape": [
+        30,
+        40,
+        30
+      ],
+      "init_s": 0.01358336117118597,
+      "stats_s": 0.039078263100236654,
+      "stats": {
+        "total_voxels": 35100,
+        "inactive_count": 900,
+        "unknown_count": 35100,
+        "free_count": 0,
+        "occupied_count": 0,
+        "unknown_ratio": 1.0,
+        "occupancy_ratio": 0.0,
+        "occupied_volume": 0.0,
+        "free_volume": 0.0,
+        "label_distribution": {},
+        "map_revision": 1,
+        "committed_box_count": 0,
+        "geometry_hash": "30a9914e50249d6abb42fcd6e861a977a83986c728525cc8d1345f942ad48a4a",
+        "frontier_count": 0
+      },
+      "rss_kib": 33792
+    },
+    {
+      "resolution": 0.02,
+      "shape": [
+        75,
+        99,
+        74
+      ],
+      "init_s": 0.04867627611383796,
+      "stats_s": 0.6310699949972332,
+      "stats": {
+        "total_voxels": 549450,
+        "inactive_count": 0,
+        "unknown_count": 549450,
+        "free_count": 0,
+        "occupied_count": 0,
+        "unknown_ratio": 1.0,
+        "occupancy_ratio": 0.0,
+        "occupied_volume": 0.0,
+        "free_volume": 0.0,
+        "label_distribution": {},
+        "map_revision": 1,
+        "committed_box_count": 0,
+        "geometry_hash": "30a9914e50249d6abb42fcd6e861a977a83986c728525cc8d1345f942ad48a4a",
+        "frontier_count": 0
+      },
+      "rss_kib": 73300
+    },
+    {
+      "resolution": 0.01,
+      "shape": [
+        149,
+        197,
+        148
+      ],
+      "init_s": 0.34605436446145177,
+      "stats_s": 5.456535587087274,
+      "stats": {
+        "total_voxels": 4344244,
+        "inactive_count": 0,
+        "unknown_count": 4344244,
+        "free_count": 0,
+        "occupied_count": 0,
+        "unknown_ratio": 1.0,
+        "occupancy_ratio": 0.0,
+        "occupied_volume": 0.0,
+        "free_volume": 0.0,
+        "label_distribution": {},
+        "map_revision": 1,
+        "committed_box_count": 0,
+        "geometry_hash": "30a9914e50249d6abb42fcd6e861a977a83986c728525cc8d1345f942ad48a4a",
+        "frontier_count": 0
+      },
+      "rss_kib": 341840
+    }
+  ]
+}
