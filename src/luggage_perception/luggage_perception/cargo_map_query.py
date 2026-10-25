@@ -173,6 +173,29 @@ class SurfacePatchResult(QueryResult):
 
 
 @dataclass(frozen=True)
+class DistanceMatch:
+    status: str
+    exact: bool
+    distance_m: object = None
+    lower_bound_m: float = 0.
+    cell: object = None
+
+
+@dataclass(frozen=True)
+class DistancePoint:
+    point: tuple
+    status: str
+    occupied: DistanceMatch
+    unknown: object = None
+
+
+@dataclass(frozen=True)
+class DistanceBatch(QueryResult):
+    unknown_policy: str = 'separate'
+    results: tuple = ()
+
+
+@dataclass(frozen=True)
 class VoxelBlock:
     block_id: int
     start: tuple
@@ -213,6 +236,7 @@ class QuerySnapshotData:
     owner_evidence_bytes: int = 0
     unbound_geometry_count: int = 0
     surface_projection: object = None
+    distance_index: object = None
 
 
 def normalize_region(region):
@@ -312,6 +336,16 @@ class MapQuerySnapshot:
     def surface(self, region=None):
         from luggage_perception.cargo_surface_projection import read_surface
         return read_surface(self, self._data(), region)
+
+    def nearest_obstacles(self, points, max_radius_m=.30, unknown_policy='separate', *, budget=None):
+        """Exact point-to-cell-volume distance; never a collision certificate.
+
+        'separate' reports independent occupied and unknown distances;
+        'occupied_only' explicitly leaves unknown unqueried, never free.
+        Optional budget can only reduce the fixed read-work/time limits.
+        """
+        from luggage_perception.cargo_distance_query import read_nearest
+        return read_nearest(self, self._data(), points, max_radius_m, unknown_policy, budget)
 
     def surface_changes(self, since_identity, region=None, page=None):
         from luggage_perception.cargo_surface_projection import read_surface_changes

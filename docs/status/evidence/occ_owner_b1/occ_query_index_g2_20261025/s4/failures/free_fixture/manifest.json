@@ -1,0 +1,25 @@
+{
+  "shape": [
+    17,
+    17,
+    17
+  ],
+  "resolution": 0.02,
+  "unknown_count": 0,
+  "unknown_indices": [],
+  "observed_values": [
+    -0.4054651081081643,
+    -0.4054651081081643,
+    -0.4054651081081643,
+    -0.4054651081081643
+  ],
+  "stage": "existing mark_free_world writes before query",
+  "capture_complete": true,
+  "replay_possible": true,
+  "replay": "test_cargo_distance_query.py::test_unknown_separate_free_empty_and_radius_bounds before fixture correction",
+  "post_hit_state": 0,
+  "post_hit_logodds": 0.4418327522790392,
+  "post_hit_unknown_count": 1,
+  "diagnosis": "One hit after one miss produces UNKNOWN under unchanged existing logodds thresholds. Fixture incorrectly assumed OCCUPIED.",
+  "fix": "Issue second existing hit; do not change fusion or ignore unknown."
+}

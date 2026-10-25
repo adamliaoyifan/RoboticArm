@@ -52,6 +52,9 @@ class QuerySnapshotRegistry:
                         if id(tile) not in seen:
                             size += 1024 + sum(a.nbytes for a in tile.fields.values())
                             seen.add(id(tile))
+                if generation.distance_index is not None and id(generation.distance_index) not in seen:
+                    size += generation.distance_index.byte_size()
+                    seen.add(id(generation.distance_index))
             self._requested_bytes = size
             if size > MAX_RETAINED_BYTES:
                 self._error = 'RESOURCE_LIMIT'
