@@ -24,6 +24,25 @@ private canonical buffer cannot mutate any old query snapshot. Public record
 patches and block counts use the net delta; unchanged state and instance
 memberships are shared.
 
+The writer-private canonical records use packed blocks with prefix offsets
+so a whole transaction can gather its first-old facts and patch its final-new
+facts in native code. Partial blocks retain their compact native record order
+without padding. The complete allocation and metadata are charged to the
+existing 512MiB budget.
+This is derived index storage; the primary mapper arrays and Python lists
+retain their existing layout and mutation order.
+
+Store binds a prior-evidence reader when constructing each delta builder.
+Mutation notifications collect touched keys; finalization reads their prior
+facts before the index owner applies the delta, then gathers final facts from
+the primary mapper. An evidence-generation guard rejects a stale binding.
+Standalone mapper builders and unavailable indexes retain immediate primary
+capture. Binding failures follow the existing index-failure boundary: keep
+the physical fact, close new queries by name, recover on explicit reset.
+All canonical mutations stay inside QueryIndexOwner initialize/apply/reset,
+through the focused CanonicalEvidenceBlocks helper. Read generations never
+retain its mutable records. The schema-2 hash recipe is unchanged.
+
 Writer diagnostics separate `patched_canonical_bytes` (private records
 overwritten in place) from `copied_evidence_bytes` (detached public record
 buffers copied for changed blocks). Both describe derived index work only.

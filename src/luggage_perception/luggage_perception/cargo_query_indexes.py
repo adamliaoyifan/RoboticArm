@@ -15,7 +15,7 @@ import numpy as np
 from luggage_perception.cargo_grid_projection import occupancy_counts
 from luggage_perception.cargo_voxel_delta import EVIDENCE_DTYPE, capture_evidence, immutable_array
 from luggage_perception.cargo_surface_projection import IncrementalSurfaceProjection
-from luggage_perception.cargo_fact_digest import CanonicalFactDigest
+from luggage_perception.cargo_canonical_evidence import CanonicalEvidenceBlocks
 from luggage_perception.cargo_distance_query import DistanceIndex, DistanceLeafLayout, freeze_distance_members
 from luggage_perception.cargo_map_query import (
     BLOCK_EDGE, CELL_DTYPE, GridInfo, QueryIdentity, QuerySnapshotData, VoxelBlock,
@@ -122,8 +122,7 @@ class QueryIndexOwner:
         self._frontier_count = 0
         self._last_work = MappingProxyType({})
         self._blocks = ()
-        self._fact_blocks = ()
-        self._fact_digests = ()
+        self._canonical = None
         self._bindings = {}
         self._box_indices = {}
         self._geometry_members = {}
@@ -166,6 +165,10 @@ class QueryIndexOwner:
 
     def reset(self, mapper):
         self.initialize(mapper)
+
+    def bind_prior_evidence(self):
+        """Store-only first-old lookup, valid until this owner applies a delta."""
+        return self._canonical.bind_prior_reader()
 
     def apply_delta(self, mapper, delta, update=None, committed_now=False):
         if delta.rebuild:
@@ -229,10 +232,9 @@ class QueryIndexOwner:
         self._sensor_blocks = {}
         self._cursor_secret = secrets.token_bytes(32)
         blocks = []
-        fact_blocks = []
-        fact_digests = []
         layouts = {}
         nx, ny, nz = mapper.nx, mapper.ny, mapper.nz
+        self._canonical = CanonicalEvidenceBlocks((nx, ny, nz))
         active = np.frombuffer(mapper._active, 'u1')
         for z in range(0, nz, BLOCK_EDGE):
             for y in range(0, ny, BLOCK_EDGE):
@@ -244,12 +246,9 @@ class QueryIndexOwner:
                     iy = np.arange(y, y+shape[1], dtype=np.int32)
                     iz = np.arange(z, z+shape[2], dtype=np.int32)
                     keys = immutable_array((ix[None, None, :]+nx*(iy[None, :, None]+ny*iz[:, None, None])).ravel())
-                    # Canonical buffers belong only to this writer-side
-                    # owner. Read generations receive compact frozen bytes.
-                    facts = bytearray(capture_evidence(mapper, keys).tobytes())
-                    fact_blocks.append(facts)
-                    canonical_digest = CanonicalFactDigest.build(facts)
-                    fact_digests.append(canonical_digest)
+                    canonical_digest = self._canonical.initialize_block(
+                        len(blocks), capture_evidence(mapper, keys))
+                    facts = self._canonical.block_bytes(len(blocks))
                     block = _freeze_block(len(blocks), (x, y, z), shape, keys,
                         facts, active[keys].tobytes(),
                         self._frontiers[keys].astype('u1').tobytes(), {},layout=layouts[shape],
@@ -258,8 +257,6 @@ class QueryIndexOwner:
                     for identifier in block.sensor_members:
                         self._sensor_blocks.setdefault(identifier, set()).add(block.block_id)
         self._blocks = tuple(blocks)
-        self._fact_blocks = tuple(fact_blocks)
-        self._fact_digests = tuple(fact_digests)
         self._geometry_dirty_blocks = set()
 
     def _apply_bindings(self, mapper, delta, update, committed_now, restored=None):
@@ -314,13 +311,11 @@ class QueryIndexOwner:
         self._geometry_dirty_blocks = dirty
 
     def _update_blocks(self, mapper, delta, frontier_candidates):
-        ids = _block_ids(delta.indices, mapper)
+        ids, local_offsets = self._canonical.patch(delta.indices, delta.after)
         dirty = set(int(v) for v in np.unique(_block_ids(frontier_candidates, mapper)))
         dirty.update(int(v) for v in np.unique(ids))
         dirty.update(self._geometry_dirty_blocks)
         blocks = list(self._blocks)
-        fact_blocks = list(self._fact_blocks)
-        fact_digests = list(self._fact_digests)
         # Partition the delta once. Re-scanning all D indices for each
         # dirty block made maintenance O(D * dirty_blocks).
         selected_by_block = {}
@@ -333,23 +328,17 @@ class QueryIndexOwner:
         for bid in sorted(dirty):
             old = blocks[bid]
             selected = selected_by_block.get(bid,())
-            facts = fact_blocks[bid]
             offsets = np.empty(0, dtype=np.int64)
             changed_facts = delta.after[:0]
             if len(selected):
-                # This private canonical buffer is never retained by a
-                # read generation. Patch only changed records in place;
-                # immutable public blocks below remain copy-on-write.
-                record_bytes = np.dtype(('V',EVIDENCE_DTYPE.itemsize))
-                records = np.frombuffer(facts,dtype=record_bytes)
-                offsets = np.searchsorted(old.flat_indices, delta.indices[selected])
-                records[offsets] = delta.after.view(record_bytes)[selected]
+                offsets = local_offsets[selected]
                 changed_facts = delta.after[selected]
-                fact_digests[bid] = fact_digests[bid].updated(facts, offsets)
                 patched += len(selected) * EVIDENCE_DTYPE.itemsize
-            block = _freeze_block(bid, old.start, old.shape, old.flat_indices, facts,
+            canonical_digest = self._canonical.rehash(bid, offsets)
+            block = _freeze_block(bid, old.start, old.shape, old.flat_indices,
+                self._canonical.block_bytes(bid),
                 old.active, self._frontiers[old.flat_indices].astype('u1').tobytes(),
-                self._geometry_members.get(bid, {}),previous=old,canonical_digest=fact_digests[bid],
+                self._geometry_members.get(bid, {}),previous=old,canonical_digest=canonical_digest,
                 changed_offsets=offsets,changed_facts=changed_facts)
             if block.evidence is not old.evidence:
                 copied += len(block.evidence)
@@ -362,8 +351,6 @@ class QueryIndexOwner:
                 self._sensor_blocks.setdefault(identifier, set()).add(bid)
             blocks[bid] = block
         self._blocks = tuple(blocks)
-        self._fact_blocks = tuple(fact_blocks)
-        self._fact_digests = tuple(fact_digests)
         self._geometry_dirty_blocks = set()
         work = dict(self._last_work)
         work.update(dirty_blocks=len(dirty), copied_evidence_bytes=copied,
@@ -401,8 +388,7 @@ class QueryIndexOwner:
             MappingProxyType({k: tuple(sorted(v)) for k, v in self._sensor_blocks.items()}),
             MappingProxyType({k: self._box_blocks.get(k, ()) for k in self._known_box_ids
                               if k not in self._ambiguous_box_ids}), summary.values, query_map,
-            self._cursor_secret, owner_evidence_bytes=sum(len(b) for b in self._fact_blocks)
-                +sum(d.byte_size() for d in self._fact_digests),
+            self._cursor_secret, owner_evidence_bytes=self._canonical.byte_size(),
             unbound_geometry_count=len(mapper._placed_boxes)-len(self._box_blocks),
             surface_projection=self._surface.freeze(), distance_index=self._distance)
 

@@ -60,8 +60,9 @@ class DeltaBatch:
 class VoxelDeltaBuilder:
     """Transaction-local owner; compact arrays, no per-map voxel objects."""
 
-    def __init__(self, mapper):
+    def __init__(self, mapper, before_lookup=None):
         self._mapper = mapper
+        self._before_lookup = before_lookup
         self._seen = set()
         self._chunks = []
         self._rebuild = False
@@ -78,7 +79,11 @@ class VoxelDeltaBuilder:
                 fresh.append(index)
         if fresh:
             keys = np.asarray(fresh, dtype=np.int64)
-            self._chunks.append((keys, capture_evidence(self._mapper, keys)))
+            # Store may bind the derived owner's unchanged prior facts.
+            # Standalone mapper users retain the original immediate capture.
+            before = (capture_evidence(self._mapper, keys)
+                      if self._before_lookup is None else None)
+            self._chunks.append((keys, before))
 
     def record_reset(self):
         self._rebuild = True
@@ -94,7 +99,8 @@ class VoxelDeltaBuilder:
     def finalize(self):
         if self._chunks:
             indices = np.concatenate([chunk[0] for chunk in self._chunks])
-            before = np.concatenate([chunk[1] for chunk in self._chunks])
+            before = (np.concatenate([chunk[1] for chunk in self._chunks])
+                      if self._before_lookup is None else self._before_lookup(indices))
             after = capture_evidence(self._mapper, indices)
             changed = np.zeros(len(indices), dtype=bool)
             for name in EVIDENCE_DTYPE.names:
@@ -106,7 +112,10 @@ class VoxelDeltaBuilder:
             order = selected[np.argsort(indices[selected])]
             # Gather each wide record once. Filtering and then sorting the
             # records copied both full structured buffers twice per finalize.
-            indices, before, after = (a[order] for a in (indices, before, after))
+            record_bytes = np.dtype(('V', EVIDENCE_DTYPE.itemsize))
+            indices = indices[order]
+            before = before.view(record_bytes)[order].view(EVIDENCE_DTYPE)
+            after = after.view(record_bytes)[order].view(EVIDENCE_DTYPE)
         else:
             indices = np.empty(0, dtype=np.int64)
             before = after = np.empty(0, dtype=EVIDENCE_DTYPE)

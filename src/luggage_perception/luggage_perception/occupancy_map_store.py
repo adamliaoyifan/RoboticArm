@@ -353,7 +353,7 @@ class OccupancyMapStore(object):
         self._query_indexes = QueryIndexOwner()
         self._query_indexes.initialize(mapper)
         self._query_registry = QuerySnapshotRegistry()
-        mapper._voxel_delta = VoxelDeltaBuilder(mapper)
+        mapper._voxel_delta = self._new_delta_builder()
         self._snapshot = self._build_snapshot()
 
     # ------------------------------------------------------------------
@@ -987,6 +987,13 @@ class OccupancyMapStore(object):
     # ------------------------------------------------------------------
     # Snapshot construction + digest
 
+    def _new_delta_builder(self):
+        # Canonical prior facts remain unchanged until delta finalization.
+        # If the index is unavailable, retain immediate primary capture.
+        lookup = (self._query_indexes.bind_prior_evidence()
+                  if self._query_indexes is not None else None)
+        return VoxelDeltaBuilder(self._mapper, before_lookup=lookup)
+
     def _refresh_query_indexes(self, update=None, details=None):
         # A derived-index failure cannot erase or reject an already-applied
         # physical fact. Publish the ordinary map, explicitly close queries,
@@ -999,11 +1006,13 @@ class OccupancyMapStore(object):
             elif self._query_indexes is not None:
                 self._query_indexes.apply_delta(self._mapper, delta, update,
                                                bool((details or {}).get('committed_now')))
+            next_builder = self._new_delta_builder()
         except Exception:
             import logging
             logging.getLogger(__name__).exception("QUERY_INDEX_UNAVAILABLE")
             self._query_indexes = None
-        self._mapper._voxel_delta = VoxelDeltaBuilder(self._mapper)
+            next_builder = VoxelDeltaBuilder(self._mapper)
+        self._mapper._voxel_delta = next_builder
         self._mapper._surface_cache = (self._query_indexes.surface_projection()
                                        if self._query_indexes is not None else None)
 
