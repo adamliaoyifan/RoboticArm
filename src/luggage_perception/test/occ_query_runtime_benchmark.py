@@ -31,6 +31,7 @@ def main():
     p.add_argument('--domain', type=int, required=True)
     p.add_argument('--samples', type=int, default=30)
     p.add_argument('--warmup', type=int, default=3)
+    p.add_argument('--paired-trace', action='store_true')
     a = p.parse_args()
     os.environ.update(ROS_DOMAIN_ID=str(a.domain), ROS_LOCALHOST_ONLY='1')
     import numpy as np
@@ -62,16 +63,21 @@ def main():
         for case in LIMITS_MS:
             if case == 'snapshot':
                 values = [n/1e6 for n in ready['snapshot_ns'][4:]]
-                results[case] = summarize(values, LIMITS_MS[case])
+                result = summarize(values, LIMITS_MS[case])
+                results[case] = {mode:result for mode in ('trace_off','trace_on')} if a.paired_trace else result
                 continue
             kind = (srv.GetCargoMapStats if case == 'stats' else
                 srv.GetCargoMapSummaryV2 if case == 'summary' else
                 srv.QueryCargoDistanceV2 if case.startswith('distance') else
                 srv.GetCargoSurfacePatchV2 if case in ('surface', 'patch') else srv.QueryCargoCellsV2)
-            measured = []
-            for i in range(-1, a.warmup+a.samples):
+            measured = {mode:[] for mode in ('trace_off','trace_on')}
+            failures = {}
+            sequence = [(i,mode) for i in range(-1,a.warmup+a.samples)
+                for mode in (('trace_off','trace_on') if i%2 else ('trace_on','trace_off'))] if a.paired_trace else [
+                    (i,'trace_off') for i in range(-1,a.warmup+a.samples)]
+            for i,mode in sequence:
                 request = kind.Request()
-                request_id = case+'-'+str(i)
+                request_id = case+'-'+str(i)+('-'+mode if a.paired_trace else '')
                 if hasattr(request, 'query'):
                     q = request.query
                     q.request_id, q.frame_id = request_id, 'container_link'
@@ -118,6 +124,7 @@ def main():
                 # retain the complete ROS round trip for every request.
                 latency_ns = response.meta.elapsed_ns if case.startswith('distance') or case == 'frontier_count' else elapsed_ns
                 record = dict(case=case, index=i, cold=i==-1, warmup=0<=i<a.warmup, status=status,
+                    trace=mode,
                     monotonic_ns=begin, elapsed_ns=elapsed_ns, gated_ns=latency_ns,
                     request_sha256=hashlib.sha256(payload).hexdigest(),
                     response_sha256=hashlib.sha256(body).hexdigest(), response_bytes=len(body))
@@ -128,23 +135,25 @@ def main():
                 with (out/'samples.jsonl').open('a') as stream:
                     stream.write(json.dumps(record)+'\n')
                 if status != 'OK':
-                    results[case] = dict(outcome='fail', reason=status, first_failure=i)
+                    failures[mode] = dict(outcome='fail', reason=status, first_failure=i)
                     break
                 if latency_ns/1e6 > LIMITS_MS[case][1]:
-                    results[case] = dict(outcome='fail', reason='cold_or_sample_max',
+                    failures[mode] = dict(outcome='fail', reason='cold_or_sample_max',
                         first_failure=i, max_ms=latency_ns/1e6)
                     break
                 if i >= a.warmup:
-                    measured.append(latency_ns/1e6)
-            if case not in results:
-                results[case] = summarize(measured, LIMITS_MS[case])
+                    measured[mode].append(latency_ns/1e6)
+            result = {mode:failures.get(mode,summarize(values,LIMITS_MS[case]))
+                      for mode,values in measured.items()}
+            results[case] = result if a.paired_trace else result['trace_off']
     finally:
         (out/'result.json').write_text(json.dumps(dict(results=results,
             overall_g2='not_evaluated', samples_requested=a.samples, warmup=a.warmup,
             complete=len(results)==len(LIMITS_MS)), indent=2)+'\n')
         node.destroy_node()
         rclpy.shutdown()
-    return int(any(r['outcome'] != 'pass' for r in results.values()))
+    verdicts = [result for modes in results.values() for result in modes.values()] if a.paired_trace else results.values()
+    return int(any(r['outcome'] != 'pass' for r in verdicts))
 
 
 if __name__ == '__main__':

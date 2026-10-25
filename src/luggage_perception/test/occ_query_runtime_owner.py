@@ -32,6 +32,7 @@ def main():
     p.add_argument('--resolution', type=float, choices=(.01, .02, .05), required=True)
     p.add_argument('--boxes', type=int, choices=(0, 5, 20), required=True)
     p.add_argument('--trace', action='store_true')
+    p.add_argument('--paired-trace', action='store_true')
     p.add_argument('--profile-distance', action='store_true')
     a = p.parse_args()
     if not 100 <= a.domain <= 232:
@@ -94,6 +95,8 @@ def main():
         original_open = MapQueryService._open
 
         def traced_open(self, query):
+            if a.paired_trace and not query.request_id.endswith('-trace_on'):
+                return original_open(self,query)
             begin = time.perf_counter_ns()
             try:
                 return original_open(self, query)
@@ -179,6 +182,17 @@ def main():
             point_reads=dict(count=10_000, seed=20261025, exact_native_match=True, sha256=point_reads.hexdigest()),
             resources=dict(s._query_registry.resource_summary()),
             rss_peak_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        import importlib
+        import sys
+        for name in ('luggage_description','luggage_msgs','st09_contracts'):
+            path = Path(importlib.import_module(name).__file__).resolve()
+            if not path.is_relative_to(install):
+                raise RuntimeError('mixed application install: '+str(path))
+        manifest['numpy_version'] = np.__version__
+        manifest['loaded_artifacts'] = {name:dict(path=str(Path(mod.__file__).resolve()),
+            sha256=hashlib.sha256(Path(mod.__file__).read_bytes()).hexdigest())
+            for name,mod in list(sys.modules.items()) if name.startswith(('luggage_','st09_contracts'))
+            and getattr(mod,'__file__',None) and Path(mod.__file__).is_file()}
         save(out/'ready.json', manifest)
     module.CargoVolumeMapperNode.__init__ = initialize
 

@@ -107,4 +107,4 @@ def write_benchmark(args, common):
         sources_unchanged={name:common.source_hashes(root)==hashes[name] for name,root in roots.items()},
         outcome='measured_with_individual_gate_results')
     common.write_json(out/'manifest.json',manifest)
-    return 0
+    return int(any(group.get('outcome')!='pass' for group in manifest['groups']))

@@ -52,6 +52,7 @@ def benchmark(args, common):
         dirty='', formal_matrix=formal, started_ns=time.time_ns(), groups=[],
         independent_install=str(Path(args.install).resolve()),
         overall_g2='not_evaluated', baseline_reads='not_evaluated', write_regression='not_evaluated')
+    manifest['instrumentation_method'] = 'same-owner alternating paired requests; roundtrip P95 on/off; pure-query gated ratios retained as diagnostics'
     common.write_json(out/'manifest.json', manifest)
     owner_script = source/'src/luggage_perception/test/occ_query_runtime_owner.py'
     client_script = source/'src/luggage_perception/test/occ_query_runtime_benchmark.py'
@@ -68,14 +69,13 @@ def benchmark(args, common):
         scene_path.write_text(yaml.safe_dump(scene, sort_keys=False))
         entry = dict(resolution=r, boxes=boxes, shape=shape, repetitions=[])
         manifest['groups'].append(entry)
-        for trace in (False, True):
-            run = group/('trace_on' if trace else 'trace_off')
+        for trace in ('paired',):
+            run = group/'paired'
             run.mkdir()
             command = [sys.executable, str(owner_script), '--out', str(run/'owner'),
                 '--scene', str(scene_path), '--source', str(source), '--install', args.install,
                 '--domain', str(args.domain), '--resolution', str(r), '--boxes', str(boxes)]
-            if trace:
-                command.append('--trace')
+            command.extend(('--trace','--paired-trace'))
             if args.profile_distance:
                 command.append('--profile-distance')
             repetition = dict(trace=trace, owner_command=command, phase='startup', started_ns=time.time_ns())
@@ -95,6 +95,7 @@ def benchmark(args, common):
                     command = [sys.executable, str(client_script), '--out', str(run/'client'),
                         '--owner', str(run/'owner'), '--domain', str(args.domain),
                         '--samples', str(args.samples), '--warmup', str(args.warmup)]
+                    command.append('--paired-trace')
                     repetition['client_command'] = command
                     common.write_json(out/'manifest.json', manifest)
                     with (run/'client.log').open('w') as client_log:
@@ -135,17 +136,24 @@ def benchmark(args, common):
             # and keep every prior sample; unaffected groups can continue.
             if repetition['phase'] == 'failed':
                 break
-        if len(entry['repetitions']) == 2:
-            results = []
-            for mode in ('trace_off', 'trace_on'):
-                path = group/mode/'client/result.json'
-                results.append(json.loads(path.read_text())['results'] if path.exists() else {})
+        path = group/'paired/client/result.json'
+        if path.exists():
+            results = json.loads(path.read_text())['results']
+            observations = [json.loads(line) for line in (group/'paired/client/samples.jsonl').read_text().splitlines()]
             ratios = {}
-            for case in results[0].keys() & results[1].keys():
-                a, b = results[0][case], results[1][case]
-                if a.get('samples') == 30 and b.get('samples') == 30 and a.get('p95_ms', 0) > 0:
-                    ratio = b['p95_ms']/a['p95_ms']
-                    ratios[case] = dict(ratio=ratio, outcome='pass' if ratio <= 1.10 else 'fail')
+            for case,modes in results.items():
+                if case in ('snapshot','stats'):
+                    ratios[case] = dict(outcome='not_applicable',reason='snapshot-stage T1 does not wrap this path')
+                    continue
+                samples = {mode:sorted(row['elapsed_ns'] for row in observations
+                    if row['case']==case and row['trace']==mode and not row['cold'] and not row['warmup'])
+                    for mode in ('trace_off','trace_on')}
+                if all(len(values)==30 for values in samples.values()):
+                    ratio = samples['trace_on'][28]/samples['trace_off'][28]
+                    a,b = modes['trace_off'],modes['trace_on']
+                    ratios[case] = dict(roundtrip_p95_ratio=ratio,
+                        gated_p95_ratio=b.get('p95_ms',0)/a['p95_ms'] if a.get('p95_ms',0)>0 else None,
+                        outcome='pass' if ratio <= 1.10 else 'fail')
                 else:
                     ratios[case] = dict(outcome='not_evaluated')
             entry['instrumentation'] = ratios
@@ -153,4 +161,8 @@ def benchmark(args, common):
     manifest.update(ended_ns=time.time_ns(), source_hashes_unchanged=common.source_hashes(source)==hashes,
         phase='complete', outcome='measured_with_individual_gate_results')
     common.write_json(out/'manifest.json', manifest)
-    return 0
+    failed = any(rep.get('resource_gate')!='pass' or rep.get('client_exit_code')!=0
+        for group in manifest['groups'] for rep in group['repetitions'])
+    failed |= any(gate['outcome'] not in ('pass','not_applicable')
+        for group in manifest['groups'] for gate in group.get('instrumentation',{}).values())
+    return int(failed)
