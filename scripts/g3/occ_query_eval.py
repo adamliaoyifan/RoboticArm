@@ -310,6 +310,22 @@ def main():
         from occ_query_runtime_campaign import benchmark
         return benchmark(args, sys.modules[__name__])
     p.set_defaults(run=run_benchmark)
+    p = commands.add_parser('planning', help='installed baseline/candidate structural full-request matrix')
+    p.add_argument('--install',default='/tmp/occ-query-g2-install')
+    p.add_argument('--baseline-install',default='/tmp/occ-query-g2-baseline-install')
+    p.add_argument('--domain',type=int,default=185)
+    p.add_argument('--samples','--repeat',type=int,default=30)
+    p.add_argument('--warmup',type=int,default=3)
+    p.add_argument('--resolutions',type=csv_choices(float,(.01,.02,.05)),default=[.01,.02,.05])
+    p.add_argument('--boxes',type=csv_choices(int,(0,5,20)),default=[0,5,20])
+    p.add_argument('--paths',type=csv_choices(str,('hit','fallback')),default=['hit','fallback'])
+    p.add_argument('--baseline-revision',default=BASELINE)
+    p.add_argument('--rehearsal',action='store_true')
+    p.add_argument('--out',required=True)
+    def run_planning(args):
+        from occ_query_placement_campaign import planning
+        return planning(args,sys.modules[__name__])
+    p.set_defaults(run=run_planning)
     p = commands.add_parser('replay', help='capture an oracle mismatch from frozen sources')
     p.add_argument('--bundle', required=True)
     p.add_argument('--out')
@@ -318,7 +334,7 @@ def main():
     if args.command == 'oracle' and (args.seed_start < 0 or args.seeds < 1
             or args.transactions < 1 or args.distance_points < 0):
         parser.error('invalid sample counts')
-    if args.command == 'benchmark' and (not 100 <= args.domain <= 232 or args.samples < 1 or args.warmup < 0):
+    if args.command in ('benchmark','planning') and (not 100 <= args.domain <= 232 or args.samples < 1 or args.warmup < 0):
         parser.error('invalid runtime domain/sample counts')
     return args.run(args)
 

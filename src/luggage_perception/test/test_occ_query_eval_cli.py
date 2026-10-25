@@ -22,7 +22,7 @@ def test_invalid_matrix_creates_no_artifacts(tmp_path, arguments):
     assert not out.exists()
 
 
-@pytest.mark.parametrize('command', ['oracle', 'benchmark', 'replay'])
+@pytest.mark.parametrize('command', ['oracle', 'benchmark', 'planning', 'replay'])
 def test_help_needs_no_ros_graph_or_product_import(command):
     result = subprocess.run([sys.executable, str(SCRIPT), command, '--help'],
                             capture_output=True, text=True)
