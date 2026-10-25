@@ -99,7 +99,7 @@ def main():
             result = s.apply_update(MapUpdate(operation_id='setup-box-'+str(i),
                 kind=UpdateKind.ADD_BOX_V1, box=box, box_id='runtime-box-'+str(i)))
             if not result.accepted:
-                raise RuntimeError('setup geometry refused: '+str(result))
+                raise RuntimeError('setup geometry refused: '+result.reason)
         if len(m._placed_boxes) != a.boxes:
             raise RuntimeError('actual box count differs from requested load')
         # Hit-only setup makes many genuine unknown/observed frontier cells;
@@ -109,10 +109,11 @@ def main():
             for y in range(1, m.ny-1, step) for x in range(1, m.nx-1, step)])
         points = np.asarray([-m.inner_l/2, -m.inner_w/2, m._hull.floor_z])+(xyz+.5)*a.resolution
         result = s.apply_update(MapUpdate(operation_id='setup-hits', kind=UpdateKind.INTEGRATE_VIEW,
+            expected_snapshot=s.identity, geometry_hash=m.geometry_hash,
             points=points, origin=None, stamp_key=(1000, 0), acquisition_stamp_ns=1_000_000_000,
             schema_version=1, settled=True))
         if not result.accepted:
-            raise RuntimeError('setup hits refused: '+str(result))
+            raise RuntimeError('setup hits refused: '+result.reason)
         with s.acquire_query_snapshot() as snapshot:
             old = CargoMapQueryIdentityV2()
             set_identity(old, snapshot.identity)
@@ -120,6 +121,7 @@ def main():
             -m.inner_w/2+(y+.5)*a.resolution, m._hull.floor_z+(m.nz-.5)*a.resolution)
             for y in range(10) for x in range(10)])
         result = s.apply_update(MapUpdate(operation_id='setup-patch', kind=UpdateKind.INTEGRATE_VIEW,
+            expected_snapshot=s.identity, geometry_hash=m.geometry_hash,
             points=patch_points, origin=None, stamp_key=(1001, 0), acquisition_stamp_ns=1_001_000_000,
             schema_version=1, settled=True))
         if not result.accepted:
@@ -160,6 +162,14 @@ def main():
                      '-p', 'resolution:='+str(a.resolution)])
     except Exception:
         capture()
+        # Constructor failures happen before production main's finally.
+        # Tear down only resources created by this fixture in that case.
+        import rclpy
+        for node in owner:
+            node.shutdown_tf()
+            node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
         raise
     finally:
         manifest.update(ended_ns=time.time_ns(),
