@@ -118,6 +118,26 @@ class QuerySnapshotRegistry:
                     return data
             raise QueryError('SNAPSHOT_EXPIRED')
 
+    def resume(self, token, expected_identity):
+        """Continue a typed-service handle; never extends its expiry."""
+        try:
+            expected = tuple(expected_identity)
+        except TypeError:
+            raise QueryError('SNAPSHOT_IDENTITY_MISMATCH') from None
+        if len(expected) != 5:
+            raise QueryError('SNAPSHOT_IDENTITY_MISMATCH')
+        with self._lock:
+            self._expire_locked(self._clock_ns())
+            session = self._sessions.get(token)
+            if session is None:
+                raise QueryError('SNAPSHOT_EXPIRED')
+            if tuple(session[0]) != expected:
+                raise QueryError('SNAPSHOT_IDENTITY_MISMATCH')
+            for data in self._generations:
+                if data.identity == session[0]:
+                    return MapQuerySnapshot(data.identity, data.grid, token, self)
+            raise QueryError('SNAPSHOT_EXPIRED')
+
     def lookup_since(self, current_identity, since_identity):
         """Resolve a retained predecessor without substituting CURRENT."""
         with self._lock:

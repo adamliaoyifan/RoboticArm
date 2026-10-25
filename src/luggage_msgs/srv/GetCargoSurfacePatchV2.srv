@@ -1,0 +1,27 @@
+uint8 FULL=0
+uint8 PATCH=1
+luggage_msgs/CargoMapQueryRequestV2 query
+uint8 mode
+luggage_msgs/CargoMapQueryIdentityV2 since_identity
+---
+luggage_msgs/CargoMapQueryMetaV2 meta
+bool is_full
+luggage_msgs/CargoMapQueryIdentityV2 since_identity
+float64 floor_z_container
+float64 ceiling_z_container
+uint32[2] origin_index_xy
+uint32[2] shape_xy
+# FULL arrays: local x-fastest index = x + shape_xy[0]*y.
+# PATCH returns only patches, globally indexed; common bounded pagination.
+float64[] height
+float64[] clearance
+uint8[] state
+float64[] known_ratio
+uint8[] confidence
+int64[] semantic_label
+bool[] has_surface_z
+float64[] surface_z_container
+bool[] has_height_above_floor
+float64[] height_above_floor
+uint8[] contract_confidence
+luggage_msgs/CargoMapSurfaceColumnV2[] patches

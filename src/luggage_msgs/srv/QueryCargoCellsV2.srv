@@ -1,0 +1,15 @@
+uint8 CELLS=0
+uint8 FRONTIERS=1
+uint8 INSTANCE=2
+uint8 FRONTIER_COUNT=3
+uint8 CELL=4
+luggage_msgs/CargoMapQueryRequestV2 query
+uint8 mode
+# Cell-state enum from CargoMapCellV2; empty selects all states.
+uint8[] states
+luggage_msgs/CargoMapQueryInstanceV2 instance
+uint32[3] cell_index
+---
+luggage_msgs/CargoMapQueryMetaV2 meta
+luggage_msgs/CargoMapCellV2[] cells
+uint64 count

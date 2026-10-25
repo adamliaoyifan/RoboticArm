@@ -1,0 +1,5 @@
+geometry_msgs/Point point
+string status
+luggage_msgs/CargoMapDistanceMatchV2 occupied
+bool has_unknown
+luggage_msgs/CargoMapDistanceMatchV2 unknown

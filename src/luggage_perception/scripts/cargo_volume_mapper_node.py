@@ -274,6 +274,11 @@ class CargoVolumeMapperNode(Node):
             GetCargoVolumeV2, "/cargo_map/get_volume_v2",
             self._on_volume, callback_group=map_group)
 
+        # Read-only snapshots use the existing reentrant group. They never
+        # take the Store transaction lock or renew a runtime/map lease.
+        from luggage_perception.cargo_map_query_service import MapQueryService
+        self._query_services = MapQueryService(self, self._store, group)
+
         # ST09 F21: identity heartbeat + peer readiness. Map commits (v1
         # and v2) and surface publications are gated; off = legacy.
         self.declare_parameter("frame_runtime", False)

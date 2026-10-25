@@ -10,6 +10,19 @@ find_package(trajectory_msgs REQUIRED)
 find_package(moveit_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/CargoMapQueryIdentityV2.msg"
+  "msg/CargoMapQueryGridV2.msg"
+  "msg/CargoMapQueryRequestV2.msg"
+  "msg/CargoMapQueryMetaV2.msg"
+  "msg/CargoMapQueryInstanceV2.msg"
+  "msg/CargoMapCellV2.msg"
+  "msg/CargoMapDistanceMatchV2.msg"
+  "msg/CargoMapDistancePointV2.msg"
+  "msg/CargoMapSurfaceColumnV2.msg"
+  "srv/GetCargoMapSummaryV2.srv"
+  "srv/QueryCargoCellsV2.srv"
+  "srv/QueryCargoDistanceV2.srv"
+  "srv/GetCargoSurfacePatchV2.srv"
   "msg/AttachmentGeometryV2.msg"
   "msg/FrameIdentityV2.msg"
   "msg/RuntimeArtifactV2.msg"

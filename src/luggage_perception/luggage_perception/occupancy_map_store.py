@@ -385,8 +385,10 @@ class OccupancyMapStore(object):
     def identity(self):
         return self._status_bundle[0].identity
 
-    def acquire_query_snapshot(self, expected_identity=None):
+    def acquire_query_snapshot(self, expected_identity=None, *, token=''):
         """Acquire one published generation without waiting for map writes."""
+        if token:
+            return self._query_registry.resume(token, expected_identity)
         return self._query_registry.open(expected_identity)
 
     def status_bundle(self):
