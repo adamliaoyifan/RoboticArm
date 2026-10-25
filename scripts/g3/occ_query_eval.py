@@ -19,7 +19,8 @@ import time
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE = 'b33dda919521ef043fa9e30b07dcc79c87f76fce'
-SOURCE_PATHS = ('src/luggage_perception', 'src/luggage_description', 'st09_contracts')
+SOURCE_PATHS = ('src/luggage_perception', 'src/luggage_description', 'src/luggage_msgs',
+                'src/luggage_packing', 'src/luggage_planning', 'st09_contracts', 'scripts/g3')
 FIXTURE = Path('src/luggage_perception/test/occ_query_oracle_fixture.py')
 EVIDENCE = ROOT/'docs/status/evidence/occ_owner_b1/occ_query_index_g2_20261025'
 RUN_BYTES = 8*1024**3

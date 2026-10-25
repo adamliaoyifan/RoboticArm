@@ -139,7 +139,7 @@ def main():
             floor_z=m._hull.floor_z, ceiling_z=m._hull.ceiling_z,
             initial_hits=len(points), patch_columns=len(patch_points),
             since_identity=message_to_ordereddict(old), snapshot_ns=snapshots,
-            resources=s._query_registry.resource_summary(),
+            resources=dict(s._query_registry.resource_summary()),
             rss_peak_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
         save(out/'ready.json', manifest)
     module.CargoVolumeMapperNode.__init__ = initialize
@@ -157,6 +157,11 @@ def main():
             captured_ns=time.time_ns(), input='ready.json synthetic setup + request CDR files',
             window='transaction boundary after stopped scoring; heartbeat window in parent trace'))
     signal.signal(signal.SIGUSR1, capture)
+    def stop_spin(_signum, _frame):
+        # SIGINT also shuts rclpy's context, while production main performs
+        # its own shutdown. A private test signal only exits its spin loop.
+        raise KeyboardInterrupt()
+    signal.signal(signal.SIGUSR2, stop_spin)
     try:
         module.main(['--ros-args', '-p', 'scene_tf_config:='+str(Path(a.scene).resolve()),
                      '-p', 'resolution:='+str(a.resolution)])

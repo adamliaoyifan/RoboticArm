@@ -137,7 +137,7 @@ def main():
                 if i >= a.warmup:
                     measured.append(latency_ns/1e6)
             if case not in results:
-                results[case] = summarize(measured, LIMITS_MS[case], a.samples)
+                results[case] = summarize(measured, LIMITS_MS[case])
     finally:
         (out/'result.json').write_text(json.dumps(dict(results=results,
             overall_g2='not_evaluated', samples_requested=a.samples, warmup=a.warmup,

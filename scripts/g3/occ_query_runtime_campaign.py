@@ -16,7 +16,7 @@ import time
 def stop_owner(process):
     if process.poll() is not None:
         return
-    process.send_signal(signal.SIGINT)
+    process.send_signal(signal.SIGUSR2)
     try:
         process.wait(timeout=15)
     except subprocess.TimeoutExpired:
