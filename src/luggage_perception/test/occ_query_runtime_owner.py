@@ -77,6 +77,8 @@ def main():
     save(out/'manifest.json', manifest)
     owner = []
     events = deque(maxlen=100_000)
+    from occ_query_trace_buffer import SnapshotTraceBuffer
+    snapshot_trace=SnapshotTraceBuffer()
     gc_callback = None
     if a.observe_gc:
         import gc
@@ -110,8 +112,7 @@ def main():
             try:
                 return original_open(self, query)
             finally:
-                events.append(dict(stage='snapshot', request_id=query.request_id,
-                    started_ns=begin, elapsed_ns=time.perf_counter_ns()-begin))
+                snapshot_trace.record(query.request_id,begin,time.perf_counter_ns()-begin)
         MapQueryService._open = traced_open
     original_init = module.CargoVolumeMapperNode.__init__
 
@@ -250,10 +251,13 @@ def main():
             import gc
             gc.callbacks.remove(gc_callback)
         manifest.update(ended_ns=time.time_ns(),
+            snapshot_trace_count=snapshot_trace.size,snapshot_trace_dropped=snapshot_trace.dropped,
             rss_peak_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
         save(out/'manifest.json', manifest)
         with (out/'trace.jsonl').open('w') as stream:
             for event in events:
+                stream.write(json.dumps(event)+'\n')
+            for event in snapshot_trace.rows():
                 stream.write(json.dumps(event)+'\n')
 
 
