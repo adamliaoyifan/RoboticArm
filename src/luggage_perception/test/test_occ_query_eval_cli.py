@@ -82,3 +82,23 @@ def test_trace_pair_inputs_are_adjacent_balanced_and_frozen():
         if first[0]>=3:measured_first.append(first[1])
     assert measured_first.count('trace_on')==measured_first.count('trace_off')==15
     assert sequence!=module.paired_sequence(3,30,module.TRACE_PAIR_SEED+1)
+
+
+def test_control_wake_timeout_still_waits_for_owned_process(monkeypatch,tmp_path):
+    import importlib.util
+    path=SCRIPT.with_name('occ_query_runtime_campaign.py')
+    spec=importlib.util.spec_from_file_location('owned_runtime_cleanup',path)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    def timeout(*args,**kwargs):raise subprocess.TimeoutExpired(args[0],10.)
+    monkeypatch.setattr(module.subprocess,'run',timeout)
+    class OwnedProcess:
+        returncode=None
+        signals=[]
+        waited=False
+        def poll(self):return self.returncode
+        def send_signal(self,value):self.signals.append(value)
+        def wait(self,timeout):self.waited=True;self.returncode=0;return 0
+    owner=OwnedProcess()
+    module.stop_owner(owner,wake_script=tmp_path/'wake.py',domain=187,wake_log=tmp_path/'wake.jsonl')
+    assert owner.waited and owner.returncode==0
+    assert 'TimeoutExpired' in (tmp_path/'wake.jsonl').read_text()

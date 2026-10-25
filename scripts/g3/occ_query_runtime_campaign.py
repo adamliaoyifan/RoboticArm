@@ -15,11 +15,15 @@ import time
 
 def wake_owner(script,domain,node,env=None,log=None):
     command=[sys.executable,str(script),'--domain',str(domain),'--node',node]
-    result=subprocess.run(command,env=env,capture_output=True,text=True,timeout=10.)
+    try:
+        result=subprocess.run(command,env=env,capture_output=True,text=True,timeout=10.)
+        observation=dict(exit_code=result.returncode,stderr=result.stderr[-1000:])
+    except (subprocess.TimeoutExpired,OSError) as error:
+        # A broken diagnostic client must never skip owned-process cleanup.
+        observation=dict(exit_code=None,error=repr(error))
     if log is not None:
         with Path(log).open('a') as stream:
-            stream.write(json.dumps(dict(command=command,exit_code=result.returncode,
-                ended_ns=time.time_ns(),stderr=result.stderr[-1000:]))+'\n')
+            stream.write(json.dumps(dict(command=command,ended_ns=time.time_ns(),**observation))+'\n')
 
 
 def stop_owner(process,*,wake_script=None,domain=None,node='cargo_volume_mapper',env=None,wake_log=None):
