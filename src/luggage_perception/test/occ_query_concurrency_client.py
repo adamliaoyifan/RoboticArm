@@ -58,7 +58,7 @@ def main():
     else:
         kinds.update(summary=srv.GetCargoMapSummaryV2,roi=srv.QueryCargoCellsV2,
             distance=srv.QueryCargoDistanceV2,surface=srv.GetCargoSurfacePatchV2)
-    endpoints={'integrate':'integrate_view','stats':'get_stats','summary':'get_stats' if args.baseline else 'get_summary_v2',
+    endpoints={'integrate':'integrate_cargo_view','stats':'get_stats','summary':'get_stats' if args.baseline else 'get_summary_v2',
         'roi':'get_volume_v2' if args.baseline else 'query_cells_v2',
         'distance':'get_volume_v2' if args.baseline else 'query_distance_v2',
         'surface':'get_volume_v2' if args.baseline else 'get_surface_patch_v2'}
