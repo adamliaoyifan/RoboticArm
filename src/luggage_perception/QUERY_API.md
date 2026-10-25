@@ -47,6 +47,10 @@ Writer diagnostics separate `patched_canonical_bytes` (private records
 overwritten in place) from `copied_evidence_bytes` (detached public record
 buffers copied for changed blocks). Both describe derived index work only.
 
+Page expansion converts detached record columns to built-in integer values
+in batches; cell order, sorted box membership and cursor accounting retain
+their existing meaning. No returned record shares writable index storage.
+
 Python reads include summary, cell/ROI/frontier/instance pages, exact
 point-to-voxel-AABB distances, full surface and bounded surface changes.
 Coordinates are `container_link`. Cell ROI intersection has positive volume;

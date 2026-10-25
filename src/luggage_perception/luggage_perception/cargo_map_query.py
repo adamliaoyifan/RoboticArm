@@ -354,9 +354,13 @@ class MapQuerySnapshot:
         flat = block.flat_indices[offsets]
         rows = block.records()[offsets]
         nx, ny, _ = self.grid.shape
-        return [CellRecord(CellKey(self.identity.epoch, int(i % nx), int(i//nx % ny), int(i//(nx*ny))),
-            int(i), int(row['state']), int(row['source']), int(row['label']),
-            int(row['instance']), tuple(boxes)) for i, row, boxes in zip(flat, rows, memberships)]
+        # Convert each column once to built-in ints instead of constructing
+        # structured NumPy scalars and converting their fields for every cell.
+        return [CellRecord(CellKey(self.identity.epoch, i % nx, i//nx % ny, i//(nx*ny)),
+            i, state, source, label, instance, tuple(boxes))
+            for i, state, source, label, instance, boxes in zip(
+                flat.tolist(), rows['state'].tolist(), rows['source'].tolist(),
+                rows['label'].tolist(), rows['instance'].tolist(), memberships)]
 
     def query_cells(self, region=None, states=(0, 1, 2), instance_filter=None, page=None):
         return self._query(region, states, instance_filter, page, frontier=False)
