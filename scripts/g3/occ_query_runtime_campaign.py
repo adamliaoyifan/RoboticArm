@@ -35,7 +35,7 @@ def benchmark(args, common):
         raise RuntimeError('commit all campaign code before freezing')
     if common.git('rev-parse', args.baseline_revision) != common.BASELINE:
         raise RuntimeError('unregistered baseline revision')
-    formal = (not args.rehearsal and not args.profile_distance and args.samples == 30 and args.warmup == 3
+    formal = (not args.rehearsal and not args.profile_distance and not args.observe_gc and args.samples == 30 and args.warmup == 3
         and set(args.resolutions) == {.01, .02, .05} and set(args.boxes) == {0, 5, 20}
         and set(args.shapes) == {'cuboid', 'chamfer'})
     if not formal and not args.rehearsal:
@@ -78,6 +78,8 @@ def benchmark(args, common):
             command.extend(('--trace','--paired-trace'))
             if args.profile_distance:
                 command.append('--profile-distance')
+            if args.observe_gc:
+                command.append('--observe-gc')
             repetition = dict(trace=trace, owner_command=command, phase='startup', started_ns=time.time_ns())
             entry['repetitions'].append(repetition)
             common.write_json(out/'manifest.json', manifest)
@@ -107,7 +109,7 @@ def benchmark(args, common):
                         # Preserve the failed request and a consistent full
                         # boundary map before teardown. No automatic rerun.
                         process.send_signal(signal.SIGUSR1)
-                        deadline = time.monotonic()+20.
+                        deadline = time.monotonic()+45.
                         while not (run/'owner/capture.json').exists() and process.poll() is None and time.monotonic() < deadline:
                             time.sleep(.05)
                         repetition['capture_complete'] = (run/'owner/capture.json').exists()
@@ -115,7 +117,7 @@ def benchmark(args, common):
                     repetition.update(phase='failed', error=repr(error))
                     if process.poll() is None:
                         process.send_signal(signal.SIGUSR1)
-                        deadline = time.monotonic()+20.
+                        deadline = time.monotonic()+45.
                         while not (run/'owner/capture.json').exists() and process.poll() is None and time.monotonic() < deadline:
                             time.sleep(.05)
                     repetition['capture_complete'] = (run/'owner/capture.json').exists()

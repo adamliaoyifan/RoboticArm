@@ -285,6 +285,7 @@ def main():
     p.add_argument('--mode', choices=('all','queries','writes'), default='all')
     p.add_argument('--screen-first', action='store_true', default=True)
     p.add_argument('--profile-distance', action='store_true', help='diagnostic rehearsal only; timing is perturbed')
+    p.add_argument('--observe-gc',action='store_true',help='diagnostic rehearsal only; retain GC phase times')
     p.add_argument('--write-points', type=csv_choices(int, (30000,100000)), default=[30000,100000])
     p.add_argument('--outside-ratios', type=csv_choices(float, (.5,.9)), default=[.5,.9])
     p.add_argument('--crossing-ratios', type=csv_choices(float, (0.,.5)), default=[0.,.5])

@@ -34,6 +34,7 @@ def main():
     p.add_argument('--trace', action='store_true')
     p.add_argument('--paired-trace', action='store_true')
     p.add_argument('--profile-distance', action='store_true')
+    p.add_argument('--observe-gc',action='store_true',help='diagnostic rehearsal only')
     a = p.parse_args()
     if not 100 <= a.domain <= 232:
         p.error('dedicated ROS domain required')
@@ -76,6 +77,14 @@ def main():
     save(out/'manifest.json', manifest)
     owner = []
     events = deque(maxlen=100_000)
+    gc_callback = None
+    if a.observe_gc:
+        import gc
+        def gc_callback(phase,info):
+            events.append(dict(stage='gc_'+phase,monotonic_ns=time.perf_counter_ns(),
+                generation=info['generation'],collected=info.get('collected',0),
+                uncollectable=info.get('uncollectable',0)))
+        gc.callbacks.append(gc_callback)
     if a.profile_distance:
         import cProfile
         import luggage_perception.cargo_distance_query as distance_module
@@ -201,11 +210,14 @@ def main():
             return
         from occ_query_oracle_fixture import primary_arrays
         node = owner[0]
+        begin=time.perf_counter_ns()
         with node._store._txn_lock:
             np.savez_compressed(out/'boundary_map.npz', **primary_arrays(node._mapper))
+            map_saved=time.perf_counter_ns()
             save(out/'boundary_exports.json', dict(v1=node._store.v1_surface_dict(),
                 stats=node._mapper.stats()))
         save(out/'capture.json', dict(capture_complete=True, replay_possible=True,
+            elapsed_ns=time.perf_counter_ns()-begin,map_ns=map_saved-begin,
             captured_ns=time.time_ns(), input='ready.json synthetic setup + request CDR files',
             window='transaction boundary after stopped scoring; heartbeat window in parent trace'))
     signal.signal(signal.SIGUSR1, capture)
@@ -234,6 +246,9 @@ def main():
                 rclpy.shutdown()
             raise
     finally:
+        if gc_callback is not None:
+            import gc
+            gc.callbacks.remove(gc_callback)
         manifest.update(ended_ns=time.time_ns(),
             rss_peak_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
         save(out/'manifest.json', manifest)
