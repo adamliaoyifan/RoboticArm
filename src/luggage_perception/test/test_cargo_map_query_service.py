@@ -188,6 +188,29 @@ def test_positive_distance_leaf_counts_serialize_as_builtin_integers():
     assert not node.errors
 
 
+def test_distance_nested_messages_belong_to_each_point_and_response():
+    s, node, service = boundary()
+    s.mapper.mark_occupied_voxel(1, 1, 1)
+    publish(s)
+    req = request(srv.QueryCargoDistanceV2)
+    req.points = [msg.CargoMapDistancePointV2().point for _ in range(2)]
+    for point in req.points:
+        point.z = .1
+    first = service.distance(req, srv.QueryCargoDistanceV2.Response())
+    second = service.distance(req, srv.QueryCargoDistanceV2.Response())
+    before = serialize_message(second)
+    first.results[0].occupied.cell.semantic_label = 99
+    first.results[0].unknown.cell.geometry_membership = ['changed-locally']
+    assert first.results[1].occupied.cell.semantic_label != 99
+    assert not first.results[1].unknown.cell.geometry_membership
+    assert serialize_message(second) == before
+    req.unknown_policy = 1
+    occupied_only = invoke(service.distance, srv.QueryCargoDistanceV2, req)
+    assert all(not p.has_unknown and not p.unknown.has_cell and not p.unknown.has_distance
+               for p in occupied_only.results)
+    assert not node.errors
+
+
 def test_full_surface_flattening_and_bounded_patch_are_typed():
     s, node, service = boundary()
     old = s.acquire_query_snapshot().identity

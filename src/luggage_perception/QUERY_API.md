@@ -50,6 +50,9 @@ buffers copied for changed blocks). Both describe derived index work only.
 Page expansion converts detached record columns to built-in integer values
 in batches; cell order, sorted box membership and cursor accounting retain
 their existing meaning. No returned record shares writable index storage.
+Distance response assembly fills each point's own generated match/cell
+defaults through public setters; nested objects are never shared across
+points or requests.
 
 Python reads include summary, cell/ROI/frontier/instance pages, exact
 point-to-voxel-AABB distances, full surface and bounded surface changes.

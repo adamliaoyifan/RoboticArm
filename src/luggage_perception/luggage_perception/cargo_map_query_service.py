@@ -185,16 +185,24 @@ class MapQueryService:
         response.count = result.returned_count
         return result
 
-    def _match(self, match):
-        result = self._messages.CargoMapDistanceMatchV2()
+    def _fill_match(self, result, match):
+        """Fill the response-owned default message through public setters.
+
+        A distance point already owns both matches and their cells. Reuse
+        those objects instead of allocating replacements and discarding the
+        defaults. No object is shared between points or responses.
+        """
         result.status, result.exact = match.status, match.exact
         result.has_distance = match.distance_m is not None
         result.distance_m = 0. if match.distance_m is None else match.distance_m
         result.lower_bound_m = match.lower_bound_m
         result.has_cell = match.cell is not None
         if match.cell is not None:
-            result.cell = self._cell(match.cell)
-        return result
+            cell, source = result.cell, match.cell
+            cell.index = [source.key.ix, source.key.iy, source.key.iz]
+            cell.flat_index, cell.state, cell.source = source.flat_index, source.state, source.source
+            cell.semantic_label, cell.sensor_instance_id = source.label, source.instance_id
+            cell.geometry_membership = list(source.geometry_membership)
 
     def distance(self, request, response):
         return self._execute(request, response, self._distance)
@@ -211,10 +219,11 @@ class MapQueryService:
         for point in result.results:
             record = self._messages.CargoMapDistancePointV2()
             set_point(record.point, point.point)
-            record.status, record.occupied = point.status, self._match(point.occupied)
+            record.status = point.status
+            self._fill_match(record.occupied, point.occupied)
             record.has_unknown = point.unknown is not None
             if point.unknown is not None:
-                record.unknown = self._match(point.unknown)
+                self._fill_match(record.unknown, point.unknown)
             records.append(record)
         response.results = records
         return result
