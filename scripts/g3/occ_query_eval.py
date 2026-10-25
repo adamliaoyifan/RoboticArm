@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OCC G2 evidence runner. Oracle/replay stage; runtime campaigns follow.
+"""OCC G2 isolated evidence runner; no motion or shared-install mutation.
 
 Every run gets new immutable source archives and a new evidence directory.
 A small-grid oracle pass is never reported as an overall G2 pass.
@@ -214,6 +214,21 @@ def main():
     p.add_argument('--rehearsal', action='store_true')
     p.add_argument('--out', required=True)
     p.set_defaults(run=oracle)
+    p = commands.add_parser('benchmark', help='installed no-motion query timing/resource matrix')
+    p.add_argument('--install', required=True)
+    p.add_argument('--domain', type=int, default=184)
+    p.add_argument('--samples', type=int, default=30)
+    p.add_argument('--warmup', type=int, default=3)
+    p.add_argument('--resolutions', type=csv_choices(float, (.01, .02, .05)), default=[.01, .02, .05])
+    p.add_argument('--boxes', type=csv_choices(int, (0, 5, 20)), default=[0, 5, 20])
+    p.add_argument('--shapes', type=csv_choices(str, ('cuboid', 'chamfer')), default=['cuboid', 'chamfer'])
+    p.add_argument('--baseline-revision', default=BASELINE)
+    p.add_argument('--rehearsal', action='store_true')
+    p.add_argument('--out', required=True)
+    def run_benchmark(args):
+        from occ_query_runtime_campaign import benchmark
+        return benchmark(args, sys.modules[__name__])
+    p.set_defaults(run=run_benchmark)
     p = commands.add_parser('replay', help='capture an oracle mismatch from frozen sources')
     p.add_argument('--bundle', required=True)
     p.add_argument('--out')
@@ -222,6 +237,8 @@ def main():
     if args.command == 'oracle' and (args.seed_start < 0 or args.seeds < 1
             or args.transactions < 1 or args.distance_points < 0):
         parser.error('invalid sample counts')
+    if args.command == 'benchmark' and (not 100 <= args.domain <= 232 or args.samples < 1 or args.warmup < 0):
+        parser.error('invalid runtime domain/sample counts')
     return args.run(args)
 
 
