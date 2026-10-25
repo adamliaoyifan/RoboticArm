@@ -17,6 +17,13 @@ maintenance give identical roots. Schema 1 pinned requests are rejected rather
 than interpreted as schema 2. The legacy content_digest and old ROS APIs stay
 unchanged.
 
+Legacy content hashing still feeds exactly `repr(part)` as UTF-8 followed by
+NUL into SHA256, in the same field order. `occupancy_content_digest` streams
+the large columns tuple in 512-record chunks, including exact empty/singleton
+tuple syntax. It changes temporary allocation only: heights retain their old
+digest rounding, surface heights retain full precision, and neither the
+legacy identity recipe nor map commit semantics change. GC policy is untouched.
+
 Canonical full-evidence buffers and leaf hashes belong only to the index
 writer and are charged to its memory budget. Immutable read generations
 retain only detached public records, memberships and roots. Updating a

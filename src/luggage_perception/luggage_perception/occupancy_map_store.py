@@ -66,6 +66,10 @@ from luggage_perception.cargo_view_integration import (
 )
 from luggage_perception.cargo_volume_mapper import verify_anchor_delta_m
 from luggage_perception.occupancy_confirmation import PendingConfirmation
+from luggage_perception.occupancy_content_digest import (
+    content_digest as _content_digest,
+    norm_height as _norm_height,
+)
 
 
 #: Server-side ceiling on caller-supplied verify tolerances (moved from the
@@ -101,13 +105,6 @@ def _digest_of(*parts):
     """Lazy st09_contracts digest (same availability as the planning side)."""
     from st09_contracts._base import digest_of
     return digest_of(*parts)
-
-
-def _norm_height(value):
-    """Height digest input: quantized, -0.0 collapsed, None preserved."""
-    if value is None:
-        return None
-    return round(float(value), 6) + 0.0
 
 
 _JSON_DICT = "\x00dict"
@@ -1141,33 +1138,3 @@ def _freeze_flat(values):
     if values is None:
         return ()
     return tuple(values)
-
-
-def _content_digest(snapshot):
-    """Digest over planning-relevant content AND confirmation state.
-
-    Excludes revision/epoch/stamps/request ids/commit order: identical
-    content re-observed keeps the digest (routes survive re-observation)
-    and two disjoint commits landing in either order converge, while any
-    column state/confidence/height change, ledger geometry change, or
-    confirmation transition changes it. Provenance fields
-    (measured_source, verify_anchor) are excluded — same geometry is the
-    same planning content.
-    """
-    columns = tuple(
-        (snapshot.state[ix][iy],
-         snapshot.confidence[ix][iy],
-         _norm_height(snapshot.height[ix][iy]))
-        for ix in range(snapshot.nx) for iy in range(snapshot.ny))
-    ledger_geometry = tuple(sorted(
-        (center, size, yaw)
-        for center, size, yaw, _source, _anchor in snapshot.ledger))
-    confirmation = (
-        snapshot.occupancy_confirmed,
-        snapshot.change_event,
-        snapshot.pending_changes,
-    )
-    return _digest_of(
-        snapshot.geometry_hash, snapshot.nx, snapshot.ny,
-        snapshot.resolution, snapshot.inner_size,
-        columns, ledger_geometry, confirmation)
