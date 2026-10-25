@@ -82,6 +82,25 @@ def main():
     gc_callback = None
     if a.observe_gc:
         import gc
+        import luggage_perception.cargo_distance_query as distance_module
+        # Diagnostic only: join collection pauses to the actual pure-query
+        # interval, rather than attributing an entire ROS roundtrip to GC.
+        original_distance = distance_module.read_nearest
+
+        def observe_distance(handle, data, points, *args, _original=original_distance, **kwargs):
+            begin = time.perf_counter_ns()
+            events.append(dict(stage='distance_query_begin', monotonic_ns=begin,
+                               point_count=len(points)))
+            result = None
+            try:
+                result = _original(handle, data, points, *args, **kwargs)
+                return result
+            finally:
+                events.append(dict(stage='distance_query_end', monotonic_ns=time.perf_counter_ns(),
+                                   begin_ns=begin, point_count=len(points),
+                                   pure_elapsed_ns=result.elapsed_ns if result is not None else None))
+
+        distance_module.read_nearest = observe_distance
         def gc_callback(phase,info):
             events.append(dict(stage='gc_'+phase,monotonic_ns=time.perf_counter_ns(),
                 generation=info['generation'],collected=info.get('collected',0),
