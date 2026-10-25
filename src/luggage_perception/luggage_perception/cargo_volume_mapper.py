@@ -885,7 +885,33 @@ class CargoVolumeMapper:
         }
 
     def stats(self):
-        return dict(self.occupancy_summary(), frontier_count=len(self._frontier_indices()))
+        return dict(self.occupancy_summary(), frontier_count=self.frontier_count())
+
+    def frontier_count(self):
+        """Count of unknown active cells with an observed 6-neighbour.
+
+        Vectorized twin of ``_frontier_indices`` (same predicate, count
+        only; oracle-tested equal). The pure-Python triple loop this
+        replaces took ~6.5 s per call on the 1cm grid (4.2M voxels) and,
+        by holding the GIL for that span, delayed this process's
+        identity-heartbeat RECEPTION past the 2 s readiness lease --
+        the PEER_LEASE_EXPIRED admission blockage (ADMISSION-DIAG
+        2026-10-25, evidence placement_structural_g3_20261024/sim).
+        """
+        import numpy as np
+        from .cargo_grid_projection import _arrays
+        grid, active = _arrays(self)
+        observed = (grid == FREE) | (grid == OCCUPIED)
+        unknown = (grid == UNKNOWN) & active
+        padded = np.pad(observed, 1, constant_values=False)
+        neighbour_observed = np.zeros(observed.shape, dtype=bool)
+        neighbour_observed |= padded[:-2, 1:-1, 1:-1]
+        neighbour_observed |= padded[2:, 1:-1, 1:-1]
+        neighbour_observed |= padded[1:-1, :-2, 1:-1]
+        neighbour_observed |= padded[1:-1, 2:, 1:-1]
+        neighbour_observed |= padded[1:-1, 1:-1, :-2]
+        neighbour_observed |= padded[1:-1, 1:-1, 2:]
+        return int(np.count_nonzero(unknown & neighbour_observed))
 
     def _frontier_indices(self):
         frontier = []
