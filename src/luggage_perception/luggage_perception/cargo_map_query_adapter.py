@@ -47,6 +47,11 @@ class QuerySnapshotRegistry:
                     if id(block) not in seen:
                         size += block.byte_size()
                         seen.add(id(block))
+                if generation.surface_projection is not None:
+                    for tile in generation.surface_projection.tiles:
+                        if id(tile) not in seen:
+                            size += 1024 + sum(a.nbytes for a in tile.fields.values())
+                            seen.add(id(tile))
             self._requested_bytes = size
             if size > MAX_RETAINED_BYTES:
                 self._error = 'RESOURCE_LIMIT'
@@ -109,6 +114,25 @@ class QuerySnapshotRegistry:
                 if data.identity == identity:
                     return data
             raise QueryError('SNAPSHOT_EXPIRED')
+
+    def lookup_since(self, current_identity, since_identity):
+        """Resolve a retained predecessor without substituting CURRENT."""
+        with self._lock:
+            try:
+                wanted = tuple(since_identity)
+            except TypeError:
+                raise QueryError('SNAPSHOT_IDENTITY_MISMATCH') from None
+            if len(wanted) != 5 or wanted[0] != current_identity.epoch:
+                raise QueryError('SNAPSHOT_IDENTITY_MISMATCH')
+            current_index = next((i for i, d in enumerate(self._generations)
+                                  if d.identity == current_identity), None)
+            previous_index = next((i for i, d in enumerate(self._generations)
+                                   if tuple(d.identity) == wanted), None)
+            if current_index is None or previous_index is None:
+                raise QueryError('SNAPSHOT_EXPIRED')
+            if previous_index < current_index:
+                raise QueryError('SNAPSHOT_IDENTITY_MISMATCH')
+            return self._generations[previous_index]
 
     def close(self, snapshot):
         with self._lock:

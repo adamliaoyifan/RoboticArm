@@ -140,6 +140,39 @@ class MapSummary(QueryResult):
 
 
 @dataclass(frozen=True)
+class SurfaceResult(QueryResult):
+    origin_index_xy: tuple = (0, 0)
+    shape_xy: tuple = (0, 0)
+    columns: object = None
+    floor_z_container: float = 0.
+    ceiling_z_container: float = 0.
+
+    def as_dict(self):
+        return {name: [list(row) for row in values] for name, values in self.columns.items()}
+
+
+@dataclass(frozen=True)
+class SurfaceColumn:
+    ix: int
+    iy: int
+    height: float
+    clearance: float
+    state: str
+    known_ratio: float
+    confidence: str
+    semantic_label: int
+    surface_z_container: object
+    height_above_floor: object
+    contract_confidence: str
+
+
+@dataclass(frozen=True)
+class SurfacePatchResult(QueryResult):
+    since_identity: object = None
+    patches: tuple = ()
+
+
+@dataclass(frozen=True)
 class VoxelBlock:
     block_id: int
     start: tuple
@@ -179,6 +212,7 @@ class QuerySnapshotData:
     cursor_secret: bytes = field(repr=False)
     owner_evidence_bytes: int = 0
     unbound_geometry_count: int = 0
+    surface_projection: object = None
 
 
 def normalize_region(region):
@@ -274,6 +308,16 @@ class MapQuerySnapshot:
 
     def query_instance(self, instance_key, region=None, page=None):
         return self._query(region, (2,), instance_key, page, frontier=False)
+
+    def surface(self, region=None):
+        from luggage_perception.cargo_surface_projection import read_surface
+        return read_surface(self, self._data(), region)
+
+    def surface_changes(self, since_identity, region=None, page=None):
+        from luggage_perception.cargo_surface_projection import read_surface_changes
+        data = self._data()
+        previous = self._provider.lookup_since(self.identity, since_identity)
+        return read_surface_changes(self, data, previous, region, page)
 
     def _instance(self, data, instance):
         if instance is None:

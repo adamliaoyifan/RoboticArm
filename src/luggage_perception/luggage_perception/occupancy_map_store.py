@@ -723,6 +723,10 @@ class OccupancyMapStore(object):
             # [B2] Removals confirm by positive free evidence: every
             # footprint column observed free (miss raycasts) by THIS
             # integration. Occluded columns keep the record pending.
+            # The read projection must include this integration before the
+            # existing positive-free confirmation test. No query generation
+            # is published until all confirmation transitions finish.
+            self._refresh_query_indexes(update, details)
             freed = self._pending.settle_observed_free(
                 self._mapper.surface_map_2d())
             details.update({
@@ -981,7 +985,7 @@ class OccupancyMapStore(object):
     # ------------------------------------------------------------------
     # Snapshot construction + digest
 
-    def _build_snapshot(self, update=None, details=None):
+    def _refresh_query_indexes(self, update=None, details=None):
         # A derived-index failure cannot erase or reject an already-applied
         # physical fact. Publish the ordinary map, explicitly close queries,
         # and allow only an explicit reset to rebuild the failed index.
@@ -998,6 +1002,11 @@ class OccupancyMapStore(object):
             logging.getLogger(__name__).exception("QUERY_INDEX_UNAVAILABLE")
             self._query_indexes = None
         self._mapper._voxel_delta = VoxelDeltaBuilder(self._mapper)
+        self._mapper._surface_cache = (self._query_indexes.surface_projection()
+                                       if self._query_indexes is not None else None)
+
+    def _build_snapshot(self, update=None, details=None):
+        self._refresh_query_indexes(update, details)
         base = self._mapper.surface_map_2d()
         contract = self._mapper.surface_contract_v2("snap", "snap", projection=base)
         fields = self._pending.surface_fields()

@@ -155,6 +155,7 @@ class CargoVolumeMapper:
         self._voxel_delta = None
         self._query_cache = None
         self._query_read_owner = None
+        self._surface_cache = None
         self._active = None
         self._grid = None
         self._occupancy = None
@@ -211,6 +212,7 @@ class CargoVolumeMapper:
         """Read-only evidence notification; never changes mutation order."""
         self._query_cache = None
         self._query_read_owner = None
+        self._surface_cache = None
         if self._voxel_delta is not None:
             self._voxel_delta.record_before(indices)
 
@@ -218,6 +220,7 @@ class CargoVolumeMapper:
         """Clear voxel state without changing the commit revision."""
         self._query_cache = None
         self._query_read_owner = None
+        self._surface_cache = None
         if self._voxel_delta is not None:
             self._voxel_delta.record_reset()
         total = self.nx * self.ny * self.nz
@@ -1011,7 +1014,8 @@ class CargoVolumeMapper:
         """
         half_l = self.inner_l * 0.5
         half_w = self.inner_w * 0.5
-        columns = surface_columns(self)
+        columns = (self._surface_cache.as_dict() if self._surface_cache is not None
+                   else surface_columns(self))
 
         return {
             "frame": "container_local",

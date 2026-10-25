@@ -14,6 +14,7 @@ import numpy as np
 
 from luggage_perception.cargo_grid_projection import occupancy_counts
 from luggage_perception.cargo_voxel_delta import EVIDENCE_DTYPE, capture_evidence, immutable_array
+from luggage_perception.cargo_surface_projection import IncrementalSurfaceProjection
 from luggage_perception.cargo_map_query import (
     BLOCK_EDGE, CELL_DTYPE, GridInfo, QueryIdentity, QuerySnapshotData, VoxelBlock,
 )
@@ -87,6 +88,7 @@ class QueryIndexOwner:
         self._ambiguous_box_ids = set()
         self._sensor_blocks = {}
         self._cursor_secret = secrets.token_bytes(32)
+        self._surface = IncrementalSurfaceProjection()
 
     @property
     def work(self):
@@ -114,6 +116,7 @@ class QueryIndexOwner:
         self._last_work = MappingProxyType({'rebuild': True,
             'frontier_evaluated': grid.size, 'changed_cells': grid.size})
         self._initialize_blocks(mapper)
+        self._surface.initialize(mapper)
 
     def reset(self, mapper):
         self.initialize(mapper)
@@ -159,6 +162,16 @@ class QueryIndexOwner:
             'frontier_evaluated': len(candidates), 'changed_cells': len(indices)})
         self._apply_bindings(mapper, delta, update, committed_now)
         self._update_blocks(mapper, delta, candidates)
+        relevant = ((old['state'] != new['state']) | (old['source'] != new['source'])
+                    | (old['label'] != new['label']))
+        columns = np.unique(indices[relevant] % (mapper.nx*mapper.ny))
+        self._surface.update_columns(mapper, columns)
+
+    def surface_projection(self):
+        return self._surface.freeze()
+
+    def surface_work(self):
+        return self._surface.work
 
     def _initialize_blocks(self, mapper):
         self._bindings = {}
@@ -313,7 +326,8 @@ class QueryIndexOwner:
             MappingProxyType({k: self._box_blocks.get(k, ()) for k in self._known_box_ids
                               if k not in self._ambiguous_box_ids}), summary.values, query_map,
             self._cursor_secret, owner_evidence_bytes=sum(len(b) for b in self._fact_blocks),
-            unbound_geometry_count=len(mapper._placed_boxes)-len(self._box_blocks))
+            unbound_geometry_count=len(mapper._placed_boxes)-len(self._box_blocks),
+            surface_projection=self._surface.freeze())
 
     def freeze(self, mapper, identity):
         unknown, free, occupied = (int(v) for v in self._counts)

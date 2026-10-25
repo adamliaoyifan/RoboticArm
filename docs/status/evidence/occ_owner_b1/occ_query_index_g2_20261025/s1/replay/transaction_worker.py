@@ -13,6 +13,8 @@ def main():
     parser.add_argument('--out', required=True)
     parser.add_argument('--seeds', type=int, default=20)
     parser.add_argument('--transactions', type=int, default=500)
+    parser.add_argument('--include-surfaces', action='store_true',
+                        help='Preserve exact old v1/v2/mapper exports (epoch normalized).')
     args = parser.parse_args()
     root = Path(args.root).resolve()
     sys.path[:0] = [str(root), str(root/'src/luggage_perception'), str(root/'src/luggage_description')]
@@ -58,10 +60,19 @@ def main():
                 digest.update(repr(mapper._occupancy.geometry_locked).encode())
                 # Reset epoch is intentionally random in both implementations;
                 # compare semantic digest/revision, not independently created UUIDs.
-                stream.write(json.dumps(dict(seed=seed, transaction=transaction, choice=choice,
+                row = dict(seed=seed, transaction=transaction, choice=choice,
                     status=result.status.value, reason=result.reason,
                     revision=mapper.map_revision, content_digest=result.snapshot.identity.content_digest,
-                    facts=digest.hexdigest(), stats=mapper.stats()), sort_keys=True)+'\n')
+                    facts=digest.hexdigest(), stats=mapper.stats())
+                if args.include_surfaces:
+                    surfaces = dict(mapper=mapper.surface_map_2d(), v1=store.v1_surface_dict(),
+                                    v2=store.v2_record('fixed-scene', 'fixed-request'))
+                    # Random reset epoch is the only nondeterministic leg.
+                    for value in surfaces.values():
+                        if 'epoch' in value:
+                            value['epoch'] = 'normalized-reset-epoch'
+                    row['surfaces'] = surfaces
+                stream.write(json.dumps(row, sort_keys=True)+'\n')
 
 
 if __name__ == '__main__':
