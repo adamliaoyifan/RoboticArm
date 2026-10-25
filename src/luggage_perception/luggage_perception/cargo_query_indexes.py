@@ -276,16 +276,28 @@ class QueryIndexOwner:
         dirty.update(self._geometry_dirty_blocks)
         blocks = list(self._blocks)
         fact_blocks = list(self._fact_blocks)
+        # Partition the delta once. Re-scanning all D indices for each
+        # dirty block made maintenance O(D * dirty_blocks).
+        selected_by_block = {}
+        if len(ids):
+            order = np.argsort(ids,kind='stable')
+            unique,starts = np.unique(ids[order],return_index=True)
+            selected_by_block = dict(zip((int(v) for v in unique),np.split(order,starts[1:])))
         copied = 0
         for bid in sorted(dirty):
             old = blocks[bid]
-            selected = np.flatnonzero(ids == bid)
+            selected = selected_by_block.get(bid,())
             facts = fact_blocks[bid]
             if len(selected):
-                records = np.frombuffer(facts, dtype=EVIDENCE_DTYPE).copy()
+                # Copy whole canonical records as opaque bytes. Structured
+                # assignment otherwise copies each field separately; exact
+                # record bytes (including float bit patterns) are preserved.
+                mutable = bytearray(facts)
+                record_bytes = np.dtype(('V',EVIDENCE_DTYPE.itemsize))
+                records = np.frombuffer(mutable,dtype=record_bytes)
                 offsets = np.searchsorted(old.flat_indices, delta.indices[selected])
-                records[offsets] = delta.after[selected]
-                facts = records.tobytes()
+                records[offsets] = delta.after.view(record_bytes)[selected]
+                facts = bytes(mutable)
                 fact_blocks[bid] = facts
                 copied += len(facts)
             block = _freeze_block(bid, old.start, old.shape, old.flat_indices, facts,

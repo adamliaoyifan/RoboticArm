@@ -33,10 +33,12 @@ def capture_evidence(mapper, indices):
     ):
         records[field] = np.frombuffer(data, dtype=dtype)[indices]
     # Primary evidence deliberately remains in its legacy Python lists.
+    # Gather only the touched entries. Built-in list getters avoid a Python
+    # generator frame per entry without copying/scanning the primary lists.
     records['logodds'] = np.fromiter(
-        (mapper._occupancy.values[int(i)] for i in indices), float, len(indices))
+        map(mapper._occupancy.values.__getitem__,indices),float,len(indices))
     records['locked'] = np.fromiter(
-        (mapper._occupancy.geometry_locked[int(i)] for i in indices), bool, len(indices))
+        map(mapper._occupancy.geometry_locked.__getitem__,indices),bool,len(indices))
     return records
 
 
