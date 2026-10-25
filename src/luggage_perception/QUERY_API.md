@@ -59,3 +59,5 @@ for nullable v2 heights; invalid wire heights are canonical zero and cannot be
 treated as support. Patch records have global XY indices and a retained,
 same-epoch `since_identity`. Both nominal legacy fields and v2 datum fields
 are read from the same frozen publication.
+
+Distance batches reuse decoded target membership and cell volumes within the request. Initial membership scans and each point/volume test count against the same fixed work cap. The temporary cache expires with the request; it creates no retained distance field or writer work.

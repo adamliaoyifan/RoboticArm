@@ -223,3 +223,26 @@ def test_containing_unknown_fast_path_and_closed_plane_ties():
                 assert match.status == expected[0]
                 assert abs(match.distance_m-expected[1]) <= 1e-9
                 assert match.cell.flat_index == expected[2]
+
+
+def test_sparse_batch_decodes_each_block_once_without_changing_work_cap():
+    s = store(.01, .30)
+    # Sparse targets distributed across all eight blocks. Repeated membership
+    # scans previously exhausted the default cap before completing 250 points.
+    for z in (4, 24):
+        for y in (4, 24):
+            for x in (4, 24):
+                s.mapper.mark_occupied_voxel(x, y, z)
+    publish(s)
+    points = np.random.default_rng(2).uniform([-.149, -.149, .001], [.149, .149, .299], (250, 3))
+    with s.acquire_query_snapshot() as snapshot:
+        result = snapshot.nearest_obstacles(points, .3)
+        assert result.complete
+        assert result.examined_cells < 50_000
+        for point, item in zip(points, result.results):
+            expected = brute(s.mapper, point, 2, .3)
+            assert abs(item.occupied.distance_m-expected[1]) <= 1e-9
+            assert item.occupied.cell.flat_index == expected[2]
+        bounded = snapshot.nearest_obstacles(points, .3,
+            budget=DistanceBudget(max_examined_cells=10))
+        assert not bounded.complete and bounded.examined_cells <= 10

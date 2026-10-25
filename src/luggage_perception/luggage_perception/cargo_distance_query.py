@@ -93,7 +93,7 @@ def _zero_match(handle, data, point, state, work):
     return None
 
 
-def _nearest(handle, data, point, state, radius, work, counts, lower_squared):
+def _nearest(handle, data, point, state, radius, work, counts, lower_squared, volumes):
     candidates = np.flatnonzero(counts[:, state] > 0)
     if not len(candidates):
         return DistanceMatch('NO_MATCH', True)
@@ -115,18 +115,30 @@ def _nearest(handle, data, point, state, radius, work, counts, lower_squared):
         if lower > best_squared:
             break
         block = data.blocks[block_id]
-        if not work.admits(len(block.flat_indices)):
+        key = (block_id, state)
+        cached = volumes.get(key)
+        # A batch visits the same immutable blocks for many points. Decode
+        # their state membership and cell volumes once, without retaining a
+        # distance field or transferring any work to the map writer. Charge
+        # both the initial membership scan and every point/volume test.
+        examined = int(counts[block_id, state])
+        if cached is None:
+            examined += len(block.flat_indices)
+        if not work.admits(examined):
             return DistanceMatch('QUERY_BUDGET_EXHAUSTED', False,
                                  lower_bound_m=math.sqrt(min(lower, best_squared)))
-        work.cells += len(block.flat_indices)
+        work.cells += examined
         work.blocks += 1
-        records = block.records()
-        offsets = np.flatnonzero((records['state'] == state)
-                                & np.frombuffer(block.active, 'u1').astype(bool))
-        flat = block.flat_indices[offsets]
-        coordinates = np.column_stack((flat % nx, flat//nx % ny, flat//(nx*ny)))
-        low = origin+coordinates*r
-        high = origin+(coordinates+1)*r
+        if cached is None:
+            records = block.records()
+            offsets = np.flatnonzero((records['state'] == state)
+                                    & np.frombuffer(block.active, 'u1').astype(bool))
+            flat = block.flat_indices[offsets]
+            coordinates = np.column_stack((flat % nx, flat//nx % ny, flat//(nx*ny)))
+            low = origin+coordinates*r
+            high = origin+(coordinates+1)*r
+            cached = volumes[key] = (offsets, low, high)
+        offsets, low, high = cached
         displacement = np.maximum(np.maximum(low-point, point-high), 0.)
         squared = np.einsum('ij,ij->i', displacement, displacement)
         minimum = float(squared.min())
@@ -174,6 +186,7 @@ def read_nearest(handle, data, points, radius, unknown_policy, budget):
     origin = np.asarray(data.grid.origin)
     upper = origin+np.asarray(data.grid.shape)*data.grid.resolution
     results = []
+    volumes = {}
     for point in points:
         status = ''
         if np.any(point < origin) or np.any(point >= upper):
@@ -188,8 +201,8 @@ def read_nearest(handle, data, points, radius, unknown_policy, budget):
         delta = np.maximum(np.maximum(data.distance_index.lower-point,
                                       point-data.distance_index.upper), 0.)
         lower_squared = np.einsum('ij,ij->i', delta, delta)
-        occupied = _nearest(handle, data, point, 2, radius, work, counts, lower_squared)
-        unknown = (_nearest(handle, data, point, 0, radius, work, counts, lower_squared)
+        occupied = _nearest(handle, data, point, 2, radius, work, counts, lower_squared, volumes)
+        unknown = (_nearest(handle, data, point, 0, radius, work, counts, lower_squared, volumes)
                    if unknown_policy == 'separate' else None)
         status = ('QUERY_BUDGET_EXHAUSTED'
                   if any(m is not None and m.status == 'QUERY_BUDGET_EXHAUSTED'
