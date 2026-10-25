@@ -68,7 +68,8 @@ def main():
     points=rng.uniform([-.70,-.80,ready['floor_z']+.40],[.70,.40,ready['ceiling_z']-.01],(256,3))
     np.save(out/'cloud.npy',cloud);np.save(out/'distance_points.npy',points)
     current=dict(revision=ready['map_revision'],epoch=ready['epoch'],content_digest=ready['content_digest'])
-    pending=[];write_queue=deque();wire_ring=deque();rows=[];counts={k:0 for k in RATES}
+    pending=[];write_queue=deque();wire_ring=deque();sent_ring=deque();sent_trace=[]
+    rows=[];counts={k:0 for k in RATES}
     failure=None;phase='startup';first_failure=None;scored_start=None;ended_scoring=None
     def fail(code,**values):
         nonlocal failure,first_failure
@@ -77,6 +78,11 @@ def main():
     def send(case,request,scheduled,sequence):
         begin=time.monotonic()
         wire=serialize_message(request)
+        sent_ring.append((begin,case,sequence,wire))
+        sent_trace.append(dict(case=case,sequence=sequence,phase=phase,scheduled=scheduled,
+            begin=begin,request_sha256=hashlib.sha256(wire).hexdigest()))
+        cutoff=(first_failure if first_failure is not None else begin)-10.
+        while sent_ring and sent_ring[0][0]<cutoff:sent_ring.popleft()
         future=clients[case].call_async(request)
         pending.append(dict(case=case,sequence=sequence,scheduled=scheduled,begin=begin,future=future,request=wire))
     def request_read(case,scheduled,sequence):
@@ -157,7 +163,8 @@ def main():
             rows.append(row)
             payload=serialize_message(response)
             wire_ring.append((time.monotonic(),case,item['sequence'],item['request'],payload))
-            while wire_ring and wire_ring[0][0]<time.monotonic()-15.:wire_ring.popleft()
+            cutoff=(first_failure if first_failure is not None else time.monotonic())-10.
+            while wire_ring and wire_ring[0][0]<cutoff:wire_ring.popleft()
             if status!='OK':fail('REQUEST_REFUSED',case=case,status=status)
             if phase=='scoring' and case in LIMITS_MS and pure>LIMITS_MS[case][1]:
                 fail('QUERY_MAX',case=case,latency_ms=pure,limit_ms=LIMITS_MS[case][1])
@@ -220,15 +227,23 @@ def main():
         fail('FIXTURE_OR_STARTUP_ERROR',error=repr(error))
         result=dict(outcome='fail',first_failure=failure,capture_complete=False)
     finally:
-        for name,values in [('heartbeat',heartbeat),('requests',rows)]:
+        for name,values in [('heartbeat',heartbeat),('requests',rows),('requests_sent',sent_trace)]:
             with (out/(name+'.jsonl')).open('w') as stream:
                 for row in values:stream.write(json.dumps(row)+'\n')
         if failure:
             capture=out/'failure_wire';capture.mkdir()
+            for _,case,sequence,request in sent_ring:
+                (capture/(case+'-'+str(sequence)+'.request.cdr')).write_bytes(request)
             for _,case,sequence,request,response in wire_ring:
                 (capture/(case+'-'+str(sequence)+'.request.cdr')).write_bytes(request)
                 (capture/(case+'-'+str(sequence)+'.response.cdr')).write_bytes(response)
-        result.update(capture_complete=True,replay_possible=True,overall_g2='not_evaluated',
+        queued=[dict(scheduled=p['scheduled'],sequence=p['sequence'],
+            stamp=[p['stamp'].sec,p['stamp'].nanosec]) for p in write_queue]
+        (out/'unsent_writes.json').write_text(json.dumps(queued,indent=2)+'\n')
+        capture_complete=all((out/name).is_file() for name in ('cloud.npy','distance_points.npy',
+            'heartbeat.jsonl','requests.jsonl','requests_sent.jsonl','unsent_writes.json'))
+        result.update(capture_complete=capture_complete,replay_possible=capture_complete,overall_g2='not_evaluated',
+            window='10s pre/5s post for scored failures; startup failures contain no scored unit',
             raw_points=30000,rates=RATES,baseline_adapter=args.baseline,
             input_sha256=hashlib.sha256(cloud.tobytes()).hexdigest())
         (out/'result.json').write_text(json.dumps(result,indent=2,sort_keys=True)+'\n')
