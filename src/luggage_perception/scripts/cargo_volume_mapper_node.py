@@ -25,7 +25,10 @@ from __future__ import division
 
 import json
 import math
+import os
+import sys
 import threading
+import time
 from collections import OrderedDict
 
 import numpy as np
@@ -692,7 +695,18 @@ class CargoVolumeMapperNode(Node):
         return response
 
     def _on_stats(self, _request, response):
+        # [ADMISSION-DIAG 2026-10-25, env-gated] recv/compute-end times on
+        # this process's monotonic clock. Zero effect unless
+        # ELFIN_MAP_STATS_TRACE is set.
+        _trace = bool(os.environ.get("ELFIN_MAP_STATS_TRACE"))
+        _t_recv = time.monotonic() if _trace else None
         stats = self._mapper.stats()
+        if _trace:
+            print("[map-stats-trace] recv=%.6f compute_end=%.6f "
+                  "compute_s=%.6f" % (
+                      _t_recv, time.monotonic(),
+                      time.monotonic() - _t_recv), file=sys.stderr,
+                  flush=True)
         snapshot = self._store.snapshot()
         response.success = True
         response.unknown_ratio = float(stats["unknown_ratio"])
