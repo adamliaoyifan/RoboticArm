@@ -6,6 +6,7 @@ is a separate target class; occupied_only does not certify unknown as free.
 """
 from dataclasses import dataclass
 import heapq
+import itertools
 import math
 import time
 
@@ -13,7 +14,7 @@ import numpy as np
 
 from luggage_description.container_geometry import contains_point
 from luggage_perception.cargo_map_query import (
-    DistanceBatch, DistanceMatch, DistancePoint, QueryError,
+    BLOCK_EDGE, DistanceBatch, DistanceMatch, DistancePoint, QueryError,
 )
 from luggage_perception.cargo_voxel_delta import immutable_array
 
@@ -59,10 +60,46 @@ class _Work:
                 and time.perf_counter_ns() < self.deadline)
 
 
+def _zero_match(handle, data, point, state, work):
+    """Prove distance zero without scanning a whole containing block.
+
+    Test closed cell volumes, including neighboring cells on exact grid
+    planes. The +/-1 bracket handles division rounding; the final predicate
+    uses the same AABB arithmetic as branch-and-bound. Ascending flat IDs
+    preserve ties even where a point belongs to up to eight closed volumes.
+    """
+    grid = data.grid
+    choices = []
+    for coordinate, origin, extent in zip(point, grid.origin, grid.shape):
+        base = math.floor((coordinate-origin)/grid.resolution)
+        choices.append(tuple(i for i in (base-1, base, base+1)
+            if 0 <= i < extent and origin+i*grid.resolution <= coordinate
+            <= origin+(i+1)*grid.resolution))
+    nx, ny, _ = grid.shape
+    bx, by = ((n+BLOCK_EDGE-1)//BLOCK_EDGE for n in grid.shape[:2])
+    candidates = sorted((x+nx*(y+ny*z), x, y, z)
+                        for x, y, z in itertools.product(*choices))
+    for flat, x, y, z in candidates:
+        block = data.blocks[x//BLOCK_EDGE+bx*(y//BLOCK_EDGE+by*(z//BLOCK_EDGE))]
+        if block.state_counts[state] == 0:
+            continue
+        if not work.admits(1):
+            return DistanceMatch('QUERY_BUDGET_EXHAUSTED', False)
+        work.cells += 1
+        work.blocks += 1
+        offset = int(np.searchsorted(block.flat_indices, flat))
+        if block.active[offset] and block.records()['state'][offset] == state:
+            return DistanceMatch('MATCH', True, 0., 0., handle._cell_record(block, offset))
+    return None
+
+
 def _nearest(handle, data, point, state, radius, work, counts, lower_squared):
     candidates = np.flatnonzero(counts[:, state] > 0)
     if not len(candidates):
         return DistanceMatch('NO_MATCH', True)
+    zero = _zero_match(handle, data, point, state, work)
+    if zero is not None:
+        return zero
     # Heap tuples include block ID to keep traversal deterministic. Equal
     # lower bounds must be visited: another block may contain a smaller flat ID.
     candidates = candidates[lower_squared[candidates] <= radius*radius]

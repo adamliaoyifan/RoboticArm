@@ -201,3 +201,25 @@ def test_geometry_removal_uses_restored_sensor_shadow():
         result = snapshot.nearest_obstacles([p], .1, 'occupied_only').results[0].occupied
         assert result.status == 'MATCH' and result.cell.instance_id == 31
         assert result.cell.geometry_membership == ()
+
+
+def test_containing_unknown_fast_path_and_closed_plane_ties():
+    s = store(.01)
+    with s.acquire_query_snapshot() as snapshot:
+        # Sparse occupied maps must not scan 4096 unknown cells for each
+        # point already inside a known UNKNOWN cell volume.
+        result = snapshot.nearest_obstacles([(0., 0., .1)]*256, .3)
+        assert result.complete and result.examined_cells <= 256*8
+    s.mapper.mark_occupied_voxel(15, 2, 3)
+    publish(s)
+    boundary = -.17+16*.01
+    coordinates = [boundary, np.nextafter(boundary, -np.inf), np.nextafter(boundary, np.inf)]
+    with s.acquire_query_snapshot() as snapshot:
+        for x in coordinates:
+            point = (x, -.17+2.5*.01, 3.5*.01)
+            result = snapshot.nearest_obstacles([point], .3).results[0]
+            for state, match in ((0, result.unknown), (2, result.occupied)):
+                expected = brute(s.mapper, point, state, .3)
+                assert match.status == expected[0]
+                assert abs(match.distance_m-expected[1]) <= 1e-9
+                assert match.cell.flat_index == expected[2]
