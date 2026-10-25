@@ -197,6 +197,11 @@ def oracle(args):
 
 def replay(args):
     bundle = Path(args.bundle).resolve()
+    if (bundle/'owner/ready.json').exists() and (bundle/'client/result.json').exists():
+        out = Path(args.out).resolve() if args.out else bundle/('replay_'+str(time.time_ns()))
+        command = [sys.executable, str(Path(__file__).with_name('occ_query_concurrency_replay.py')),
+                   '--case', str(bundle), '--out', str(out)]
+        return subprocess.run(command, cwd='/tmp').returncode
     if (bundle/'manifest.json').exists() and json.loads((bundle/'manifest.json').read_text()).get('kind')=='planning':
         from occ_query_placement_comparison import inspect_campaign
         return inspect_campaign(bundle,args,sys.modules[__name__])

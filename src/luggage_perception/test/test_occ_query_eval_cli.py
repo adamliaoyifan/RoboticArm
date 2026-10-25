@@ -102,3 +102,26 @@ def test_control_wake_timeout_still_waits_for_owned_process(monkeypatch,tmp_path
     module.stop_owner(owner,wake_script=tmp_path/'wake.py',domain=187,wake_log=tmp_path/'wake.jsonl')
     assert owner.waited and owner.returncode==0
     assert 'TimeoutExpired' in (tmp_path/'wake.jsonl').read_text()
+
+
+def test_refused_volume_uses_observed_snapshot_not_callback_end_revision():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('retained_pressure_replay',
+                                                  SCRIPT.with_name('occ_query_concurrency_replay.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    premise = dict(expected_map_revision=2)
+    row = dict(begin=1., ended=2.)
+    events = [dict(stage='_on_volume_begin', thread=7, monotonic_ns=1100000000),
+              dict(stage='snapshot_read', thread=7, monotonic_ns=1200000000,
+                   snapshot_identity=['epoch', 2, 'digest']),
+              dict(stage='_on_volume_end', thread=7, monotonic_ns=1500000000,
+                   volume_premise=premise, snapshot_identity=['epoch', 3, 'other'])]
+    assert module.volume_read_revision(premise, row, events) == 2
+    assert module.volume_read_revision(premise, row, [events[0], events[2]]) is None
+    extra = [dict(stage='_on_volume_begin', thread=8, monotonic_ns=1600000000),
+             dict(stage='snapshot_read', thread=8, monotonic_ns=1700000000,
+                  snapshot_identity=['epoch', 3, 'other']),
+             dict(stage='_on_volume_end', thread=8, monotonic_ns=1900000000,
+                  volume_premise=premise)]
+    assert module.volume_read_revision(premise, row, events+extra) is None

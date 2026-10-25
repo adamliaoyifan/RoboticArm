@@ -66,15 +66,30 @@ def main():
             if values:
                 query=getattr(values[0],'query',None)
                 request_id=getattr(query,'request_id',getattr(values[0],'view_request_id',''))
-            event(name+'_begin',request_id=request_id)
+            def boundary_fields():
+                store=getattr(instance,'_store',None)
+                fields=dict(request_id=request_id)
+                if store is not None:fields['snapshot_identity']=list(store.identity)
+                if name=='_on_volume' and values:
+                    fields['volume_premise']={key:getattr(values[0],key) for key in (
+                        'scene_revision','geometry_hash','expected_map_revision',
+                        'expected_epoch','expected_content_digest')}
+                return fields
+            event(name+'_begin',**boundary_fields())
             try:return original(instance,*values,**kwargs)
-            finally:event(name+'_end',request_id=request_id)
+            finally:event(name+'_end',**boundary_fields())
         setattr(cls,name,traced)
     for name in ('_on_stats','_on_volume','_on_integrate','_integrate_view'):
         trace_method(module.CargoVolumeMapperNode,name)
     if importlib.util.find_spec('luggage_perception.cargo_map_query_service') is not None:
         from luggage_perception.cargo_map_query_service import MapQueryService
         trace_method(MapQueryService,'_execute')
+    original_snapshot=OccupancyMapStore.snapshot
+    def snapshot_read(store,*values,**kwargs):
+        result=original_snapshot(store,*values,**kwargs)
+        event('snapshot_read',snapshot_identity=list(result.identity))
+        return result
+    OccupancyMapStore.snapshot=snapshot_read
     original_report=NodeRuntime._on_report
     def report(runtime,message):
         original_report(runtime,message)
@@ -112,6 +127,10 @@ def main():
             if not result.accepted:raise RuntimeError('setup geometry: '+result.reason)
         assert len(m._placed_boxes)==args.boxes
         save(out/'ready.json',dict(identity=identity,peers=peers,boxes=args.boxes,
+            mapper_config=dict(inner_size=[m.inner_l,m.inner_w,m.inner_h],center_base=list(m.center),
+                yaw=m.yaw,resolution=m.resolution,geometry_descriptor=m._hull.descriptor(),
+                max_raycast_points=m.max_raycast_points,minimum_z=node._floor_z+max(0.,node._min_z_above_floor),
+                require_confirmation=node._require_confirmed_map,pose_at_confirm=node._world_from_container),
             floor_z=m._hull.floor_z,ceiling_z=m._hull.ceiling_z,shape=[m.nx,m.ny,m.nz],
             query_resources=dict(s._query_registry.resource_summary()) if hasattr(s,'_query_registry') else {},
             map_revision=s.identity.revision,epoch=s.identity.epoch,content_digest=s.identity.content_digest))

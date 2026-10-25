@@ -82,6 +82,26 @@ def concurrency(args,common):
                     record['owner_exit_code']=owner.returncode
                     record['ended_ns']=time.time_ns()
                     common.write_json(out/'manifest.json',manifest)
+            # Decode/rebuild only after both live processes have stopped. The
+            # verifier pins baseline primary modules in a fresh process while
+            # using candidate IDL, never mixed product implementations.
+            replay_command=[sys.executable,str(sources['candidate']/'scripts/g3/occ_query_concurrency_replay.py'),
+                '--case',str(run),'--out',str(run/'replay')]
+            record['replay_command']=replay_command
+            with (run/'replay.log').open('w') as replay_log:
+                try:
+                    replay_result=subprocess.run(replay_command,env=environments['candidate'],cwd='/tmp',
+                        stdout=replay_log,stderr=subprocess.STDOUT,timeout=1800.)
+                    record['replay_exit_code']=replay_result.returncode
+                    for name in ('result','gates'):
+                        path=run/'replay'/(name+'.json')
+                        if path.exists():record['replay_'+name]=json.loads(path.read_text())
+                    replay_manifest=run/'replay/manifest.json'
+                    record['capture_complete']=record['capture_complete'] and replay_manifest.exists() and (
+                        json.loads(replay_manifest.read_text()).get('capture_complete',False))
+                except Exception as error:
+                    record.update(replay_error=repr(error),capture_complete=False)
+            common.write_json(out/'manifest.json',manifest)
             common.check_evidence_budget(out)
             if not record['capture_complete']:
                 manifest.update(phase='stopped',stop_reason='INCOMPLETE_EVIDENCE')
@@ -90,4 +110,4 @@ def concurrency(args,common):
     manifest.update(phase='complete',ended_ns=time.time_ns(),
         source_hashes_unchanged={k:common.source_hashes(v)==hashes[k] for k,v in sources.items()})
     common.write_json(out/'manifest.json',manifest)
-    return int(any(r.get('result',{}).get('outcome')!='pass' for g in manifest['groups'] for r in g['runs'].values()))
+    return int(any(r.get('replay_gates',{}).get('outcome')!='pass' for g in manifest['groups'] for r in g['runs'].values()))

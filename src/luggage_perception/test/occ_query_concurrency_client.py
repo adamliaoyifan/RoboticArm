@@ -36,7 +36,9 @@ def main():
     from luggage_msgs import srv
     from luggage_description.ros_frame_bindings.runtime import NodeRuntime
     import luggage_perception.cargo_volume_mapper as artifact
+    from occ_query_wire_journal import WireJournal
     out=Path(args.out).resolve();out.mkdir(parents=True,exist_ok=False)
+    journal=WireJournal(out/'wire_journal')
     owner=Path(args.owner);ready=json.loads((owner/'ready.json').read_text())
     install=Path(args.install).resolve()
     if not Path(artifact.__file__).resolve().is_relative_to(install):raise RuntimeError('mixed load-client install')
@@ -70,21 +72,27 @@ def main():
     current=dict(revision=ready['map_revision'],epoch=ready['epoch'],content_digest=ready['content_digest'])
     pending=[];write_queue=deque();wire_ring=deque();sent_ring=deque();sent_trace=[]
     rows=[];counts={k:0 for k in RATES}
-    failure=None;phase='startup';first_failure=None;scored_start=None;ended_scoring=None
+    failure=None;phase='startup';first_failure=None;scored_start=None;ended_scoring=None;backlog_max_s=0.
     def fail(code,**values):
         nonlocal failure,first_failure
         if failure is None:
             first_failure=time.monotonic();failure=dict(code=code,phase=phase,monotonic=first_failure,**values)
-    def send(case,request,scheduled,sequence):
+    def observe_backlog(age):
+        nonlocal backlog_max_s
+        backlog_max_s=max(backlog_max_s,age)
+        if age>1.:fail('BACKLOG_OVER_1S',age_s=age)
+    def send(case,request,scheduled,sequence,request_phase=None):
+        request_phase=phase if request_phase is None else request_phase
         begin=time.monotonic()
         wire=serialize_message(request)
+        journal.request(case,sequence,wire,phase=request_phase,scheduled=scheduled,begin=begin)
         sent_ring.append((begin,case,sequence,wire))
-        sent_trace.append(dict(case=case,sequence=sequence,phase=phase,scheduled=scheduled,
+        sent_trace.append(dict(case=case,sequence=sequence,phase=request_phase,scheduled=scheduled,
             begin=begin,request_sha256=hashlib.sha256(wire).hexdigest()))
         cutoff=(first_failure if first_failure is not None else begin)-10.
         while sent_ring and sent_ring[0][0]<cutoff:sent_ring.popleft()
         future=clients[case].call_async(request)
-        pending.append(dict(case=case,sequence=sequence,scheduled=scheduled,begin=begin,future=future,request=wire))
+        pending.append(dict(case=case,sequence=sequence,phase=request_phase,scheduled=scheduled,begin=begin,future=future,request=wire))
     def request_read(case,scheduled,sequence):
         request=kinds[case].Request()
         if hasattr(request,'query'):
@@ -106,7 +114,7 @@ def main():
     def enqueue_write(scheduled,sequence):
         stamp=node.get_clock().now().to_msg()
         publish.publish(create_cloud_xyz32(Header(stamp=stamp,frame_id='container_link'),cloud))
-        write_queue.append(dict(scheduled=scheduled,sequence=sequence,stamp=stamp))
+        write_queue.append(dict(scheduled=scheduled,sequence=sequence,stamp=stamp,phase=phase))
     def pump():
         # Ack comes from a passive wrapper after the ORIGINAL cloud callback.
         # No timer assumption or sleep substitutes for measured ingestion.
@@ -119,7 +127,7 @@ def main():
                 request.view_request_id=request.operation_id='pressure-'+str(entry['sequence'])
                 request.expected_map_revision=current['revision'];request.expected_epoch=current['epoch']
                 request.expected_content_digest=current['content_digest'];request.geometry_hash=ready['identity']['geometry_hash']
-                send('integrate',request,entry['scheduled'],entry['sequence'])
+                send('integrate',request,entry['scheduled'],entry['sequence'],entry['phase'])
         for item in list(pending):
             future=item['future']
             if not future.done():continue
@@ -157,20 +165,22 @@ def main():
                     _=np.max(np.where(observed,np.arange(nz)[:,None,None]+1,0),axis=0).tobytes()
             elapsed=time.monotonic()-item['begin'];total=time.monotonic()-item['scheduled']
             pure=response.meta.elapsed_ns/1e6 if hasattr(response,'meta') and case=='distance' else elapsed*1000
-            row=dict(case=case,sequence=item['sequence'],phase=phase,scheduled=item['scheduled'],
+            row=dict(case=case,sequence=item['sequence'],phase=item['phase'],completion_phase=phase,scheduled=item['scheduled'],
                 begin=item['begin'],ended=time.monotonic(),elapsed_ms=elapsed*1000,total_ms=total*1000,
                 gated_ms=pure,status=status)
             rows.append(row)
+            if item['phase']=='scoring':observe_backlog(total)
             payload=serialize_message(response)
+            journal.response(case,item['sequence'],payload,phase=item['phase'],completion_phase=phase,ended=time.monotonic(),status=status)
             wire_ring.append((time.monotonic(),case,item['sequence'],item['request'],payload))
             cutoff=(first_failure if first_failure is not None else time.monotonic())-10.
             while wire_ring and wire_ring[0][0]<cutoff:wire_ring.popleft()
             if status!='OK':fail('REQUEST_REFUSED',case=case,status=status)
-            if phase=='scoring' and case in LIMITS_MS and pure>LIMITS_MS[case][1]:
+            if item['phase']=='scoring' and case in LIMITS_MS and pure>LIMITS_MS[case][1]:
                 fail('QUERY_MAX',case=case,latency_ms=pure,limit_ms=LIMITS_MS[case][1])
-        if phase=='scoring':
-            queued=[p['scheduled'] for p in pending]+[p['scheduled'] for p in write_queue]
-            if queued and time.monotonic()-min(queued)>1.:fail('BACKLOG_OVER_1S',age_s=time.monotonic()-min(queued))
+        queued=[p['scheduled'] for p in pending if p['phase']=='scoring']+[
+            p['scheduled'] for p in write_queue if p['phase']=='scoring']
+        if queued:observe_backlog(time.monotonic()-min(queued))
         accepted=[r for r in heartbeat if r['peer']=='cargo_volume_mapper' and r['status']=='accepted']
         if scored_start is not None and accepted and time.monotonic()-accepted[-1]['received_monotonic']>=1.:
             fail('HEARTBEAT_GAP',gap_s=time.monotonic()-accepted[-1]['received_monotonic'])
@@ -221,7 +231,7 @@ def main():
         result=dict(outcome='fail' if failure else 'not_evaluated',first_failure=failure,
             phase='complete',counts_scheduled=counts,groups=groups,scored_start=scored_start,
             ended_scoring=ended_scoring,wall_duration_s=(ended_scoring-scored_start) if scored_start else 0.,
-            heartbeat_max_gap_s=max(gaps,default=None),lease_expiry=expiry,
+            heartbeat_max_gap_s=max(gaps,default=None),lease_expiry=expiry,backlog_max_s=backlog_max_s,
             semantic_oracle='not_evaluated',runtime=snapshot)
     except Exception as error:
         fail('FIXTURE_OR_STARTUP_ERROR',error=repr(error))
@@ -241,8 +251,10 @@ def main():
             stamp=[p['stamp'].sec,p['stamp'].nanosec]) for p in write_queue]
         (out/'unsent_writes.json').write_text(json.dumps(queued,indent=2)+'\n')
         capture_complete=all((out/name).is_file() for name in ('cloud.npy','distance_points.npy',
-            'heartbeat.jsonl','requests.jsonl','requests_sent.jsonl','unsent_writes.json'))
+            'heartbeat.jsonl','requests.jsonl','requests_sent.jsonl','unsent_writes.json')) and (
+                not journal.requests or (out/'wire_journal/index.jsonl').is_file())
         result.update(capture_complete=capture_complete,replay_possible=capture_complete,overall_g2='not_evaluated',
+            wire_journal=journal.summary(),
             window='10s pre/5s post for scored failures; startup failures contain no scored unit',
             raw_points=30000,rates=RATES,baseline_adapter=args.baseline,
             input_sha256=hashlib.sha256(cloud.tobytes()).hexdigest())
