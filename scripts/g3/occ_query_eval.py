@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -123,6 +124,25 @@ def oracle(args):
     manifest['fixture_sha256'] = hashlib.sha256(fixture.read_bytes()).hexdigest()
     manifest['workers'] = []
     for name, source in (('baseline', baseline_source), ('candidate', candidate_source)):
+        if name == 'baseline' and args.reuse_baseline_run:
+            previous = Path(args.reuse_baseline_run).resolve()
+            old = json.loads((previous/'manifest.json').read_text())
+            old_hashes = json.loads((previous/'source_hashes.json').read_text())['baseline']
+            entries = [worker for worker in old['workers'] if worker['name']=='baseline']
+            if (old['baseline_revision'] != baseline or old['inputs'] != manifest['inputs']
+                    or old['fixture_sha256'] != manifest['fixture_sha256'] or len(entries)!=1
+                    or entries[0].get('exit_code') != 0 or not entries[0].get('source_hashes_unchanged')
+                    or any(hashes['baseline'].get(path)!=digest for path,digest in old_hashes.items())
+                    or source_hashes(previous/'baseline_source') != old_hashes):
+                raise RuntimeError('baseline reuse provenance/input/fixture mismatch')
+            shutil.copytree(previous/'baseline', out/'baseline',
+                ignore=shutil.ignore_patterns('__pycache__'))
+            manifest['workers'].append(dict(name='baseline', reused_from=str(previous),
+                original_worker=entries[0],exit_code=0,source_hashes_unchanged=True,
+                rows_sha256=hashlib.sha256((out/'baseline/rows.jsonl').read_bytes()).hexdigest(),
+                inputs_sha256=hashlib.sha256((out/'baseline/inputs.jsonl').read_bytes()).hexdigest()))
+            write_json(out/'manifest.json',manifest)
+            continue
         command = worker_command(fixture, source, out/name, args, name == 'candidate')
         entry = dict(name=name, argv=command, started_ns=time.time_ns())
         manifest['workers'].append(entry)
@@ -178,6 +198,8 @@ def oracle(args):
 def replay(args):
     bundle = Path(args.bundle).resolve()
     case = json.loads((bundle/'case.json').read_text())
+    if 'response' in case and (bundle/'map.npz').exists() and (bundle/'points.npy').exists():
+        return replay_distance_case(bundle,case,args)
     if case.get('kind') != 'oracle_difference':
         raise RuntimeError('this runner stage only replays oracle differences')
     out = Path(args.out).resolve() if args.out else bundle/('replay_'+str(time.time_ns()))
@@ -200,6 +222,40 @@ def replay(args):
     return 0
 
 
+def replay_distance_case(bundle, case, args):
+    """Regenerate the full original transaction sequence from frozen source."""
+    run = bundle.parent.parent
+    original = json.loads((run/'manifest.json').read_text())
+    source = run/'candidate_source'
+    hashes = json.loads((run/'source_hashes.json').read_text())['candidate']
+    if source_hashes(source) != hashes:
+        raise RuntimeError('frozen source changed')
+    out = Path(args.out).resolve() if args.out else bundle/('replay_'+str(time.time_ns()))
+    out.mkdir(parents=True,exist_ok=False)
+    inputs = argparse.Namespace(seed_start=case['seed'],seeds=1,
+        transactions=original['inputs']['transactions'],distance_points=original['inputs']['distance_points'],
+        resolutions=[case['resolution']],boxes=[case['initial_boxes']],shapes=[case['shape']])
+    command = worker_command(source/FIXTURE,source,out/'candidate',inputs,True)
+    with (out/'worker.log').open('w') as stream:
+        result = subprocess.run(command,cwd='/tmp',stdout=stream,stderr=subprocess.STDOUT)
+    failure = out/'candidate/distance_failure'
+    matched = False
+    if failure.exists():
+        import numpy as np
+        replayed = json.loads((failure/'case.json').read_text())
+        with np.load(bundle/'map.npz') as before, np.load(failure/'map.npz') as after:
+            matched = (set(before.files)==set(after.files)
+                and all(np.array_equal(before[key],after[key],equal_nan=True) for key in before.files)
+                and np.array_equal(np.load(bundle/'points.npy'),np.load(failure/'points.npy'))
+                and replayed['error']==case['error']
+                and replayed['response']['status']==case['response']['status'])
+    write_json(out/'manifest.json',dict(kind='distance_failure_replay',original_bundle=str(bundle),
+        argv=command,worker_exit_code=result.returncode,exact_map_and_points=matched,
+        reproduced=bool(result.returncode and matched),source_hashes_unchanged=source_hashes(source)==hashes,
+        capture_complete=failure.exists(),overall_g2='not_evaluated'))
+    return 0 if result.returncode and matched else 1
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
@@ -212,6 +268,7 @@ def main():
     p.add_argument('--boxes', type=csv_choices(int, (0, 5, 20)), default=[0, 5, 20])
     p.add_argument('--shapes', type=csv_choices(str, ('cuboid', 'chamfer')), default=['cuboid', 'chamfer'])
     p.add_argument('--baseline-revision', default=BASELINE)
+    p.add_argument('--reuse-baseline-run')
     p.add_argument('--rehearsal', action='store_true')
     p.add_argument('--out', required=True)
     p.set_defaults(run=oracle)
@@ -227,6 +284,7 @@ def main():
     p.add_argument('--rehearsal', action='store_true')
     p.add_argument('--mode', choices=('all','queries','writes'), default='all')
     p.add_argument('--screen-first', action='store_true', default=True)
+    p.add_argument('--profile-distance', action='store_true', help='diagnostic rehearsal only; timing is perturbed')
     p.add_argument('--write-points', type=csv_choices(int, (30000,100000)), default=[30000,100000])
     p.add_argument('--outside-ratios', type=csv_choices(float, (.5,.9)), default=[.5,.9])
     p.add_argument('--crossing-ratios', type=csv_choices(float, (0.,.5)), default=[0.,.5])

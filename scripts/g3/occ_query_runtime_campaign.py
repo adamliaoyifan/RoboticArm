@@ -35,7 +35,7 @@ def benchmark(args, common):
         raise RuntimeError('commit all campaign code before freezing')
     if common.git('rev-parse', args.baseline_revision) != common.BASELINE:
         raise RuntimeError('unregistered baseline revision')
-    formal = (not args.rehearsal and args.samples == 30 and args.warmup == 3
+    formal = (not args.rehearsal and not args.profile_distance and args.samples == 30 and args.warmup == 3
         and set(args.resolutions) == {.01, .02, .05} and set(args.boxes) == {0, 5, 20}
         and set(args.shapes) == {'cuboid', 'chamfer'})
     if not formal and not args.rehearsal:
@@ -76,6 +76,8 @@ def benchmark(args, common):
                 '--domain', str(args.domain), '--resolution', str(r), '--boxes', str(boxes)]
             if trace:
                 command.append('--trace')
+            if args.profile_distance:
+                command.append('--profile-distance')
             repetition = dict(trace=trace, owner_command=command, phase='startup', started_ns=time.time_ns())
             entry['repetitions'].append(repetition)
             common.write_json(out/'manifest.json', manifest)

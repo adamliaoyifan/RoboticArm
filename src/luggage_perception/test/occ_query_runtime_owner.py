@@ -32,6 +32,7 @@ def main():
     p.add_argument('--resolution', type=float, choices=(.01, .02, .05), required=True)
     p.add_argument('--boxes', type=int, choices=(0, 5, 20), required=True)
     p.add_argument('--trace', action='store_true')
+    p.add_argument('--profile-distance', action='store_true')
     a = p.parse_args()
     if not 100 <= a.domain <= 232:
         p.error('dedicated ROS domain required')
@@ -74,6 +75,21 @@ def main():
     save(out/'manifest.json', manifest)
     owner = []
     events = deque(maxlen=100_000)
+    if a.profile_distance:
+        import cProfile
+        import luggage_perception.cargo_distance_query as distance_module
+        original_distance = distance_module.read_nearest
+        profiled = []
+        def profile_distance(handle,data,points,*args,**kwargs):
+            if len(points) < 256 or profiled:
+                return original_distance(handle,data,points,*args,**kwargs)
+            profiled.append(True)
+            profiler = cProfile.Profile()
+            try:
+                return profiler.runcall(original_distance,handle,data,points,*args,**kwargs)
+            finally:
+                profiler.dump_stats(str(out/'distance.cprofile'))
+        distance_module.read_nearest = profile_distance
     if a.trace:
         original_open = MapQueryService._open
 
