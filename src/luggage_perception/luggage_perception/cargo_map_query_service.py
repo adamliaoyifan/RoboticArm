@@ -132,12 +132,13 @@ class MapQueryService:
         return result
 
     def _cell(self, record):
-        result = self._messages.CargoMapCellV2()
-        result.index = [record.key.ix, record.key.iy, record.key.iz]
-        result.flat_index, result.state, result.source = record.flat_index, record.state, record.source
-        result.semantic_label, result.sensor_instance_id = record.label, record.instance_id
-        result.geometry_membership = list(record.geometry_membership)
-        return result
+        # The public constructor validates each field once, avoiding a
+        # default message allocation/setter pass before the real values.
+        return self._messages.CargoMapCellV2(
+            index=[record.key.ix, record.key.iy, record.key.iz],
+            flat_index=record.flat_index, state=record.state, source=record.source,
+            semantic_label=record.label, sensor_instance_id=record.instance_id,
+            geometry_membership=list(record.geometry_membership))
 
     def cells(self, request, response):
         return self._execute(request, response, self._cells)
