@@ -9,6 +9,7 @@ import heapq
 import itertools
 import math
 import time
+from types import MappingProxyType
 
 import numpy as np
 
@@ -25,6 +26,59 @@ MAX_TIMEOUT_MS = 200.
 # Request-local leaves limit distance arithmetic within a 16-cube block.
 # They are query acceleration, never a second occupancy representation.
 DISTANCE_LEAF_EDGE = 4
+
+
+@dataclass(frozen=True)
+class DistanceLeafLayout:
+    order: np.ndarray
+    leaf_ids: np.ndarray
+    lower: np.ndarray
+    upper: np.ndarray
+
+    @classmethod
+    def initialize(cls, shape):
+        offsets = np.arange(math.prod(shape))
+        xyz = np.column_stack((offsets % shape[0], offsets//shape[0] % shape[1],
+                               offsets//(shape[0]*shape[1])))
+        dimensions = (np.asarray(shape)+DISTANCE_LEAF_EDGE-1)//DISTANCE_LEAF_EDGE
+        small = xyz//DISTANCE_LEAF_EDGE
+        ids = small[:,0]+dimensions[0]*(small[:,1]+dimensions[1]*small[:,2])
+        leaf = np.arange(math.prod(dimensions))
+        low = np.column_stack((leaf % dimensions[0], leaf//dimensions[0] % dimensions[1],
+            leaf//(dimensions[0]*dimensions[1])))*DISTANCE_LEAF_EDGE
+        high = np.minimum(low+DISTANCE_LEAF_EDGE, shape)
+        return cls(immutable_array(np.argsort(ids,kind='stable').astype('<u2')),
+            immutable_array(ids.astype('u1')),immutable_array(low.astype('u1')),
+            immutable_array(high.astype('u1')))
+
+    def byte_size(self):
+        return 1024+sum(a.nbytes for a in (self.order,self.leaf_ids,self.lower,self.upper))
+
+
+@dataclass(frozen=True)
+class DistanceLeafMembers:
+    offsets: bytes
+    starts: bytes
+    ends: bytes
+    leaf_ids: bytes
+
+    def byte_size(self):
+        return 512+len(self.offsets)+len(self.starts)+len(self.ends)+len(self.leaf_ids)
+
+
+def freeze_distance_members(layout, records, allowed):
+    """Derived state membership only; no distances or primary facts stored."""
+    result = {}
+    for state in (0,2):
+        selected = allowed & (records['state']==state)
+        offsets = layout.order[selected[layout.order]]
+        counts = np.bincount(layout.leaf_ids[offsets],minlength=len(layout.lower))
+        ids = np.flatnonzero(counts)
+        ends = np.cumsum(counts[ids])
+        starts = np.r_[0,ends[:-1]] if len(ends) else np.empty(0,dtype=np.int64)
+        result[state] = DistanceLeafMembers(offsets.astype('<u2').tobytes(),
+            starts.astype('<u2').tobytes(),ends.astype('<u2').tobytes(),ids.astype('u1').tobytes())
+    return MappingProxyType(result)
 
 
 @dataclass(frozen=True)
@@ -120,10 +174,12 @@ def _nearest(handle, data, point, state, radius, work, counts, lower_squared, vo
         block = data.blocks[block_id]
         key = (block_id, state)
         cached = volumes.get(key)
-        # Decode each visited block once. Heap leaves then test only volumes
+        # Decode each visited block's immutable derived membership once.
+        # Heap leaves then test only volumes
         # whose exact bounding box can improve/tie the current nearest cell.
-        # Initial membership scans and every leaf volume test are charged.
-        examined = (len(block.flat_indices) if cached is None else 0) if leaf == -1 else (
+        # Every hierarchy visit and leaf volume test is charged. Reading
+        # precomputed membership does not scan primary/block voxel records.
+        examined = 0 if leaf == -1 else (
             int(cached[4][leaf]-cached[3][leaf]))
         if not work.admits(examined):
             return DistanceMatch('QUERY_BUDGET_EXHAUSTED', False,
@@ -131,23 +187,17 @@ def _nearest(handle, data, point, state, radius, work, counts, lower_squared, vo
         work.cells += examined
         work.blocks += 1
         if cached is None:
-            records = block.records()
-            offsets = np.flatnonzero((records['state'] == state)
-                                    & np.frombuffer(block.active, 'u1').astype(bool))
-            flat = block.flat_indices[offsets]
-            coordinates = np.column_stack((flat % nx, flat//nx % ny, flat//(nx*ny)))
-            small = coordinates//DISTANCE_LEAF_EDGE
-            dimensions = (np.asarray(data.grid.shape)+DISTANCE_LEAF_EDGE-1)//DISTANCE_LEAF_EDGE
-            ids = small[:, 0]+dimensions[0]*(small[:, 1]+dimensions[1]*small[:, 2])
-            order = np.argsort(ids, kind='stable')
-            ids, offsets, coordinates = ids[order], offsets[order], coordinates[order]
-            starts = np.flatnonzero(np.r_[True, ids[1:] != ids[:-1]])
-            ends = np.r_[starts[1:], len(offsets)]
-            low = origin+coordinates*r
-            high = origin+(coordinates+1)*r
-            cached = volumes[key] = (offsets, low, high, starts, ends,
-                np.minimum.reduceat(low, starts), np.maximum.reduceat(high, starts))
-        offsets, low, high, starts, ends, leaf_low, leaf_high = cached
+            members = block.distance_members[state]
+            offsets = np.frombuffer(members.offsets,dtype='<u2')
+            starts = np.frombuffer(members.starts,dtype='<u2')
+            ends = np.frombuffer(members.ends,dtype='<u2')
+            ids = np.frombuffer(members.leaf_ids,dtype='u1')
+            low = origin+(np.asarray(block.start)+block.distance_layout.lower[ids])*r
+            high = origin+(np.asarray(block.start)+block.distance_layout.upper[ids])*r
+            # The final dict memoizes only leaf volumes actually visited in
+            # this request. The retained index holds membership, not distance.
+            cached = volumes[key] = (offsets, low, high, starts, ends, {})
+        offsets, leaf_low, leaf_high, starts, ends, cells = cached
         if leaf == -1:
             delta = np.maximum(np.maximum(leaf_low-point, point-leaf_high), 0.)
             bounds = np.einsum('ij,ij->i', delta, delta)
@@ -155,7 +205,12 @@ def _nearest(handle, data, point, state, radius, work, counts, lower_squared, vo
                 heapq.heappush(queue, (float(bounds[index]), block_id, int(index)))
             continue
         start, end = starts[leaf], ends[leaf]
-        offsets, low, high = offsets[start:end], low[start:end], high[start:end]
+        offsets = offsets[start:end]
+        if leaf not in cells:
+            flat = block.flat_indices[offsets]
+            xyz = np.column_stack((flat % nx,flat//nx % ny,flat//(nx*ny)))
+            cells[leaf] = (origin+xyz*r,origin+(xyz+1)*r)
+        low, high = cells[leaf]
         displacement = np.maximum(np.maximum(low-point, point-high), 0.)
         squared = np.einsum('ij,ij->i', displacement, displacement)
         minimum = float(squared.min())

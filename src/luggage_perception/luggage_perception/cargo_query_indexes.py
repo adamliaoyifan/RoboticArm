@@ -15,7 +15,7 @@ import numpy as np
 from luggage_perception.cargo_grid_projection import occupancy_counts
 from luggage_perception.cargo_voxel_delta import EVIDENCE_DTYPE, capture_evidence, immutable_array
 from luggage_perception.cargo_surface_projection import IncrementalSurfaceProjection
-from luggage_perception.cargo_distance_query import DistanceIndex
+from luggage_perception.cargo_distance_query import DistanceIndex, DistanceLeafLayout, freeze_distance_members
 from luggage_perception.cargo_map_query import (
     BLOCK_EDGE, CELL_DTYPE, GridInfo, QueryIdentity, QuerySnapshotData, VoxelBlock,
 )
@@ -32,7 +32,8 @@ def _block_ids(indices, mapper):
            + by*((indices//(nx*ny))//BLOCK_EDGE))
 
 
-def _freeze_block(block_id, start, shape, keys, facts, active, frontier, box_members):
+def _freeze_block(block_id, start, shape, keys, facts, active, frontier, box_members,
+                  *, previous=None, layout=None):
     # Only the owner retains full canonical evidence for incremental hashes.
     # Read generations retain the compact public cell fields; old snapshots
     # cannot multiply private log-odds/shadow copies or expose that evidence.
@@ -42,6 +43,11 @@ def _freeze_block(block_id, start, shape, keys, facts, active, frontier, box_mem
         records[name] = canonical[name]
     allowed = np.frombuffer(active, 'u1').astype(bool)
     counts = tuple(int(v) for v in np.bincount(records['state'][allowed], minlength=3))
+    layout = previous.distance_layout if previous is not None else layout
+    if previous is not None and np.array_equal(previous.records()['state'],records['state']):
+        distance_members = previous.distance_members
+    else:
+        distance_members = freeze_distance_members(layout,records,allowed)
     live_sensor = allowed & (records['state'] == 2) & (records['instance'] > 0)
     sensor_members = {}
     for identifier in np.unique(records['instance'][live_sensor]):
@@ -57,7 +63,7 @@ def _freeze_block(block_id, start, shape, keys, facts, active, frontier, box_mem
         digest.update(boxes[identifier])
     return VoxelBlock(block_id, start, shape, keys, records.tobytes(), active, frontier,
                       counts, int(np.frombuffer(frontier, 'u1').sum()),
-                      MappingProxyType(sensor_members), boxes, digest.hexdigest())
+                      MappingProxyType(sensor_members), boxes, digest.hexdigest(),layout,distance_members)
 
 
 @dataclass(frozen=True)
@@ -187,12 +193,15 @@ class QueryIndexOwner:
         self._cursor_secret = secrets.token_bytes(32)
         blocks = []
         fact_blocks = []
+        layouts = {}
         nx, ny, nz = mapper.nx, mapper.ny, mapper.nz
         active = np.frombuffer(mapper._active, 'u1')
         for z in range(0, nz, BLOCK_EDGE):
             for y in range(0, ny, BLOCK_EDGE):
                 for x in range(0, nx, BLOCK_EDGE):
                     shape = (min(BLOCK_EDGE, nx-x), min(BLOCK_EDGE, ny-y), min(BLOCK_EDGE, nz-z))
+                    if shape not in layouts:
+                        layouts[shape] = DistanceLeafLayout.initialize(shape)
                     ix = np.arange(x, x+shape[0], dtype=np.int32)
                     iy = np.arange(y, y+shape[1], dtype=np.int32)
                     iz = np.arange(z, z+shape[2], dtype=np.int32)
@@ -201,7 +210,7 @@ class QueryIndexOwner:
                     fact_blocks.append(facts)
                     block = _freeze_block(len(blocks), (x, y, z), shape, keys,
                         facts, active[keys].tobytes(),
-                        self._frontiers[keys].astype('u1').tobytes(), {})
+                        self._frontiers[keys].astype('u1').tobytes(), {},layout=layouts[shape])
                     blocks.append(block)
                     for identifier in block.sensor_members:
                         self._sensor_blocks.setdefault(identifier, set()).add(block.block_id)
@@ -281,7 +290,7 @@ class QueryIndexOwner:
                 copied += len(facts)
             block = _freeze_block(bid, old.start, old.shape, old.flat_indices, facts,
                 old.active, self._frontiers[old.flat_indices].astype('u1').tobytes(),
-                self._geometry_members.get(bid, {}))
+                self._geometry_members.get(bid, {}),previous=old)
             for identifier in old.sensor_members.keys() - block.sensor_members.keys():
                 members = self._sensor_blocks[identifier]
                 members.discard(bid)

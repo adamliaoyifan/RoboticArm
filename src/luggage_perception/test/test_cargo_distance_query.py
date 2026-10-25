@@ -184,6 +184,12 @@ def test_validation_budget_and_immutability():
         for array in (snapshot._data().distance_index.lower, snapshot._data().distance_index.upper):
             with pytest.raises(ValueError):
                 array.setflags(write=True)
+        layout = snapshot._data().blocks[0].distance_layout
+        for array in (layout.order,layout.leaf_ids,layout.lower,layout.upper):
+            with pytest.raises(ValueError):
+                array.setflags(write=True)
+        with pytest.raises(TypeError):
+            snapshot._data().blocks[0].distance_members[2] = None
 
 
 def test_geometry_removal_uses_restored_sensor_shadow():

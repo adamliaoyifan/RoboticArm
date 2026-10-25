@@ -209,6 +209,8 @@ class VoxelBlock:
     sensor_members: object = field(repr=False, compare=False)
     box_members: object = field(repr=False, compare=False)
     fact_digest: str
+    distance_layout: object = field(repr=False, compare=False)
+    distance_members: object = field(repr=False, compare=False)
 
     def records(self):
         return np.frombuffer(self.evidence, dtype=CELL_DTYPE)
@@ -220,6 +222,8 @@ class VoxelBlock:
                 + self.flat_indices.nbytes
                 + sum(len(v) for v in self.sensor_members.values())
                 + sum(len(v) for v in self.box_members.values())
+                + self.distance_layout.byte_size()
+                + sum(v.byte_size() for v in self.distance_members.values())
                 + 1024 + 448*(len(self.sensor_members)+len(self.box_members)))
 
 

@@ -60,6 +60,6 @@ treated as support. Patch records have global XY indices and a retained,
 same-epoch `since_identity`. Both nominal legacy fields and v2 datum fields
 are read from the same frozen publication.
 
-Distance batches reuse decoded target membership and cell volumes within the request. Initial membership scans and each point/volume test count against the same fixed work cap. The temporary cache expires with the request; it creates no retained distance field or writer work.
+Distance reads use immutable state-membership lists for four-cell leaves within each block. The index owner builds them at initialization and updates them only when a block's state changes; unchanged memberships are shared. Their bytes are included in the retained-generation budget. They store no distances or nearest-obstacle parents.
 
-Within visited blocks, request-local four-cell leaves provide exact AABB lower bounds. Branch-and-bound visits all equal lower bounds to preserve the lowest-flat-index tie rule. Page expansion batches sorted geometry-membership lookups per block; it preserves the same fields and stable ordering.
+Queries convert leaf bounds to container coordinates and memoize only visited cell volumes within the request. Every tested cell and visited hierarchy node counts against the fixed work caps. Branch-and-bound visits equal lower bounds to preserve the lowest-flat-index tie rule. Page expansion batches sorted geometry-membership lookups per block, preserving fields and stable ordering.
