@@ -34,6 +34,7 @@ class DistanceLeafLayout:
     leaf_ids: np.ndarray
     lower: np.ndarray
     upper: np.ndarray
+    cell_coordinates: np.ndarray
 
     @classmethod
     def initialize(cls, shape):
@@ -49,10 +50,11 @@ class DistanceLeafLayout:
         high = np.minimum(low+DISTANCE_LEAF_EDGE, shape)
         return cls(immutable_array(np.argsort(ids,kind='stable').astype('<u2')),
             immutable_array(ids.astype('u1')),immutable_array(low.astype('u1')),
-            immutable_array(high.astype('u1')))
+            immutable_array(high.astype('u1')), immutable_array(xyz.astype('u1')))
 
     def byte_size(self):
-        return 1024+sum(a.nbytes for a in (self.order,self.leaf_ids,self.lower,self.upper))
+        return 1024+sum(a.nbytes for a in (
+            self.order,self.leaf_ids,self.lower,self.upper,self.cell_coordinates))
 
 
 @dataclass(frozen=True)
@@ -144,7 +146,10 @@ def _zero_match(handle, data, point, state, work):
             return DistanceMatch('QUERY_BUDGET_EXHAUSTED', False)
         work.cells += 1
         work.blocks += 1
-        offset = int(np.searchsorted(block.flat_indices, flat))
+        # Blocks retain native x-fast order, including clipped edge blocks.
+        # The already validated coordinate selects its row directly.
+        sx, sy, _ = block.shape
+        offset = (x-block.start[0])+sx*((y-block.start[1])+sy*(z-block.start[2]))
         if block.active[offset] and block.records()['state'][offset] == state:
             return DistanceMatch('MATCH', True, 0., 0., handle._cell_record(block, offset))
     return None
@@ -164,7 +169,6 @@ def _nearest(handle, data, point, state, radius, work, counts, lower_squared, vo
     heapq.heapify(queue)
     best_squared = radius*radius
     best = None
-    nx, ny, _ = data.grid.shape
     r = data.grid.resolution
     origin = np.asarray(data.grid.origin)
     # Each block exposes only its next leaf to the global heap. Sorted
@@ -222,8 +226,9 @@ def _nearest(handle, data, point, state, radius, work, counts, lower_squared, vo
         start, end = starts[leaf], ends[leaf]
         offsets = offsets[start:end]
         if leaf not in cells:
-            flat = block.flat_indices[offsets]
-            xyz = np.column_stack((flat % nx,flat//nx % ny,flat//(nx*ny)))
+            # Layouts are immutable and shared by equal block shapes. Integer
+            # addition preserves the previous world-AABB arithmetic exactly.
+            xyz = block.distance_layout.cell_coordinates[offsets]+np.asarray(block.start)
             cells[leaf] = (origin+xyz*r,origin+(xyz+1)*r)
         low, high = cells[leaf]
         displacement = np.maximum(np.maximum(low-point, point-high), 0.)

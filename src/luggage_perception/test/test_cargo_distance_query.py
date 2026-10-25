@@ -277,3 +277,26 @@ def test_dense_geometry_batch_prunes_within_blocks_and_matches_full_volume_oracl
             assert result.occupied.status == 'MATCH'
             assert abs(result.occupied.distance_m-squared[at]**.5) <= 1e-9
             assert result.occupied.cell.flat_index == flat[at]
+
+
+def test_partial_block_coordinate_layout_is_native_frozen_and_shared():
+    mapper = CargoVolumeMapper((.68, .36, .38), (0, 0, .19), 0, .02)
+    s = OccupancyMapStore(mapper, epoch='native-coordinates')
+    with s.acquire_query_snapshot() as snapshot:
+        blocks = snapshot._data().blocks
+        assert blocks[0].distance_layout is blocks[1].distance_layout
+        assert any(block.shape != (16, 16, 16) for block in blocks)
+        for block in blocks:
+            coordinates = block.distance_layout.cell_coordinates
+            assert coordinates.dtype == np.dtype('u1')
+            assert not coordinates.flags.writeable
+            with pytest.raises(ValueError):
+                coordinates.setflags(write=True)
+            expected = [(x, y, z) for z in range(block.shape[2])
+                        for y in range(block.shape[1]) for x in range(block.shape[0])]
+            assert coordinates.tolist() == [list(v) for v in expected]
+            global_coordinates = coordinates + np.asarray(block.start)
+            flat = (global_coordinates[:, 0] + mapper.nx*(global_coordinates[:, 1]
+                    + mapper.ny*global_coordinates[:, 2]))
+            assert np.array_equal(flat, block.flat_indices)
+            assert block.distance_layout.byte_size() >= coordinates.nbytes

@@ -118,3 +118,10 @@ Queries convert leaf bounds to container coordinates and memoize only visited ce
 Immutable voxel blocks cache their conservative byte charge at construction.
 Registry publication still counts unique retained blocks and applies the same
 512MiB limit; it does not recompute unchanged payload sizes on every update.
+
+Distance leaf layouts also retain immutable native-order XYZ coordinates,
+shared by blocks with the same shape and charged in the existing conservative
+resource accounting. A query adds the block's integer start before the same
+float64 world-AABB arithmetic; neither primary facts nor distance membership,
+visit order, tie rules, schema-2 hashes or work budgets change. Direct local
+offsets handle partial edge blocks as well as full 16-cube blocks.
