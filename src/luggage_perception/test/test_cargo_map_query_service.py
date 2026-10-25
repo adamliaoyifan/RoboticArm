@@ -139,7 +139,7 @@ def test_named_validation_errors_survive_typed_serialization():
 def test_distance_unknown_policy_and_outside_point_are_typed():
     _, node, service = boundary()
     req = request(srv.QueryCargoDistanceV2)
-    req.max_radius_m = .3
+    assert req.max_radius_m == .3
     req.points = [msg.CargoMapDistancePointV2().point]
     req.points[0].z = .1
     result = invoke(service.distance, srv.QueryCargoDistanceV2, req)
