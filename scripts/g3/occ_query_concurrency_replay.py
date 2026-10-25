@@ -22,42 +22,6 @@ def save(path, value):
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
 
 
-def volume_read_revision(premise, row, events):
-    """Use the snapshot actually returned inside the original callback.
-
-    Callback-end Store identity may already belong to a concurrent writer.
-    Missing or ambiguous snapshot observations never become a guessed version.
-    """
-    identities = set()
-    for position, end in enumerate(events):
-        if (
-            end.get("stage") != "_on_volume_end"
-            or end.get("volume_premise") != premise
-            or not row["begin"] <= end["monotonic_ns"] / 1e9 <= row["ended"]
-        ):
-            continue
-        thread = end["thread"]
-        begin = next(
-            (
-                i
-                for i in range(position - 1, -1, -1)
-                if events[i].get("stage") == "_on_volume_begin" and events[i]["thread"] == thread
-            ),
-            None,
-        )
-        if begin is None:
-            return None
-        reads = [
-            event["snapshot_identity"]
-            for event in events[begin + 1 : position]
-            if event.get("stage") == "snapshot_read" and event["thread"] == thread
-        ]
-        if not reads:
-            return None
-        identities.add(tuple(reads[0]))
-    return next(iter(identities))[1] if len(identities) == 1 else None
-
-
 def replay(args):
     case = Path(args.case).resolve()
     campaign = case.parent.parent
@@ -82,6 +46,7 @@ def replay(args):
             "occ_query_identity_oracle.py",
             "occ_query_wire_journal.py",
             "occ_query_concurrency_gates.py",
+            "occ_query_legacy_read_join.py",
         ):
             shutil.copy2(helpers / name, out / name)
             manifest["verifier_helpers"][name] = hashlib.sha256(
@@ -232,6 +197,29 @@ def replay_case(case, campaign, baseline, out, manifest):
             distance=srv.GetCargoVolumeV2,
             surface=srv.GetCargoVolumeV2,
         )
+    legacy_revisions = {}
+    legacy_join = None
+    if baseline_adapter:
+        from occ_query_legacy_read_join import resolve_legacy_volume_revisions
+
+        descriptors = []
+        for row in rows:
+            if row["case"] not in ("roi", "distance", "surface"):
+                continue
+            payload = read_wire(row["case"], row["sequence"], "request")
+            if payload is None:
+                continue
+            request = deserialize_message(payload, srv.GetCargoVolumeV2.Request)
+            descriptors.append(dict(
+                name=row["case"] + "-" + str(row["sequence"]),
+                begin=row["begin"], ended=row["ended"],
+                premise={key: getattr(request, key) for key in (
+                    "scene_revision", "geometry_hash", "expected_map_revision",
+                    "expected_epoch", "expected_content_digest",
+                )},
+            ))
+        traces = [json.loads(line) for line in (case / "owner/trace.jsonl").read_text().splitlines()]
+        legacy_revisions, legacy_join = resolve_legacy_volume_revisions(descriptors, traces)
     for row in rows:
         if row["case"] not in kinds:
             continue
@@ -261,21 +249,7 @@ def replay_case(case, campaign, baseline, out, manifest):
             if response.success:
                 revision = response.map_revision
             else:
-                traces = [
-                    json.loads(line)
-                    for line in (case / "owner/trace.jsonl").read_text().splitlines()
-                ]
-                premise = {
-                    key: getattr(request, key)
-                    for key in (
-                        "scene_revision",
-                        "geometry_hash",
-                        "expected_map_revision",
-                        "expected_epoch",
-                        "expected_content_digest",
-                    )
-                }
-                revision = volume_read_revision(premise, row, traces)
+                revision = legacy_revisions.get(name)
                 if revision is None:
                     observations.append(
                         dict(
@@ -429,6 +403,7 @@ def replay_case(case, campaign, baseline, out, manifest):
     manifest["verifier_unchanged"] = verifier_unchanged
     result = dict(
         baseline_adapter=baseline_adapter,
+        legacy_callback_join=legacy_join,
         voxel_digest_coverage="full independent primary hash, including private evidence, memberships, binding and provenance",
         frozen_source_unchanged=frozen_unchanged,
         verifier_unchanged=verifier_unchanged,
