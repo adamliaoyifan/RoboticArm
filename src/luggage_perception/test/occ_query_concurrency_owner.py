@@ -31,6 +31,7 @@ def main():
     from luggage_description.ros_frame_bindings.runtime import NodeRuntime
     from luggage_perception.occupancy_map_store import OccupancyMapStore,MapUpdate,UpdateKind
     import numpy as np
+    import yaml
     import luggage_perception.cargo_volume_mapper as mapper_module
     source=Path(args.source).resolve();install=Path(args.install).resolve()
     out=Path(args.out).resolve();out.mkdir(parents=True,exist_ok=False)
@@ -74,11 +75,15 @@ def main():
             finally:event(_name+'_end')
         setattr(OccupancyMapStore,name,traced)
     original_cloud=module.CargoVolumeMapperNode._on_cloud
+    cloud_stamps=deque(maxlen=128)
+    cloud_ack_lock=threading.Lock()
     def cloud(node,message):
         begin=time.perf_counter_ns();original_cloud(node,message)
         stamp=[int(message.header.stamp.sec),int(message.header.stamp.nanosec)]
         event('cloud_ingest',stamp=stamp,points=int(message.width*message.height),begin_ns=begin)
-        save(out/'cloud_ack.json',dict(stamp=stamp,received_ns=time.perf_counter_ns()))
+        with cloud_ack_lock:
+            cloud_stamps.append(stamp)
+            save(out/'cloud_ack.json',dict(stamps=list(cloud_stamps),received_ns=time.perf_counter_ns()))
     module.CargoVolumeMapperNode._on_cloud=cloud
     original_init=module.CargoVolumeMapperNode.__init__
     def initialize(node):
@@ -118,10 +123,15 @@ def main():
         executor_override=False,heartbeat_period_s=.25,lease_s=2.,loaded_node=str(node_path),
         node_sha256=hashlib.sha256(node_path.read_bytes()).hexdigest(),fixture_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
     save(out/'manifest.json',manifest)
+    # A JSON identity must be a ROS STRING, not parsed as a YAML mapping by
+    # the -p argument parser. Let YAML quote the measured string explicitly.
+    parameters={'cargo_volume_mapper':{'ros__parameters':dict(scene_tf_config=str(scene),
+        resolution=.01,frame_scene_revision=identity['scene_revision'],frame_runtime=True,
+        frame_identity_json=json.dumps(identity),frame_peers=','.join(peers))}}
+    parameter_path=out/'parameters.yaml'
+    parameter_path.write_text(yaml.safe_dump(parameters,sort_keys=False))
     try:
-        module.main(['--ros-args','-p','scene_tf_config:='+str(scene),'-p','resolution:=0.01',
-            '-p','frame_scene_revision:='+identity['scene_revision'],'-p','frame_runtime:=true',
-            '-p','frame_identity_json:='+json.dumps(identity),'-p','frame_peers:='+','.join(peers)])
+        module.main(['--ros-args','--params-file',str(parameter_path)])
     except Exception as error:
         import rclpy
         if stop_requested and not rclpy.ok() and 'rcl_shutdown already called' in str(error):

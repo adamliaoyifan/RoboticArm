@@ -106,7 +106,7 @@ def main():
         # No timer assumption or sleep substitutes for measured ingestion.
         if write_queue and not any(p['case']=='integrate' for p in pending):
             entry=write_queue[0];ack=owner/'cloud_ack.json'
-            if ack.exists() and json.loads(ack.read_text())['stamp']==[entry['stamp'].sec,entry['stamp'].nanosec]:
+            if ack.exists() and [entry['stamp'].sec,entry['stamp'].nanosec] in json.loads(ack.read_text())['stamps']:
                 write_queue.popleft();request=srv.IntegrateCargoView.Request()
                 request.schema_version=1;request.settled=True;request.frame_count=1
                 request.source_acquisition_stamp=entry['stamp']
