@@ -134,3 +134,23 @@ def test_interrupted_window_and_missing_samples_are_not_certified(observations):
     assert result["gates"]["window"] == result["gates"]["fixed_load"] == "not_evaluated"
     assert result["gates"]["latency_roi"] == "not_evaluated"
     assert result["outcome"] == "not_evaluated"
+
+
+def test_teardown_expiry_after_observation_window_is_not_pressure_failure(observations):
+    observations["owner_runtime"] = dict(
+        observed_at_monotonic=226.0,
+        readiness="PEER_LEASE_EXPIRED",
+        counters={},
+        transitions=[dict(at_monotonic=226.0, reason="PEER_LEASE_EXPIRED")],
+    )
+    assert evaluate(**observations)["gates"]["lease"] == "pass"
+
+
+def test_expiry_observed_inside_window_still_fails(observations):
+    observations["owner_runtime"] = dict(
+        observed_at_monotonic=224.0,
+        readiness="PEER_LEASE_EXPIRED",
+        counters={},
+        transitions=[dict(at_monotonic=224.0, reason="PEER_LEASE_EXPIRED")],
+    )
+    assert evaluate(**observations)["gates"]["lease"] == "fail"

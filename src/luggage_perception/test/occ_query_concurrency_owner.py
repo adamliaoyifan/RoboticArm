@@ -148,7 +148,9 @@ def main():
                 shadow_labels=np.frombuffer(m._sensor_labels,'<i8'),shadow_instances=np.frombuffer(m._sensor_instance_ids,'<i8'))
             save(out/'boundary.json',dict(stats=m.stats(),surface=node._store.v1_surface_dict(),
                 ledger=node._store.committed_dict('container_link',None)))
-        save(out/'runtime.json',node._frame_runtime.snapshot())
+        runtime_snapshot=node._frame_runtime.snapshot()
+        runtime_snapshot['observed_at_monotonic']=time.monotonic()
+        save(out/'runtime.json',runtime_snapshot)
         if hasattr(node._store,'_query_registry'):
             save(out/'query_resources.json',dict(node._store._query_registry.resource_summary()))
         save(out/'capture.json',dict(capture_complete=True,replay_possible=True,

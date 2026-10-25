@@ -221,7 +221,10 @@ def main():
         times=[r['received_monotonic'] for r in heartbeat if r['peer']=='cargo_volume_mapper' and r['status']=='accepted']
         gaps=[b-a for a,b in zip(times,times[1:])]
         snapshot=runtime.snapshot()
-        expiry=sum(r.get('status')=='PEER_LEASE_EXPIRED' for r in heartbeat)
+        snapshot['observed_at_monotonic']=time.monotonic()
+        observation_end=snapshot['observed_at_monotonic']
+        expiry=sum(r.get('status')=='PEER_LEASE_EXPIRED' and (scored_start is None or
+            scored_start-10.<=r['received_monotonic']<=observation_end) for r in heartbeat)
         groups={}
         for case,limits in LIMITS_MS.items():
             values=sorted(r['gated_ms'] for r in rows if r['case']==case and r['phase']=='scoring' and r['status']=='OK')
@@ -230,7 +233,7 @@ def main():
                 max_ms=values[-1] if values else None,limits_ms=limits)
         result=dict(outcome='fail' if failure else 'not_evaluated',first_failure=failure,
             phase='complete',counts_scheduled=counts,groups=groups,scored_start=scored_start,
-            ended_scoring=ended_scoring,wall_duration_s=(ended_scoring-scored_start) if scored_start else 0.,
+            ended_scoring=ended_scoring,observation_end=observation_end,wall_duration_s=(ended_scoring-scored_start) if scored_start else 0.,
             heartbeat_max_gap_s=max(gaps,default=None),lease_expiry=expiry,backlog_max_s=backlog_max_s,
             semantic_oracle='not_evaluated',runtime=snapshot)
     except Exception as error:

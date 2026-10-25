@@ -50,7 +50,12 @@ unique fixed wiring prefix; it never invents arbitrary missing inputs.
 can be semantically correct while the workload completion gate fails.
 `gates.json` independently checks full 120-second load, exact schedule, request
 joins/statuses, backlog, P95/max, both heartbeat directions, lease observations
-and resource limits. Missing samples remain `not_evaluated`; observed failures
+and resource limits. Runtime captures carry monotonic observation timestamps.
+Lease readiness and transitions recorded after the client observation window
+are teardown evidence; they do not change the pressure verdict. Unknown-time
+failures and untimestamped rejection counters remain conservative failures.
+The required 10-second pre/5-second post window and native lease stay intact.
+Missing samples remain `not_evaluated`; observed failures
 remain failures. Replay's exit code describes semantic replay, so inspect
 `gates.json` for the pressure verdict. Neither file certifies overall G2.
 

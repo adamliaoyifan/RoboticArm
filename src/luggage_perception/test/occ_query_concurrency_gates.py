@@ -49,6 +49,29 @@ def lease_faults(value):
     return int(isinstance(value, str) and value == "PEER_LEASE_EXPIRED")
 
 
+def window_records(records, low, high, field):
+    """Missing timestamps cannot erase recorded failures in old captures."""
+    return [row for row in records if field not in row or low <= row[field] <= high]
+
+
+def runtime_lease_faults(runtime, low, high, observed_at=None):
+    observed_at = runtime.get("observed_at_monotonic", observed_at)
+    # Counters do not carry per-event timestamps. Preserve their failure
+    # evidence conservatively; the complete passive timeline provides scope.
+    faults = lease_faults(runtime.get("counters", {}))
+    if observed_at is None or low <= observed_at <= high:
+        faults += lease_faults(runtime.get("readiness"))
+    faults += lease_faults(
+        window_records(runtime.get("transitions", []), low, high, "at_monotonic")
+    )
+    faults += lease_faults(
+        window_records(runtime.get("receive_trace", []), low, high, "received_monotonic")
+    )
+    for scope in runtime.get("scopes", {}).values():
+        faults += runtime_lease_faults(scope, low, high, observed_at)
+    return faults
+
+
 def evaluate(
     result,
     rows,
@@ -144,7 +167,17 @@ def evaluate(
     }
     for direction, item in heartbeat.items():
         gates["heartbeat_" + direction] = item["outcome"]
-    faults = lease_faults([result.get("runtime", {}), client_heartbeat, owner_trace, owner_runtime])
+    low = start - 10 if start is not None else -math.inf
+    high = result.get("observation_end", end + 5 if end is not None else math.inf)
+    owner_heartbeat = [row for row in owner_trace if row.get("stage") == "heartbeat"]
+    timed_owner = [
+        dict(row, received_monotonic=row["monotonic_ns"] / 1e9) for row in owner_heartbeat
+    ]
+    faults = lease_faults(
+        window_records(client_heartbeat + timed_owner, low, high, "received_monotonic")
+    )
+    faults += runtime_lease_faults(result.get("runtime", {}), low, high)
+    faults += runtime_lease_faults(owner_runtime, low, high)
     gates["lease"] = (
         "fail"
         if faults or result.get("lease_expiry", 0)
