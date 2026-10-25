@@ -155,8 +155,8 @@ def _zero_match(handle, data, point, state, work):
     return None
 
 
-def _nearest(handle, data, point, state, radius, work, counts, lower_squared, volumes):
-    candidates = np.flatnonzero(counts[:, state] > 0)
+def _nearest(handle, data, point, state, radius, work, candidate_blocks, lower_squared, volumes):
+    candidates = candidate_blocks[state]
     if not len(candidates):
         return DistanceMatch('NO_MATCH', True)
     zero = _zero_match(handle, data, point, state, work)
@@ -276,6 +276,9 @@ def read_nearest(handle, data, points, radius, unknown_policy, budget):
         raise QueryError('QUERY_INDEX_UNAVAILABLE')
     work = _Work(budget, started)
     counts = np.asarray([block.state_counts for block in data.blocks])
+    # Membership is fixed for this pinned batch; filter once for each target
+    # state rather than rescanning the same block summaries for every point.
+    candidate_blocks = {state: np.flatnonzero(counts[:, state] > 0) for state in (0, 2)}
     origin = np.asarray(data.grid.origin)
     upper = origin+np.asarray(data.grid.shape)*data.grid.resolution
     results = []
@@ -294,8 +297,8 @@ def read_nearest(handle, data, points, radius, unknown_policy, budget):
         delta = np.maximum(np.maximum(data.distance_index.lower-point,
                                       point-data.distance_index.upper), 0.)
         lower_squared = np.einsum('ij,ij->i', delta, delta)
-        occupied = _nearest(handle, data, point, 2, radius, work, counts, lower_squared, volumes)
-        unknown = (_nearest(handle, data, point, 0, radius, work, counts, lower_squared, volumes)
+        occupied = _nearest(handle, data, point, 2, radius, work, candidate_blocks, lower_squared, volumes)
+        unknown = (_nearest(handle, data, point, 0, radius, work, candidate_blocks, lower_squared, volumes)
                    if unknown_policy == 'separate' else None)
         status = ('QUERY_BUDGET_EXHAUSTED'
                   if any(m is not None and m.status == 'QUERY_BUDGET_EXHAUSTED'

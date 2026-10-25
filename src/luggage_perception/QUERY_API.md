@@ -127,3 +127,6 @@ payloads. Independent layout allocations are charged separately under the same
 float64 world-AABB arithmetic; neither primary facts nor distance membership,
 visit order, tie rules, schema-2 hashes or work budgets change. Direct local
 offsets handle partial edge blocks as well as full 16-cube blocks.
+Each distance batch selects candidate blocks per target state once from the
+pinned immutable summaries. Point-specific pruning and all visit budgets remain
+unchanged; these request-local lists do not survive the batch.
