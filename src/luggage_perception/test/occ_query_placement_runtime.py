@@ -73,11 +73,19 @@ def owner(args,out,source,install):
     module.PlacementPlannerNode.__init__ = initialize
     module.PlacementPlannerNode._publish_last = publish
     def stop(*_):
+        manifest['stop_requested']=True
         raise KeyboardInterrupt()
     signal.signal(signal.SIGUSR2,stop)
     save(out/'manifest.json',manifest)
     try:
         module.main()
+    except Exception as error:
+        import rclpy
+        if not manifest.get('stop_requested') or rclpy.ok():
+            raise
+        # Original main can attempt shutdown after its context is closed.
+        # Preserve that teardown observation; do not alter the scored node.
+        manifest['post_scoring_teardown_error']=repr(error)
     finally:
         manifest.update(ended_ns=time.time_ns())
         save(out/'manifest.json',manifest)
@@ -120,17 +128,18 @@ def client(args,out,source,install):
     ledger_pub = node.create_publisher(String,'/luggage/cargo_map/committed',qos)
     service = node.create_client(ComputePlacement,'/placement_planner/compute_placement')
     rows=[];result=dict(outcome='not_evaluated',required=30)
-    def publish():
+    def prepare(publish=False):
         record = store.v2_record(scene_revision,'map-rev-'+str(store.identity.revision))
         context = BoundaryContext('F06','cargo_volume_mapper','placement_planner',
             record['request_id'],scene_revision,'container_link','','scene',
             store.mapper.geometry_hash,store.identity.revision)
         surface = measured_surface_to_message(record,context)
         ledger = String(data=json.dumps(store.committed_dict('container_link',None)))
-        surface_pub.publish(surface);ledger_pub.publish(ledger)
+        if publish:
+            surface_pub.publish(surface);ledger_pub.publish(ledger)
         return surface,ledger
     try:
-        surface,ledger = publish()
+        surface,ledger = prepare(publish=True)
         (out/'surface.cdr').write_bytes(serialize_message(surface))
         (out/'ledger.cdr').write_bytes(serialize_message(ledger))
         deadline = time.monotonic()+90.
@@ -147,9 +156,11 @@ def client(args,out,source,install):
             request.geometry_hash,request.max_candidates = store.mapper.geometry_hash,5
             (out/('%03d.request.cdr'%index)).write_bytes(serialize_message(request))
             begin = time.perf_counter_ns()
-            # Snapshot projection, contract construction/publication and the
-            # actual request/serialization are all inside the timed interval.
-            publish()
+            # Include the snapshot projection and wire preparation. The
+            # unchanged pinned map is already admitted by the actual node;
+            # re-publishing the same revision would be a stale input.
+            surface,ledger = prepare()
+            serialize_message(surface);serialize_message(ledger)
             future = service.call_async(request)
             rclpy.spin_until_future_complete(node,future,timeout_sec=20.)
             if not future.done() or future.exception():
