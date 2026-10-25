@@ -156,6 +156,21 @@ def test_distance_unknown_policy_and_outside_point_are_typed():
     assert not node.errors
 
 
+def test_positive_distance_leaf_counts_serialize_as_builtin_integers():
+    s, node, service = boundary()
+    s.mapper.mark_occupied_voxel(1, 1, 1)
+    publish(s)
+    req = request(srv.QueryCargoDistanceV2)
+    req.points = [msg.CargoMapDistancePointV2().point for _ in range(2)]
+    for point in req.points:
+        point.z = .1
+    result = invoke(service.distance, srv.QueryCargoDistanceV2, req)
+    assert result.meta.status == 'OK' and result.meta.complete
+    assert result.meta.examined_cells > 0 and result.meta.examined_blocks > 0
+    assert all(r.occupied.exact and r.occupied.distance_m > 0 for r in result.results)
+    assert not node.errors
+
+
 def test_full_surface_flattening_and_bounded_patch_are_typed():
     s, node, service = boundary()
     old = s.acquire_query_snapshot().identity

@@ -124,7 +124,7 @@ def _nearest(handle, data, point, state, radius, work, counts, lower_squared, vo
         # whose exact bounding box can improve/tie the current nearest cell.
         # Initial membership scans and every leaf volume test are charged.
         examined = (len(block.flat_indices) if cached is None else 0) if leaf == -1 else (
-            cached[4][leaf]-cached[3][leaf])
+            int(cached[4][leaf]-cached[3][leaf]))
         if not work.admits(examined):
             return DistanceMatch('QUERY_BUDGET_EXHAUSTED', False,
                                  lower_bound_m=math.sqrt(min(lower, best_squared)))
