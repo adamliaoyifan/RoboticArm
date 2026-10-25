@@ -2,6 +2,8 @@
 import hashlib
 import json
 from pathlib import Path
+import subprocess
+import sys
 import time
 
 
@@ -33,6 +35,38 @@ def compare_responses(baseline,candidate):
         wire_equal=bool(rows) and all(r['wire_equal'] for r in rows),rows=rows)
 
 
+def compare_in_environment(baseline, candidate, output, *, script, environment):
+    """Decode in the selected candidate IDL environment, never the parent.
+
+    A campaign may be launched from a shell without ROS. Its service children
+    and this offline reader must resolve the same isolated generated messages.
+    Inputs remain immutable; the child writes a separate comparison artifact.
+    A semantic difference is a result, while a decoder/launch failure is an
+    error with preserved stderr. Neither case retries a product request.
+    """
+    output = Path(output)
+    control_path = output.with_suffix('.control.json')
+    if output.exists() or control_path.exists():
+        raise FileExistsError('comparison artifact already exists: '+str(output))
+    command = [sys.executable, str(script), '--baseline', str(baseline),
+               '--candidate', str(candidate), '--out', str(output)]
+    control = dict(command=command, started_ns=time.time_ns())
+    try:
+        result = subprocess.run(command, env=environment, capture_output=True,
+                                text=True, timeout=30.)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        control.update(exit_code=None, error=repr(error), ended_ns=time.time_ns())
+        control_path.write_text(json.dumps(control, indent=2)+'\n')
+        raise RuntimeError('placement comparison child failed; see '+str(control_path)) from error
+    control.update(exit_code=result.returncode, stdout=result.stdout,
+                   stderr=result.stderr, ended_ns=time.time_ns())
+    control_path.write_text(json.dumps(control, indent=2)+'\n')
+    if result.returncode != 0:
+        raise RuntimeError('placement comparison child failed; see '+
+                           str(control_path))
+    return json.loads(output.read_text())
+
+
 def inspect_campaign(bundle,args,common):
     manifest_path=bundle/'manifest.json'
     manifest=json.loads(manifest_path.read_text())
@@ -54,3 +88,22 @@ def inspect_campaign(bundle,args,common):
         note='All response fields compared exactly after deserialization. Raw wire differences remain preserved; undefined alignment bytes are not response fields.')
     common.write_json(out/'result.json',report)
     return int(not report['equal'])
+
+
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--baseline', required=True)
+    parser.add_argument('--candidate', required=True)
+    parser.add_argument('--out', required=True)
+    args = parser.parse_args()
+    output = Path(args.out)
+    if output.exists():
+        raise FileExistsError('comparison artifact already exists: '+str(output))
+    comparison = compare_responses(args.baseline, args.candidate)
+    with output.open('x') as stream:
+        stream.write(json.dumps(comparison, indent=2)+'\n')
+
+
+if __name__ == '__main__':
+    main()

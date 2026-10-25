@@ -7,7 +7,7 @@ import sys
 import time
 
 from occ_query_runtime_campaign import stop_owner
-from occ_query_placement_comparison import compare_responses
+from occ_query_placement_comparison import compare_in_environment
 from occ_query_runtime_environment import installed_environment
 
 
@@ -80,7 +80,10 @@ def planning(args,common):
         comparisons={p.name:(right/p.name).exists() and p.read_bytes()==(right/p.name).read_bytes() for p in files}
         entry['wire_comparison']=dict(samples=len(files),required=args.samples+args.warmup+1,
             equal=bool(files) and all(comparisons.values()),differences=[k for k,v in comparisons.items() if not v])
-        entry['response_comparison']=compare_responses(left,right)
+        entry['response_comparison']=compare_in_environment(left,right,
+            group/'response_comparison.json',
+            script=sources['candidate']/'scripts/g3/occ_query_placement_comparison.py',
+            environment=environments['candidate'])
         common.write_json(out/'manifest.json',manifest)
     manifest.update(phase='complete',ended_ns=time.time_ns(),
         source_hashes_unchanged={k:common.source_hashes(v)==hashes[k] for k,v in sources.items()})

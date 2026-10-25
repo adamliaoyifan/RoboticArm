@@ -11,6 +11,10 @@ the requested isolated install, discarding inherited ROS overlays. The owner,
 client, capture wake and teardown wake use that same environment. Launching the
 CLI from a shell without ROS setup must not change child dependency resolution.
 Setup errors fail before scoring; preserve them separately from product cases.
+Placement response comparison also runs in a child using the candidate's
+isolated IDL environment. The parent CLI need not import ROS or generated
+messages. Comparison JSON and command/exit/stderr evidence are retained beside
+the original CDR; a reader failure never triggers a product request retry.
 
 `occ_query_concurrency_client.py` owns scheduled requests, completion records
 and the wire journal. A request keeps its dispatch phase even if it completes
