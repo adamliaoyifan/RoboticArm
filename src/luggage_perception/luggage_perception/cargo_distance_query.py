@@ -22,6 +22,9 @@ from luggage_perception.cargo_voxel_delta import immutable_array
 MAX_EXAMINED_CELLS = 2_000_000
 MAX_EXAMINED_BLOCKS = 50_000
 MAX_TIMEOUT_MS = 200.
+# Request-local leaves limit distance arithmetic within a 16-cube block.
+# They are query acceleration, never a second occupancy representation.
+DISTANCE_LEAF_EDGE = 4
 
 
 @dataclass(frozen=True)
@@ -103,7 +106,7 @@ def _nearest(handle, data, point, state, radius, work, counts, lower_squared, vo
     # Heap tuples include block ID to keep traversal deterministic. Equal
     # lower bounds must be visited: another block may contain a smaller flat ID.
     candidates = candidates[lower_squared[candidates] <= radius*radius]
-    queue = list(zip(lower_squared[candidates].tolist(), candidates.tolist()))
+    queue = [(float(lower_squared[b]), int(b), -1) for b in candidates]
     heapq.heapify(queue)
     best_squared = radius*radius
     best = None
@@ -111,19 +114,17 @@ def _nearest(handle, data, point, state, radius, work, counts, lower_squared, vo
     r = data.grid.resolution
     origin = np.asarray(data.grid.origin)
     while queue:
-        lower, block_id = heapq.heappop(queue)
+        lower, block_id, leaf = heapq.heappop(queue)
         if lower > best_squared:
             break
         block = data.blocks[block_id]
         key = (block_id, state)
         cached = volumes.get(key)
-        # A batch visits the same immutable blocks for many points. Decode
-        # their state membership and cell volumes once, without retaining a
-        # distance field or transferring any work to the map writer. Charge
-        # both the initial membership scan and every point/volume test.
-        examined = int(counts[block_id, state])
-        if cached is None:
-            examined += len(block.flat_indices)
+        # Decode each visited block once. Heap leaves then test only volumes
+        # whose exact bounding box can improve/tie the current nearest cell.
+        # Initial membership scans and every leaf volume test are charged.
+        examined = (len(block.flat_indices) if cached is None else 0) if leaf == -1 else (
+            cached[4][leaf]-cached[3][leaf])
         if not work.admits(examined):
             return DistanceMatch('QUERY_BUDGET_EXHAUSTED', False,
                                  lower_bound_m=math.sqrt(min(lower, best_squared)))
@@ -135,14 +136,30 @@ def _nearest(handle, data, point, state, radius, work, counts, lower_squared, vo
                                     & np.frombuffer(block.active, 'u1').astype(bool))
             flat = block.flat_indices[offsets]
             coordinates = np.column_stack((flat % nx, flat//nx % ny, flat//(nx*ny)))
+            small = coordinates//DISTANCE_LEAF_EDGE
+            dimensions = (np.asarray(data.grid.shape)+DISTANCE_LEAF_EDGE-1)//DISTANCE_LEAF_EDGE
+            ids = small[:, 0]+dimensions[0]*(small[:, 1]+dimensions[1]*small[:, 2])
+            order = np.argsort(ids, kind='stable')
+            ids, offsets, coordinates = ids[order], offsets[order], coordinates[order]
+            starts = np.flatnonzero(np.r_[True, ids[1:] != ids[:-1]])
+            ends = np.r_[starts[1:], len(offsets)]
             low = origin+coordinates*r
             high = origin+(coordinates+1)*r
-            cached = volumes[key] = (offsets, low, high)
-        offsets, low, high = cached
+            cached = volumes[key] = (offsets, low, high, starts, ends,
+                np.minimum.reduceat(low, starts), np.maximum.reduceat(high, starts))
+        offsets, low, high, starts, ends, leaf_low, leaf_high = cached
+        if leaf == -1:
+            delta = np.maximum(np.maximum(leaf_low-point, point-leaf_high), 0.)
+            bounds = np.einsum('ij,ij->i', delta, delta)
+            for index in np.flatnonzero(bounds <= best_squared):
+                heapq.heappush(queue, (float(bounds[index]), block_id, int(index)))
+            continue
+        start, end = starts[leaf], ends[leaf]
+        offsets, low, high = offsets[start:end], low[start:end], high[start:end]
         displacement = np.maximum(np.maximum(low-point, point-high), 0.)
         squared = np.einsum('ij,ij->i', displacement, displacement)
         minimum = float(squared.min())
-        # flat_indices and therefore offsets are already ascending.
+        # Cells within a leaf remain ascending after the stable grouping.
         offset = int(offsets[np.flatnonzero(squared == minimum)[0]])
         flat_id = int(block.flat_indices[offset])
         if (minimum < best_squared or (minimum == best_squared

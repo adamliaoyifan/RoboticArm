@@ -324,6 +324,29 @@ class MapQuerySnapshot:
                           flat, int(row['state']), int(row['source']), int(row['label']),
                           int(row['instance']), boxes)
 
+    def _cell_records(self, block, offsets):
+        """Expand a page's memberships once per block, preserving row order.
+
+        Stored member offsets are sorted. Batched binary searches avoid
+        scanning each box's full member list for each output cell.
+        """
+        offsets = np.asarray(offsets, dtype=np.int64)
+        memberships = [[] for _ in offsets]
+        for identifier in sorted(block.box_members):
+            members = np.frombuffer(block.box_members[identifier], dtype='<u2')
+            if not len(members):
+                continue
+            positions = np.searchsorted(members, offsets)
+            matched = (positions < len(members)) & (members[np.minimum(positions, len(members)-1)] == offsets)
+            for index in np.flatnonzero(matched):
+                memberships[index].append(identifier)
+        flat = block.flat_indices[offsets]
+        rows = block.records()[offsets]
+        nx, ny, _ = self.grid.shape
+        return [CellRecord(CellKey(self.identity.epoch, int(i % nx), int(i//nx % ny), int(i//(nx*ny))),
+            int(i), int(row['state']), int(row['source']), int(row['label']),
+            int(row['instance']), tuple(boxes)) for i, row, boxes in zip(flat, rows, memberships)]
+
     def query_cells(self, region=None, states=(0, 1, 2), instance_filter=None, page=None):
         return self._query(region, states, instance_filter, page, frontier=False)
 
@@ -438,7 +461,15 @@ class MapQuerySnapshot:
             del selected[page.limit+1:]
         complete = len(selected) <= page.limit
         selected = selected[:page.limit]
-        cells = tuple(self._cell_record(data.blocks[b], o) for _, b, o in selected)
+        by_block = {}
+        for position, (_, block_id, offset) in enumerate(selected):
+            by_block.setdefault(block_id, []).append((position, offset))
+        cells = [None]*len(selected)
+        for block_id, entries in by_block.items():
+            records = self._cell_records(data.blocks[block_id], [offset for _, offset in entries])
+            for (position, _), record in zip(entries, records):
+                cells[position] = record
+        cells = tuple(cells)
         cursor = '' if complete else self._encode_cursor(data, query_hash, selected[-1][0])
         return CellPage('OK', '', self.identity, self.grid, complete=complete,
                         next_cursor=cursor, returned_count=len(cells), examined_cells=examined_cells,

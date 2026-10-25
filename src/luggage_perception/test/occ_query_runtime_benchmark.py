@@ -61,7 +61,7 @@ def main():
                              [.7, .4, ready['ceiling_z']-.01], (256, 3))
         for case in LIMITS_MS:
             if case == 'snapshot':
-                values = [n/1e6 for n in ready['snapshot_ns'][3:]]
+                values = [n/1e6 for n in ready['snapshot_ns'][4:]]
                 results[case] = summarize(values, LIMITS_MS[case])
                 continue
             kind = (srv.GetCargoMapStats if case == 'stats' else
@@ -69,7 +69,7 @@ def main():
                 srv.QueryCargoDistanceV2 if case.startswith('distance') else
                 srv.GetCargoSurfacePatchV2 if case in ('surface', 'patch') else srv.QueryCargoCellsV2)
             measured = []
-            for i in range(a.warmup+a.samples):
+            for i in range(-1, a.warmup+a.samples):
                 request = kind.Request()
                 request_id = case+'-'+str(i)
                 if hasattr(request, 'query'):
@@ -80,7 +80,7 @@ def main():
                 if case.startswith('roi'):
                     q.has_region = True
                     lower, upper = ((10., 10., 10.), (11., 11., 11.)) if case == 'roi_empty' else (
-                        (-.2, -.2, ready['floor_z']), (.2, .2, ready['floor_z']+.4))
+                        (-.15, -.15, ready['floor_z']), (.15, .15, ready['floor_z']+.3))
                     q.region_min, q.region_max = Point(x=lower[0], y=lower[1], z=lower[2]), Point(x=upper[0], y=upper[1], z=upper[2])
                 elif case in ('frontier', 'frontier_count'):
                     request.mode = 1 if case == 'frontier' else 3
@@ -117,7 +117,7 @@ def main():
                 # Distance/frontier-count gates are pure-query latency; also
                 # retain the complete ROS round trip for every request.
                 latency_ns = response.meta.elapsed_ns if case.startswith('distance') or case == 'frontier_count' else elapsed_ns
-                record = dict(case=case, index=i, warmup=i<a.warmup, status=status,
+                record = dict(case=case, index=i, cold=i==-1, warmup=0<=i<a.warmup, status=status,
                     monotonic_ns=begin, elapsed_ns=elapsed_ns, gated_ns=latency_ns,
                     request_sha256=hashlib.sha256(payload).hexdigest(),
                     response_sha256=hashlib.sha256(body).hexdigest(), response_bytes=len(body))

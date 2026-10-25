@@ -246,3 +246,28 @@ def test_sparse_batch_decodes_each_block_once_without_changing_work_cap():
         bounded = snapshot.nearest_obstacles(points, .3,
             budget=DistanceBudget(max_examined_cells=10))
         assert not bounded.complete and bounded.examined_cells <= 10
+
+
+def test_dense_geometry_batch_prunes_within_blocks_and_matches_full_volume_oracle():
+    s = store(.01, .50)
+    boxes = [((x, y, z), (.08, .08, .08), 0.) for z in (.10, .30)
+        for y in (-.15, 0., .15) for x in (-.18, -.06, .06, .18)]
+    for i, box in enumerate(boxes[:20]):
+        assert s.apply_update(MapUpdate(operation_id=str(i), kind=UpdateKind.ADD_BOX_V1,
+            box=box, box_id='dense-'+str(i))).accepted
+    m = s.mapper
+    flat = np.flatnonzero(np.frombuffer(m._grid, 'u1') == 2)
+    xyz = np.column_stack((flat % m.nx, flat//m.nx % m.ny, flat//(m.nx*m.ny)))
+    low = np.asarray([-.25, -.25, 0.])+xyz*.01
+    high = np.asarray([-.25, -.25, 0.])+(xyz+1)*.01
+    points = np.random.default_rng(31).uniform([-.249, -.249, .001], [.249, .249, .499], (256, 3))
+    with s.acquire_query_snapshot() as snapshot:
+        batch = snapshot.nearest_obstacles(points, .3)
+        assert batch.complete and batch.examined_cells < 2_000_000
+        for point, result in zip(points, batch.results):
+            delta = np.maximum(np.maximum(low-point, point-high), 0.)
+            squared = (delta*delta).sum(axis=1)
+            at = int(np.argmin(squared))
+            assert result.occupied.status == 'MATCH'
+            assert abs(result.occupied.distance_m-squared[at]**.5) <= 1e-9
+            assert result.occupied.cell.flat_index == flat[at]

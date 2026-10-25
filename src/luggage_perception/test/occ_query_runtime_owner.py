@@ -42,6 +42,7 @@ def main():
     from luggage_perception.occupancy_map_store import MapUpdate, UpdateKind
     from luggage_perception.cargo_map_query_service import MapQueryService
     from luggage_perception.cargo_map_query_service import set_identity
+    from luggage_perception.cargo_map_query import CellKey, QueryError
     from luggage_msgs.msg import CargoMapQueryIdentityV2
     from rosidl_runtime_py.convert import message_to_ordereddict
 
@@ -129,16 +130,32 @@ def main():
         node._publish_all()
         # Isolated snapshot acquisition benchmark: no service or trace overhead.
         snapshots = []
-        for _ in range(33):
+        for _ in range(34):
             t = time.perf_counter_ns()
             snapshot = s.acquire_query_snapshot()
             snapshots.append(time.perf_counter_ns()-t)
             snapshot.close()
+        rng = np.random.default_rng(20261025)
+        point_reads = hashlib.sha256()
+        with s.acquire_query_snapshot() as snapshot:
+            for flat in rng.integers(0, m.nx*m.ny*m.nz, 10_000):
+                flat = int(flat)
+                key = CellKey(snapshot.identity.epoch, flat % m.nx, flat//m.nx % m.ny, flat//(m.nx*m.ny))
+                try:
+                    cell = snapshot.get_cell(key)
+                    assert m._active[flat]
+                    assert (cell.state, cell.source, cell.label, cell.instance_id) == (
+                        m._grid[flat], m._source[flat], m._labels[flat], m._instance_ids[flat])
+                    point_reads.update(str((flat, cell.state, cell.source, cell.label, cell.instance_id)).encode())
+                except QueryError as error:
+                    assert not m._active[flat] and error.reason == 'OUTSIDE_HULL'
+                    point_reads.update(str((flat, 'OUTSIDE_HULL')).encode())
         manifest.update(ready_ns=time.time_ns(), actual_boxes=len(m._placed_boxes),
             setup_elapsed_ns=time.perf_counter_ns()-begin, grid_shape=[m.nx, m.ny, m.nz],
             floor_z=m._hull.floor_z, ceiling_z=m._hull.ceiling_z,
             initial_hits=len(points), patch_columns=len(patch_points),
             since_identity=message_to_ordereddict(old), snapshot_ns=snapshots,
+            point_reads=dict(count=10_000, seed=20261025, exact_native_match=True, sha256=point_reads.hexdigest()),
             resources=dict(s._query_registry.resource_summary()),
             rss_peak_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
         save(out/'ready.json', manifest)
@@ -157,25 +174,30 @@ def main():
             captured_ns=time.time_ns(), input='ready.json synthetic setup + request CDR files',
             window='transaction boundary after stopped scoring; heartbeat window in parent trace'))
     signal.signal(signal.SIGUSR1, capture)
+    stop_requested = []
     def stop_spin(_signum, _frame):
         # SIGINT also shuts rclpy's context, while production main performs
         # its own shutdown. A private test signal only exits its spin loop.
+        stop_requested.append(time.time_ns())
         raise KeyboardInterrupt()
     signal.signal(signal.SIGUSR2, stop_spin)
     try:
         module.main(['--ros-args', '-p', 'scene_tf_config:='+str(Path(a.scene).resolve()),
                      '-p', 'resolution:='+str(a.resolution)])
-    except Exception:
-        capture()
+    except Exception as error:
         # Constructor failures happen before production main's finally.
         # Tear down only resources created by this fixture in that case.
         import rclpy
-        for node in owner:
-            node.shutdown_tf()
-            node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
-        raise
+        if stop_requested and not rclpy.ok() and 'rcl_shutdown already called' in str(error):
+            manifest['post_scoring_teardown_error'] = repr(error)
+        else:
+            capture()
+            for node in owner:
+                node.shutdown_tf()
+                node.destroy_node()
+            if rclpy.ok():
+                rclpy.shutdown()
+            raise
     finally:
         manifest.update(ended_ns=time.time_ns(),
             rss_peak_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
