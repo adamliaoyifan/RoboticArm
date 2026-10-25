@@ -8,6 +8,7 @@ import sys
 import time
 
 from occ_query_runtime_campaign import stop_owner
+from occ_query_placement_comparison import compare_responses
 
 
 def installed_environment(install):
@@ -85,18 +86,19 @@ def planning(args,common):
                     record['owner_exit_code']=owner.returncode
                     common.write_json(out/'manifest.json',manifest)
             common.check_evidence_budget(out)
-        # Compare all full wire responses, including candidate order, scores,
-        # reasons and slot geometry; source text contains timing diagnostics.
+        # Compare all response fields. Undefined CDR alignment padding can
+        # differ for equal messages, so retain raw hashes separately.
         left=group/'baseline/client';right=group/'candidate/client'
         files=sorted(left.glob('*.response.cdr'))
         comparisons={p.name:(right/p.name).exists() and p.read_bytes()==(right/p.name).read_bytes() for p in files}
         entry['wire_comparison']=dict(samples=len(files),required=args.samples+args.warmup+1,
             equal=bool(files) and all(comparisons.values()),differences=[k for k,v in comparisons.items() if not v])
+        entry['response_comparison']=compare_responses(left,right)
         common.write_json(out/'manifest.json',manifest)
     manifest.update(phase='complete',ended_ns=time.time_ns(),
         source_hashes_unchanged={k:common.source_hashes(v)==hashes[k] for k,v in sources.items()})
     common.write_json(out/'manifest.json',manifest)
-    failed=any(not g['wire_comparison']['equal'] or
-        g['wire_comparison']['samples']!=args.samples+args.warmup+1 or
+    failed=any(not g['response_comparison']['equal'] or
+        g['response_comparison']['samples']!=args.samples+args.warmup+1 or
         any(r.get('result',{}).get('outcome')!='pass' for r in g['runs'].values()) for g in manifest['groups'])
     return int(failed)

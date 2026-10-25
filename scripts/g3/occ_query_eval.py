@@ -197,6 +197,9 @@ def oracle(args):
 
 def replay(args):
     bundle = Path(args.bundle).resolve()
+    if (bundle/'manifest.json').exists() and json.loads((bundle/'manifest.json').read_text()).get('kind')=='planning':
+        from occ_query_placement_comparison import inspect_campaign
+        return inspect_campaign(bundle,args,sys.modules[__name__])
     case = json.loads((bundle/'case.json').read_text())
     if 'response' in case and (bundle/'map.npz').exists() and (bundle/'points.npy').exists():
         return replay_distance_case(bundle,case,args)
