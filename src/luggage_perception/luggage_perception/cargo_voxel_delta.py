@@ -1,0 +1,95 @@
+"""Compact, read-only evidence deltas; never changes occupancy decisions.
+
+The mapper calls record_before at its existing mutation boundaries. Store
+finalizes once per publication. First-old/final-new semantics preserve overlap,
+repeated hits, and changes confined to sensor shadow or ownership.
+"""
+from dataclasses import dataclass
+
+import numpy as np
+
+
+EVIDENCE_DTYPE = np.dtype([
+    ('state', 'u1'), ('source', 'u1'), ('label', '<i8'), ('instance', '<i8'),
+    ('logodds', '<f8'), ('locked', '?'), ('seen', '?'), ('shadow', '<f8'),
+    ('shadow_label', '<i8'), ('shadow_instance', '<i8'),
+])
+
+
+def immutable_array(values):
+    """Bytes-backed array: consumers cannot turn writeability back on."""
+    values = np.ascontiguousarray(values)
+    return np.frombuffer(values.tobytes(), dtype=values.dtype).reshape(values.shape)
+
+
+def capture_evidence(mapper, indices):
+    records = np.empty(len(indices), dtype=EVIDENCE_DTYPE)
+    for field, data, dtype in (
+        ('state', mapper._grid, 'u1'), ('source', mapper._source, 'u1'),
+        ('label', mapper._labels, '<i8'), ('instance', mapper._instance_ids, '<i8'),
+        ('seen', mapper._sensor_seen, 'u1'), ('shadow', mapper._sensor_values, '<f8'),
+        ('shadow_label', mapper._sensor_labels, '<i8'),
+        ('shadow_instance', mapper._sensor_instance_ids, '<i8'),
+    ):
+        records[field] = np.frombuffer(data, dtype=dtype)[indices]
+    # Primary evidence deliberately remains in its legacy Python lists.
+    records['logodds'] = np.fromiter(
+        (mapper._occupancy.values[int(i)] for i in indices), float, len(indices))
+    records['locked'] = np.fromiter(
+        (mapper._occupancy.geometry_locked[int(i)] for i in indices), bool, len(indices))
+    return records
+
+
+@dataclass(frozen=True)
+class DeltaBatch:
+    indices: np.ndarray
+    before: np.ndarray
+    after: np.ndarray
+    rebuild: bool = False
+
+
+class VoxelDeltaBuilder:
+    """Transaction-local owner; compact arrays, no per-map voxel objects."""
+
+    def __init__(self, mapper):
+        self._mapper = mapper
+        self._seen = set()
+        self._chunks = []
+        self._rebuild = False
+
+    def record_before(self, indices):
+        if self._rebuild:
+            return
+        fresh = []
+        for index in indices:
+            index = int(index)
+            if index not in self._seen:
+                self._seen.add(index)
+                fresh.append(index)
+        if fresh:
+            keys = np.asarray(fresh, dtype=np.int64)
+            self._chunks.append((keys, capture_evidence(self._mapper, keys)))
+
+    def record_reset(self):
+        self._rebuild = True
+        self._chunks.clear()
+        self._seen.clear()
+
+    def finalize(self):
+        if self._chunks:
+            indices = np.concatenate([chunk[0] for chunk in self._chunks])
+            before = np.concatenate([chunk[1] for chunk in self._chunks])
+            after = capture_evidence(self._mapper, indices)
+            changed = np.zeros(len(indices), dtype=bool)
+            for name in EVIDENCE_DTYPE.names:
+                equal = before[name] == after[name]
+                if before[name].dtype.kind == 'f':
+                    equal |= np.isnan(before[name]) & np.isnan(after[name])
+                changed |= ~equal
+            order = np.argsort(indices[changed])
+            indices, before, after = (a[changed][order] for a in (indices, before, after))
+        else:
+            indices = np.empty(0, dtype=np.int64)
+            before = after = np.empty(0, dtype=EVIDENCE_DTYPE)
+        return DeltaBatch(*(immutable_array(a) for a in (indices, before, after)),
+                          rebuild=self._rebuild)

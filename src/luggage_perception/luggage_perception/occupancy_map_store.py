@@ -316,6 +316,10 @@ class UpdateResult:
         return self.status is UpdateStatus.ACCEPTED
 
 
+from luggage_perception.cargo_voxel_delta import VoxelDeltaBuilder
+from luggage_perception.cargo_query_indexes import QueryIndexOwner
+
+
 class OccupancyMapStore(object):
     """Sole write owner of one cargo map. See module docstring."""
 
@@ -345,6 +349,9 @@ class OccupancyMapStore(object):
         self._map_source = MAP_STATIC_EMPTY
         self._cargo_observed = False
         self._pose_at_confirm = None
+        self._query_indexes = QueryIndexOwner()
+        self._query_indexes.initialize(mapper)
+        mapper._voxel_delta = VoxelDeltaBuilder(mapper)
         self._snapshot = self._build_snapshot()
 
     # ------------------------------------------------------------------
@@ -375,6 +382,16 @@ class OccupancyMapStore(object):
     @property
     def identity(self):
         return self._snapshot.identity
+
+    def status_bundle(self):
+        """One atomic read: immutable map and summary of exactly that map."""
+        return self._status_bundle
+
+    def summary(self):
+        summary = self._status_bundle[1]
+        if summary is None:
+            raise RuntimeError("QUERY_INDEX_UNAVAILABLE")
+        return summary
 
     def snapshot(self):
         """Current immutable snapshot (rebuilt only by transactions)."""
@@ -959,6 +976,21 @@ class OccupancyMapStore(object):
     # Snapshot construction + digest
 
     def _build_snapshot(self):
+        # A derived-index failure cannot erase or reject an already-applied
+        # physical fact. Publish the ordinary map, explicitly close queries,
+        # and allow only an explicit reset to rebuild the failed index.
+        try:
+            delta = self._mapper._voxel_delta.finalize()
+            if self._query_indexes is None and delta.rebuild:
+                self._query_indexes = QueryIndexOwner()
+                self._query_indexes.initialize(self._mapper)
+            elif self._query_indexes is not None:
+                self._query_indexes.apply_delta(self._mapper, delta)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("QUERY_INDEX_UNAVAILABLE")
+            self._query_indexes = None
+        self._mapper._voxel_delta = VoxelDeltaBuilder(self._mapper)
         base = self._mapper.surface_map_2d()
         contract = self._mapper.surface_contract_v2("snap", "snap", projection=base)
         fields = self._pending.surface_fields()
@@ -1029,6 +1061,11 @@ class OccupancyMapStore(object):
         # frozen dataclass: the one deferred field is set via the
         # low-level hook; every other field was set at construction.
         object.__setattr__(snapshot, "identity", identity)
+        summary = (self._query_indexes.freeze(self._mapper, identity)
+                   if self._query_indexes is not None else None)
+        self._mapper._query_cache = summary
+        self._mapper._query_read_owner = self._query_indexes
+        self._status_bundle = (snapshot, summary)
         return snapshot
 
 

@@ -152,6 +152,9 @@ class CargoVolumeMapper:
         stamped = self._hull.descriptor()
         self.geometry_descriptor = stamped
         self.geometry_hash = str(stamped["geometry_hash"])
+        self._voxel_delta = None
+        self._query_cache = None
+        self._query_read_owner = None
         self._active = None
         self._grid = None
         self._occupancy = None
@@ -204,8 +207,19 @@ class CargoVolumeMapper:
         self._revision += 1
         return self._revision
 
+    def _observe_voxels(self, indices):
+        """Read-only evidence notification; never changes mutation order."""
+        self._query_cache = None
+        self._query_read_owner = None
+        if self._voxel_delta is not None:
+            self._voxel_delta.record_before(indices)
+
     def _clear_grid(self):
         """Clear voxel state without changing the commit revision."""
+        self._query_cache = None
+        self._query_read_owner = None
+        if self._voxel_delta is not None:
+            self._voxel_delta.record_reset()
         total = self.nx * self.ny * self.nz
         self._occupancy = LogOddsGrid(total, **self.occupancy_params)
         self._grid = bytearray(self._occupancy.states())
@@ -360,6 +374,7 @@ class CargoVolumeMapper:
                 and 0 <= iz < self.nz):
             return
         idx = self._index(ix, iy, iz)
+        self._observe_voxels((idx,))
         if source == SOURCE_GEOMETRY:
             self._grid[idx] = self._occupancy.force_occupied(
                 idx, lock_geometry=True
@@ -414,6 +429,7 @@ class CargoVolumeMapper:
         if vox is None:
             return
         idx = self._index(*vox)
+        self._observe_voxels((idx,))
         self._grid[idx] = self._occupancy.apply_miss(idx)
         self._record_sensor_miss(idx)
         if self._grid[idx] == FREE and self._source[idx] != SOURCE_GEOMETRY:
@@ -508,6 +524,8 @@ class CargoVolumeMapper:
                     self._raycast_indices((ox, oy, oz), (x, y, z), diagnostics)
                 )
         miss_indices.difference_update(hit_records)
+        self._observe_voxels(miss_indices)
+        self._observe_voxels(hit_records)
         for idx in miss_indices:
             self._grid[idx] = self._occupancy.apply_miss(idx)
             self._record_sensor_miss(idx)
@@ -560,6 +578,8 @@ class CargoVolumeMapper:
         misses=set()
         for end in rays:misses.update(self._raycast_indices(origin,end))
         misses.difference_update(hits)
+        self._observe_voxels(misses)
+        self._observe_voxels(hits)
         for index in misses:
             self._grid[index]=self._occupancy.apply_miss(index)
             self._record_sensor_miss(index)
@@ -746,6 +766,8 @@ class CargoVolumeMapper:
         force) so the cell equals the no-geometry control exactly.
         """
         occupancy = self._occupancy
+        indices = tuple(indices)
+        self._observe_voxels(indices)
         for idx in indices:
             occupancy.clear(idx)
             if self._sensor_seen[idx]:
@@ -841,7 +863,9 @@ class CargoVolumeMapper:
 
     def _rasterize_placed_box(self, center, size, yaw=0.0):
         """Rasterize a committed box without changing history/revision."""
-        for idx in self._iter_placed_box_voxels(center, size, yaw):
+        indices = tuple(self._iter_placed_box_voxels(center, size, yaw))
+        self._observe_voxels(indices)
+        for idx in indices:
             self._grid[idx] = self._occupancy.force_occupied(
                 idx, lock_geometry=True)
             if self._source[idx] == SOURCE_NONE:
@@ -859,6 +883,7 @@ class CargoVolumeMapper:
             if self._active is not None and not self._active[i]:
                 continue
             if cell == UNKNOWN:
+                self._observe_voxels((i,))
                 self._grid[i] = FREE
                 changed = True
         if changed:
@@ -866,6 +891,11 @@ class CargoVolumeMapper:
 
     def occupancy_summary(self):
         """Counts for integration responses; does not enumerate frontiers."""
+        if self._query_cache is not None:
+            result = self._query_cache.as_dict()
+            result.pop("frontier_count")
+            result["map_revision"] = self._revision
+            return result
         total, inactive, unknown, free, occupied, label_dist = occupancy_counts(self)
         voxel_vol = self.resolution ** 3
         return {
@@ -898,6 +928,8 @@ class CargoVolumeMapper:
         the PEER_LEASE_EXPIRED admission blockage (ADMISSION-DIAG
         2026-10-25, evidence placement_structural_g3_20261024/sim).
         """
+        if getattr(self, "_query_cache", None) is not None:
+            return self._query_cache.values["frontier_count"]
         import numpy as np
         from .cargo_grid_projection import _arrays
         grid, active = _arrays(self)
@@ -914,6 +946,12 @@ class CargoVolumeMapper:
         return int(np.count_nonzero(unknown & neighbour_observed))
 
     def _frontier_indices(self):
+        if self._query_read_owner is not None:
+            return self._query_read_owner.legacy_frontier_indices(self)
+        return self._frontier_indices_full()
+
+    def _frontier_indices_full(self):
+        """Preserved scalar oracle; never used by published stats."""
         frontier = []
         for ix in range(self.nx):
             for iy in range(self.ny):

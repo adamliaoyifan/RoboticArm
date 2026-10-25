@@ -700,14 +700,18 @@ class CargoVolumeMapperNode(Node):
         # ELFIN_MAP_STATS_TRACE is set.
         _trace = bool(os.environ.get("ELFIN_MAP_STATS_TRACE"))
         _t_recv = time.monotonic() if _trace else None
-        stats = self._mapper.stats()
+        snapshot, summary = self._store.status_bundle()
+        if summary is None:
+            response.success = False
+            response.message = "QUERY_INDEX_UNAVAILABLE"
+            return response
+        stats = summary.as_dict()
         if _trace:
             print("[map-stats-trace] recv=%.6f compute_end=%.6f "
                   "compute_s=%.6f" % (
                       _t_recv, time.monotonic(),
                       time.monotonic() - _t_recv), file=sys.stderr,
                   flush=True)
-        snapshot = self._store.snapshot()
         response.success = True
         response.unknown_ratio = float(stats["unknown_ratio"])
         response.occupancy_ratio = float(stats["occupancy_ratio"])

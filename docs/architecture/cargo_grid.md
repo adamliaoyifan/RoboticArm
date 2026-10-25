@@ -69,3 +69,14 @@ active-mask checks. Closed-face/terminal-band depth rules remain unchanged.
 `preprocess_counts` and `preprocess_timings` are returned in Store details.
 Reading a revision must use `map_revision`; calling full `stats()` also scans
 frontiers and is not appropriate in the hot integration path.
+
+OCC query indexes are derived state owned by OccupancyMapStore. Mapper mutation
+boundaries only record first-old/final-new evidence; primary buffers, fusion,
+ray ordering, shadow restoration, commits and revisions retain their semantics.
+The store applies net deltas before publication. Published status_bundle pairs
+the immutable map snapshot with counts/frontier membership of that exact identity.
+Hot summary reads visit zero voxels and never acquire the update transaction lock.
+The b33dda91 vectorized frontier count remains the unindexed mapper fallback;
+legacy enumeration retains ix/iy/iz order. Scalar enumeration is retained as an
+offline oracle. Index failure preserves the primary fact and publishes
+QUERY_INDEX_UNAVAILABLE; an explicit reset can rebuild the derived state.
