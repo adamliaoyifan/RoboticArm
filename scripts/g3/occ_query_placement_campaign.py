@@ -79,7 +79,10 @@ def planning(args,common):
                 except Exception as error:
                     record.update(phase='failed',error=repr(error))
                 finally:
-                    stop_owner(owner);record['owner_exit_code']=owner.returncode
+                    stop_owner(owner,wake_script=sources['candidate']/'scripts/g3/occ_query_runtime_wake.py',
+                        domain=args.domain,node='placement_planner',env=environments[label],
+                        wake_log=run/'control-wake.jsonl')
+                    record['owner_exit_code']=owner.returncode
                     common.write_json(out/'manifest.json',manifest)
             common.check_evidence_budget(out)
         # Compare all full wire responses, including candidate order, scores,

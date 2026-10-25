@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 
-from occ_query_runtime_campaign import stop_owner
+from occ_query_runtime_campaign import stop_owner,wake_owner
 from occ_query_placement_campaign import installed_environment
 
 
@@ -71,11 +71,15 @@ def concurrency(args,common):
                 finally:
                     if owner.poll() is None:
                         owner.send_signal(signal.SIGUSR1)
+                        wake_owner(sources['candidate']/'scripts/g3/occ_query_runtime_wake.py',args.domain,
+                            'cargo_volume_mapper',env=environments[label],log=run/'control-wake.jsonl')
                         deadline=time.monotonic()+45.
                         while not (run/'owner/capture.json').exists() and owner.poll() is None and time.monotonic()<deadline:
                             time.sleep(.05)
                     record['capture_complete']=(run/'owner/capture.json').exists()
-                    stop_owner(owner);record['owner_exit_code']=owner.returncode
+                    stop_owner(owner,wake_script=sources['candidate']/'scripts/g3/occ_query_runtime_wake.py',
+                        domain=args.domain,env=environments[label],wake_log=run/'control-wake.jsonl')
+                    record['owner_exit_code']=owner.returncode
                     record['ended_ns']=time.time_ns()
                     common.write_json(out/'manifest.json',manifest)
             common.check_evidence_budget(out)

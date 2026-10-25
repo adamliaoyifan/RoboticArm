@@ -13,10 +13,21 @@ import sys
 import time
 
 
-def stop_owner(process):
+def wake_owner(script,domain,node,env=None,log=None):
+    command=[sys.executable,str(script),'--domain',str(domain),'--node',node]
+    result=subprocess.run(command,env=env,capture_output=True,text=True,timeout=10.)
+    if log is not None:
+        with Path(log).open('a') as stream:
+            stream.write(json.dumps(dict(command=command,exit_code=result.returncode,
+                ended_ns=time.time_ns(),stderr=result.stderr[-1000:]))+'\n')
+
+
+def stop_owner(process,*,wake_script=None,domain=None,node='cargo_volume_mapper',env=None,wake_log=None):
     if process.poll() is not None:
         return
     process.send_signal(signal.SIGUSR2)
+    if wake_script is not None:
+        wake_owner(wake_script,domain,node,env,wake_log)
     try:
         process.wait(timeout=15)
     except subprocess.TimeoutExpired:
@@ -57,6 +68,7 @@ def benchmark(args, common):
     common.write_json(out/'manifest.json', manifest)
     owner_script = source/'src/luggage_perception/test/occ_query_runtime_owner.py'
     client_script = source/'src/luggage_perception/test/occ_query_runtime_benchmark.py'
+    wake_script=source/'scripts/g3/occ_query_runtime_wake.py'
     original_scene = source/'src/luggage_description/config/scene_tf.yaml'
     base_scene = yaml.safe_load(original_scene.read_text())
     for r, boxes, shape in itertools.product(args.resolutions, args.boxes, args.shapes):
@@ -110,6 +122,7 @@ def benchmark(args, common):
                         # Preserve the failed request and a consistent full
                         # boundary map before teardown. No automatic rerun.
                         process.send_signal(signal.SIGUSR1)
+                        wake_owner(wake_script,args.domain,'cargo_volume_mapper',log=run/'control-wake.jsonl')
                         deadline = time.monotonic()+45.
                         while not (run/'owner/capture.json').exists() and process.poll() is None and time.monotonic() < deadline:
                             time.sleep(.05)
@@ -118,12 +131,13 @@ def benchmark(args, common):
                     repetition.update(phase='failed', error=repr(error))
                     if process.poll() is None:
                         process.send_signal(signal.SIGUSR1)
+                        wake_owner(wake_script,args.domain,'cargo_volume_mapper',log=run/'control-wake.jsonl')
                         deadline = time.monotonic()+45.
                         while not (run/'owner/capture.json').exists() and process.poll() is None and time.monotonic() < deadline:
                             time.sleep(.05)
                     repetition['capture_complete'] = (run/'owner/capture.json').exists()
                 finally:
-                    stop_owner(process)
+                    stop_owner(process,wake_script=wake_script,domain=args.domain,wake_log=run/'control-wake.jsonl')
                     repetition.update(ended_ns=time.time_ns(), owner_exit_code=process.returncode)
                     ready_path, final_path = run/'owner/ready.json',run/'owner/manifest.json'
                     if ready_path.exists() and final_path.exists():
