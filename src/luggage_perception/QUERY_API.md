@@ -130,3 +130,8 @@ offsets handle partial edge blocks as well as full 16-cube blocks.
 Each distance batch selects candidate blocks per target state once from the
 pinned immutable summaries. Point-specific pruning and all visit budgets remain
 unchanged; these request-local lists do not survive the batch.
+
+Surface maintenance work reports `columns_recomputed` for the last refresh and
+`total_columns` as cumulative column computations since initialization,
+including the initial full projection. The map's column count is instead
+`grid.shape[0] * grid.shape[1]`; the cumulative work counter is not its size.
