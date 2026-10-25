@@ -41,11 +41,18 @@ def capture_evidence(mapper, indices):
 
 
 @dataclass(frozen=True)
+class GeometryRaster:
+    key: tuple
+    indices: np.ndarray
+
+
+@dataclass(frozen=True)
 class DeltaBatch:
     indices: np.ndarray
     before: np.ndarray
     after: np.ndarray
     rebuild: bool = False
+    geometry_rasters: tuple = ()
 
 
 class VoxelDeltaBuilder:
@@ -56,6 +63,7 @@ class VoxelDeltaBuilder:
         self._seen = set()
         self._chunks = []
         self._rebuild = False
+        self._geometry_rasters = {}
 
     def record_before(self, indices):
         if self._rebuild:
@@ -74,6 +82,12 @@ class VoxelDeltaBuilder:
         self._rebuild = True
         self._chunks.clear()
         self._seen.clear()
+        self._geometry_rasters.clear()
+
+    def record_geometry(self, center, size, yaw, indices):
+        key = (tuple(center), tuple(size), float(yaw))
+        self._geometry_rasters[key] = GeometryRaster(
+            key, immutable_array(np.asarray(indices, dtype=np.int32)))
 
     def finalize(self):
         if self._chunks:
@@ -92,4 +106,5 @@ class VoxelDeltaBuilder:
             indices = np.empty(0, dtype=np.int64)
             before = after = np.empty(0, dtype=EVIDENCE_DTYPE)
         return DeltaBatch(*(immutable_array(a) for a in (indices, before, after)),
-                          rebuild=self._rebuild)
+                          rebuild=self._rebuild,
+                          geometry_rasters=tuple(self._geometry_rasters.values()))

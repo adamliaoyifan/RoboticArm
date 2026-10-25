@@ -865,6 +865,8 @@ class CargoVolumeMapper:
         """Rasterize a committed box without changing history/revision."""
         indices = tuple(self._iter_placed_box_voxels(center, size, yaw))
         self._observe_voxels(indices)
+        if self._voxel_delta is not None:
+            self._voxel_delta.record_geometry(center, size, yaw, indices)
         for idx in indices:
             self._grid[idx] = self._occupancy.force_occupied(
                 idx, lock_geometry=True)

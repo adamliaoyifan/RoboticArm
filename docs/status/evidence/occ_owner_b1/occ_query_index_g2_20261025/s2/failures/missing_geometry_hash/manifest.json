@@ -1,0 +1,19 @@
+{
+  "stage": "query concurrent oracle input",
+  "reason": "schema1 test requests omitted required geometry_hash and were correctly rejected",
+  "primary_OCC_mismatch": false,
+  "scored": false,
+  "commit": "3fc8351729f23e8377cc53db518042c549262a41",
+  "dirty": [
+    " M src/luggage_perception/luggage_perception/cargo_query_indexes.py",
+    " M src/luggage_perception/luggage_perception/cargo_volume_mapper.py",
+    " M src/luggage_perception/luggage_perception/cargo_voxel_delta.py",
+    " M src/luggage_perception/luggage_perception/occupancy_map_store.py",
+    "?? src/luggage_perception/luggage_perception/cargo_map_query.py",
+    "?? src/luggage_perception/luggage_perception/cargo_map_query_adapter.py",
+    "?? src/luggage_perception/test/test_cargo_map_query_contracts.py"
+  ],
+  "replay_possible": true,
+  "capture_complete": true,
+  "replay": "pytest test_cargo_map_query_contracts.py -k two_readers; omit geometry_hash to reproduce refusal"
+}
