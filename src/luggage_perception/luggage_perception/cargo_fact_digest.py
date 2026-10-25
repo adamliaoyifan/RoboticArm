@@ -35,7 +35,11 @@ class CanonicalFactDigest:
             return self
         leaves = bytearray(self.leaves)
         view = memoryview(facts)
-        for leaf in np.unique(offsets // RECORDS_PER_LEAF):
+        # Each block has at most 64 leaves. A tiny dirty bitmap preserves
+        # sorted leaf order without sorting all changed record offsets.
+        dirty = np.zeros(len(self.leaves)//32, dtype=bool)
+        dirty[offsets // RECORDS_PER_LEAF] = True
+        for leaf in np.flatnonzero(dirty):
             leaf = int(leaf)
             start = leaf * LEAF_BYTES
             leaves[leaf * 32:(leaf + 1) * 32] = hashlib.sha256(

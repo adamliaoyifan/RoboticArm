@@ -33,12 +33,13 @@ def capture_evidence(mapper, indices):
     ):
         records[field] = np.frombuffer(data, dtype=dtype)[indices]
     # Primary evidence deliberately remains in its legacy Python lists.
-    # Gather only the touched entries. Built-in list getters avoid a Python
-    # generator frame per entry without copying/scanning the primary lists.
+    # Convert only the touched keys to Python integers once; iterating NumPy
+    # scalars repeats conversion in both legacy-list getters below.
+    index_keys = indices.tolist() if isinstance(indices, np.ndarray) else indices
     records['logodds'] = np.fromiter(
-        map(mapper._occupancy.values.__getitem__,indices),float,len(indices))
+        map(mapper._occupancy.values.__getitem__,index_keys),float,len(indices))
     records['locked'] = np.fromiter(
-        map(mapper._occupancy.geometry_locked.__getitem__,indices),bool,len(indices))
+        map(mapper._occupancy.geometry_locked.__getitem__,index_keys),bool,len(indices))
     return records
 
 
@@ -71,14 +72,20 @@ class VoxelDeltaBuilder:
     def record_before(self, indices):
         if self._rebuild:
             return
-        fresh = []
-        for index in indices:
-            index = int(index)
-            if index not in self._seen:
-                self._seen.add(index)
-                fresh.append(index)
+        if isinstance(indices, tuple) and len(indices) == 1:
+            # Hit application repeats keys already notified in its batch.
+            index = int(indices[0])
+            if index in self._seen:
+                return
+            self._seen.add(index)
+            fresh = (index,)
+        else:
+            # Normalize keys before deduplication, preserving first-old
+            # semantics across NumPy/Python integers and repeated batches.
+            fresh = set(map(int, indices)).difference(self._seen)
+            self._seen.update(fresh)
         if fresh:
-            keys = np.asarray(fresh, dtype=np.int64)
+            keys = np.fromiter(fresh, dtype=np.int64, count=len(fresh))
             # Store may bind the derived owner's unchanged prior facts.
             # Standalone mapper users retain the original immediate capture.
             before = (capture_evidence(self._mapper, keys)

@@ -53,3 +53,12 @@ def test_active_memberships_and_final_partial_leaf_are_bound():
     changed=owner.updated(facts,np.asarray([64]))
     assert owner.leaves[:32]==changed.leaves[:32]
     assert first!=changed.block_digest(bytes([1])*65,{})
+
+
+def test_dirty_leaf_bitmap_accepts_unsorted_and_duplicate_record_offsets():
+    facts = bytearray(131*EVIDENCE_DTYPE.itemsize)
+    owner = CanonicalFactDigest.build(facts)
+    offsets = np.asarray([130, 64, 0, 64, 127, 130])
+    for offset in offsets:
+        facts[int(offset)*EVIDENCE_DTYPE.itemsize] = 1
+    assert owner.updated(facts, offsets) == CanonicalFactDigest.build(facts)

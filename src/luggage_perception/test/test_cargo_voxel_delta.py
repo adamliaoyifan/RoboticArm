@@ -46,6 +46,21 @@ def test_net_unchanged_cell_is_removed():
     assert len(d.finalize().indices) == 0
 
 
+def test_repeated_batches_normalize_keys_before_first_old_deduplication():
+    m = mapper()
+    d = VoxelDeltaBuilder(m)
+    m._voxel_delta = d
+    d.record_before([np.int64(1), '1', 1.9, 2])
+    m.mark_occupied_voxel(1, 0, 0, label=7, instance_id=8)
+    d.record_before({1: None, 2: None})
+    d.record_before(iter([1, 2]))
+    d.record_before((1,))
+    delta = d.finalize()
+    assert list(delta.indices) == [1]
+    assert delta.before['state'][0] == delta.before['label'][0] == 0
+    assert delta.after['label'][0] == 7 and delta.after['instance'][0] == 8
+
+
 def test_shadow_change_under_geometry_lock_is_not_lost():
     m = mapper()
     m.mark_placed_box((0, 0, .06), (.08, .08, .08))
