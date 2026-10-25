@@ -425,13 +425,21 @@ def fallback_batch(index, cfg, hull, datum, seen_ids, cursor=None,
 
 
 def structural_search(surface_map, box_size, allowed_yaws=None, params=None,
-                      structural_policy=None, candidate_validator=None):
+                      structural_policy=None, candidate_validator=None,
+                      payload=None):
     """Structural-first placement search with lazy grid fallback.
 
     Returns a result dict with the ranked candidate list, the chosen
     candidate, and per-stage diagnostics. Gate semantics are identical
     to ``generate_candidates`` (oracle-tested); the ordering is the snug
     ranking (see placement_snug_ranking), NOT the old sort.
+
+    ``payload`` (StructuralPayload) splits the two objects: the hard
+    gates and window enumeration always consume the CONSERVATIVE
+    ENVELOPE (``box_size`` must equal ``payload.envelope`` when both
+    are given); the snug term compares the PREDICTED NOMINAL top
+    against neighbour measured tops. Without a payload the legacy
+    single-object behaviour is kept (envelope everywhere).
     """
     from luggage_packing.placement_snug_ranking import snug_rank
     from luggage_packing.placement_solver import _default_params
@@ -441,6 +449,12 @@ def structural_search(surface_map, box_size, allowed_yaws=None, params=None,
         cfg.update(params)
     cfg["top_n"] = 10 ** 9
     cfg["keep_rejected"] = 10 ** 9
+    if payload is not None and tuple(
+            float(v) for v in box_size) != tuple(payload.envelope):
+        raise ValueError(
+            "PAYLOAD_ENVELOPE_MISMATCH: box_size must be the payload's "
+            "conservative envelope (gates consume the envelope; got %s "
+            "vs %s)" % (list(box_size), list(payload.envelope)))
 
     stages = {}
     t0 = time.perf_counter()
@@ -494,7 +508,7 @@ def structural_search(surface_map, box_size, allowed_yaws=None, params=None,
         fallback_info = batch
 
     t_rank = time.perf_counter()
-    ranked = snug_rank(feasible, neighbors, structural_policy)
+    ranked = snug_rank(feasible, neighbors, structural_policy, payload=payload)
     stages["rank_s"] = round(time.perf_counter() - t_rank, 6)
 
     chosen = ranked[0] if ranked else None

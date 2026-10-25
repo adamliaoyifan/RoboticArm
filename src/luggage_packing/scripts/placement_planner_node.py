@@ -151,6 +151,11 @@ class PlacementPlannerNode(Node):
         # (eval drivers retry over the retained list; 24 is the historical
         # visualization-sized default).
         self.declare_parameter("last_result_max_candidates", 24)
+        # G3 structural-first chain: off keeps the byte-identical
+        # exhaustive path; on serves session batches (see
+        # _structural_result) with the same hard gates.
+        self.declare_parameter("structural_search", False)
+        self.declare_parameter("structural_budget_s", 20.0)
         self.declare_parameter("max_candidates", 5)
         # Reachability atlas wiring (shared yaml; every key overridable).
         # luggage_planning is imported lazily: declaring the exec_depend
@@ -949,6 +954,65 @@ class PlacementPlannerNode(Node):
             support_tol=float(self._params.get("support_tol", 0.05)),
         )
 
+    def _structural_result(self, surface, size, placed_aabbs):
+        """Structural-first chain (G3): session batch + atlas + snug rank.
+
+        Same hard-gate semantics as the exhaustive chain (the session
+        reuses the solver's own window evaluation, plus this node's
+        constraint validator for placed boxes / aperture / corridor);
+        ordering is ``structural_snug_depth_v1``. Route-failure
+        continuation is the caller's: ask the session ``next_batch`` --
+        here the first batch is served and returned with diagnostics.
+        """
+        import time as _time
+        from luggage_packing.placement_search_session import (
+            PlacementSearchSession)
+        from luggage_packing.placement_snug_ranking import snug_rank
+
+        stages = {}
+        t0 = _time.perf_counter()
+        session = PlacementSearchSession(
+            surface, size, self._allowed_yaws, params=self._params,
+            budget_s=float(self.get_parameter("structural_budget_s").value),
+            candidate_validator=lambda candidate: self._constraint_verdict(
+                candidate, placed_aabbs, size))
+        batch = session.start()
+        stages["search_core_s"] = round(_time.perf_counter() - t0, 4)
+        candidates = list(batch["candidates"])
+
+        t_atlas = _time.perf_counter()
+        atlas_report = None
+        hook = self._atlas_hook(size)
+        if hook is not None:
+            candidates, atlas_report = hook(candidates)
+        stages["atlas_s"] = round(_time.perf_counter() - t_atlas, 4)
+
+        feasible = [c for c in candidates if c.get("feasible")]
+        success = bool(feasible)
+        return {
+            "success": success,
+            "candidates": candidates,
+            "selected": feasible[0] if feasible else None,
+            "preferred_candidate": feasible[0] if feasible else None,
+            "reason_code": "" if success else "PLACE_CANDIDATE_EXHAUSTED",
+            "message": ("structural first batch: %d served (%s)"
+                        % (batch["served_total"], batch["source"])),
+            "capacity_feasible_count": len(feasible),
+            "reject_histogram": {},
+            "atlas": atlas_report,
+            "structural": {
+                "batch_source": batch["source"],
+                "batch_index": batch["batch_index"],
+                "coverage_complete": batch["coverage_complete"],
+                "budget_exhausted": batch["budget_exhausted"],
+                "terminal_reason": batch["terminal_reason"],
+                "proposals": batch["proposals"],
+                "setup_s": batch["setup_s"],
+                "stages": stages,
+                "session_identity": session.identity(),
+            },
+        }
+
     def _publish_last(self, payload):
         pub = dict(payload)
         cands = list(pub.get("candidates") or [])
@@ -1058,14 +1122,18 @@ class PlacementPlannerNode(Node):
         surface = self._active_surface()
         placed_aabbs = self._placed_aabbs(request.placed)
         atlas, atlas_diag = self._atlas_for(size)
-        result = solve_placement(
-            surface, size,
-            allowed_yaws=self._allowed_yaws,
-            params=self._params,
-            candidate_validator=lambda candidate: self._constraint_verdict(
-                candidate, placed_aabbs, size),
-            atlas_annotate=self._atlas_hook(size),
-        )
+        if bool(self.get_parameter("structural_search").value):
+            result = self._structural_result(
+                surface, size, placed_aabbs)
+        else:
+            result = solve_placement(
+                surface, size,
+                allowed_yaws=self._allowed_yaws,
+                params=self._params,
+                candidate_validator=lambda candidate: self._constraint_verdict(
+                    candidate, placed_aabbs, size),
+                atlas_annotate=self._atlas_hook(size),
+            )
         candidates = result["candidates"]
         histogram = result["reject_histogram"]
         feasible = [candidate for candidate in candidates
@@ -1096,6 +1164,7 @@ class PlacementPlannerNode(Node):
                 "diagnostics": atlas_diag,
                 "report": result.get("atlas"),
             },
+            "structural": result.get("structural"),
             "candidates": [jsonable_candidate(self._annotate_frames(dict(c)))
                            for c in candidates],
         }

@@ -25,8 +25,15 @@ DEFAULT_RANK_POLICY = {
 }
 
 
-def adjacency_score(candidate, neighbors, policy=None):
-    """Snugness weight of one candidate against measured neighbors."""
+def adjacency_score(candidate, neighbors, policy=None, payload=None):
+    """Snugness weight of one candidate against measured neighbors.
+
+    ``payload`` (StructuralPayload) selects the ranking object: with it,
+    the comparison top is the candidate's PREDICTED NOMINAL top (the
+    measured box's top face once the envelope is placed); without it,
+    the legacy envelope top. Gates always consume the envelope; only
+    this comparison switches objects (user item 1).
+    """
     pol = dict(DEFAULT_RANK_POLICY)
     if policy:
         pol.update(policy)
@@ -37,7 +44,11 @@ def adjacency_score(candidate, neighbors, policy=None):
     cx, cy, cz = candidate["center_container"]
     half_l = 0.5 * float(candidate["footprint"][0])
     half_w = 0.5 * float(candidate["footprint"][1])
-    cand_top = cz + 0.5 * float(candidate["size"][2])
+    if payload is not None:
+        cand_top = payload.predicted_nominal_top(
+            candidate["center_container"])
+    else:
+        cand_top = cz + 0.5 * float(candidate["size"][2])
     perimeter = 2.0 * (2.0 * half_l + 2.0 * half_w)
     if perimeter <= 0.0:
         return 0.0
@@ -68,13 +79,13 @@ def adjacency_score(candidate, neighbors, policy=None):
     return weight / perimeter
 
 
-def snug_rank_key(neighbors, policy=None):
+def snug_rank_key(neighbors, policy=None, payload=None):
     """Total-order key builder for ``structural_snug_depth_v1``."""
 
     def key(candidate):
         return (
             float(candidate.get("support_layer_z", 0.0)),
-            -adjacency_score(candidate, neighbors, policy),
+            -adjacency_score(candidate, neighbors, policy, payload=payload),
             -float(candidate.get("depth_m", 0.0)),
             -float(candidate.get("score", 0.0)),
             str(candidate.get("candidate_id", "")),
@@ -83,12 +94,12 @@ def snug_rank_key(neighbors, policy=None):
     return key
 
 
-def snug_rank(candidates, neighbors, policy=None):
+def snug_rank(candidates, neighbors, policy=None, payload=None):
     """Rank feasible candidates; input order only breaks nothing (the
     key is total). Returns a new list, input untouched."""
     ranked = list(candidates)
-    ranked.sort(key=snug_rank_key(neighbors, policy))
+    ranked.sort(key=snug_rank_key(neighbors, policy, payload=payload))
     for cand in ranked:
         cand["adjacency_a"] = round(
-            adjacency_score(cand, neighbors, policy), 6)
+            adjacency_score(cand, neighbors, policy, payload=payload), 6)
     return ranked
