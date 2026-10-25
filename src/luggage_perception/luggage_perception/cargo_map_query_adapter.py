@@ -47,6 +47,10 @@ class QuerySnapshotRegistry:
                     if id(block) not in seen:
                         size += block.byte_size()
                         seen.add(id(block))
+                        layout = block.distance_layout
+                        if id(layout) not in seen:
+                            size += layout.byte_size()
+                            seen.add(id(layout))
                 if generation.surface_projection is not None:
                     for tile in generation.surface_projection.tiles:
                         if id(tile) not in seen:

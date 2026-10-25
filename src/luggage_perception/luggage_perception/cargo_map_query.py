@@ -214,13 +214,12 @@ class VoxelBlock:
     _retained_bytes: int = field(init=False, repr=False, compare=False)
 
     def __post_init__(self):
-        # Every payload is immutable. Compute its conservative charge once;
-        # registry publication must not recount unchanged blocks each time.
+        # Cache this block's owned payload charge. Shape-shared immutable
+        # distance layouts are charged once by the registry across generations.
         size = (len(self.evidence) + len(self.active) + len(self.frontier)
                 + self.flat_indices.nbytes
                 + sum(len(v) for v in self.sensor_members.values())
                 + sum(len(v) for v in self.box_members.values())
-                + self.distance_layout.byte_size()
                 + sum(v.byte_size() for v in self.distance_members.values())
                 + 1024 + 448*(len(self.sensor_members)+len(self.box_members)))
         object.__setattr__(self, '_retained_bytes', size)
@@ -229,8 +228,8 @@ class VoxelBlock:
         return np.frombuffer(self.evidence, dtype=CELL_DTYPE)
 
     def byte_size(self):
-        # Conservative Python-container allowance in addition to compact
-        # payloads. Shared unchanged blocks are charged only once by registry.
+        # Owned payloads plus conservative container allowance. Registry also
+        # charges each distinct shared distance layout reachable from blocks.
         return self._retained_bytes
 
 

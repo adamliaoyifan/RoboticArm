@@ -290,6 +290,50 @@ def test_sensor_instance_index_follows_latest_shadow_after_removal():
         assert cell.state == 1 and cell.instance_id == 0
 
 
+def test_shared_distance_layout_is_charged_once_and_distinct_copy_is_charged(monkeypatch):
+    from dataclasses import replace
+    import luggage_perception.cargo_map_query_adapter as adapter
+    from luggage_perception.cargo_distance_query import DistanceLeafLayout
+
+    s = OccupancyMapStore(CargoVolumeMapper((.64, .32, .32), (0, 0, .16), 0, .02),
+                          epoch='shared-layout')
+    with s.acquire_query_snapshot() as snapshot:
+        data = snapshot._data()
+    assert len(data.blocks) == 2
+    assert data.blocks[0].distance_layout is data.blocks[1].distance_layout
+    layout = DistanceLeafLayout.initialize(data.blocks[1].shape)
+    assert layout.cell_coordinates is not data.blocks[1].distance_layout.cell_coordinates
+    detached = replace(data, blocks=(data.blocks[0], replace(data.blocks[1], distance_layout=layout)))
+    original_registry = adapter.QuerySnapshotRegistry()
+    copied_registry = adapter.QuerySnapshotRegistry()
+    assert original_registry.publish(data) and copied_registry.publish(detached)
+    shared_bytes = original_registry.resource_summary()['conservative_retained_bytes']
+    copied_bytes = copied_registry.resource_summary()['conservative_retained_bytes']
+    assert copied_bytes - shared_bytes == layout.byte_size()
+
+    next_identity = data.identity._replace(revision=data.identity.revision + 1)
+    shared_second = replace(data, identity=next_identity, blocks=(
+        data.blocks[0], replace(data.blocks[1])))
+    copied_second = replace(detached, identity=next_identity)
+    shared_generations = adapter.QuerySnapshotRegistry()
+    copied_generations = adapter.QuerySnapshotRegistry()
+    assert shared_generations.publish(data) and copied_generations.publish(data)
+    assert shared_generations.publish(shared_second) and copied_generations.publish(copied_second)
+    shared_summary = shared_generations.resource_summary()
+    copied_summary = copied_generations.resource_summary()
+    assert shared_summary['retained_generations'] == copied_summary['retained_generations'] == 2
+    assert (copied_summary['conservative_retained_bytes']
+            - shared_summary['conservative_retained_bytes']) == layout.byte_size()
+
+    # Keep the same cap for both object graphs. An actual extra immutable
+    # allocation must be refused, while an alias does not consume it twice.
+    monkeypatch.setattr(adapter, 'MAX_RETAINED_BYTES', copied_bytes - 1)
+    assert adapter.QuerySnapshotRegistry().publish(data)
+    refused = adapter.QuerySnapshotRegistry()
+    assert not refused.publish(detached)
+    assert refused.resource_summary()['requested_publication_bytes'] == copied_bytes
+
+
 def test_session_and_memory_limits_are_explicit(monkeypatch):
     import luggage_perception.cargo_map_query_adapter as adapter
     s = store()
