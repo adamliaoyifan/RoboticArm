@@ -52,7 +52,8 @@ def benchmark(args, common):
         dirty='', formal_matrix=formal, started_ns=time.time_ns(), groups=[],
         independent_install=str(Path(args.install).resolve()),
         overall_g2='not_evaluated', baseline_reads='not_evaluated', write_regression='not_evaluated')
-    manifest['instrumentation_method'] = 'same-owner alternating paired requests; roundtrip P95 on/off; pure-query gated ratios retained as diagnostics'
+    manifest['instrumentation_method'] = 'same-owner adjacent pairs; balanced seeded shuffled first mode; roundtrip P95 on/off; pure-query ratios retained as diagnostics'
+    manifest['trace_pair_seed'] = 20261025
     common.write_json(out/'manifest.json', manifest)
     owner_script = source/'src/luggage_perception/test/occ_query_runtime_owner.py'
     client_script = source/'src/luggage_perception/test/occ_query_runtime_benchmark.py'

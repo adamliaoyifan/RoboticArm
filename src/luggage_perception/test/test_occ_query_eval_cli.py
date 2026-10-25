@@ -65,3 +65,20 @@ def test_additional_invalid_workloads_create_no_artifacts(tmp_path,command,argum
         capture_output=True,text=True)
     assert result.returncode==2
     assert not out.exists()
+
+
+def test_trace_pair_inputs_are_adjacent_balanced_and_frozen():
+    import importlib.util
+    path=Path(__file__).with_name('occ_query_runtime_benchmark.py')
+    spec=importlib.util.spec_from_file_location('trace_pair_workload',path)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    sequence=module.paired_sequence(3,30,module.TRACE_PAIR_SEED)
+    assert sequence==module.paired_sequence(3,30,module.TRACE_PAIR_SEED)
+    assert len(sequence)==68
+    measured_first=[]
+    for first,second in zip(sequence[::2],sequence[1::2]):
+        assert first[0]==second[0]
+        assert {first[1],second[1]}=={'trace_on','trace_off'}
+        if first[0]>=3:measured_first.append(first[1])
+    assert measured_first.count('trace_on')==measured_first.count('trace_off')==15
+    assert sequence!=module.paired_sequence(3,30,module.TRACE_PAIR_SEED+1)

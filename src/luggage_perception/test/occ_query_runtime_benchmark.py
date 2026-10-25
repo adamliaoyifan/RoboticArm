@@ -5,6 +5,7 @@ import json
 import math
 import os
 from pathlib import Path
+import random
 import time
 
 
@@ -13,6 +14,24 @@ LIMITS_MS = {'stats': (50, 200), 'summary': (50, 200), 'frontier_count': (1, 5),
     'instance': (100, 250), 'instance_empty': (100, 250),
     'distance_1': (5, 20), 'distance_256': (50, 200),
     'surface': (100, 250), 'patch': (100, 250), 'snapshot': (100, 250)}
+TRACE_PAIR_SEED=20261025
+
+
+def paired_sequence(warmup,samples,seed):
+    """Balance order, then shuffle it before observing any timings.
+
+    Fixed ABBA order aliased with generation2 GC in the measured callback
+    allocation stream. Both members of each immutable-input pair remain
+    adjacent; a frozen seed removes that fixed periodic alignment.
+    """
+    rng=random.Random(seed)
+    result=[]
+    for indices in ([-1],list(range(warmup)),list(range(warmup,warmup+samples))):
+        first=['trace_off' if i%2==0 else 'trace_on' for i in range(len(indices))]
+        rng.shuffle(first)
+        for index,mode in zip(indices,first):
+            result.extend(((index,mode),(index,'trace_on' if mode=='trace_off' else 'trace_off')))
+    return result
 
 
 def summarize(samples, limits, expected=30):
@@ -60,6 +79,11 @@ def main():
         rng = np.random.default_rng(20261025)
         points = rng.uniform([-.7, -.8, ready['floor_z']+.4],
                              [.7, .4, ready['ceiling_z']-.01], (256, 3))
+        orders={case:paired_sequence(a.warmup,a.samples,TRACE_PAIR_SEED+index)
+            for index,case in enumerate(LIMITS_MS) if case!='snapshot'} if a.paired_trace else {}
+        (out/'trace_pair_order.json').write_text(json.dumps(dict(seed=TRACE_PAIR_SEED,
+            method='adjacent pairs; balanced shuffled first mode separately in warmup and measured strata',
+            orders=orders),indent=2)+'\n')
         for case in LIMITS_MS:
             if case == 'snapshot':
                 values = [n/1e6 for n in ready['snapshot_ns'][4:]]
@@ -72,8 +96,7 @@ def main():
                 srv.GetCargoSurfacePatchV2 if case in ('surface', 'patch') else srv.QueryCargoCellsV2)
             measured = {mode:[] for mode in ('trace_off','trace_on')}
             failures = {}
-            sequence = [(i,mode) for i in range(-1,a.warmup+a.samples)
-                for mode in (('trace_off','trace_on') if i%2 else ('trace_on','trace_off'))] if a.paired_trace else [
+            sequence = orders[case] if a.paired_trace else [
                     (i,'trace_off') for i in range(-1,a.warmup+a.samples)]
             for i,mode in sequence:
                 request = kind.Request()
