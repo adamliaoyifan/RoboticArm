@@ -2,6 +2,8 @@
 import itertools
 import json
 import math
+import os
+import platform
 from pathlib import Path
 import subprocess
 import sys
@@ -37,7 +39,10 @@ def write_benchmark(args, common):
         overall_g2='not_evaluated', input_profile='1000 unique interior endpoints;1000 exterior endpoints; raw multiplicity explicit',
         crossing_definition='fraction of rays actually selected by unchanged ray budget',
         serialization='both legacy surface and committed JSON prepared inside timed interval',
-        independent_reset='fresh Mapper/Store and actual geometry records before every unit')
+        independent_reset='fresh Mapper/Store and actual geometry records before every unit',
+        python=sys.version,platform=platform.platform(),cpu_count=os.cpu_count(),
+        cpu_affinity=sorted(os.sched_getaffinity(0)),
+        ros_distro=os.environ.get('ROS_DISTRO'),load_average=list(os.getloadavg()))
     common.write_json(out/'manifest.json', manifest)
     fixture = roots['candidate']/'src/luggage_perception/test/occ_query_write_fixture.py'
     matrix = itertools.product(args.resolutions,args.boxes,args.write_points,args.outside_ratios,args.crossing_ratios)

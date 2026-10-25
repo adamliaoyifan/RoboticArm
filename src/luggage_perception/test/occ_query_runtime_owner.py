@@ -109,6 +109,11 @@ def main():
         manifest['node_init_ns'] = time.perf_counter_ns()-begin
         owner.append(node)
         s, m = node._store, node._mapper
+        reset_start = time.perf_counter_ns()
+        reset = s.apply_update(MapUpdate(operation_id='setup-reset',kind=UpdateKind.RESET))
+        if not reset.accepted:
+            raise RuntimeError('setup reset refused: '+reset.reason)
+        manifest['reset_ns'] = time.perf_counter_ns()-reset_start
         # These sites lie inside even the floor section of the deployed hull.
         boxes = [((x, y, m._hull.floor_z+.11+.24*z), (.35, .53, .22), 0.)
             for z in range(4) for y in (-.48, .18) for x in (-.50, 0., .50)]

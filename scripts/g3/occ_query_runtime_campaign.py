@@ -121,6 +121,14 @@ def benchmark(args, common):
                 finally:
                     stop_owner(process)
                     repetition.update(ended_ns=time.time_ns(), owner_exit_code=process.returncode)
+                    ready_path, final_path = run/'owner/ready.json',run/'owner/manifest.json'
+                    if ready_path.exists() and final_path.exists():
+                        ready,final = json.loads(ready_path.read_text()),json.loads(final_path.read_text())
+                        repetition['resources'] = dict(node_init_ns=ready['node_init_ns'],reset_ns=ready['reset_ns'],
+                            rss_peak_kib=final['rss_peak_kib'],retained_bytes=ready['resources']['conservative_retained_bytes'])
+                        repetition['resource_gate'] = 'pass' if (ready['node_init_ns']<=30_000_000_000
+                            and ready['reset_ns']<=30_000_000_000 and final['rss_peak_kib']<=2*1024**2
+                            and ready['resources']['conservative_retained_bytes']<=512*1024**2) else 'fail'
                     common.write_json(out/'manifest.json', manifest)
             common.check_evidence_budget(out)
             # A startup failure supplies no query samples. Stop this group
