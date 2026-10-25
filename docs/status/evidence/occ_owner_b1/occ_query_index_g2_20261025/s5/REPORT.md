@@ -284,4 +284,4 @@ whole_write_digest_probe01 runs nine fresh-process diagnostic units, Latin-order
 
 Implementation extracts the legacy digest into focused occupancy_content_digest, using512-record tuple-repr chunks with exact original byte delimiters, normalization, ordering and field inclusion. Store keeps private aliases for compatibility; no fact/commit/hash recipe/GC changes. Independent old st09 recipe tests cover empty/singleton/chunk boundaries, nested punctuation/UTF8/NaN representation and deployment-size projections. Initial87tests+2subtestsPASS. Broader unsourced invocation200PASS/1FAIL because deployment-hull lookup requires ament_index_python; original trace retained, sourced rerun pending. Full latest oracle and formal writes remain pending.
 
-Sourced broader rerun completes201tests+2subtestsPASS21.88s; no test skips. Initial environment failure remains recorded and is not treated as a product regression.
+Sourced broader rerun completes201tests+2subtestsPASS23.40s; no test skips. Initial environment failure remains recorded and is not treated as a product regression.
