@@ -272,6 +272,53 @@ def region_intersects(low, high, region):
     return region is None or bool(np.all(high > region[0]) and np.all(low < region[1]))
 
 
+def intersecting_block_ids(grid, region, block_ids=None):
+    """Block IDs whose AABBs may intersect ``region``, flat-min ordered.
+
+    G3 P1 (plan 26339903 §4): derive a conservative per-axis block-index
+    range from the region's metric bounds with the same coordinate
+    arithmetic ``block_bounds`` uses, instead of touching every block.
+    The caller keeps the exact ``region_intersects`` cell test; a block
+    outside this range can never pass it, so results are identical by
+    construction. ``region is None`` keeps the full-range path. The
+    output ordering (ascending first flat index) matches the original
+    full sort, so iteration order and the early-break bound are
+    unchanged. Layout facts only: BLOCK_EDGE strided regular grid with
+    trailing partial blocks (see QueryIndexOwner._initialize_blocks /
+    _block_ids); no block content is read here.
+    """
+    if region is None:
+        return None
+    counts = ((grid.shape[0] + BLOCK_EDGE - 1) // BLOCK_EDGE,
+              (grid.shape[1] + BLOCK_EDGE - 1) // BLOCK_EDGE,
+              (grid.shape[2] + BLOCK_EDGE - 1) // BLOCK_EDGE)
+    step = BLOCK_EDGE * grid.resolution
+    origin = np.asarray(grid.origin)
+    low, high = region
+    ids = []
+    for axis, count in enumerate(counts):
+        first, last = origin[axis], origin[axis] + grid.shape[axis] * grid.resolution
+        if not (high[axis] > first and low[axis] < last):
+            return ()
+        # Conservative index window; one block of slack on each side
+        # absorbs float rounding, then per-block exact tests re-check.
+        lo = int(np.floor((low[axis] - first) / step)) - 1
+        hi = int(np.ceil((high[axis] - first) / step)) + 1
+        ids.append(range(max(0, lo), min(count, hi)))
+    out = []
+    for bz in ids[2]:
+        for by in ids[1]:
+            base = bz * counts[1] * counts[0] + by * counts[0]
+            out.extend(range(base + ids[0][0], base + ids[0][-1] + 1))
+    if block_ids is not None:
+        allowed = set(block_ids)
+        out = [i for i in out if i in allowed]
+    # Ascending block-id order only; the CALLER re-sorts by each
+    # block's real first flat index (the original ordering key), never
+    # assuming id order equals flat order (plan 26339903 §4).
+    return tuple(out)
+
+
 @dataclass(frozen=True)
 class MapQuerySnapshot:
     """A bounded read handle; provider owns lifecycle, never primary facts."""
@@ -431,7 +478,17 @@ class MapQuerySnapshot:
         query_hash = hashlib.sha256(json.dumps((region, states, kind, identifier, frontier),
                                               separators=(',', ':')).encode()).hexdigest()
         last = self._decode_cursor(data, page.cursor, query_hash) if page.cursor else -1
-        block_ids = instance_blocks if instance_blocks is not None else range(len(data.blocks))
+        # G3 P1: prune to blocks whose AABBs may intersect the region
+        # before sorting; every excluded block would fail the exact
+        # region test below, so results are identical (plan 26339903
+        # §4). region=None keeps the original full path, including the
+        # instance-only block restriction.
+        if region is None:
+            block_ids = (instance_blocks if instance_blocks is not None
+                         else range(len(data.blocks)))
+        else:
+            block_ids = intersecting_block_ids(
+                self.grid, region, instance_blocks)
         # A block's minimum flat index is a safe ordering lower bound. Once
         # it exceeds the bounded selected prefix, no later block can win.
         blocks = sorted((data.blocks[i] for i in block_ids), key=lambda b: int(b.flat_indices[0]))
@@ -499,7 +556,10 @@ class MapQuerySnapshot:
             count = data.summary_values['frontier_count']
         else:
             nx, ny, _ = self.grid.shape
-            for block in data.blocks:
+            # G3 P1: same selector as _query; excluded blocks all fail
+            # this exact test, so the count is identical.
+            candidates = intersecting_block_ids(self.grid, region) or ()
+            for block in (data.blocks[i] for i in candidates):
                 low, high = block_bounds(block, self.grid)
                 if not block.frontier_count or not region_intersects(low, high, region):
                     continue
