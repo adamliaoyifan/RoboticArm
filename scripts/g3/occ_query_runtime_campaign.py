@@ -95,6 +95,7 @@ def stop_owner(process,*,wake_script=None,domain=None,node='cargo_volume_mapper'
 
 def benchmark(args, common):
     import yaml
+    from occ_query_runtime_environment import installed_environment
     revision = common.git('rev-parse', 'HEAD')
     if common.git('status', '--porcelain'):
         raise RuntimeError('commit all campaign code before freezing')
@@ -120,6 +121,7 @@ def benchmark(args, common):
     manifest['instrumentation_method'] = 'same-owner adjacent pairs; balanced seeded shuffled first mode; roundtrip P95 on/off; pure-query ratios retained as diagnostics'
     manifest['trace_pair_seed'] = 20261025
     common.write_json(out/'manifest.json', manifest)
+    environment = installed_environment(args.install)
     owner_script = source/'src/luggage_perception/test/occ_query_runtime_owner.py'
     client_script = source/'src/luggage_perception/test/occ_query_runtime_benchmark.py'
     wake_script=source/'scripts/g3/occ_query_runtime_wake.py'
@@ -151,7 +153,7 @@ def benchmark(args, common):
             entry['repetitions'].append(repetition)
             common.write_json(out/'manifest.json', manifest)
             with (run/'owner.log').open('w') as log:
-                process = subprocess.Popen(command, cwd='/tmp', stdout=log, stderr=subprocess.STDOUT)
+                process = subprocess.Popen(command, env=environment, cwd='/tmp', stdout=log, stderr=subprocess.STDOUT)
                 try:
                     deadline = time.monotonic()+90.
                     while not (run/'owner/ready.json').exists():
@@ -168,7 +170,7 @@ def benchmark(args, common):
                     repetition['client_command'] = command
                     common.write_json(out/'manifest.json', manifest)
                     with (run/'client.log').open('w') as client_log:
-                        result = subprocess.run(command, cwd='/tmp', stdout=client_log,
+                        result = subprocess.run(command, env=environment, cwd='/tmp', stdout=client_log,
                             stderr=subprocess.STDOUT, timeout=600)
                     repetition['client_exit_code'] = result.returncode
                     repetition['phase'] = 'complete'
@@ -183,7 +185,7 @@ def benchmark(args, common):
                         # Preserve the failed request and a consistent full
                         # boundary map before teardown. No automatic rerun.
                         process.send_signal(signal.SIGUSR1)
-                        wake_owner(wake_script,args.domain,'cargo_volume_mapper',log=run/'control-wake.jsonl')
+                        wake_owner(wake_script,args.domain,'cargo_volume_mapper',env=environment,log=run/'control-wake.jsonl')
                         deadline = time.monotonic()+45.
                         while not (run/'owner/capture.json').exists() and process.poll() is None and time.monotonic() < deadline:
                             time.sleep(.05)
@@ -192,13 +194,13 @@ def benchmark(args, common):
                     repetition.update(phase='failed', error=repr(error))
                     if process.poll() is None:
                         process.send_signal(signal.SIGUSR1)
-                        wake_owner(wake_script,args.domain,'cargo_volume_mapper',log=run/'control-wake.jsonl')
+                        wake_owner(wake_script,args.domain,'cargo_volume_mapper',env=environment,log=run/'control-wake.jsonl')
                         deadline = time.monotonic()+45.
                         while not (run/'owner/capture.json').exists() and process.poll() is None and time.monotonic() < deadline:
                             time.sleep(.05)
                     repetition['capture_complete'] = (run/'owner/capture.json').exists()
                 finally:
-                    stop_owner(process,wake_script=wake_script,domain=args.domain,wake_log=run/'control-wake.jsonl')
+                    stop_owner(process,wake_script=wake_script,domain=args.domain,env=environment,wake_log=run/'control-wake.jsonl')
                     repetition.update(ended_ns=time.time_ns(), owner_exit_code=process.returncode)
                     ready_path, final_path = run/'owner/ready.json',run/'owner/manifest.json'
                     if ready_path.exists() and final_path.exists():

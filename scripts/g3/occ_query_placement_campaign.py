@@ -1,7 +1,6 @@
 """Frozen baseline/candidate full-placement request campaign, without motion."""
 import itertools
 import json
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -9,19 +8,7 @@ import time
 
 from occ_query_runtime_campaign import stop_owner
 from occ_query_placement_comparison import compare_responses
-
-
-def installed_environment(install):
-    # Source one isolated install from a clean ROS environment. An inherited
-    # candidate overlay must never satisfy a baseline import or type lookup.
-    excluded = {'AMENT_PREFIX_PATH','CMAKE_PREFIX_PATH','COLCON_PREFIX_PATH',
-        'PYTHONPATH','LD_LIBRARY_PATH','ROS_DISTRO','ROS_VERSION','ROS_PYTHON_VERSION',
-        'ROS_DOMAIN_ID','ROS_LOCALHOST_ONLY'}
-    environment = {k:v for k,v in os.environ.items() if k not in excluded}
-    result = subprocess.run(['bash','--noprofile','--norc','-c',
-        'source /opt/ros/humble/setup.bash && source "$1/setup.bash" && env -0',
-        'occ-g2-env',str(Path(install).resolve())],env=environment,check=True,capture_output=True)
-    return dict(item.decode().split('=',1) for item in result.stdout.split(b'\0') if item)
+from occ_query_runtime_environment import installed_environment
 
 
 def planning(args,common):

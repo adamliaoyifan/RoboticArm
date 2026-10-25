@@ -5,6 +5,13 @@ heartbeat period and lease. It adds passive boundary observations and a load
 client; it starts no simulation or motion stack. The registered baseline is
 `b33dda919521ef043fa9e30b07dcc79c87f76fce`.
 
+Runtime, placement and concurrency campaigns construct child environments with
+`scripts/g3/occ_query_runtime_environment.py`. The helper sources ROS Humble and
+the requested isolated install, discarding inherited ROS overlays. The owner,
+client, capture wake and teardown wake use that same environment. Launching the
+CLI from a shell without ROS setup must not change child dependency resolution.
+Setup errors fail before scoring; preserve them separately from product cases.
+
 `occ_query_concurrency_client.py` owns scheduled requests, completion records
 and the wire journal. A request keeps its dispatch phase even if it completes
 after the scoring window. `observe_backlog` alone updates the maximum age.

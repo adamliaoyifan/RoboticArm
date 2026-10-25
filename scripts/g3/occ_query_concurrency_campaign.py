@@ -8,7 +8,7 @@ import sys
 import time
 
 from occ_query_runtime_campaign import stop_owner,wake_owner
-from occ_query_placement_campaign import installed_environment
+from occ_query_runtime_environment import installed_environment
 
 
 def concurrency(args,common):
