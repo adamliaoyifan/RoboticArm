@@ -61,3 +61,5 @@ same-epoch `since_identity`. Both nominal legacy fields and v2 datum fields
 are read from the same frozen publication.
 
 Distance batches reuse decoded target membership and cell volumes within the request. Initial membership scans and each point/volume test count against the same fixed work cap. The temporary cache expires with the request; it creates no retained distance field or writer work.
+
+Within visited blocks, request-local four-cell leaves provide exact AABB lower bounds. Branch-and-bound visits all equal lower bounds to preserve the lowest-flat-index tie rule. Page expansion batches sorted geometry-membership lookups per block; it preserves the same fields and stable ordering.

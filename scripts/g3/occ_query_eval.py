@@ -216,17 +216,39 @@ def main():
     p.add_argument('--out', required=True)
     p.set_defaults(run=oracle)
     p = commands.add_parser('benchmark', help='installed no-motion query timing/resource matrix')
-    p.add_argument('--install', required=True)
+    p.add_argument('--install', default=os.environ.get('OCC_G2_INSTALL','/tmp/occ-query-g2-install'))
     p.add_argument('--domain', type=int, default=184)
-    p.add_argument('--samples', type=int, default=30)
+    p.add_argument('--samples', '--repeat', type=int, default=30)
     p.add_argument('--warmup', type=int, default=3)
     p.add_argument('--resolutions', type=csv_choices(float, (.01, .02, .05)), default=[.01, .02, .05])
     p.add_argument('--boxes', type=csv_choices(int, (0, 5, 20)), default=[0, 5, 20])
     p.add_argument('--shapes', type=csv_choices(str, ('cuboid', 'chamfer')), default=['cuboid', 'chamfer'])
     p.add_argument('--baseline-revision', default=BASELINE)
     p.add_argument('--rehearsal', action='store_true')
+    p.add_argument('--mode', choices=('all','queries','writes'), default='all')
+    p.add_argument('--screen-first', action='store_true', default=True)
+    p.add_argument('--write-points', type=csv_choices(int, (30000,100000)), default=[30000,100000])
+    p.add_argument('--outside-ratios', type=csv_choices(float, (.5,.9)), default=[.5,.9])
+    p.add_argument('--crossing-ratios', type=csv_choices(float, (0.,.5)), default=[0.,.5])
     p.add_argument('--out', required=True)
     def run_benchmark(args):
+        if args.mode == 'all':
+            out = Path(args.out).resolve()
+            if not out.is_relative_to(EVIDENCE):
+                raise RuntimeError('evidence outside task root')
+            out.mkdir(parents=True, exist_ok=False)
+            from occ_query_runtime_campaign import benchmark
+            from occ_query_write_campaign import write_benchmark
+            query_args = argparse.Namespace(**vars(args));query_args.out = str(out/'queries')
+            write_args = argparse.Namespace(**vars(args));write_args.out = str(out/'writes')
+            query_code = benchmark(query_args, sys.modules[__name__])
+            write_code = write_benchmark(write_args, sys.modules[__name__])
+            write_json(out/'manifest.json', dict(kind='benchmark',query_exit_code=query_code,
+                write_exit_code=write_code,overall_g2='not_evaluated'))
+            return max(query_code,write_code)
+        if args.mode == 'writes':
+            from occ_query_write_campaign import write_benchmark
+            return write_benchmark(args, sys.modules[__name__])
         from occ_query_runtime_campaign import benchmark
         return benchmark(args, sys.modules[__name__])
     p.set_defaults(run=run_benchmark)
