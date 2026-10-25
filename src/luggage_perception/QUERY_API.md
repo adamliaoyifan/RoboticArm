@@ -85,3 +85,7 @@ are read from the same frozen publication.
 Distance reads use immutable state-membership lists for four-cell leaves within each block. The index owner builds them at initialization and updates them only when a block's state changes; unchanged memberships are shared. Their bytes are included in the retained-generation budget. They store no distances or nearest-obstacle parents.
 
 Queries convert leaf bounds to container coordinates and memoize only visited cell volumes within the request. Every tested cell and visited hierarchy node counts against the fixed work caps. Branch-and-bound visits equal lower bounds to preserve the lowest-flat-index tie rule. Page expansion batches sorted geometry-membership lookups per block, preserving fields and stable ordering.
+
+Immutable voxel blocks cache their conservative byte charge at construction.
+Registry publication still counts unique retained blocks and applies the same
+512MiB limit; it does not recompute unchanged payload sizes on every update.

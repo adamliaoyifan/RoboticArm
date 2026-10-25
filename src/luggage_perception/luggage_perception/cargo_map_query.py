@@ -211,6 +211,19 @@ class VoxelBlock:
     fact_digest: str
     distance_layout: object = field(repr=False, compare=False)
     distance_members: object = field(repr=False, compare=False)
+    _retained_bytes: int = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self):
+        # Every payload is immutable. Compute its conservative charge once;
+        # registry publication must not recount unchanged blocks each time.
+        size = (len(self.evidence) + len(self.active) + len(self.frontier)
+                + self.flat_indices.nbytes
+                + sum(len(v) for v in self.sensor_members.values())
+                + sum(len(v) for v in self.box_members.values())
+                + self.distance_layout.byte_size()
+                + sum(v.byte_size() for v in self.distance_members.values())
+                + 1024 + 448*(len(self.sensor_members)+len(self.box_members)))
+        object.__setattr__(self, '_retained_bytes', size)
 
     def records(self):
         return np.frombuffer(self.evidence, dtype=CELL_DTYPE)
@@ -218,13 +231,7 @@ class VoxelBlock:
     def byte_size(self):
         # Conservative Python-container allowance in addition to compact
         # payloads. Shared unchanged blocks are charged only once by registry.
-        return (len(self.evidence) + len(self.active) + len(self.frontier)
-                + self.flat_indices.nbytes
-                + sum(len(v) for v in self.sensor_members.values())
-                + sum(len(v) for v in self.box_members.values())
-                + self.distance_layout.byte_size()
-                + sum(v.byte_size() for v in self.distance_members.values())
-                + 1024 + 448*(len(self.sensor_members)+len(self.box_members)))
+        return self._retained_bytes
 
 
 @dataclass(frozen=True)

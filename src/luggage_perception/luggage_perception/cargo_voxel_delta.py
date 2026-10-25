@@ -102,8 +102,11 @@ class VoxelDeltaBuilder:
                 if before[name].dtype.kind == 'f':
                     equal |= np.isnan(before[name]) & np.isnan(after[name])
                 changed |= ~equal
-            order = np.argsort(indices[changed])
-            indices, before, after = (a[changed][order] for a in (indices, before, after))
+            selected = np.flatnonzero(changed)
+            order = selected[np.argsort(indices[selected])]
+            # Gather each wide record once. Filtering and then sorting the
+            # records copied both full structured buffers twice per finalize.
+            indices, before, after = (a[order] for a in (indices, before, after))
         else:
             indices = np.empty(0, dtype=np.int64)
             before = after = np.empty(0, dtype=EVIDENCE_DTYPE)
