@@ -114,6 +114,23 @@ def test_resume_identity_and_clock_expiry_are_strict():
         registry.resume(handle._token, handle.identity)
 
 
+def test_schema_two_pin_is_accepted_and_schema_one_pin_is_rejected():
+    _, node, service = boundary()
+    result = invoke(service.summary, srv.GetCargoMapSummaryV2,
+                    request(srv.GetCargoMapSummaryV2))
+    assert result.meta.identity.index_schema_version == 2
+    req = request(srv.GetCargoMapSummaryV2)
+    req.query.use_current = False
+    req.query.expected_identity = result.meta.identity
+    pinned = invoke(service.summary, srv.GetCargoMapSummaryV2, req)
+    assert pinned.meta.status == 'OK'
+    assert pinned.meta.identity == result.meta.identity
+    req.query.expected_identity.index_schema_version = 1
+    rejected = invoke(service.summary, srv.GetCargoMapSummaryV2, req)
+    assert rejected.meta.reason == 'SNAPSHOT_IDENTITY_MISMATCH'
+    assert not rejected.meta.complete and not node.errors
+
+
 def test_named_validation_errors_survive_typed_serialization():
     s, node, service = boundary()
     req = request(srv.QueryCargoCellsV2)

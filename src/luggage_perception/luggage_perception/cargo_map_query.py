@@ -1,4 +1,4 @@
-"""Schema-1 read-only voxel queries over immutable, versioned block data.
+"""Schema-2 read-only voxel queries over immutable, versioned block data.
 
 Coordinates are container_link AABBs, with positive-volume cell intersection.
 Legacy mapper enumeration remains separate; these pages use flat-index order.
@@ -16,7 +16,7 @@ from typing import NamedTuple
 
 import numpy as np
 
-INDEX_SCHEMA_VERSION = 1
+INDEX_SCHEMA_VERSION = 2
 BLOCK_EDGE = 16
 MAX_PAGE = 4096
 CELL_DTYPE = np.dtype([('state', 'u1'), ('source', 'u1'), ('label', '<i8'), ('instance', '<i8')])

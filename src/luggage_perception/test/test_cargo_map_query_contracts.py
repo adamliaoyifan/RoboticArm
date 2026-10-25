@@ -250,6 +250,26 @@ def test_block_seams_cow_and_full_fact_digest():
     assert before.blocks[0].records()['state'].sum() == 0
 
 
+def test_private_logodds_delta_reuses_frozen_public_records_and_updates_identity():
+    s=store()
+    point=s.mapper._local_to_world(*s.mapper._voxel_center_local(2,2,2))
+    s.mapper.mark_free_world(*point)
+    publish_direct(s)
+    with s.acquire_query_snapshot() as snapshot:
+        before=snapshot._data()
+        assert snapshot.identity.index_schema_version==2
+    s.mapper.mark_free_world(*point)
+    publish_direct(s)
+    with s.acquire_query_snapshot() as snapshot:
+        after=snapshot._data()
+        assert before.identity.content_digest==after.identity.content_digest
+        assert before.identity.voxel_digest!=after.identity.voxel_digest
+        assert before.blocks[0].evidence is after.blocks[0].evidence
+        assert before.blocks[0].distance_members is after.blocks[0].distance_members
+        assert before.blocks[0].sensor_members is after.blocks[0].sensor_members
+        assert before.blocks[0].fact_digest!=after.blocks[0].fact_digest
+
+
 def test_sensor_instance_index_follows_latest_shadow_after_removal():
     s = store(.02, .34)
     m = s.mapper

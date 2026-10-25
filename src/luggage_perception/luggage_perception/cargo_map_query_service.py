@@ -9,7 +9,7 @@ No write, TF-latest, motion, lease or executor authority belongs here.
 import numpy as np
 
 from luggage_perception.cargo_map_query import (
-    CellKey, CellPage, InstanceKey, QueryError, QueryIdentity, QueryPage,
+    CellKey, CellPage, InstanceKey, QueryError, QueryIdentity, QueryPage, INDEX_SCHEMA_VERSION,
 )
 
 
@@ -67,7 +67,7 @@ class MapQueryService:
                 raise QueryError('INVALID_FILTER')
             expected = None
         elif (not expected.epoch or not expected.content_digest or not expected.voxel_digest
-              or expected.index_schema_version != 1):
+              or expected.index_schema_version != INDEX_SCHEMA_VERSION):
             raise QueryError('SNAPSHOT_IDENTITY_MISMATCH')
         return self._store.acquire_query_snapshot(expected, token=query.snapshot_token)
 

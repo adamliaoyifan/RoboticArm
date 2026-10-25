@@ -1,4 +1,4 @@
-"""Store-owned derived counts and frontier membership (schema 1).
+"""Store-owned derived counts and frontier membership (schema 2).
 
 Only initialize/apply_delta/reset mutate the owner. Queries use detached,
 deeply immutable summaries. Native array operations never change primary OCC.
@@ -15,6 +15,7 @@ import numpy as np
 from luggage_perception.cargo_grid_projection import occupancy_counts
 from luggage_perception.cargo_voxel_delta import EVIDENCE_DTYPE, capture_evidence, immutable_array
 from luggage_perception.cargo_surface_projection import IncrementalSurfaceProjection
+from luggage_perception.cargo_fact_digest import CanonicalFactDigest
 from luggage_perception.cargo_distance_query import DistanceIndex, DistanceLeafLayout, freeze_distance_members
 from luggage_perception.cargo_map_query import (
     BLOCK_EDGE, CELL_DTYPE, GridInfo, QueryIdentity, QuerySnapshotData, VoxelBlock,
@@ -33,37 +34,72 @@ def _block_ids(indices, mapper):
 
 
 def _freeze_block(block_id, start, shape, keys, facts, active, frontier, box_members,
-                  *, previous=None, layout=None):
+                  *, canonical_digest, previous=None, layout=None,
+                  changed_offsets=None, changed_facts=None):
     # Only the owner retains full canonical evidence for incremental hashes.
     # Read generations retain the compact public cell fields; old snapshots
     # cannot multiply private log-odds/shadow copies or expose that evidence.
-    canonical = np.frombuffer(facts, dtype=EVIDENCE_DTYPE)
-    records = np.empty(len(canonical), dtype=CELL_DTYPE)
-    for name in CELL_DTYPE.names:
-        records[name] = canonical[name]
-    allowed = np.frombuffer(active, 'u1').astype(bool)
-    counts = tuple(int(v) for v in np.bincount(records['state'][allowed], minlength=3))
+    allowed = None
+    if previous is None:
+        allowed = np.frombuffer(active, 'u1').astype(bool)
+        canonical = np.frombuffer(facts, dtype=EVIDENCE_DTYPE)
+        records = np.empty(len(canonical), dtype=CELL_DTYPE)
+        for name in CELL_DTYPE.names:
+            records[name] = canonical[name]
+        evidence = records.tobytes()
+        counts = tuple(int(v) for v in np.bincount(records['state'][allowed], minlength=3))
+        state_changed = sensor_changed = True
+    else:
+        old_rows = previous.records()[changed_offsets]
+        changed_states = old_rows['state'] != changed_facts['state']
+        changed_instances = old_rows['instance'] != changed_facts['instance']
+        state_changed = bool(np.any(changed_states))
+        sensor_changed = bool(np.any(
+            ((old_rows['instance'] > 0) | (changed_facts['instance'] > 0)) &
+            (changed_states | changed_instances)))
+        public_changed = state_changed or any(
+            not np.array_equal(old_rows[name], changed_facts[name])
+            for name in ('source','label','instance'))
+        evidence = previous.evidence
+        if public_changed:
+            mutable = bytearray(evidence)
+            records = np.frombuffer(mutable, dtype=CELL_DTYPE)
+            for name in CELL_DTYPE.names:
+                records[name][changed_offsets] = changed_facts[name]
+            evidence = bytes(mutable)
+        records = np.frombuffer(evidence, dtype=CELL_DTYPE)
+        counts = previous.state_counts
+        if state_changed:
+            valid = np.frombuffer(active, 'u1')[changed_offsets].astype(bool)
+            counts = tuple(int(v) for v in (
+                np.asarray(counts)
+                - np.bincount(old_rows['state'][valid], minlength=3)
+                + np.bincount(changed_facts['state'][valid], minlength=3)))
     layout = previous.distance_layout if previous is not None else layout
-    if previous is not None and np.array_equal(previous.records()['state'],records['state']):
+    if previous is not None and not state_changed:
         distance_members = previous.distance_members
     else:
-        distance_members = freeze_distance_members(layout,records,allowed)
-    live_sensor = allowed & (records['state'] == 2) & (records['instance'] > 0)
-    sensor_members = {}
-    for identifier in np.unique(records['instance'][live_sensor]):
-        offsets = np.flatnonzero(live_sensor & (records['instance'] == identifier))
-        sensor_members[int(identifier)] = offsets.astype('<u2').tobytes()
-    boxes = MappingProxyType(dict(box_members))
-    digest = hashlib.sha256(facts+active)
-    for identifier in sorted(boxes):
-        encoded = identifier.encode('utf-8')
-        digest.update(len(encoded).to_bytes(4, 'little'))
-        digest.update(encoded)
-        digest.update(len(boxes[identifier]).to_bytes(4, 'little'))
-        digest.update(boxes[identifier])
-    return VoxelBlock(block_id, start, shape, keys, records.tobytes(), active, frontier,
+        if allowed is None:
+            allowed = np.frombuffer(active, 'u1').astype(bool)
+        distance_members = freeze_distance_members(layout, records, allowed)
+    if previous is not None and not sensor_changed:
+        sensor_members = previous.sensor_members
+    else:
+        if allowed is None:
+            allowed = np.frombuffer(active, 'u1').astype(bool)
+        live_sensor = allowed & (records['state'] == 2) & (records['instance'] > 0)
+        sensor_members = {}
+        for identifier in np.unique(records['instance'][live_sensor]):
+            offsets = np.flatnonzero(live_sensor & (records['instance'] == identifier))
+            sensor_members[int(identifier)] = offsets.astype('<u2').tobytes()
+        sensor_members = MappingProxyType(sensor_members)
+    boxes = (previous.box_members
+             if previous is not None and previous.box_members == box_members
+             else MappingProxyType(dict(box_members)))
+    digest = canonical_digest.block_digest(active, boxes)
+    return VoxelBlock(block_id, start, shape, keys, evidence, active, frontier,
                       counts, int(np.frombuffer(frontier, 'u1').sum()),
-                      MappingProxyType(sensor_members), boxes, digest.hexdigest(),layout,distance_members)
+                      sensor_members, boxes, digest, layout, distance_members)
 
 
 @dataclass(frozen=True)
@@ -87,6 +123,7 @@ class QueryIndexOwner:
         self._last_work = MappingProxyType({})
         self._blocks = ()
         self._fact_blocks = ()
+        self._fact_digests = ()
         self._bindings = {}
         self._box_indices = {}
         self._geometry_members = {}
@@ -193,6 +230,7 @@ class QueryIndexOwner:
         self._cursor_secret = secrets.token_bytes(32)
         blocks = []
         fact_blocks = []
+        fact_digests = []
         layouts = {}
         nx, ny, nz = mapper.nx, mapper.ny, mapper.nz
         active = np.frombuffer(mapper._active, 'u1')
@@ -206,16 +244,22 @@ class QueryIndexOwner:
                     iy = np.arange(y, y+shape[1], dtype=np.int32)
                     iz = np.arange(z, z+shape[2], dtype=np.int32)
                     keys = immutable_array((ix[None, None, :]+nx*(iy[None, :, None]+ny*iz[:, None, None])).ravel())
-                    facts = capture_evidence(mapper, keys).tobytes()
+                    # Canonical buffers belong only to this writer-side
+                    # owner. Read generations receive compact frozen bytes.
+                    facts = bytearray(capture_evidence(mapper, keys).tobytes())
                     fact_blocks.append(facts)
+                    canonical_digest = CanonicalFactDigest.build(facts)
+                    fact_digests.append(canonical_digest)
                     block = _freeze_block(len(blocks), (x, y, z), shape, keys,
                         facts, active[keys].tobytes(),
-                        self._frontiers[keys].astype('u1').tobytes(), {},layout=layouts[shape])
+                        self._frontiers[keys].astype('u1').tobytes(), {},layout=layouts[shape],
+                        canonical_digest=canonical_digest)
                     blocks.append(block)
                     for identifier in block.sensor_members:
                         self._sensor_blocks.setdefault(identifier, set()).add(block.block_id)
         self._blocks = tuple(blocks)
         self._fact_blocks = tuple(fact_blocks)
+        self._fact_digests = tuple(fact_digests)
         self._geometry_dirty_blocks = set()
 
     def _apply_bindings(self, mapper, delta, update, committed_now, restored=None):
@@ -276,6 +320,7 @@ class QueryIndexOwner:
         dirty.update(self._geometry_dirty_blocks)
         blocks = list(self._blocks)
         fact_blocks = list(self._fact_blocks)
+        fact_digests = list(self._fact_digests)
         # Partition the delta once. Re-scanning all D indices for each
         # dirty block made maintenance O(D * dirty_blocks).
         selected_by_block = {}
@@ -284,25 +329,30 @@ class QueryIndexOwner:
             unique,starts = np.unique(ids[order],return_index=True)
             selected_by_block = dict(zip((int(v) for v in unique),np.split(order,starts[1:])))
         copied = 0
+        patched = 0
         for bid in sorted(dirty):
             old = blocks[bid]
             selected = selected_by_block.get(bid,())
             facts = fact_blocks[bid]
+            offsets = np.empty(0, dtype=np.int64)
+            changed_facts = delta.after[:0]
             if len(selected):
-                # Copy whole canonical records as opaque bytes. Structured
-                # assignment otherwise copies each field separately; exact
-                # record bytes (including float bit patterns) are preserved.
-                mutable = bytearray(facts)
+                # This private canonical buffer is never retained by a
+                # read generation. Patch only changed records in place;
+                # immutable public blocks below remain copy-on-write.
                 record_bytes = np.dtype(('V',EVIDENCE_DTYPE.itemsize))
-                records = np.frombuffer(mutable,dtype=record_bytes)
+                records = np.frombuffer(facts,dtype=record_bytes)
                 offsets = np.searchsorted(old.flat_indices, delta.indices[selected])
                 records[offsets] = delta.after.view(record_bytes)[selected]
-                facts = bytes(mutable)
-                fact_blocks[bid] = facts
-                copied += len(facts)
+                changed_facts = delta.after[selected]
+                fact_digests[bid] = fact_digests[bid].updated(facts, offsets)
+                patched += len(selected) * EVIDENCE_DTYPE.itemsize
             block = _freeze_block(bid, old.start, old.shape, old.flat_indices, facts,
                 old.active, self._frontiers[old.flat_indices].astype('u1').tobytes(),
-                self._geometry_members.get(bid, {}),previous=old)
+                self._geometry_members.get(bid, {}),previous=old,canonical_digest=fact_digests[bid],
+                changed_offsets=offsets,changed_facts=changed_facts)
+            if block.evidence is not old.evidence:
+                copied += len(block.evidence)
             for identifier in old.sensor_members.keys() - block.sensor_members.keys():
                 members = self._sensor_blocks[identifier]
                 members.discard(bid)
@@ -313,9 +363,11 @@ class QueryIndexOwner:
             blocks[bid] = block
         self._blocks = tuple(blocks)
         self._fact_blocks = tuple(fact_blocks)
+        self._fact_digests = tuple(fact_digests)
         self._geometry_dirty_blocks = set()
         work = dict(self._last_work)
-        work.update(dirty_blocks=len(dirty), copied_evidence_bytes=copied)
+        work.update(dirty_blocks=len(dirty), copied_evidence_bytes=copied,
+                    patched_canonical_bytes=patched)
         self._last_work = MappingProxyType(work)
 
     def freeze_query(self, mapper, map_snapshot, summary):
@@ -349,7 +401,8 @@ class QueryIndexOwner:
             MappingProxyType({k: tuple(sorted(v)) for k, v in self._sensor_blocks.items()}),
             MappingProxyType({k: self._box_blocks.get(k, ()) for k in self._known_box_ids
                               if k not in self._ambiguous_box_ids}), summary.values, query_map,
-            self._cursor_secret, owner_evidence_bytes=sum(len(b) for b in self._fact_blocks),
+            self._cursor_secret, owner_evidence_bytes=sum(len(b) for b in self._fact_blocks)
+                +sum(d.byte_size() for d in self._fact_digests),
             unbound_geometry_count=len(mapper._placed_boxes)-len(self._box_blocks),
             surface_projection=self._surface.freeze(), distance_index=self._distance)
 

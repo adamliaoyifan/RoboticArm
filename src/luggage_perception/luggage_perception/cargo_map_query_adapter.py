@@ -87,7 +87,7 @@ class QuerySnapshotRegistry:
             is_current = isinstance(expected_identity, str) and expected_identity == 'CURRENT'
             if expected_identity is not None and not is_current:
                 # Legacy 3-leg identity remains accepted, but a supplied
-                # full voxel identity must match all five schema-1 legs.
+                # Full voxel identity must match all five versioned legs.
                 actual = tuple(data.identity)
                 try:
                     want = tuple(expected_identity)

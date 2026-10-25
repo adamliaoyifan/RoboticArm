@@ -1,10 +1,32 @@
-# Cargo map query API, schema 1
+# Cargo map query API, schema 2
 
 `OccupancyMapStore.apply_update` owns facts and derived index publication.
 Consumers acquire immutable `MapQuerySnapshot` handles; no query can write
 the mapper, change fusion, renew a runtime lease or create observed facts.
 The legacy content digest retains its meaning. The query identity adds a
 canonical voxel digest and index schema version to the legacy three legs.
+
+Schema 2 explicitly changes only the query canonical-hash recipe. In each
+native-order block, SHA256 hashes 64 consecutive complete evidence records
+per leaf (the final leaf may be shorter). The block SHA256 binds the domain
+`cargo-map-block-v2\0`, uint64 little-endian record count, ordered 32-byte leaf
+hashes, active bytes and sorted length-prefixed geometry memberships. The
+outer identity retains grid, ordered block roots, bindings and publication
+provenance. Changed leaves alone are rehashed; initialization and incremental
+maintenance give identical roots. Schema 1 pinned requests are rejected rather
+than interpreted as schema 2. The legacy content_digest and old ROS APIs stay
+unchanged.
+
+Canonical full-evidence buffers and leaf hashes belong only to the index
+writer and are charged to its memory budget. Immutable read generations
+retain only detached public records, memberships and roots. Updating a
+private canonical buffer cannot mutate any old query snapshot. Public record
+patches and block counts use the net delta; unchanged state and instance
+memberships are shared.
+
+Writer diagnostics separate `patched_canonical_bytes` (private records
+overwritten in place) from `copied_evidence_bytes` (detached public record
+buffers copied for changed blocks). Both describe derived index work only.
 
 Python reads include summary, cell/ROI/frontier/instance pages, exact
 point-to-voxel-AABB distances, full surface and bounded surface changes.
