@@ -26,9 +26,11 @@ def main():
         for seed in range(args.seeds):
             rng = random.Random(seed)
             mapper = CargoVolumeMapper((.12, .12, .12), (0, 0, .06), 0, .02, max_raycast_points=4)
-            store = OccupancyMapStore(mapper, epoch='oracle')
+            clock = [1_000_000_000]
+            store = OccupancyMapStore(mapper, epoch='oracle', clock_ns=lambda: clock[0])
             previous = None
             for transaction in range(args.transactions):
+                clock[0] = 1_000_000_000+transaction
                 choice = rng.randrange(10)
                 point = (rng.uniform(-.055, .055), rng.uniform(-.055, .055), rng.uniform(.005, .115))
                 op = str(transaction)
