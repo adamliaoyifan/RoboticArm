@@ -22,7 +22,7 @@ def test_invalid_matrix_creates_no_artifacts(tmp_path, arguments):
     assert not out.exists()
 
 
-@pytest.mark.parametrize('command', ['oracle', 'benchmark', 'planning', 'replay'])
+@pytest.mark.parametrize('command', ['oracle', 'benchmark', 'concurrency', 'planning', 'replay'])
 def test_help_needs_no_ros_graph_or_product_import(command):
     result = subprocess.run([sys.executable, str(SCRIPT), command, '--help'],
                             capture_output=True, text=True)
@@ -51,3 +51,17 @@ def test_timing_summary_requires_samples_and_uses_nearest_rank():
     result = module.summarize(list(range(1, 31)), (29, 30))
     assert result['p95_ms'] == 29 and result['outcome'] == 'pass'
     assert module.summarize(list(range(1, 31)), (28, 30))['outcome'] == 'fail'
+
+
+@pytest.mark.parametrize('command,arguments',[
+    ('concurrency',['--duration-wall','0']),('concurrency',['--repeat','0']),
+    ('concurrency',['--domain','1']),('concurrency',['--boxes','1']),
+    ('planning',['--paths','other']),('planning',['--boxes','1']),
+    ('planning',['--samples','0']),('planning',['--resolutions','.03']),
+])
+def test_additional_invalid_workloads_create_no_artifacts(tmp_path,command,arguments):
+    out=tmp_path/'must_not_exist'
+    result=subprocess.run([sys.executable,str(SCRIPT),command,'--out',str(out),*arguments],
+        capture_output=True,text=True)
+    assert result.returncode==2
+    assert not out.exists()

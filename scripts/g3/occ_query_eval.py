@@ -326,6 +326,20 @@ def main():
         from occ_query_placement_campaign import planning
         return planning(args,sys.modules[__name__])
     p.set_defaults(run=run_planning)
+    p = commands.add_parser('concurrency',help='fixed-load original-runtime heartbeat matrix without motion')
+    p.add_argument('--install',default='/tmp/occ-query-g2-install')
+    p.add_argument('--baseline-install',default='/tmp/occ-query-g2-baseline-install')
+    p.add_argument('--domain',type=int,default=186)
+    p.add_argument('--duration-wall',type=float,default=120.)
+    p.add_argument('--repeat',type=int,default=3)
+    p.add_argument('--boxes',type=csv_choices(int,(0,5,20)),default=[0,5,20])
+    p.add_argument('--baseline-revision',default=BASELINE)
+    p.add_argument('--rehearsal',action='store_true')
+    p.add_argument('--out',required=True)
+    def run_concurrency(args):
+        from occ_query_concurrency_campaign import concurrency
+        return concurrency(args,sys.modules[__name__])
+    p.set_defaults(run=run_concurrency)
     p = commands.add_parser('replay', help='capture an oracle mismatch from frozen sources')
     p.add_argument('--bundle', required=True)
     p.add_argument('--out')
@@ -336,6 +350,8 @@ def main():
         parser.error('invalid sample counts')
     if args.command in ('benchmark','planning') and (not 100 <= args.domain <= 232 or args.samples < 1 or args.warmup < 0):
         parser.error('invalid runtime domain/sample counts')
+    if args.command=='concurrency' and (not 100<=args.domain<=232 or args.duration_wall<=0 or args.repeat<1):
+        parser.error('invalid concurrency domain/duration/repetition')
     return args.run(args)
 
 
