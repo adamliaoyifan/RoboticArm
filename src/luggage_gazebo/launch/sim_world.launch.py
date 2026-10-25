@@ -82,6 +82,8 @@ def _default_launch_values():
         "use_perception": "true",
         "top_surface_mode": "legacy",
         "hull_margin": "0.0",
+        "structural_search": "false",
+        "structural_budget_s": "20.0",
         "min_support_ratio": "0.6",
         "last_result_max_candidates": "24",
         "use_cargo_map": "false",
@@ -1234,6 +1236,13 @@ def _launch_setup(context):
                 "min_support_ratio": float(cfg["min_support_ratio"]),
                 "last_result_max_candidates": int(
                     float(cfg["last_result_max_candidates"])),
+                # G3 structural-first chain (session batches + snug
+                # ranking, same hard gates). Default keeps the legacy
+                # exhaustive path.
+                "structural_search": _as_bool(cfg.get(
+                    "structural_search", "false")),
+                "structural_budget_s": float(
+                    cfg.get("structural_budget_s", "20.0")),
                 **frame_params,
             }, atlas_params],
             condition=IfCondition(_bool_text(cfg["use_packing"])),
@@ -1362,6 +1371,15 @@ def generate_launch_description():
                 "hull_margin",
                 "Placement planner inward hull clearance in metres "
                 "(default 0 = flush-wall, historical behavior)."),
+            profile_arg(
+                "structural_search",
+                "G3 structural-first placement chain (session batches "
+                "+ snug ranking, same hard gates; default false keeps "
+                "the legacy exhaustive chain)."),
+            profile_arg(
+                "structural_budget_s",
+                "Structural search session budget in seconds "
+                "(default 20)."),
             profile_arg(
                 "min_support_ratio",
                 "Placement planner stacking support ratio "

@@ -1136,8 +1136,17 @@ class PickRetreatEvalDriver(Node):
                 GetCargoMapStats, "/cargo_map/get_stats",
                 callback_group=self._group)
             self._goto_stats_client = stats_client
+        # [G3 structural n=3, 2026-10-25] Boot-window resilience: at
+        # stack startup the frame-runtime identity flood can starve this
+        # node's executor for >5 s while the mapper's stats service is
+        # perfectly healthy (verified by direct CLI calls). Retry the
+        # wait instead of failing the whole session at the first goto.
         if not stats_client.wait_for_service(timeout_sec=5.0):
-            return False, "MAP_STATUS_UNAVAILABLE"
+            for _attempt in range(5):
+                if stats_client.wait_for_service(timeout_sec=5.0):
+                    break
+            else:
+                return False, "MAP_STATUS_UNAVAILABLE"
         request = GoToRobotPoseV2.Request()
         request.request_id = self._frame_request_id("goto_%s" % pose_name)
         request.pose_name = str(pose_name)
@@ -1152,8 +1161,22 @@ class PickRetreatEvalDriver(Node):
             request.request_id = self._frame_request_id(
                 "goto_%s" % pose_name
                 + ("" if attempt == 0 else "_r%d" % attempt))
+            # [G3 structural n=3, 2026-10-25] The 1cm OCC-crop mapper
+            # answers get_stats in ~8 s under load (measured; the 5 cm
+            # mapper was sub-second). 5 s was a guaranteed timeout.
             stats = self.call_srv(
-                stats_client, GetCargoMapStats.Request(), timeout=5.0)
+                stats_client, GetCargoMapStats.Request(), timeout=30.0)
+            if stats is None or not stats.success:
+                # Same boot-window resilience as the wait above: one
+                # starved 5 s call is not a verdict; retry before
+                # declaring the map status unavailable.
+                import sys as _sys
+                for _retry in range(3):
+                    stats = self.call_srv(
+                        stats_client, GetCargoMapStats.Request(),
+                        timeout=30.0)
+                    if stats is not None and stats.success:
+                        break
             if stats is None or not stats.success:
                 return False, "MAP_STATUS_UNAVAILABLE"
             request.latest_map_revision = int(stats.map_revision)
