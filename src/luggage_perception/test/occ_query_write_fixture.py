@@ -43,6 +43,7 @@ def main():
     p.add_argument('--crossing', type=float, required=True)
     p.add_argument('--index', type=int, required=True)
     p.add_argument('--input', required=True)
+    p.add_argument('--profile', action='store_true')
     a = p.parse_args()
     root = Path(a.root).resolve()
     sys.path[:0] = [str(root/'src/luggage_perception'), str(root/'src/luggage_description'), str(root)]
@@ -96,6 +97,10 @@ def main():
         origin=origin, minimum_z=minimum_z, stamp_key=(1, 0), acquisition_stamp_ns=1_000_000_000,
         settled=True, schema_version=1)
     before = primary_arrays(m)
+    if a.profile:
+        import cProfile
+        profiler = cProfile.Profile()
+        profiler.enable()
     begin = time.perf_counter_ns()
     result = s.apply_update(update)
     updated = time.perf_counter_ns()
@@ -103,6 +108,9 @@ def main():
     ledger = json.dumps(s.committed_dict('container_link', {'translation': [0., 0., 0.],
         'rotation_rpy': [0., 0., 0.]}, result.snapshot), sort_keys=True)
     ended = time.perf_counter_ns()
+    if a.profile:
+        profiler.disable()
+        profiler.dump_stats(str(out/'write.cprofile'))
     row = dict(index=a.index, resolution=a.resolution, boxes=a.boxes, raw_points=len(points),
         outside=a.outside, crossing=a.crossing, actual_outside=actual_outside,
         actual_crossing=actual_crossing, selected_rays=len(rays), candidate_rays=len(prepared.ray_points),
