@@ -5,6 +5,7 @@ Setup and result hashing are excluded; Store update and both legacy JSON
 publication preparations are included. No production fusion or ray changes.
 """
 import argparse
+from contextlib import contextmanager, nullcontext
 import hashlib
 import itertools
 import json
@@ -12,6 +13,43 @@ from pathlib import Path
 import resource
 import sys
 import time
+
+
+@contextmanager
+def capture_index_maintenance(owner):
+    """Diagnostic-only transaction trace; keep every refresh, including empty ones.
+
+    The public work value describes the last refresh, not the transaction.
+    Wrap only this fixture's owner and restore it even if maintenance fails.
+    Never enable this observer in ordinary whole-write timing samples.
+    """
+    events = []
+    if owner is None:
+        yield events
+        return
+    original = owner.apply_delta
+    had_override = 'apply_delta' in vars(owner)
+
+    def observed(mapper, delta, *args, **kwargs):
+        event = dict(changed_cells=len(delta.indices), rebuild=bool(delta.rebuild),
+                     begin_ns=time.perf_counter_ns(), completed=False)
+        events.append(event)
+        try:
+            result = original(mapper, delta, *args, **kwargs)
+            event.update(completed=True, work=dict(owner.work),
+                         surface_work=dict(owner.surface_work()))
+            return result
+        finally:
+            event['end_ns'] = time.perf_counter_ns()
+
+    owner.apply_delta = observed
+    try:
+        yield events
+    finally:
+        if had_override:
+            owner.apply_delta = original
+        else:
+            del owner.apply_delta
 
 
 def make_points(hull, count, outside, crossing):
@@ -101,13 +139,16 @@ def main():
         import cProfile
         profiler = cProfile.Profile()
         profiler.enable()
-    begin = time.perf_counter_ns()
-    result = s.apply_update(update)
-    updated = time.perf_counter_ns()
-    v1 = json.dumps(s.v1_surface_dict(result.snapshot), sort_keys=True)
-    ledger = json.dumps(s.committed_dict('container_link', {'translation': [0., 0., 0.],
-        'rotation_rpy': [0., 0., 0.]}, result.snapshot), sort_keys=True)
-    ended = time.perf_counter_ns()
+    observer = (capture_index_maintenance(getattr(s, '_query_indexes', None))
+                if a.profile else nullcontext(None))
+    with observer as index_stages:
+        begin = time.perf_counter_ns()
+        result = s.apply_update(update)
+        updated = time.perf_counter_ns()
+        v1 = json.dumps(s.v1_surface_dict(result.snapshot), sort_keys=True)
+        ledger = json.dumps(s.committed_dict('container_link', {'translation': [0., 0., 0.],
+            'rotation_rpy': [0., 0., 0.]}, result.snapshot), sort_keys=True)
+        ended = time.perf_counter_ns()
     if a.profile:
         profiler.disable()
         profiler.dump_stats(str(out/'write.cprofile'))
@@ -125,6 +166,9 @@ def main():
     if hasattr(m, '_query_read_owner') and m._query_read_owner is not None:
         row['index_work'] = dict(m._query_read_owner.work)
         row['resources'] = dict(s._query_registry.resource_summary())
+    if index_stages is not None:
+        row['diagnostic_index_stages'] = index_stages
+        row['timing_profile'] = 'cProfile and per-refresh observer; not certification'
     (out/'result.json').write_text(json.dumps(row, indent=2)+'\n')
     if a.index == -1 or not result.accepted:
         np.savez_compressed(out/'before.npz', **before)

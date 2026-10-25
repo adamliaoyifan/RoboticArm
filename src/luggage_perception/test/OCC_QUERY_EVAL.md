@@ -59,6 +59,15 @@ Missing samples remain `not_evaluated`; observed failures
 remain failures. Replay's exit code describes semantic replay, so inspect
 `gates.json` for the pressure verdict. Neither file certifies overall G2.
 
+Whole-write workers keep ordinary timing samples free of extra stage observers.
+The diagnostic `occ_query_write_fixture.py --profile` mode additionally records
+each owner `apply_delta` boundary and its work/surface counters under
+`diagnostic_index_stages`. A later empty refresh can overwrite the owner's
+last-work value; use the complete stage list to explain transaction work.
+The observer restores the fixture owner's method on success or failure and
+does not change primary facts or production code. Its cProfile/stage timings
+are diagnostic and cannot certify the write regression gate.
+
 The campaign stops its owned processes before decoding/rebuilding evidence.
 Its exit code uses the strict gates. Every replay records verifier revision,
 dirty state, helper snapshots/hashes and frozen-source integrity. Existing
