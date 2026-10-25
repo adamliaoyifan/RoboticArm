@@ -4,6 +4,7 @@ The CLI owns only its child mapper and client processes. Installed product
 hashes must match the frozen source before a runtime sample is accepted.
 """
 import itertools
+from collections import Counter
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,55 @@ import signal
 import subprocess
 import sys
 import time
+
+
+def trace_capture_health(owner, events, observations):
+    """Join every completed trace-on request after scoring, without sampling.
+
+    Stats and direct snapshot timing do not use the typed snapshot boundary.
+    Partial performance runs still require complete traces for the requests
+    they actually completed; this gate does not certify their sample count.
+    """
+    expected = [f"{row['case']}-{row['index']}-trace_on"
+                for row in observations
+                if row['trace'] == 'trace_on' and row['case'] not in ('stats', 'snapshot')]
+    snapshots = [row for row in events if row.get('stage') == 'snapshot']
+    actual = [row['request_id'] for row in snapshots]
+    missing = list((Counter(expected) - Counter(actual)).elements())
+    unexpected = list((Counter(actual) - Counter(expected)).elements())
+    valid_times = all(row.get('started_ns', 0) > 0 and row.get('elapsed_ns', -1) >= 0
+                      for row in snapshots)
+    dropped = owner.get('snapshot_trace_dropped')
+    count_matches = owner.get('snapshot_trace_count') == len(snapshots)
+    duplicate_requests = len(expected) != len(set(expected))
+    healthy = (dropped == 0 and count_matches and valid_times and not duplicate_requests
+               and not missing and not unexpected)
+    return dict(outcome='pass' if healthy else 'fail', expected=len(expected),
+                actual=len(actual), dropped=dropped, manifest_count_matches=count_matches,
+                valid_times=valid_times, duplicate_requests=duplicate_requests,
+                missing_request_ids=missing, unexpected_request_ids=unexpected)
+
+
+def instrumentation_results(results, observations):
+    ratios = {}
+    for case, modes in results.items():
+        if case in ('snapshot', 'stats'):
+            ratios[case] = dict(outcome='not_applicable',
+                               reason='snapshot-stage T1 does not wrap this path')
+            continue
+        samples = {mode: sorted(row['elapsed_ns'] for row in observations
+                   if row['case'] == case and row['trace'] == mode
+                   and not row['cold'] and not row['warmup'])
+                   for mode in ('trace_off', 'trace_on')}
+        if not all(len(values) == 30 for values in samples.values()):
+            ratios[case] = dict(outcome='not_evaluated')
+            continue
+        ratio = samples['trace_on'][28] / samples['trace_off'][28]
+        off, on = modes['trace_off'], modes['trace_on']
+        ratios[case] = dict(roundtrip_p95_ratio=ratio,
+            gated_p95_ratio=on.get('p95_ms', 0)/off['p95_ms'] if off.get('p95_ms', 0) > 0 else None,
+            outcome='pass' if ratio <= 1.10 else 'fail')
+    return ratios
 
 
 def wake_owner(script,domain,node,env=None,log=None):
@@ -122,7 +172,14 @@ def benchmark(args, common):
                             stderr=subprocess.STDOUT, timeout=600)
                     repetition['client_exit_code'] = result.returncode
                     repetition['phase'] = 'complete'
-                    if result.returncode:
+                    results = json.loads((run/'client/result.json').read_text())['results']
+                    observations = [json.loads(line) for line in
+                                    (run/'client/samples.jsonl').read_text().splitlines()]
+                    entry['instrumentation'] = instrumentation_results(results, observations)
+                    repetition['failure_capture_required'] = bool(result.returncode or any(
+                        gate['outcome'] not in ('pass', 'not_applicable')
+                        for gate in entry['instrumentation'].values()))
+                    if repetition['failure_capture_required']:
                         # Preserve the failed request and a consistent full
                         # boundary map before teardown. No automatic rerun.
                         process.send_signal(signal.SIGUSR1)
@@ -151,6 +208,20 @@ def benchmark(args, common):
                         repetition['resource_gate'] = 'pass' if (ready['node_init_ns']<=30_000_000_000
                             and ready['reset_ns']<=30_000_000_000 and final['rss_peak_kib']<=2*1024**2
                             and ready['resources']['conservative_retained_bytes']<=512*1024**2) else 'fail'
+                    trace_path = run/'owner/trace.jsonl'
+                    samples_path = run/'client/samples.jsonl'
+                    if final_path.exists() and trace_path.exists() and samples_path.exists():
+                        repetition['trace_capture'] = trace_capture_health(
+                            json.loads(final_path.read_text()),
+                            [json.loads(line) for line in trace_path.read_text().splitlines()],
+                            [json.loads(line) for line in samples_path.read_text().splitlines()])
+                    else:
+                        repetition['trace_capture'] = dict(outcome='fail', reason='missing_boundary_artifact')
+                    failure_capture_ok = (not repetition.get('failure_capture_required', True)
+                                          or repetition.get('capture_complete') is True)
+                    repetition['capture_gate'] = ('pass' if failure_capture_ok
+                        and repetition['trace_capture']['outcome'] == 'pass'
+                        and process.returncode == 0 else 'fail')
                     common.write_json(out/'manifest.json', manifest)
             common.check_evidence_budget(out)
             # A startup failure supplies no query samples. Stop this group
@@ -161,28 +232,13 @@ def benchmark(args, common):
         if path.exists():
             results = json.loads(path.read_text())['results']
             observations = [json.loads(line) for line in (group/'paired/client/samples.jsonl').read_text().splitlines()]
-            ratios = {}
-            for case,modes in results.items():
-                if case in ('snapshot','stats'):
-                    ratios[case] = dict(outcome='not_applicable',reason='snapshot-stage T1 does not wrap this path')
-                    continue
-                samples = {mode:sorted(row['elapsed_ns'] for row in observations
-                    if row['case']==case and row['trace']==mode and not row['cold'] and not row['warmup'])
-                    for mode in ('trace_off','trace_on')}
-                if all(len(values)==30 for values in samples.values()):
-                    ratio = samples['trace_on'][28]/samples['trace_off'][28]
-                    a,b = modes['trace_off'],modes['trace_on']
-                    ratios[case] = dict(roundtrip_p95_ratio=ratio,
-                        gated_p95_ratio=b.get('p95_ms',0)/a['p95_ms'] if a.get('p95_ms',0)>0 else None,
-                        outcome='pass' if ratio <= 1.10 else 'fail')
-                else:
-                    ratios[case] = dict(outcome='not_evaluated')
-            entry['instrumentation'] = ratios
+            entry['instrumentation'] = instrumentation_results(results, observations)
         common.write_json(out/'manifest.json', manifest)
     manifest.update(ended_ns=time.time_ns(), source_hashes_unchanged=common.source_hashes(source)==hashes,
         phase='complete', outcome='measured_with_individual_gate_results')
     common.write_json(out/'manifest.json', manifest)
-    failed = any(rep.get('resource_gate')!='pass' or rep.get('client_exit_code')!=0
+    failed = any(rep.get('resource_gate')!='pass' or rep.get('capture_gate')!='pass'
+        or rep.get('client_exit_code')!=0
         for group in manifest['groups'] for rep in group['repetitions'])
     failed |= any(gate['outcome'] not in ('pass','not_applicable')
         for group in manifest['groups'] for gate in group.get('instrumentation',{}).values())
