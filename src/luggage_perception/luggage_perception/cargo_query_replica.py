@@ -79,10 +79,22 @@ class QueryReplica:
             self.last_error = 'NO_PUBLISHED_GENERATION'
             return self.state
         if self.manifest is not None:
-            if int(manifest['seq']) <= int(self.manifest['seq']):
+            # Producer/epoch/schema first, THEN seq (protocol 5.3): a
+            # new incarnation restarts the sequence legitimately, and a
+            # FULL generation is self-contained so any gap is healed by
+            # applying it directly (the resync answer).
+            if manifest['producer_incarnation'] != \
+                    self.manifest['producer_incarnation']:
+                if manifest['kind'] != 'FULL':
+                    return self._resync('PRODUCER_CHANGED',
+                                        'delta from a new incarnation')
+            elif manifest['kind'] == 'FULL' and \
+                    int(manifest['seq']) > int(self.manifest['seq']):
+                pass  # self-contained resync answer: apply directly
+            elif int(manifest['seq']) <= int(self.manifest['seq']):
                 self.state = ReplicaState.READY
                 return self.state
-            if int(manifest['seq']) != int(self.manifest['seq']) + 1:
+            elif int(manifest['seq']) != int(self.manifest['seq']) + 1:
                 return self._resync('SEQ_GAP',
                                     '%s -> %s' % (self.manifest['seq'],
                                                   manifest['seq']))

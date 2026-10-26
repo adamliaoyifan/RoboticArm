@@ -142,11 +142,20 @@ class EncoderCpuSampler:
         self._stop = threading.Event()
 
     def _encoder_tid(self):
-        thread = getattr(self._publisher, '_encoder', None)
-        if thread is None or not thread.is_alive():
-            return None
-        # tid of a native thread == its ident on Linux CPython.
-        return thread.ident
+        """Native tid of the encoder thread, found by name: CPython's
+        Thread.ident is NOT the /proc tid. The encoder thread is named
+        'occ-query-export' (set in QueryExportPublisher)."""
+        try:
+            for tid in os.listdir('/proc/self/task'):
+                try:
+                    with open('/proc/self/task/%s/comm' % tid) as handle:
+                        if handle.read().strip() == 'occ-query-export':
+                            return int(tid)
+                except OSError:
+                    continue
+        except OSError:
+            pass
+        return None
 
     def _start(self):
         tid = self._encoder_tid()

@@ -105,7 +105,12 @@ class QueryExportPublisher:
         happen here. Facts are already committed -- a failure here is a
         named export status, never a rollback."""
         while True:
-            item = self._queue.get()
+            self._answer_resync_requests()
+            try:
+                item = self._queue.get(timeout=0.25)
+            except queue.Empty:
+                self._head_loop_tick()
+                continue
             if item is None:
                 return
             snapshot, dirty_blocks, provenance_changed = item
@@ -122,6 +127,31 @@ class QueryExportPublisher:
                 # offer path decremented nothing, so two offers permanently
                 # saturated the queue into EXPORT_BACKLOG_FULL).
                 self._pending = max(0, self._pending - 1)
+
+    def _answer_resync_requests(self):
+        """The receiver's RESYNC request (control/resync) is answered
+        with a FULL generation of the LATEST committed snapshot
+        (protocol section 5: resync is triggered only by control
+        messages; the request file is consumed exactly once)."""
+        request = os.path.join(self.root, 'control', 'resync')
+        if not os.path.exists(request):
+            return False
+        latest = self._latest_committed
+        try:
+            os.unlink(request)
+        except OSError:
+            return False
+        if latest is None:
+            return False
+        snapshot, dirty_blocks, provenance_changed = latest
+        try:
+            self._publish(snapshot, None, provenance_changed, True)
+            return True
+        except (WireError, OSError, ValueError) as error:
+            self._encoder_error = str(error)
+            self._mark_unhealthy(
+                'EXPORT_' + getattr(error, 'reason', 'IO_ERROR'))
+            return False
 
     def _head_loop_tick(self):
         """head.json reflects the LATEST committed snapshot (not only
