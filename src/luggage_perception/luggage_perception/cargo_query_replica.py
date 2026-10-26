@@ -18,9 +18,18 @@ from __future__ import annotations
 import json
 import os
 
-from luggage_perception.cargo_query_snapshot_wire import rebuild_snapshot
+from luggage_perception.cargo_query_snapshot_wire import (
+    decode_array_object, decode_json_object, rebuild_snapshot)
+from luggage_perception.cargo_map_query import (
+    CELL_DTYPE, GridInfo, QueryIdentity, QuerySnapshotData, VoxelBlock)
+from luggage_perception.cargo_distance_query import (
+    DistanceLeafLayout, freeze_distance_members)
 from luggage_perception.cargo_query_wire import (
-    WireError, sha256_hex, validate_manifest)
+    WireError, decode_array_object as wire_decode_array,
+    decode_json_object as wire_decode_json, sha256_hex, validate_manifest)
+from types import MappingProxyType
+
+import numpy as np
 
 MAX_OBJECT_BYTES = 16 * 1024 * 1024
 
@@ -45,6 +54,15 @@ class QueryReplica:
         self._resync_attempts = 0
         self._resync_deadline_ns = None
         self.last_error = ''
+        # C2 receive-side: decoded-object cache keyed by content address
+        # (bounded by the two-generation lifecycle: entries for objects
+        # not referenced by the current or previous manifest are dropped
+        # at apply time). Unchanged blocks reuse decoded objects instead
+        # of re-decoding -- DELTA generations never call the full
+        # rebuild_snapshot.
+        self._object_cache = {}
+        self.cache_hits = 0
+        self.cache_misses = 0
 
     # -- polling -------------------------------------------------------
 
@@ -79,9 +97,14 @@ class QueryReplica:
                 return self._resync('PRODUCER_CHANGED')
         try:
             self.state = ReplicaState.SYNCING
-            objects = self._load_objects(manifest)
-            snapshot = rebuild_snapshot(
-                objects, expected_identity=manifest['target_identity'])
+            if (manifest['kind'] == 'DELTA' and self.snapshot is not None
+                    and self.manifest is not None):
+                snapshot = self._apply_delta(manifest)
+            else:
+                objects = self._load_objects_all(manifest)
+                snapshot = rebuild_snapshot(
+                    objects,
+                    expected_identity=manifest['target_identity'])
         except WireError as error:
             return self._resync(error.reason, error.detail)
         # Atomic swap: registry state changes only after full validation.
@@ -112,24 +135,152 @@ class QueryReplica:
         validate_manifest(manifest)
         return manifest
 
-    def _load_objects(self, manifest):
-        objects = {}
-        for name, entry in manifest['entries'].items():
-            if entry.get('type') == 'reference' and entry['bytes'] == 0:
-                # Unchanged content address; load like any object (the
-                # receiver has no cached copy -- content addressing
-                # makes the load idempotent and cheap via page cache).
-                pass
-            digest = entry['sha256']
-            path = os.path.join(self.root, 'objects', digest)
-            with open(path, 'rb') as handle:
-                payload = handle.read(MAX_OBJECT_BYTES + 1)
-            if len(payload) > MAX_OBJECT_BYTES:
-                raise WireError('OBJECT_TOO_LARGE', name)
-            if sha256_hex(payload) != digest:
-                raise WireError('OBJECT_HASH_MISMATCH', name)
-            objects[name] = payload
-        return objects
+    def _load_payload(self, digest, name):
+        """Load+verify one object, or reuse the cached copy when the
+        content address was already decoded into this receiver."""
+        cached = self._object_cache.get(digest)
+        if cached is not None:
+            self.cache_hits += 1
+            return cached
+        self.cache_misses += 1
+        path = os.path.join(self.root, 'objects', digest)
+        with open(path, 'rb') as handle:
+            payload = handle.read(MAX_OBJECT_BYTES + 1)
+        if len(payload) > MAX_OBJECT_BYTES:
+            raise WireError('OBJECT_TOO_LARGE', name)
+        if sha256_hex(payload) != digest:
+            raise WireError('OBJECT_HASH_MISMATCH', name)
+        self._object_cache[digest] = payload
+        return payload
+
+    def _load_objects_all(self, manifest):
+        return {name: self._load_payload(entry['sha256'], name)
+                for name, entry in manifest['entries'].items()}
+
+    def _apply_delta(self, manifest):
+        """Incremental assembly: only objects whose content address
+        differs from the previous manifest are decoded; unchanged
+        blocks reuse the previous snapshot's immutable block objects
+        directly. The result must equal a full rebuild of the same
+        generation (pinned by tests)."""
+        previous_entries = self.manifest['entries']
+        changed_names = [
+            name for name, entry in manifest['entries'].items()
+            if previous_entries.get(name, {}).get('sha256')
+            != entry['sha256']]
+        # Non-block payloads that changed: decode fresh.
+        fresh = {}
+        for name in changed_names:
+            if name.startswith('block.'):
+                continue
+            fresh[name] = self._load_payload(
+                manifest['entries'][name]['sha256'], name)
+        grid_meta = wire_decode_json(self._load_payload(
+            manifest['entries']['grid']['sha256'], 'grid'))
+        identity_legs = wire_decode_json(self._load_payload(
+            manifest['entries']['identity']['sha256'], 'identity'))
+
+        changed_blocks = sorted({
+            int(name.split('.')[1]) for name in changed_names
+            if name.startswith('block.')})
+        new_blocks = list(self.snapshot.blocks)
+        for block_id in changed_blocks:
+            new_blocks[block_id] = self._rebuild_block(
+                manifest, block_id, grid_meta)
+        summary = MappingProxyType(dict(wire_decode_json(
+            self._load_payload(
+                manifest['entries']['summary']['sha256'], 'summary'))))
+        provenance = wire_decode_json(self._load_payload(
+            manifest['entries']['provenance']['sha256'], 'provenance'))
+        from luggage_perception.cargo_query_snapshot_wire import (
+            _HullView, _MapSnapshotView)
+        map_snapshot = _MapSnapshotView(provenance)
+        grid = GridInfo(
+            tuple(grid_meta['shape']), tuple(grid_meta['origin']),
+            grid_meta['resolution'], grid_meta['frame_id'],
+            grid_meta['geometry_hash'], _HullView(
+                grid_meta['geometry_hash']))
+        sensor_blocks = MappingProxyType({
+            int(k): tuple(v) for k, v in wire_decode_json(
+                self._load_payload(manifest['entries']
+                                   ['sensor_blocks']['sha256'],
+                                   'sensor_blocks')).items()})
+        box_blocks = MappingProxyType({
+            k: tuple(v) for k, v in wire_decode_json(
+                self._load_payload(manifest['entries']
+                                   ['box_blocks']['sha256'],
+                                   'box_blocks')).items()})
+        data = QuerySnapshotData(
+            QueryIdentity(identity_legs['epoch'],
+                          int(identity_legs['revision']),
+                          identity_legs['content_digest'],
+                          identity_legs['voxel_digest'],
+                          int(identity_legs['index_schema_version'])),
+            grid, tuple(new_blocks), sensor_blocks, box_blocks, summary,
+            map_snapshot, b'',
+            owner_evidence_bytes=int(wire_decode_json(
+                self._load_payload(
+                    manifest['entries']['owner_evidence_bytes']
+                    ['sha256'], 'owner_evidence_bytes'))),
+            unbound_geometry_count=int(wire_decode_json(
+                self._load_payload(
+                    manifest['entries']['unbound_geometry_count']
+                    ['sha256'], 'unbound_geometry_count'))),
+            surface_projection=self.snapshot.surface_projection,
+            distance_index=self.snapshot.distance_index)
+        if tuple(data.identity) != tuple(manifest['target_identity']):
+            raise WireError('IDENTITY_MISMATCH',
+                            'delta assembly identity mismatch')
+        # Bound the cache: keep only objects referenced by the new or
+        # previous manifest (two-generation lifecycle).
+        referenced = {entry['sha256']
+                      for entry in manifest['entries'].values()}
+        referenced.update(
+            entry['sha256'] for entry in previous_entries.values())
+        self._object_cache = {
+            digest: payload for digest, payload
+            in self._object_cache.items() if digest in referenced}
+        return data
+
+    def _rebuild_block(self, manifest, block_id, grid_meta):
+        prefix = 'block.%d' % block_id
+        entries = manifest['entries']
+
+        def payload(suffix):
+            name = prefix + suffix
+            if name not in entries:
+                raise WireError('MISSING_OBJECT', name)
+            return self._load_payload(entries[name]['sha256'], name)
+
+        meta = wire_decode_json(payload('.meta'))
+        evidence = bytes(payload('.evidence'))
+        active = bytes(payload('.active'))
+        frontier = bytes(payload('.frontier'))
+        flat = decode_array_object(payload('.flat_indices'))
+        members = wire_decode_json(payload('.members'))
+        sensor_members = MappingProxyType({
+            int(k): bytes.fromhex(v) for k, v in members['sensor'].items()})
+        box_members = MappingProxyType({
+            k: bytes.fromhex(v) for k, v in members['box'].items()})
+        shape = tuple(int(v) for v in meta['shape'])
+        layout = DistanceLeafLayout.initialize(shape)
+        records = np.frombuffer(evidence, dtype=CELL_DTYPE)
+        allowed = np.frombuffer(active, 'u1').astype(bool)
+        distance_members = freeze_distance_members(layout, records,
+                                                   allowed)
+        counts = tuple(int(v) for v in meta['state_counts'])
+        recomputed = tuple(int(v) for v in np.bincount(
+            records['state'][allowed], minlength=3))
+        if counts != recomputed:
+            raise WireError('STATE_COUNT_MISMATCH', str(block_id))
+        frontier_count = int(np.frombuffer(frontier, 'u1').sum())
+        if frontier_count != int(meta['frontier_count']):
+            raise WireError('FRONTIER_COUNT_MISMATCH', str(block_id))
+        return VoxelBlock(
+            int(block_id), tuple(int(v) for v in meta['start']), shape,
+            flat, evidence, active, frontier, counts, frontier_count,
+            sensor_members, box_members, meta['fact_digest'], layout,
+            distance_members)
 
     def _resync(self, reason, detail=''):
         self.state = ReplicaState.RESYNC_REQUIRED

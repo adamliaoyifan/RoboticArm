@@ -58,18 +58,15 @@ def encode_snapshot(snapshot, producer_incarnation, seq, *,
     objects = {}
     emit = None if dirty_blocks is None else set(dirty_blocks)
 
+    def block_emits(block_id):
+        """DELTA gating is per BLOCK id (the write path's dirty set),
+        never per object name and never per fact_digest. C0 measured
+        2598 wasted payload constructions per generation at 1cm when
+        gating happened AFTER construction."""
+        return emit is None or int(block_id) in emit
+
     def put(name, payload):
-        if emit is None:
-            objects[name] = payload
-            return
-        if not name.startswith('block.'):
-            objects[name] = payload
-            return
-        # DELTA gating is per BLOCK id (the write path's dirty set),
-        # never per object name and never per fact_digest.
-        block_id = int(name.split('.')[1])
-        if block_id in emit:
-            objects[name] = payload
+        objects[name] = payload
 
     grid = snapshot.grid
     put('grid', encode_json_object({
@@ -80,6 +77,11 @@ def encode_snapshot(snapshot, producer_incarnation, seq, *,
         'geometry_hash': grid.geometry_hash,
     }))
     for block in snapshot.blocks:
+        if not block_emits(block.block_id):
+            # Unchanged block: skip the ENTIRE payload construction
+            # (C2 encode-side dirty-first; the manifest keeps the
+            # previous content address for these names).
+            continue
         prefix = 'block.%d' % block.block_id
         put(prefix + '.evidence', block.evidence)
         put(prefix + '.active', block.active)
