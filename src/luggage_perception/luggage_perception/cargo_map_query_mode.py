@@ -93,12 +93,23 @@ def wire_store_export(store, export_root, dirty_tracker=None):
     def build_with_hook(update=None, details=None):
         snapshot = original_build(update, details)
         try:
-            data = snapshot_query_data(store)
-            dirty = tracker(previous['snapshot'], data)
-            hook.offer_committed(data, dirty,
-                                 previous['snapshot'] is None
-                                 or tuple(data.identity)
-                                 != tuple(previous['snapshot'].identity))
+            # Priority-2 (user 2026-10-27): the change set is computed
+            # ONCE by the write path (QueryIndexOwner._update_blocks)
+            # and consumed here directly -- no all-block re-scan on the
+            # commit path. Falling back to the compare tracker only
+            # covers owners that predate the attribute.
+            owner = getattr(store, '_query_indexes', None)
+            dirty = getattr(owner, '_last_dirty_blocks', None)
+            if dirty is None:
+                data = snapshot_query_data(store)
+                dirty = tracker(previous['snapshot'], data)
+            else:
+                data = snapshot_query_data(store)
+            hook.offer_committed(
+                data, set(dirty) if dirty is not None else None,
+                previous['snapshot'] is None
+                or tuple(data.identity)
+                != tuple(previous['snapshot'].identity))
             previous['snapshot'] = data
         except Exception as error:  # noqa: BLE001
             # Export must never break the commit path.

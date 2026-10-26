@@ -152,6 +152,7 @@ class QueryIndexOwner:
         self._sensor_blocks = {}
         self._cursor_secret = secrets.token_bytes(32)
         self._surface = IncrementalSurfaceProjection()
+        self._last_dirty_blocks = ()
 
     @property
     def work(self):
@@ -389,7 +390,11 @@ class QueryIndexOwner:
                     patched_canonical_bytes=patched,
                     public_payload_reused_blocks=reused,
                     public_payload_changed_blocks=len(dirty) - reused)
-        self._last_work = MappingProxyType(work)
+        work = MappingProxyType(work)
+        self._last_work = work
+        # The exporter consumes this directly (protocol: the change set
+        # is computed ONCE by the write path and shared -- no re-scan).
+        self._last_dirty_blocks = tuple(sorted(dirty))
 
     def freeze_query(self, mapper, map_snapshot, summary):
         """Read-only construction; references only immutable block values."""
