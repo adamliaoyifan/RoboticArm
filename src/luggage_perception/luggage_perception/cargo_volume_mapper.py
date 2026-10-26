@@ -570,6 +570,7 @@ class CargoVolumeMapper:
                 hit=world_point(ray.obstacle)
                 voxel=self._local_to_voxel(*self._world_to_local(*hit))
                 if voxel is not None:hits[self._index(*voxel)]=hit
+        rays_admitted = len(rays)
         if self.max_raycast_points and len(rays)>self.max_raycast_points:
             stride=int(math.ceil(len(rays)/self.max_raycast_points))
             # A fixed prefix repeats the same blind spots in ordered depth
@@ -592,6 +593,9 @@ class CargoVolumeMapper:
         for hit in hits.values():self.mark_occupied_world(*hit)
         if hits or misses:self._revision+=1
         return dict(rays=len(rays),hits=len(hits),free_voxels=len(misses),
+                    rays_admitted=rays_admitted,
+                    rays_sampled=(len(rays) if self.max_raycast_points
+                                  else rays_admitted),
                     rejected=rejected,observed_points=list(hits.values()))
 
     def state_at(self, index):
