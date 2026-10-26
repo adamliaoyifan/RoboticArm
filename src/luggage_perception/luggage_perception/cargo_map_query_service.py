@@ -6,6 +6,8 @@ token and that identity. Resuming never renews the five-second lifetime.
 release_after_query explicitly closes a handle even for a partial response.
 No write, TF-latest, motion, lease or executor authority belongs here.
 """
+import time
+
 import numpy as np
 
 from luggage_perception.cargo_map_query import (
@@ -41,6 +43,11 @@ def region(query):
 
 def page(query):
     return QueryPage(query.limit or 1024, query.cursor)
+
+
+def _SPAN_COLLECTOR():
+    from luggage_perception import cargo_map_query as _core
+    return _core._SPAN_COLLECTOR
 
 
 class MapQueryService:
@@ -86,12 +93,29 @@ class MapQueryService:
             setattr(message, name, getattr(result, name))
 
     def _execute(self, request, response, operation):
+        # [G3 P0 D1 diagnostic] Same collector as the query core:
+        # per-request service-boundary spans with the serving thread's
+        # CPU time. Zero effect unless a collector is set. CDR
+        # serialization happens outside the callback and has NO
+        # observation point here -- it stays in the explicitly labeled
+        # client-side residual, never estimated from message size.
+        import time as _time
+        from luggage_perception import cargo_map_query as _core
+        _spans = _core._SPAN_COLLECTOR
+        _thread_ns = _time.thread_time_ns
+        if _spans is not None:
+            _wall0 = _time.perf_counter_ns()
+            _cpu0 = _thread_ns()
         snapshot = None
         query = request.query
         response.meta.request_id = query.request_id
         try:
             snapshot = self._open(query)
+            if _spans is not None:
+                _t_open = _time.perf_counter_ns()
             result = operation(request, response, snapshot)
+            if _spans is not None:
+                _t_op = _time.perf_counter_ns()
             self._meta(response.meta, query, snapshot, result)
         except QueryError as error:
             response.meta.status = response.meta.reason = error.reason
@@ -109,6 +133,16 @@ class MapQueryService:
                     (not query.snapshot_token and response.meta.status
                      not in ('OK', 'QUERY_BUDGET_EXHAUSTED'))):
                 snapshot.close()
+            if _spans is not None:
+                _spans.append({
+                    'kind': 'service',
+                    'request_id': str(query.request_id),
+                    'callback_wall_ns': _time.perf_counter_ns() - _wall0,
+                    'callback_cpu_ns': _thread_ns() - _cpu0,
+                    'open_ns': _t_open - _wall0,
+                    'operation_ns': _t_op - _t_open,
+                    'close_meta_ns': _time.perf_counter_ns() - _t_op,
+                })
         return response
 
     def summary(self, request, response):
@@ -158,9 +192,15 @@ class MapQueryService:
             raise QueryError('INVALID_FILTER')
         if request.mode not in (0, 2) and instance_key is not None:
             raise QueryError('INVALID_FILTER')
+        _spans = _SPAN_COLLECTOR()
         if request.mode == 0:
+            if _spans is not None:
+                _q0 = time.perf_counter_ns()
             result = snapshot.query_cells(region(query), tuple(request.states) or (0, 1, 2),
                                            instance_key, page(query))
+            if _spans is not None:
+                _spans.append({'kind': 'cells_split', 'request_id': query.request_id,
+                               'pure_query_ns': time.perf_counter_ns() - _q0})
         elif request.mode == 1:
             result = snapshot.query_frontiers(region(query), page(query))
         elif request.mode == 2 and instance_key is not None:
@@ -181,7 +221,12 @@ class MapQueryService:
                               cells=(record,))
         else:
             raise QueryError('INVALID_FILTER')
+        if _spans is not None:
+            _c0 = time.perf_counter_ns()
         response.cells = [self._cell(record) for record in result.cells]
+        if _spans is not None:
+            _spans.append({'kind': 'cells_split', 'request_id': query.request_id,
+                           'typed_ns': time.perf_counter_ns() - _c0})
         response.count = result.returned_count
         return result
 
