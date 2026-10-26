@@ -240,6 +240,11 @@ class QueryIndexOwner:
     def surface_projection(self):
         return self._surface.freeze()
 
+    def surface_as_dict(self):
+        """Memoized full-projection dict (owner keys on frozen
+        identity -- unchanged projections skip the ~26ms tolist)."""
+        return self._surface.as_dict()
+
     def surface_work(self):
         return self._surface.work
 

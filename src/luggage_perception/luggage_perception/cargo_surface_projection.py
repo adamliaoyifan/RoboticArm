@@ -138,6 +138,26 @@ class IncrementalSurfaceProjection:
     def freeze(self):
         return self._projection
 
+    def as_dict(self):
+        """Memoized full-projection dict keyed by frozen identity.
+
+        update_columns/initialize REPLACE the frozen projection object,
+        so object identity is a valid change token. The tolist() over
+        the full projection is ~26ms at 1cm (the largest single
+        snapshot-build item after the digest); an unchanged projection
+        (e.g. the metadata-only I1 transaction) reuses the identical
+        nested rows. The dict is consumed read-only by the snapshot
+        contract (JSON + freeze-to-tuples), never mutated."""
+        projection = self._projection
+        if projection is None:
+            return None
+        cache = getattr(self, '_dict_cache', None)
+        if cache is not None and cache[0] is projection:
+            return cache[1]
+        result = projection.as_dict()
+        self._dict_cache = (projection, result)
+        return result
+
 
 def _surface_window(grid, region):
     """Projection ROI selects whole columns by XY footprint, independent of Z.

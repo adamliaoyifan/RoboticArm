@@ -1012,6 +1012,11 @@ class OccupancyMapStore(object):
         self._mapper._voxel_delta = next_builder
         self._mapper._surface_cache = (self._query_indexes.surface_projection()
                                        if self._query_indexes is not None else None)
+        # Memoized full-dict accessor (owner keys on frozen identity):
+        # surface_map_2d consumes this when present, skipping the
+        # ~26ms tolist for an unchanged projection (I1 path).
+        self._mapper._surface_dict_source = (
+            self._query_indexes if self._query_indexes is not None else None)
 
     def _build_snapshot(self, update=None, details=None):
         self._refresh_query_indexes(update, details)

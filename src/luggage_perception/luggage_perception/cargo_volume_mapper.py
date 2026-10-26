@@ -1014,8 +1014,18 @@ class CargoVolumeMapper:
         """
         half_l = self.inner_l * 0.5
         half_w = self.inner_w * 0.5
-        columns = (self._surface_cache.as_dict() if self._surface_cache is not None
-                   else surface_columns(self))
+        source = getattr(self, '_surface_dict_source', None)
+        if source is not None:
+            memoized = source.surface_as_dict()
+            if memoized is not None:
+                columns = memoized
+            else:
+                columns = (self._surface_cache.as_dict()
+                           if self._surface_cache is not None
+                           else surface_columns(self))
+        else:
+            columns = (self._surface_cache.as_dict() if self._surface_cache is not None
+                       else surface_columns(self))
 
         return {
             "frame": "container_local",
