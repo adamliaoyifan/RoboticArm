@@ -1,0 +1,14 @@
+string handle
+uint64 cursor
+uint32 limit
+---
+string status
+uld_occ_observer/SnapshotIdentity identity
+uint64 next_cursor
+bool done
+int32[] x
+int32[] y
+uint32[] active_count
+uint32[] known_count
+bool[] has_occupied
+float64[] top_z

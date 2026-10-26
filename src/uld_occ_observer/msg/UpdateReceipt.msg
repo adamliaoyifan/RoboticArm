@@ -1,0 +1,17 @@
+string status
+string sensor_id
+string observation_id
+int64 input_stamp_ns
+uld_occ_observer/SnapshotIdentity identity
+uint64 raw_points
+uint64 accepted_points
+uint64 free_keys
+uint64 hit_keys
+uint64 changed_keys
+uint64 occupancy_changed_keys
+uint64 rebuilt_blocks
+float64 preprocessing_ms
+float64 preparation_ms
+float64 fusion_ms
+float64 total_ms
+float64 queue_ms

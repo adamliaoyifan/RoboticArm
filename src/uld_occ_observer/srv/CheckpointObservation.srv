@@ -1,0 +1,7 @@
+# operation: checkpoint or restore. Other business operations are unsupported.
+string operation
+string path
+uint64 expected_epoch
+---
+string status
+uint64 epoch

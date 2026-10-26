@@ -1,0 +1,5 @@
+# Frozen on startup; change configuration by creating a fresh observer epoch.
+resolution_m: 0.01
+depth_z_min_m: 0.52
+depth_z_max_m: 6.0
+clock_domain: ros

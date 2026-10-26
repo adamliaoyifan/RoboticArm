@@ -1,0 +1,14 @@
+string handle
+int32[3] begin
+int32[3] end
+uint64 cursor
+uint32 limit
+---
+string status
+uld_occ_observer/SnapshotIdentity identity
+uint64 next_cursor
+bool done
+# x-fastest implicit indices starting at request cursor. 0 unknown, 1 free,
+# 2 occupied, 3 out_of_domain. log_odds has meaning only for states 1 and 2.
+uint8[] states
+float32[] log_odds
