@@ -236,12 +236,13 @@ def main():
     # ---------- Axis B: identity-bound commit -> READY ------------------
     visibility = []
     for stamp in range(200, 200 + max(3, min(args.samples, 30))):
-        store._snapshot = store._build_snapshot()  # ensure commit visible
-        target = None
-        with store.acquire_query_snapshot() as handle:
-            target = list(handle._data().identity)
-        t0 = time.monotonic_ns()
+        # B measures commit -> READY: the clock starts at the COMMIT
+        # moment (apply_update returning = the owner's accepted commit),
+        # NOT before the fusion (the fusion itself is axis C's object).
+        # Attribution run: apply ~850ms | commit->publish 20-130ms |
+        # publish->READY ~11ms warm.
         assert integrate(store, mapper, cloud, stamp).accepted
+        t0 = time.monotonic_ns()
         with store.acquire_query_snapshot() as handle:
             target = list(handle._data().identity)
         if wait_ready_identity(replica, target, timeout_s=30.0):
