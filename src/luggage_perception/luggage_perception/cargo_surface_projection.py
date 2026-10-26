@@ -153,10 +153,16 @@ class IncrementalSurfaceProjection:
             return None
         cache = getattr(self, '_dict_cache', None)
         if cache is not None and cache[0] is projection:
-            return cache[1]
+            # NEVER hand out a mutable alias into the cache (user audit
+            # 2026-10-27): fresh per-row copies per call. The expensive
+            # numpy->str conversion is cached; these are cheap C-level
+            # list copies.
+            return {name: [row[:] for row in rows]
+                    for name, rows in cache[1].items()}
         result = projection.as_dict()
         self._dict_cache = (projection, result)
-        return result
+        return {name: [row[:] for row in rows]
+                for name, rows in result.items()}
 
 
 def _surface_window(grid, region):
