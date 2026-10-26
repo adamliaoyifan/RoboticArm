@@ -63,6 +63,8 @@ class QueryReplica:
         self._object_cache = {}
         self.cache_hits = 0
         self.cache_misses = 0
+        self.control_age_s = None
+        self.control_healthy = False
 
     # -- polling -------------------------------------------------------
 
@@ -302,6 +304,35 @@ class QueryReplica:
         self.state = ReplicaState.UNAVAILABLE
         self.last_error = str(reason)
         return self.state
+
+    def head_state(self):
+        """Latest head.json contents (the writer's committed view).
+
+        A fresh heartbeat here is NECESSARY but NOT SUFFICIENT for map
+        freshness (user 2026-10-26): callers must also compare the
+        committed identity against the local READY identity and check
+        the error surface and lag bound."""
+        head_path = os.path.join(self.root, 'head.json')
+        try:
+            with open(head_path, 'rb') as handle:
+                return json.loads(handle.read().decode('utf-8'))
+        except (OSError, ValueError):
+            return {}
+
+    def refresh_control_freshness(self, lag_bound_s):
+        """Track whether the head heartbeat keeps advancing; a stalled
+        writer must degrade service even if the last head file looks
+        recent (staleness is computed against the polling clock, not
+        the file's own claim)."""
+        import time
+        head = self.head_state()
+        published = int(head.get('published_monotonic_ns', 0))
+        now = time.monotonic_ns()
+        self.control_age_s = (now - published) / 1e9 if published else None
+        self.control_healthy = (
+            bool(head) and not head.get('error')
+            and self.control_age_s is not None
+            and self.control_age_s <= lag_bound_s)
 
     def _ack(self, manifest):
         ack = os.path.join(self.root, 'control', 'ack')
