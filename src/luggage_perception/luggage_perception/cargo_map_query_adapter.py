@@ -13,6 +13,14 @@ import time
 from luggage_perception.cargo_map_query import MapQuerySnapshot, QueryError
 
 
+class _NullCtx:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
 MAX_RETAINED_BYTES = 512*1024*1024
 TOKEN_LIFETIME_NS = 5_000_000_000
 MAX_SESSIONS = 128
@@ -22,6 +30,9 @@ class QuerySnapshotRegistry:
     def __init__(self, clock_ns=time.monotonic_ns):
         self._clock_ns = clock_ns
         self._lock = threading.Lock()
+        # [G3 P0 diagnostic] Optional lock wait/hold span collector;
+        # zero effect unless set.
+        self.span_collector = None
         self._generations = ()
         self._sessions = OrderedDict()
         self._error = 'QUERY_INDEX_UNAVAILABLE'
@@ -29,7 +40,24 @@ class QuerySnapshotRegistry:
         self._requested_bytes = 0
 
     def publish(self, data, publish_status=None):
-        with self._lock:
+        # [G3 P0 diagnostic] lock wait/hold spans when a collector is
+        # set; the no-collector path keeps the original with-block.
+        collector = self.span_collector
+        if collector is None:
+            with self._lock:
+                return self._publish_body(data, publish_status)
+        t0 = self._clock_ns()
+        self._lock.acquire()
+        wait_ns = self._clock_ns() - t0
+        t1 = self._clock_ns()
+        try:
+            return self._publish_body(data, publish_status)
+        finally:
+            self._lock.release()
+            collector.append({'operation': 'publish', 'wait_ns': wait_ns,
+                              'hold_ns': self._clock_ns() - t1})
+
+    def _publish_body(self, data, publish_status=None):
             generations = (data,)
             if self._generations and self._generations[0].identity.epoch == data.identity.epoch:
                 previous = tuple(d for d in self._generations if d.identity != data.identity)
@@ -82,8 +110,24 @@ class QuerySnapshotRegistry:
             self._retained_bytes = 0
 
     def open(self, expected_identity=None):
+        collector = self.span_collector
+        if collector is None:
+            with self._lock:
+                return self._open_body(expected_identity)
+        t0 = self._clock_ns()
+        self._lock.acquire()
+        wait_ns = self._clock_ns() - t0
+        t1 = self._clock_ns()
+        try:
+            return self._open_body(expected_identity)
+        finally:
+            self._lock.release()
+            collector.append({'operation': 'open', 'wait_ns': wait_ns,
+                              'hold_ns': self._clock_ns() - t1})
+
+    def _open_body(self, expected_identity=None):
         now = self._clock_ns()
-        with self._lock:
+        if True:
             self._expire_locked(now)
             if self._error:
                 raise QueryError(self._error)
@@ -111,7 +155,23 @@ class QuerySnapshotRegistry:
             return MapQuerySnapshot(data.identity, data.grid, token, self)
 
     def resolve(self, token, identity):
-        with self._lock:
+        collector = self.span_collector
+        if collector is None:
+            with self._lock:
+                return self._resolve_body(token, identity)
+        t0 = self._clock_ns()
+        self._lock.acquire()
+        wait_ns = self._clock_ns() - t0
+        t1 = self._clock_ns()
+        try:
+            return self._resolve_body(token, identity)
+        finally:
+            self._lock.release()
+            collector.append({'operation': 'resolve', 'wait_ns': wait_ns,
+                              'hold_ns': self._clock_ns() - t1})
+
+    def _resolve_body(self, token, identity):
+        if True:
             now = self._clock_ns()
             self._expire_locked(now)
             session = self._sessions.get(token)

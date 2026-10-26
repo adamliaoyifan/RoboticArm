@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import json
 import math
+import os
 import time
 from typing import NamedTuple
 
@@ -18,6 +19,19 @@ import numpy as np
 
 INDEX_SCHEMA_VERSION = 2
 BLOCK_EDGE = 16
+
+# [ADMISSION/G3 P0 diagnostic 2026-10-25] Optional per-request span
+# collector and prune toggle. Zero effect unless a collector is set:
+# _query writes one fixed-size record per call. The prune toggle is
+# diagnostic-only A/B (OCC_QUERY_DISABLE_PRUNE=1 reproduces the
+# pre-pruning full-scan path in the same binary).
+_SPAN_COLLECTOR = None
+DISABLE_PRUNE = bool(os.environ.get('OCC_QUERY_DISABLE_PRUNE'))
+
+
+def set_span_collector(collector):
+    global _SPAN_COLLECTOR
+    _SPAN_COLLECTOR = collector
 MAX_PAGE = 4096
 CELL_DTYPE = np.dtype([('state', 'u1'), ('source', 'u1'), ('label', '<i8'), ('instance', '<i8')])
 
@@ -483,15 +497,25 @@ class MapQuerySnapshot:
         # region test below, so results are identical (plan 26339903
         # §4). region=None keeps the original full path, including the
         # instance-only block restriction.
-        if region is None:
+        _spans = _SPAN_COLLECTOR is not None
+        if _spans:
+            _t = {}
+            _now = time.perf_counter_ns
+            _t_start = _now()
+        if (region is None or DISABLE_PRUNE):
             block_ids = (instance_blocks if instance_blocks is not None
                          else range(len(data.blocks)))
         else:
             block_ids = intersecting_block_ids(
                 self.grid, region, instance_blocks)
+        if _spans:
+            _t['select_ns'] = _now() - _t_start
         # A block's minimum flat index is a safe ordering lower bound. Once
         # it exceeds the bounded selected prefix, no later block can win.
         blocks = sorted((data.blocks[i] for i in block_ids), key=lambda b: int(b.flat_indices[0]))
+        if _spans:
+            _t['sort_ns'] = _now() - _t_start - _t['select_ns']
+            _t_mask = _t_sort_sel = 0
         selected = []
         examined_cells = examined_blocks = 0
         nx, ny, _ = self.grid.shape
@@ -506,6 +530,8 @@ class MapQuerySnapshot:
                 continue
             if not region_intersects(*block_bounds(block, self.grid), region):
                 continue
+            if _spans:
+                _t_mask -= _now()
             if kind:
                 members = (block.sensor_members if kind == 'sensor' else block.box_members)[identifier]
                 offsets = np.frombuffer(members, dtype='<u2').astype(np.int64)
@@ -526,10 +552,19 @@ class MapQuerySnapshot:
                 # exact grid boundaries; both inequalities are strict.
                 high = np.asarray(self.grid.origin) + (xyz+1)*self.grid.resolution
                 mask &= ((high > region[0]) & (low < region[1])).all(axis=1)
+            if _spans:
+                _t_mask += _now()
+                _t_sort_sel -= _now()
             match = offsets[mask][:page.limit+1]
             selected.extend((int(block.flat_indices[o]), block.block_id, int(o)) for o in match)
             selected.sort()
             del selected[page.limit+1:]
+            if _spans:
+                _t_sort_sel += _now()
+        if _spans:
+            _t['mask_ns'] = _t_mask
+            _t['prefix_sort_ns'] = _t_sort_sel
+            _t_records_start = _now()
         complete = len(selected) <= page.limit
         selected = selected[:page.limit]
         by_block = {}
@@ -542,6 +577,25 @@ class MapQuerySnapshot:
                 cells[position] = record
         cells = tuple(cells)
         cursor = '' if complete else self._encode_cursor(data, query_hash, selected[-1][0])
+        if _spans:
+            elapsed = time.perf_counter_ns() - started
+            _SPAN_COLLECTOR.append({
+                'mode': 'no_prune' if (region is None or DISABLE_PRUNE)
+                        else 'prune',
+                'total_ns': elapsed,
+                'select_ns': _t['select_ns'],
+                'sort_ns': _t['sort_ns'],
+                'mask_ns': _t['mask_ns'],
+                'prefix_sort_ns': _t['prefix_sort_ns'],
+                'records_ns': _now() - _t_records_start,
+                'candidate_blocks': (len(block_ids) if hasattr(block_ids, '__len__')
+                                     else -1),
+                'total_blocks': len(data.blocks),
+                'examined_blocks': examined_blocks,
+                'examined_cells': examined_cells,
+                'returned': len(selected),
+                'complete': complete,
+            })
         return CellPage('OK', '', self.identity, self.grid, complete=complete,
                         next_cursor=cursor, returned_count=len(cells), examined_cells=examined_cells,
                         examined_blocks=examined_blocks, elapsed_ns=time.perf_counter_ns()-started,
