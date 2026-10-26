@@ -116,6 +116,12 @@ class QueryExportPublisher:
                 self._encoder_error = str(error)
                 self._mark_unhealthy(
                     'EXPORT_' + getattr(error, 'reason', 'IO_ERROR'))
+            finally:
+                # Async pending slots are released by the ENCODER when
+                # the item is published or fails (the audited leak: the
+                # offer path decremented nothing, so two offers permanently
+                # saturated the queue into EXPORT_BACKLOG_FULL).
+                self._pending = max(0, self._pending - 1)
 
     def _head_loop_tick(self):
         """head.json reflects the LATEST committed snapshot (not only
