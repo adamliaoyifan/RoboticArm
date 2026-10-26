@@ -126,3 +126,71 @@ ray/grid boundary, snapshot concurrency, long-running resources, performance,
 failure capture and sensor simulation are delegated for independent validation.
 Neither the source code nor a successful replay establishes D555 accuracy,
 production packing success or a performance advantage over the existing grid.
+
+## Opt-in update profiling (performance diagnosis)
+
+`ObservationStore::integrate(frame, ProfileMode::Stages)` records disjoint lock,
+validation, fingerprint, dedup, Z filter, transform, ray preparation, fusion and
+publication spans. `Detailed` additionally times per-ray generation/filtering and
+per-cell tree/block work. Default `Off` has no diagnostic clock calls/counters;
+legacy receipt timing fields remain. These modes are per-call measurement inputs,
+not mutable map settings. No new sensor filtering, ray sampling or clipping is
+introduced. ROS messages and production node retain default-off behavior; this
+first profiling interface is native/offline, not a claim to measure ROS TF lookup
+or middleware costs.
+
+Receipts expose `profile` via `receipt_to_yaml`. `stage_visited` means a span was
+entered, not that an exceptional path completed. Nested spans must not be added
+to their parents. `rays_with_active_keys` is based on visited grid cells, not an
+analytic segment/hull test. `copied_cells` counts entries actually copied from
+old immutable blocks. Array/map object overhead is not a byte-memory measurement.
+
+`Snapshot::surface(&profile)` reports actual cache-hit state, scanned-cell count,
+lock/build/total time. Its statistics belong to that query and do not change the
+snapshot. A surface query after a changed map revision may rebuild; the second
+call on the same snapshot must hit the cache.
+
+Build `observer_profile_cli` with the normal package or the ROS-free CMake build.
+It reads one lossless frame file at a time. Manifest paths are relative to the
+manifest file; frame schema is the same as observer_cli integration input:
+
+```yaml
+case_id: unique-case-window-id
+mode: detailed  # off / stages / detailed; frozen for this process
+surface: true
+state_digest: false  # explicit checkpoint hash; only for semantic diagnostics
+frames:
+  - path: frame_000.yaml
+    sha256: actual-sha256-of-exact-frame-file-bytes
+    warmup: true
+    expect_status: INTEGRATED
+```
+
+```bash
+observer_profile_cli --geometry geometry.yaml --config observer.yaml --manifest window.yaml --out window_samples.yaml
+python3 scripts/g3/occ_observer_profile_report.py --samples window_samples.yaml --out fresh_report_directory
+```
+
+The runner appends/flushed YAML documents and refuses to overwrite existing
+output. Rows contain numeric timings/counts, original input SHA, output identity,
+mode, status, process CPU and peak RSS (not current RSS). Load/parse, checkpoint
+hash and external query timings are separate; JSON/YAML serialization and file
+IO are outside the integrate stopwatch. Invalid inputs are preserved as named
+failure rows and exit3. Exit0 means collection completed, not product acceptance.
+The report writes raw_samples.jsonl, WORKLOAD_COUNTS.csv, STAGE_TIMINGS.csv and
+summary.json; it returns4 for <30 scored rows per window and3 for invalid records.
+It does not pool independent windows. Cache-hit and build samples are classified
+by actual cache_hit, not by request position. Unprofiled queries have unknown cache
+classification. Detailed timings are perturbed diagnostics until overhead is
+measured; use matched off-mode runs for latency decisions.
+
+Profiling implementation checks:
+
+```bash
+ctest --test-dir /tmp/elfin-observer-perf-build --output-on-failure
+OBSERVER_PROFILE_CLI=/tmp/elfin-observer-perf-build/observer_profile_cli python3 -m pytest -q src/uld_occ_observer/test/test_profile_cli.py src/uld_occ_observer/test/test_profile_report.py
+```
+
+Formal workload matrices, overhead qualification and evidence obligations are in
+`docs/plans/OCC_OCTOMAP_PERF_DIAG_G1_20261026.md`; Cursor Grok executes them after
+receiving the exact implementation revision. No clipping optimization is included.

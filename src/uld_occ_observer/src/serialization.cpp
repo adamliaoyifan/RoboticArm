@@ -1,5 +1,35 @@
 #include "uld_occ_observer/serialization.hpp"
 namespace uld_occ_observer {
+YAML::Node profile_to_yaml(const UpdateProfile& profile) {
+  YAML::Node out;
+  out["enabled"] = profile.enabled();
+  out["mode"] = profile.mode == ProfileMode::Off ? "off" : profile.detailed() ? "detailed" : "stages";
+  for (std::size_t i = 0; i < kProfileStages; ++i) {
+    out["stage_ms"][kProfileStageNames[i]] = profile.milliseconds[i];
+    out["stage_visited"][kProfileStageNames[i]] = profile.visited[i];
+  }
+  out["residual_ms"] = profile.residual_ms;
+  out["rays_attempted"] = profile.rays_attempted;
+  out["ray_keys_generated"] = profile.ray_keys_generated;
+  out["active_ray_key_visits"] = profile.active_ray_key_visits;
+  out["inactive_ray_key_visits"] = profile.inactive_ray_key_visits;
+  out["rays_with_active_keys"] = profile.rays_with_active_keys;
+  out["rays_without_active_keys"] = profile.rays_without_active_keys;
+  out["free_insert_attempts"] = profile.active_ray_key_visits;
+  out["free_insert_duplicates"] = profile.free_insert_duplicates;
+  out["free_unique_before_hit_removal"] = profile.free_unique_before_hit_removal;
+  out["copied_blocks"] = profile.copied_blocks;
+  out["copied_cells"] = profile.copied_cells;
+  return out;
+}
+YAML::Node surface_profile_to_yaml(const SurfaceProfile& profile) {
+  YAML::Node out;
+  out["cache_hit"] = profile.cache_hit; out["scanned_cells"] = profile.scanned_cells;
+  out["output_columns"] = profile.output_columns; out["lock_wait_ms"] = profile.lock_wait_ms;
+  out["build_ms"] = profile.build_ms; out["total_ms"] = profile.total_ms;
+  return out;
+}
+
 OpticalObservation observation_from_yaml(const YAML::Node& input) {
   OpticalObservation result;
   auto& id = result.identity;
@@ -36,6 +66,7 @@ YAML::Node identity_to_yaml(const SnapshotIdentity& id) {
 YAML::Node receipt_to_yaml(const UpdateReceipt& r) {
   auto out = identity_to_yaml(r.identity);
   out["sensor_id"] = r.sensor_id; out["observation_id"] = r.observation_id; out["input_stamp_ns"] = r.input_stamp_ns;
+  out["profile"] = profile_to_yaml(r.profile);
   out["status"] = r.status; out["raw_points"] = r.raw_points;
   out["accepted_points"] = r.accepted_points; out["free_keys"] = r.free_keys;
   out["hit_keys"] = r.hit_keys; out["changed_keys"] = r.changed_keys;

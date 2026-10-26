@@ -2,6 +2,7 @@
 #include "uld_occ_observer/preprocessing.hpp"
 #include "uld_occ_observer/snapshot.hpp"
 #include <octomap/OcTree.h>
+#include "uld_occ_observer/profiling.hpp"
 #include <deque>
 #include <mutex>
 
@@ -13,6 +14,7 @@ struct UpdateReceipt {
   SnapshotIdentity identity;
   std::size_t raw_points{}, accepted_points{}, free_keys{}, hit_keys{};
   std::size_t changed_keys{}, occupancy_changed_keys{}, rebuilt_blocks{};
+  UpdateProfile profile;
   double preprocessing_ms{}, preparation_ms{}, fusion_ms{}, total_ms{};
 };
 struct Checkpoint {
@@ -34,7 +36,8 @@ class ObservationStore {
  public:
   ObservationStore(GeometryDescriptor descriptor, double resolution, DepthZConfig depth,
                    std::string clock_domain, std::string config_digest);
-  UpdateReceipt integrate(const OpticalObservation& observation);
+  UpdateReceipt integrate(const OpticalObservation& observation,
+                          ProfileMode profile_mode = ProfileMode::Off);
   std::shared_ptr<const Snapshot> snapshot() const;
   Diagnostics diagnostics() const;
   std::uint64_t reset(std::uint64_t expected_epoch);

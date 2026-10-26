@@ -47,9 +47,21 @@ CellPage Snapshot::read_cells(CellIndex begin, CellIndex end, std::size_t cursor
   return result;
 }
 
-std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface() const {
+std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface(SurfaceProfile* profile) const {
+  using Clock = std::chrono::steady_clock;
+  const auto started = profile ? Clock::now() : Clock::time_point{};
+  if (profile) *profile = SurfaceProfile{};
   std::lock_guard<std::mutex> lock(surface_cache_->mutex);
-  if (surface_cache_->value) return surface_cache_->value;
+  const auto locked = profile ? Clock::now() : Clock::time_point{};
+  if (profile) profile->lock_wait_ms = std::chrono::duration<double,std::milli>(locked-started).count();
+  if (surface_cache_->value) {
+    if (profile) {
+      profile->cache_hit = true;
+      profile->output_columns = surface_cache_->value->size();
+      profile->total_ms = std::chrono::duration<double,std::milli>(Clock::now()-started).count();
+    }
+    return surface_cache_->value;
+  }
   auto output = std::make_shared<std::vector<SurfaceColumn>>();
   const auto shape = domain_->shape();
   output->reserve(static_cast<std::size_t>(shape.x)*shape.y);
@@ -71,6 +83,13 @@ std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface() const {
     }
   }
   surface_cache_->value = output;
+  if (profile) {
+    profile->scanned_cells = static_cast<std::uint64_t>(shape.x)*shape.y*shape.z;
+    profile->output_columns = output->size();
+    const auto finished = Clock::now();
+    profile->build_ms = std::chrono::duration<double,std::milli>(finished-locked).count();
+    profile->total_ms = std::chrono::duration<double,std::milli>(finished-started).count();
+  }
   return surface_cache_->value;
 }
 }  // namespace uld_occ_observer

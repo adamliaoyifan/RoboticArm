@@ -63,111 +63,164 @@ SnapshotIdentity ObservationStore::identity_unlocked() const {
           domain_->descriptor().geometry_hash, config_digest_, clock_domain_};
 }
 
-UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation) {
+UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation, ProfileMode profile_mode) {
   const auto start = Clock::now();
-  std::lock_guard<std::mutex> lock(mutex_);
-  ++received_;
   UpdateReceipt receipt;
+  receipt.profile.mode = profile_mode;
+  std::unique_lock<std::mutex> lock(mutex_, std::defer_lock);
+  { ProfileSpan span(receipt.profile, ProfileStage::LockWait); lock.lock(); }
+  ++received_;
   receipt.sensor_id = observation.identity.sensor_id;
   receipt.observation_id = observation.identity.observation_id;
   receipt.input_stamp_ns = observation.identity.stamp_ns;
   receipt.raw_points = observation.points_m.size();
   try {
     const auto& id = observation.identity;
-    if (id.epoch != epoch_) throw Error("EPOCH_MISMATCH");
-    if (id.geometry_hash != domain_->descriptor().geometry_hash) throw Error("GEOMETRY_MISMATCH");
-    if (id.clock_domain != clock_domain_) throw Error("CLOCK_DOMAIN_MISMATCH");
-    observation.uld_from_optical.validate(id.stamp_ns);
-    const auto digest = fingerprint(observation);
+    { ProfileSpan span(receipt.profile, ProfileStage::Validation);
+      if (id.epoch != epoch_) throw Error("EPOCH_MISMATCH");
+      if (id.geometry_hash != domain_->descriptor().geometry_hash) throw Error("GEOMETRY_MISMATCH");
+      if (id.clock_domain != clock_domain_) throw Error("CLOCK_DOMAIN_MISMATCH");
+      observation.uld_from_optical.validate(id.stamp_ns);
+    }
+    std::string digest;
+    { ProfileSpan span(receipt.profile, ProfileStage::Fingerprint); digest = fingerprint(observation); }
     const auto dedup_key = std::make_pair(id.sensor_id, id.observation_id);
-    const auto prior = fingerprints_.find(dedup_key);
-    if (prior != fingerprints_.end()) {
-      if (prior->second != digest) throw Error("CONFLICT");
+    bool duplicate = false;
+    { ProfileSpan span(receipt.profile, ProfileStage::Dedup);
+      const auto prior = fingerprints_.find(dedup_key);
+      if (prior != fingerprints_.end()) {
+        if (prior->second != digest) throw Error("CONFLICT");
+        duplicate = true;
+      }
+      if (!duplicate) {
+        const auto last = sensor_stamps_.find(id.sensor_id);
+        if (last != sensor_stamps_.end() && id.stamp_ns <= last->second) throw Error("OUT_OF_ORDER");
+      }
+    }
+    if (duplicate) {
       ++duplicates_; receipt.status = "ALREADY_PROCESSED";
       receipt.identity = identity_unlocked();
       receipt.total_ms = milliseconds(start, Clock::now());
+      receipt.profile.finish(receipt.total_ms);
       return receipt;
     }
-    const auto last = sensor_stamps_.find(id.sensor_id);
-    if (last != sensor_stamps_.end() && id.stamp_ns <= last->second) throw Error("OUT_OF_ORDER");
-    const auto filtered = preprocessor_.prepare(observation.points_m);
-    const auto frame = UldFrameAdapter::transform(id, filtered, observation.uld_from_optical);
+    FilterResult filtered;
+    { ProfileSpan span(receipt.profile, ProfileStage::DepthFilter);
+      filtered = preprocessor_.prepare(observation.points_m); }
+    UldObservation frame;
+    { ProfileSpan span(receipt.profile, ProfileStage::Transform);
+      frame = UldFrameAdapter::transform(id, filtered, observation.uld_from_optical); }
     receipt.accepted_points = frame.points.size();
     const auto prepared_points = Clock::now();
     receipt.preprocessing_ms = milliseconds(start, prepared_points);
     if (frame.points.empty()) throw Error("NO_VALID_POINTS");
 
     std::set<CellIndex> hits, frees;
-    const auto origin = domain_->octomap_coordinates(frame.origin);
-    octomap::OcTreeKey origin_key;
-    if (!tree_->coordToKeyChecked(origin.x, origin.y, origin.z, origin_key))
-      throw Error("ORIGIN_OUT_OF_KEY_RANGE");
-    octomap::KeyRay ray;
-    for (const auto& endpoint : frame.points) {
-      const auto p = domain_->octomap_coordinates(endpoint);
-      octomap::OcTreeKey endpoint_key;
-      if (!tree_->coordToKeyChecked(p.x, p.y, p.z, endpoint_key))
-        throw Error("ENDPOINT_OUT_OF_KEY_RANGE");
-      // No maxrange: traverse the real ray. Domain restrictions apply to keys only.
-      if (!tree_->computeRayKeys(octomap::point3d(origin.x, origin.y, origin.z),
-                                octomap::point3d(p.x, p.y, p.z), ray))
-        throw Error("RAY_PREPARATION_FAILED");
-      for (const auto& key : ray) {
-        const auto index = index_from_key(key);
-        if (domain_->active(index)) frees.insert(index);
+    { ProfileSpan span(receipt.profile, ProfileStage::RayPreparation);
+      const auto origin = domain_->octomap_coordinates(frame.origin);
+      octomap::OcTreeKey origin_key;
+      if (!tree_->coordToKeyChecked(origin.x, origin.y, origin.z, origin_key))
+        throw Error("ORIGIN_OUT_OF_KEY_RANGE");
+      octomap::KeyRay ray;
+      for (const auto& endpoint : frame.points) {
+        if (receipt.profile.enabled()) ++receipt.profile.rays_attempted;
+        const auto p = domain_->octomap_coordinates(endpoint);
+        octomap::OcTreeKey endpoint_key;
+        if (!tree_->coordToKeyChecked(p.x, p.y, p.z, endpoint_key))
+          throw Error("ENDPOINT_OUT_OF_KEY_RANGE");
+        // No maxrange: traverse the real ray. Domain restrictions apply to keys only.
+        { ProfileSpan ray_span(receipt.profile, ProfileStage::RayGeneration, true);
+        if (!tree_->computeRayKeys(octomap::point3d(origin.x, origin.y, origin.z),
+                                  octomap::point3d(p.x, p.y, p.z), ray))
+          throw Error("RAY_PREPARATION_FAILED");
+        }
+        ProfileSpan filter_span(receipt.profile, ProfileStage::RayFilterDedup, true);
+        std::uint64_t active_visits = 0;
+        if (receipt.profile.enabled()) receipt.profile.ray_keys_generated += ray.size();
+        for (const auto& key : ray) {
+          const auto index = index_from_key(key);
+          if (domain_->active(index)) {
+            const bool inserted = frees.insert(index).second;
+            if (receipt.profile.enabled()) {
+              ++active_visits;
+              ++receipt.profile.active_ray_key_visits;
+              if (!inserted) ++receipt.profile.free_insert_duplicates;
+            }
+          } else if (receipt.profile.enabled()) ++receipt.profile.inactive_ray_key_visits;
+        }
+        if (receipt.profile.enabled()) {
+          if (active_visits) ++receipt.profile.rays_with_active_keys;
+          else ++receipt.profile.rays_without_active_keys;
+        }
+        if (domain_->contains(endpoint)) {
+          const auto index = index_from_key(endpoint_key);
+          if (domain_->active(index)) hits.insert(index);
+        }
       }
-      if (domain_->contains(endpoint)) {
-        const auto index = index_from_key(endpoint_key);
-        if (domain_->active(index)) hits.insert(index);
-      }
+      if (receipt.profile.enabled()) receipt.profile.free_unique_before_hit_removal = frees.size();
+      for (const auto& hit : hits) frees.erase(hit);
     }
-    for (const auto& hit : hits) frees.erase(hit);
     receipt.free_keys = frees.size(); receipt.hit_keys = hits.size();
     const auto prepared = Clock::now();
     receipt.preparation_ms = milliseconds(prepared_points, prepared);
-    std::map<CellIndex, std::shared_ptr<CellBlock>> modified;
-    auto update = [&](CellIndex index, bool hit) {
-      const auto key = key_from_index(index);
-      const auto* before = tree_->search(key);
-      const bool existed = before != nullptr;
-      const float old = existed ? before->getLogOdds() : 0;
-      const bool old_occupied = existed && tree_->isNodeOccupied(before);
-      auto* after = tree_->updateNode(key, hit, false);
-      const bool occupied = tree_->isNodeOccupied(after);
-      if (existed && old == after->getLogOdds()) return;
-      ++receipt.changed_keys;
-      if (!existed || old_occupied != occupied) ++receipt.occupancy_changed_keys;
-      if (!existed) ++known_cells_;
-      const auto block_index = Snapshot::block_index(index);
-      auto& block = modified[block_index];
-      if (!block) {
-        const auto existing = blocks_.find(block_index);
-        block = existing == blocks_.end() ? std::make_shared<CellBlock>() :
-                std::make_shared<CellBlock>(*existing->second);
-      }
-      (*block)[index] = {after->getLogOdds(), occupied};
-    };
-    for (const auto& index : frees) update(index, false);
-    for (const auto& index : hits) update(index, true);
-    for (auto& entry : modified) blocks_[entry.first] = std::move(entry.second);
-    receipt.rebuilt_blocks = modified.size();
-    if (receipt.changed_keys) ++map_revision_;
-    ++observed_revision_; ++integrated_;
-    last_integrated_stamp_ns_ = std::max(last_integrated_stamp_ns_, id.stamp_ns);
-    sensor_stamps_[id.sensor_id] = id.stamp_ns;
-    fingerprints_[dedup_key] = digest; fingerprint_order_.push_back(dedup_key);
-    if (fingerprint_order_.size() > 4096) {
-      fingerprints_.erase(fingerprint_order_.front()); fingerprint_order_.pop_front();
+    { ProfileSpan fusion_span(receipt.profile, ProfileStage::Fusion);
+      std::map<CellIndex, std::shared_ptr<CellBlock>> modified;
+      auto update = [&](CellIndex index, bool hit) {
+        bool existed, old_occupied, occupied;
+        float old, new_log_odds;
+        { ProfileSpan tree_span(receipt.profile, ProfileStage::TreeUpdate, true);
+        const auto key = key_from_index(index);
+        const auto* before = tree_->search(key);
+        existed = before != nullptr;
+        old = existed ? before->getLogOdds() : 0;
+        old_occupied = existed && tree_->isNodeOccupied(before);
+        auto* after = tree_->updateNode(key, hit, false);
+        occupied = tree_->isNodeOccupied(after);
+        new_log_odds = after->getLogOdds();
+        }
+        if (existed && old == new_log_odds) return;
+        ProfileSpan block_span(receipt.profile, ProfileStage::BlockMaintenance, true);
+        ++receipt.changed_keys;
+        if (!existed || old_occupied != occupied) ++receipt.occupancy_changed_keys;
+        if (!existed) ++known_cells_;
+        const auto block_index = Snapshot::block_index(index);
+        auto& block = modified[block_index];
+        if (!block) {
+          const auto existing = blocks_.find(block_index);
+          if (receipt.profile.enabled() && existing != blocks_.end()) {
+            ++receipt.profile.copied_blocks;
+            receipt.profile.copied_cells += existing->second->size();
+          }
+          block = existing == blocks_.end() ? std::make_shared<CellBlock>() :
+                  std::make_shared<CellBlock>(*existing->second);
+        }
+        (*block)[index] = {new_log_odds, occupied};
+      };
+      for (const auto& index : frees) update(index, false);
+      for (const auto& index : hits) update(index, true);
+      for (auto& entry : modified) blocks_[entry.first] = std::move(entry.second);
+      receipt.rebuilt_blocks = modified.size();
     }
-    if (receipt.changed_keys) cached_snapshot_.reset();
-    else if (cached_snapshot_) cached_snapshot_ = cached_snapshot_->with_identity(identity_unlocked());
-    receipt.status = "INTEGRATED";
+    { ProfileSpan final_span(receipt.profile, ProfileStage::Finalization);
+      if (receipt.changed_keys) ++map_revision_;
+      ++observed_revision_; ++integrated_;
+      last_integrated_stamp_ns_ = std::max(last_integrated_stamp_ns_, id.stamp_ns);
+      sensor_stamps_[id.sensor_id] = id.stamp_ns;
+      fingerprints_[dedup_key] = digest; fingerprint_order_.push_back(dedup_key);
+      if (fingerprint_order_.size() > 4096) {
+        fingerprints_.erase(fingerprint_order_.front()); fingerprint_order_.pop_front();
+      }
+      if (receipt.changed_keys) cached_snapshot_.reset();
+      else if (cached_snapshot_) cached_snapshot_ = cached_snapshot_->with_identity(identity_unlocked());
+      receipt.status = "INTEGRATED";
+    }
     receipt.fusion_ms = milliseconds(prepared, Clock::now());
   } catch (const Error& error) {
     ++rejected_; receipt.status = error.what();
   }
   receipt.identity = identity_unlocked();
   receipt.total_ms = milliseconds(start, Clock::now());
+  receipt.profile.finish(receipt.total_ms);
   return receipt;
 }
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "uld_occ_observer/geometry.hpp"
+#include "uld_occ_observer/profiling.hpp"
 #include <map>
 #include <memory>
 #include <mutex>
@@ -35,7 +36,7 @@ class Snapshot {
   CellSample cell(CellIndex index) const;
   CellPage read_cells(CellIndex begin, CellIndex end, std::size_t cursor,
                       std::size_t limit) const;
-  std::shared_ptr<const std::vector<SurfaceColumn>> surface() const;
+  std::shared_ptr<const std::vector<SurfaceColumn>> surface(SurfaceProfile* profile = nullptr) const;
   std::shared_ptr<const Snapshot> with_identity(SnapshotIdentity identity) const;
   std::size_t block_count() const { return blocks_.size(); }
   static CellIndex block_index(CellIndex index);
