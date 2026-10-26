@@ -104,6 +104,12 @@ class QueryExportPublisher:
         offers only enqueue immutable references; all encoding and IO
         happen here. Facts are already committed -- a failure here is a
         named export status, never a rollback."""
+        try:
+            import ctypes
+            libc = ctypes.CDLL('libc.so.6', use_errno=True)
+            libc.prctl(15, b'occ-query-export', 0, 0, 0)  # PR_SET_NAME
+        except Exception:  # noqa: BLE001 - cosmetic naming only
+            pass
         while True:
             self._answer_resync_requests()
             try:

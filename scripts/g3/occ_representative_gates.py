@@ -149,7 +149,8 @@ class EncoderCpuSampler:
             for tid in os.listdir('/proc/self/task'):
                 try:
                     with open('/proc/self/task/%s/comm' % tid) as handle:
-                        if handle.read().strip() == 'occ-query-export':
+                        # comm truncates to 15 chars: prefix match.
+                        if handle.read().strip().startswith('occ-query'):
                             return int(tid)
                 except OSError:
                     continue
