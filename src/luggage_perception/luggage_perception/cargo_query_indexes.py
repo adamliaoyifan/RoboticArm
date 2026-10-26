@@ -22,6 +22,26 @@ from luggage_perception.cargo_map_query import (
 )
 
 
+def _public_payload_equal(old, new):
+    """True when two generations of one block have identical WIRE-
+    visible payload (public evidence bytes, active, frontier, counts,
+    fact digest, memberships, distance material). Private log-odds and
+    shadow columns live only in the owner's canonical evidence and are
+    intentionally NOT compared: they are not transported and never
+    reach a reader (C0 finding: their accumulation must not churn the
+    public snapshot surface)."""
+    return (old.evidence == new.evidence
+            and old.active == new.active
+            and old.frontier == new.frontier
+            and old.state_counts == new.state_counts
+            and old.frontier_count == new.frontier_count
+            and old.fact_digest == new.fact_digest
+            and dict(old.sensor_members) == dict(new.sensor_members)
+            and dict(old.box_members) == dict(new.box_members)
+            and old.distance_layout is new.distance_layout
+            and old.distance_members == new.distance_members)
+
+
 def _geometry_key(record):
     return (tuple(record['center']), tuple(record['size']), float(record['yaw']))
 
@@ -325,6 +345,7 @@ class QueryIndexOwner:
             selected_by_block = dict(zip((int(v) for v in unique),np.split(order,starts[1:])))
         copied = 0
         patched = 0
+        reused = 0
         for bid in sorted(dirty):
             old = blocks[bid]
             selected = selected_by_block.get(bid,())
@@ -340,8 +361,19 @@ class QueryIndexOwner:
                 old.active, self._frontiers[old.flat_indices].astype('u1').tobytes(),
                 self._geometry_members.get(bid, {}),previous=old,canonical_digest=canonical_digest,
                 changed_offsets=offsets,changed_facts=changed_facts)
-            if block.evidence is not old.evidence:
-                copied += len(block.evidence)
+            # C1 (plan section 4.1): a dirty block whose PUBLIC payload is
+            # byte-identical (private log-odds accumulation only) keeps the
+            # OLD immutable object -- same-process identity reuse. The
+            # canonical rehash above already advanced the owner-private
+            # evidence; only the public snapshot surface must not churn.
+            # C0 baseline: 816/1300 blocks rebuilt per same-cloud frame at
+            # 1cm with zero public byte changes.
+            if _public_payload_equal(old, block):
+                block = old
+                reused += 1
+            else:
+                if block.evidence is not old.evidence:
+                    copied += len(block.evidence)
             for identifier in old.sensor_members.keys() - block.sensor_members.keys():
                 members = self._sensor_blocks[identifier]
                 members.discard(bid)
@@ -354,7 +386,9 @@ class QueryIndexOwner:
         self._geometry_dirty_blocks = set()
         work = dict(self._last_work)
         work.update(dirty_blocks=len(dirty), copied_evidence_bytes=copied,
-                    patched_canonical_bytes=patched)
+                    patched_canonical_bytes=patched,
+                    public_payload_reused_blocks=reused,
+                    public_payload_changed_blocks=len(dirty) - reused)
         self._last_work = MappingProxyType(work)
 
     def freeze_query(self, mapper, map_snapshot, summary):
