@@ -96,9 +96,9 @@ same output. No heavy performance score or simulation in this implementation tas
    cross=0, seeds fixed to original run01 generator;3warm+30 scored per group.
    Preserve exact raw clouds, origin/TF, counts, hash and checkpoint/start-state.
    Run old product9f1547f3 with d3cb53ea test-only additions and instrumented-off
-   against the same ordered observations on separate stores; alternate AB/BA
-   in15 pairs, each pair replays3warm+30. This produces450 samples/arm/group;
-   each30-sample window scored separately. If wall budget below allows only a
+   against the same ordered observations on separate stores; alternate AB/BA per frame (15 pairs in each order over30 frames),
+   repeat the3warm+30 sequence3 times on fresh paired stores. This produces90
+   samples/arm/group; each30-sample window is scored separately. If wall budget below allows only a
    subset, report remaining groups not_evaluated, never silently lower samples.
 4. Profile overhead using identical-state paired windows: off vs stages, then
    off vs detailed, each3warm+30, 3 AB/BA repetitions per group (90/arm/group).
