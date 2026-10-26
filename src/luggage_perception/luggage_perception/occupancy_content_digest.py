@@ -50,12 +50,20 @@ def _update_tuple_part(digest, values, chunk_size=_COLUMN_CHUNK_SIZE):
     digest.update(b")\0")
 
 
-def content_digest(snapshot):
+def content_digest(snapshot, columns_state=None):
     """Hash the same geometry, columns, ledger and confirmation as legacy.
 
     Revision/epoch/stamps/request IDs/commit order and ledger provenance are
     excluded exactly as before. Height rounding is digest-only and does not
     change the precise heights exposed by either surface API.
+
+    ``columns_state`` is an optional ONE-slot memo dict the caller owns.
+    When the caller keys it on the frozen surface projection's identity
+    (replaced on every real column change) plus the geometry parts, an
+    unchanged projection resumes from a cached COPY of the hashlib
+    state taken right after the columns part -- bit-exact by
+    construction (SHA256 state copies are exact; the skipped work is
+    regenerating 29k Python tuples + repr, ~12-33ms at 1cm).
     """
     digest = hashlib.sha256()
     for part in (
@@ -63,12 +71,23 @@ def content_digest(snapshot):
         snapshot.resolution, snapshot.inner_size,
     ):
         _update_part(digest, part)
-    columns = (
-        (snapshot.state[ix][iy], snapshot.confidence[ix][iy],
-         norm_height(snapshot.height[ix][iy]))
-        for ix in range(snapshot.nx) for iy in range(snapshot.ny)
-    )
-    _update_tuple_part(digest, columns)
+    cache_key = None
+    if columns_state is not None:
+        cache_key = id(columns_state.get('projection')) if (
+            columns_state.get('projection') is not None) else None
+    resume = (columns_state or {}).get('digest_after_columns') \
+        if cache_key is not None else None
+    if resume is not None:
+        digest = resume.copy()
+    else:
+        columns = (
+            (snapshot.state[ix][iy], snapshot.confidence[ix][iy],
+             norm_height(snapshot.height[ix][iy]))
+            for ix in range(snapshot.nx) for iy in range(snapshot.ny)
+        )
+        _update_tuple_part(digest, columns)
+        if columns_state is not None:
+            columns_state['digest_after_columns'] = digest.copy()
     ledger_geometry = tuple(sorted(
         (center, size, yaw)
         for center, size, yaw, _source, _anchor in snapshot.ledger

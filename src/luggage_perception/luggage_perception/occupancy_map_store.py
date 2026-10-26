@@ -1084,7 +1084,18 @@ class OccupancyMapStore(object):
             placed_count=len(ledger),
             cargo_observed=bool(self._cargo_observed),
         )
-        digest = _content_digest(snapshot)
+        # Digest memo: resume from the cached hashlib state when the
+        # frozen surface projection is UNCHANGED (identity is replaced
+        # on every column change) -- bit-exact SHA256 state copy.
+        projection = getattr(self._mapper, '_surface_cache', None)
+        memo = getattr(self, '_digest_memo', None)
+        if (memo is None or memo.get('projection') is not projection
+                or memo.get('geometry_hash')
+                != str(self._mapper.geometry_hash)):
+            memo = {'projection': projection,
+                    'geometry_hash': str(self._mapper.geometry_hash)}
+            self._digest_memo = memo
+        digest = _content_digest(snapshot, columns_state=memo)
         identity = SnapshotIdentity(self._epoch, self._mapper.map_revision,
                                     digest)
         # frozen dataclass: the one deferred field is set via the
