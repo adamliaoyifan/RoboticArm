@@ -43,7 +43,8 @@ from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
 from luggage_perception.occupancy_map_store import (
     MapUpdate, OccupancyMapStore, UpdateKind)
 
-PERF_LOCK = '/tmp/elfin-occ-backend-perf.lock'
+PERF_LOCK = os.environ.get('OCC_PERF_LOCK',
+    '/tmp/elfin-occ-backend-perf.lock')
 
 
 def build(boxes, resolution):
