@@ -29,7 +29,9 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import shutil
+import threading
 import time
 
 from luggage_perception.cargo_query_snapshot_wire import (
@@ -54,9 +56,18 @@ class ExportError(RuntimeError):
 class QueryExportPublisher:
     """Owns one export root. One publisher per root (exclusive lock)."""
 
-    def __init__(self, root, producer_incarnation=None, clock_ns=None):
+    HEAD_UPDATE_PERIOD_NS = 250_000_000  # protocol: 0.25 s
+
+    def __init__(self, root, producer_incarnation=None, clock_ns=None,
+                 async_mode=False):
         self.root = os.path.abspath(root)
         self._clock_ns = clock_ns or time.monotonic_ns
+        self._async = bool(async_mode)
+        self._queue = queue.Queue()
+        self._encoder = None
+        self._encoder_error = ''
+        self._latest_committed = None   # (snapshot, dirty, provenance)
+        self._head_written_ns = 0
         os.makedirs(os.path.join(self.root, 'objects'), exist_ok=True)
         os.makedirs(os.path.join(self.root, 'generations'), exist_ok=True)
         os.makedirs(os.path.join(self.root, 'staging'), exist_ok=True)
@@ -80,6 +91,59 @@ class QueryExportPublisher:
         self._pending = 0
         self._unpublished_from = None
         self._recover()
+        if self._async:
+            self._encoder = threading.Thread(
+                target=self._encode_loop, name='occ-query-export',
+                daemon=True)
+            self._encoder.start()
+
+    # -- background encoder ---------------------------------------------
+
+    def _encode_loop(self):
+        """The UNIQUE encoder thread (protocol section 5.1): inline
+        offers only enqueue immutable references; all encoding and IO
+        happen here. Facts are already committed -- a failure here is a
+        named export status, never a rollback."""
+        while True:
+            item = self._queue.get()
+            if item is None:
+                return
+            snapshot, dirty_blocks, provenance_changed = item
+            try:
+                self._publish(snapshot, dirty_blocks, provenance_changed,
+                              False)
+            except (WireError, OSError, ValueError) as error:
+                self._encoder_error = str(error)
+                self._mark_unhealthy(
+                    'EXPORT_' + getattr(error, 'reason', 'IO_ERROR'))
+
+    def _head_loop_tick(self):
+        """head.json reflects the LATEST committed snapshot (not only
+        the last exported generation); the receiver's staleness view is
+        bounded by this heartbeat."""
+        now = self._clock_ns()
+        if now - self._head_written_ns < self.HEAD_UPDATE_PERIOD_NS:
+            return
+        self._head_written_ns = now
+        latest = self._latest_committed
+        if latest is None:
+            return
+        snapshot = latest[0]
+        head = os.path.join(self.root, 'head.json')
+        temp = head + '.tmp'
+        try:
+            with open(temp, 'wb') as handle:
+                handle.write(canonical_json_bytes({
+                    'producer': self.incarnation,
+                    'seq': self._seq,
+                    'target_identity': list(snapshot.identity),
+                    'commit_monotonic_ns': self._clock_ns(),
+                    'published_monotonic_ns': self._clock_ns(),
+                    'error': self._encoder_error,
+                }))
+            os.replace(temp, head)
+        except OSError:
+            pass
 
     # -- recovery ------------------------------------------------------
 
@@ -128,6 +192,17 @@ class QueryExportPublisher:
             self._mark_unhealthy('EXPORT_BACKLOG_FULL')
             return {'status': 'EXPORT_BACKLOG_FULL', 'staging_busy': True}
         self._pending += 1
+        if self._async:
+            # Async mode: enqueue immutable references only; encode+IO
+            # run on the single background encoder. The head heartbeat
+            # records the latest committed snapshot immediately.
+            self._latest_committed = (snapshot, dirty_blocks,
+                                      provenance_changed)
+            self._head_loop_tick()
+            self._queue.put((snapshot, dirty_blocks,
+                             provenance_changed))
+            return {'status': 'ACCEPTED', 'async': True,
+                    'seq': self._seq + 1}
         try:
             return self._publish(snapshot, dirty_blocks,
                                  provenance_changed, force_full)
@@ -288,7 +363,21 @@ class QueryExportPublisher:
         except (OSError, ValueError):
             pass
 
+    def wait_pending(self, timeout_s=30.0):
+        """Block until the async queue drains (test/acceptance use)."""
+        if not self._async:
+            return True
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if self._queue.empty() and not self._encoder_error:
+                return True
+            time.sleep(0.005)
+        return False
+
     def close(self):
+        if self._async and self._encoder is not None:
+            self._queue.put(None)
+            self._encoder.join(timeout=5.0)
         try:
             os.unlink(os.path.join(self.root, 'owner.json'))
         except OSError:
