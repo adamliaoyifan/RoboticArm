@@ -59,7 +59,16 @@ def encode_snapshot(snapshot, producer_incarnation, seq, *,
     emit = None if dirty_blocks is None else set(dirty_blocks)
 
     def put(name, payload):
-        if emit is None or name in emit or not name.startswith('block.'):
+        if emit is None:
+            objects[name] = payload
+            return
+        if not name.startswith('block.'):
+            objects[name] = payload
+            return
+        # DELTA gating is per BLOCK id (the write path's dirty set),
+        # never per object name and never per fact_digest.
+        block_id = int(name.split('.')[1])
+        if block_id in emit:
             objects[name] = payload
 
     grid = snapshot.grid
