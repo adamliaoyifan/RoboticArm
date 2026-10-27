@@ -249,6 +249,30 @@ class QueryExportPublisher:
             return {'status': 'EXPORT_BACKLOG_FULL', 'staging_busy': True}
         self._pending += 1
         if self._async:
+            # Coalescing (2026-10-27, the A7/B concurrent blocker): at
+            # most ONE unpublished item ever waits; a new offer
+            # REPLACES a still-queued item, unioning the dirty sets.
+            # Intermediate committed states ride along in a single
+            # generation -- the wire sees consecutive seqs (no gap
+            # resync) and the pending queue can never saturate under
+            # back-to-back commits (no EXPORT_BACKLOG_FULL windows ->
+            # no protocol fail-closed query rejections). Physical facts
+            # were already committed; the exporter's contract is to
+            # make the LATEST committed state visible.
+            while True:
+                try:
+                    previous = self._queue.get_nowait()
+                except queue.Empty:
+                    break
+                if previous is None:
+                    self._queue.put(None)
+                    break
+                previous_dirty = previous[1]
+                if dirty_blocks is None or previous_dirty is None:
+                    dirty_blocks = None  # either side wants a FULL
+                else:
+                    dirty_blocks = set(dirty_blocks) | set(previous_dirty)
+                self._pending = max(0, self._pending - 1)
             # Async mode: enqueue immutable references only; encode+IO
             # run on the single background encoder. The head heartbeat
             # records the latest committed snapshot immediately.
@@ -258,7 +282,8 @@ class QueryExportPublisher:
             self._queue.put((snapshot, dirty_blocks,
                              provenance_changed))
             return {'status': 'ACCEPTED', 'async': True,
-                    'seq': self._seq + 1}
+                    'seq': self._seq + 1,
+                    'coalesced': self._pending > 0}
         try:
             return self._publish(snapshot, dirty_blocks,
                                  provenance_changed, force_full)
