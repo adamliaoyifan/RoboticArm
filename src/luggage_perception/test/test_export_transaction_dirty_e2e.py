@@ -242,26 +242,58 @@ class TestExportTransactionDirtyE2E(unittest.TestCase):
         self._drain(after.identity)
         self._assert_content_matches(after)
 
+    def test_coalesced_back_to_back_commits_content_matches(self):
+        """Commits arriving faster than the encoder: intermediate
+        generations ride along (approved coalescing). The ledger must
+        classify them coalesced_into / exact_visible, and the final
+        replica content must equal the source snapshot block-by-block."""
+        base = source_data(self.store)
+        ledger_before = len(
+            self.hook._publisher.ledger_snapshot())
+        for index in range(4):
+            points = np.array([[.0 + .01 * index, .0, CENTER[2] - .4]])
+            self.assertTrue(
+                self._integrate(points, 'burst-%d' % index).accepted)
+        final = source_data(self.store)
+        self._drain(final.identity)
+        self._assert_content_matches(final)
+        ledger = self.hook._publisher.ledger_snapshot()
+        self.assertGreater(len(ledger), ledger_before)
+        terminal = {entry['status'] for entry in ledger}
+        self.assertIn('exact_visible', terminal)
+        self.assertTrue(
+            terminal <= {'exact_visible', 'coalesced_into'},
+            'unexpected terminal statuses: %r' % terminal)
+        # The final fact is exactly visible; at least one intermediate
+        # fact rode along (or all shipped exactly -- both legal, but a
+        # coalesced fact must NEVER claim exact_visible).
+        for entry in ledger:
+            if entry['status'] == 'exact_visible':
+                self.assertEqual(
+                    list(entry['identity'] or [])[:1],
+                    [final.identity[0]])
+
     def test_accumulator_consumed_only_on_accepted_offer(self):
-        """A backlogged/failed offer must keep the accumulated dirt so
-        it ships with the NEXT accepted generation."""
+        """A failed offer must keep the accumulated dirt so it ships
+        with the NEXT accepted generation. (gen3: the async path can no
+        longer hit EXPORT_BACKLOG_FULL -- coalescing precedes capacity
+        -- so the named failure injected here is EXPORT_CLOSING.)"""
         owner = self.store._query_indexes
-        from luggage_perception.cargo_query_export import (
-            QueryExportPublisher)
-        original = self.hook._publisher._pending
-        # Force the backlog-full path on the next offer.
-        self.hook._publisher._pending = 10 ** 9
+        publisher = self.hook._publisher
+        with publisher._state_lock:
+            publisher._closing = True      # force a named offer failure
         try:
             points = np.array([[.0, .0, CENTER[2] - .4]])
             self.assertTrue(self._integrate(points, 'view-b1').accepted)
             # The offer failed: the dirt must still be pending.
             self.assertEqual(self.hook.last_status['status'],
-                             'EXPORT_BACKLOG_FULL')
+                             'EXPORT_CLOSING')
             self.assertNotEqual(owner._dirty_since_export, set(),
                                 'a failed offer must retain the '
                                 'accumulated dirty set')
         finally:
-            self.hook._publisher._pending = original
+            with publisher._state_lock:
+                publisher._closing = False
         # Next accepted generation ships the retained dirt.
         self.assertTrue(self._integrate(points, 'view-b2').accepted)
         after = source_data(self.store)

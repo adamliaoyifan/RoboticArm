@@ -1,8 +1,9 @@
 """G4-A query export publisher: immutable generations on a private root.
 
-Protocol 1c0049d4 sections 3-4 (A0 freeze): the publisher is a pure
-module called by the store AFTER a commit. It never mutates map facts;
-a failed export is a named status, never a silent success.
+Protocol 1c0049d4 sections 3-4 (A0 freeze) + gen3 boundary contract
+(plan d87c5731 section 5, review_8a372dee P1-4): the publisher is a
+pure module called by the store AFTER a commit. It never mutates map
+facts; a failed export is a named status, never a silent success.
 
 Root layout (all writes by the publisher only, except replica ACKs):
 
@@ -15,9 +16,23 @@ Root layout (all writes by the publisher only, except replica ACKs):
     staging/                       bounded in-flight export
     control/ack, control/resync    replica-owned control messages
 
-Bounded lifecycle: pending <= 2 un-published offered generations,
-staging <= 1 in-flight export, published readable generations <= 2.
-Overflow returns EXPORT_BACKLOG_FULL (blocking, never dropping).
+Gen3 lifecycle contract (approved coalescing, d87c5731):
+- Facts commit per-update; the EXPORTER may coalesce queued work to
+  the latest committed state. A replaced task never claims READY: the
+  per-fact ledger records exact_visible / coalesced_into /
+  export_failed (+ timeout computed at read time).
+- Coalescing is attempted BEFORE any capacity rejection: one item may
+  encode (in flight) while at most one newer item waits; a new offer
+  merges with the waiting item (dirty union, provenance OR, any FULL
+  request stays FULL). Tasks from a different world (epoch/producer)
+  never merge; the older task is dropped as superseded_by_reset.
+- An encode failure keeps its dirty set and is retried with bounded
+  backoff even with no further writes, or keeps failing NAMED -- the
+  head never claims facts stopped at the previous accepted task.
+- wait_pending drains only when queued AND in-flight AND unresolved
+  failures are all clear. close() stops new offers, drains bounded;
+  if the encoder thread does not exit, close FAILS and the owner lock
+  is RETAINED (no second publisher on the same root).
 
 Every manifest is a SELF-CONTAINED entry table (name -> content
 address); a DELTA writes only the changed objects and points every
@@ -27,9 +42,9 @@ identically because payloads are pure functions of the block.
 
 from __future__ import annotations
 
+import collections
 import json
 import os
-import queue
 import shutil
 import threading
 import time
@@ -40,10 +55,11 @@ from luggage_perception.cargo_query_wire import (
     WIRE_SCHEMA_VERSION, WireError, canonical_json_bytes, manifest_checksum,
     new_producer_incarnation, sha256_hex, validate_manifest)
 
-PENDING_LIMIT = 2
+PENDING_LIMIT = 2            # in-flight (1) + queued (1)
 STAGING_LIMIT = 1
 PUBLISHED_LIMIT = 2
 MAX_PENDING_ENTRIES = 1 << 20
+RETRY_BACKOFF_S = (0.25, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0)
 
 
 class ExportError(RuntimeError):
@@ -51,6 +67,11 @@ class ExportError(RuntimeError):
         super().__init__(reason)
         self.reason = reason
         self.detail = detail
+
+
+def _world_of(snapshot):
+    identity = getattr(snapshot, 'identity', None)
+    return identity[0] if identity is not None else None
 
 
 class QueryExportPublisher:
@@ -63,11 +84,11 @@ class QueryExportPublisher:
         self.root = os.path.abspath(root)
         self._clock_ns = clock_ns or time.monotonic_ns
         self._async = bool(async_mode)
-        self._queue = queue.Queue()
         self._encoder = None
         self._encoder_error = ''
         self.healed_objects = 0
         self._latest_committed = None   # (snapshot, dirty, provenance)
+        self._commit_ns = 0             # offer time of the newest FACT
         self._head_written_ns = 0
         os.makedirs(os.path.join(self.root, 'objects'), exist_ok=True)
         os.makedirs(os.path.join(self.root, 'generations'), exist_ok=True)
@@ -89,8 +110,16 @@ class QueryExportPublisher:
         self._published = []      # [(seq, manifest_sha, path)] newest last
         self._entries = {}        # name -> sha of the newest generation
         self._seq = 0
-        self._pending = 0
         self._unpublished_from = None
+        # Gen3 lifecycle state (short lock; all IO outside):
+        self._state_lock = threading.Lock()
+        self._queued = collections.deque()   # at most ONE waiting item
+        self._in_flight = None               # item currently encoding
+        self._failure = None                 # unresolved encode failure
+        self._closing = False
+        self._wake = threading.Event()
+        self._ledger = []                    # per committed offered fact
+        self._ledger_seq = 0
         self._recover()
         if self._async:
             self._encoder = threading.Thread(
@@ -98,13 +127,75 @@ class QueryExportPublisher:
                 daemon=True)
             self._encoder.start()
 
+    # -- lifecycle accounting (plan section 5.1) ------------------------
+
+    @property
+    def _pending(self):
+        """Compat surface: queued + in-flight + unresolved failure."""
+        with self._state_lock:
+            return (len(self._queued) + (self._in_flight is not None)
+                    + (self._failure is not None))
+
+    def _ledger_open(self, snapshot, commit_ns):
+        self._ledger_seq += 1
+        entry = {'ledger_id': self._ledger_seq,
+                 'identity': (list(getattr(snapshot, 'identity', ()))
+                              or None),
+                 'commit_monotonic_ns': commit_ns,
+                 'status': 'pending',
+                 'published_seq': None}
+        self._ledger.append(entry)
+        return entry
+
+    def _ledger_set(self, entries, status, seq=None):
+        for entry in entries:
+            entry['status'] = status
+            entry['published_seq'] = seq
+
+    def ledger_snapshot(self, timeout_s=None, now_ns=None):
+        """Per-fact delivery ledger (approved coalescing contract):
+        exact_visible / coalesced_into / export_failed / superseded_by_reset
+        / pending (+ 'timeout' derived at read time when timeout_s set)."""
+        now_ns = self._clock_ns() if now_ns is None else now_ns
+        with self._state_lock:
+            out = []
+            for entry in self._ledger:
+                item = dict(entry)
+                if (timeout_s is not None and item['status'] == 'pending'
+                        and item['commit_monotonic_ns']
+                        and now_ns - item['commit_monotonic_ns']
+                        > int(timeout_s * 1e9)):
+                    item['status'] = 'timeout'
+                out.append(item)
+            return out
+
+    def _coalesce(self, old, new):
+        """Merge offer ``new`` into waiting item ``old`` (same world).
+        Returns the merged item. Any FULL request stays FULL."""
+        dirty = new['dirty']
+        previous = old['dirty']
+        if dirty is None or previous is None:
+            dirty = None
+        else:
+            dirty = set(dirty) | set(previous)
+        merged = dict(old)
+        merged.update({
+            'snapshot': new['snapshot'],
+            'dirty': dirty,
+            'provenance': bool(new['provenance'] or old['provenance']),
+            'force_full': bool(new['force_full'] or old['force_full']),
+            'commit_ns': new['commit_ns'],
+            'facts': old['facts'] + new['facts'],
+            'fresh': True})
+        return merged
+
     # -- background encoder ---------------------------------------------
 
     def _encode_loop(self):
-        """The UNIQUE encoder thread (protocol section 5.1): inline
-        offers only enqueue immutable references; all encoding and IO
-        happen here. Facts are already committed -- a failure here is a
-        named export status, never a rollback."""
+        """The UNIQUE encoder thread (protocol section 5.1): all
+        encoding and IO happen here, outside the state lock. Facts are
+        already committed -- a failure here is a named export status,
+        never a rollback."""
         try:
             import ctypes
             libc = ctypes.CDLL('libc.so.6', use_errno=True)
@@ -113,38 +204,63 @@ class QueryExportPublisher:
             pass
         while True:
             self._answer_resync_requests()
-            try:
-                item = self._queue.get(timeout=0.25)
-            except queue.Empty:
-                self._head_loop_tick()
-                continue
+            item = None
+            with self._state_lock:
+                now = self._clock_ns()
+                if self._failure is not None and now >= self._failure[
+                        'next_retry_ns']:
+                    item = self._failure
+                    self._failure = None
+                    self._in_flight = item
+                elif self._queued:
+                    item = self._queued.popleft()
+                    self._in_flight = item
+                elif self._closing:
+                    return
             if item is None:
-                return
-            snapshot, dirty_blocks, provenance_changed = item
+                self._head_loop_tick()
+                self._wake.wait(0.25)
+                self._wake.clear()
+                continue
+            # Encoding and disk IO happen with NO state lock held.
             try:
-                self._publish(snapshot, dirty_blocks, provenance_changed,
-                              False)
-            except (WireError, OSError, ValueError) as error:
+                result = self._publish(item['snapshot'], item['dirty'],
+                                       item['provenance'],
+                                       item['force_full'],
+                                       commit_ns=item['commit_ns'])
+                published_seq = result.get('seq') if result else None
+            except (WireError, OSError, ValueError, RuntimeError) as error:
                 self._encoder_error = str(error)
                 self._mark_unhealthy(
                     'EXPORT_' + getattr(error, 'reason', 'IO_ERROR'))
-            finally:
-                # Async pending slots are released by the ENCODER when
-                # the item is published or fails (the audited leak: the
-                # offer path decremented nothing, so two offers permanently
-                # saturated the queue into EXPORT_BACKLOG_FULL).
-                self._pending = max(0, self._pending - 1)
-            # The heartbeat must also refresh under SUSTAINED load: it
-            # used to tick only on queue-empty, so back-to-back commits
-            # starved head.json and the receiver's seq-plausibility
-            # guard saw a stale heartbeat (still throttled to 0.25s).
+                with self._state_lock:
+                    attempts = item.get('attempts', 0) + 1
+                    backoff = RETRY_BACKOFF_S[
+                        min(attempts - 1, len(RETRY_BACKOFF_S) - 1)]
+                    self._failure = dict(
+                        item, attempts=attempts, error=self._encoder_error,
+                        next_retry_ns=self._clock_ns() + int(backoff * 1e9))
+                    self._in_flight = None
+                    self._ledger_set(item['facts'], 'pending_retry')
+            else:
+                # A successful (re)publish clears the sticky encoder
+                # error only after the recovery itself succeeded.
+                self._encoder_error = ''
+                with self._state_lock:
+                    self._in_flight = None
+                    facts = item['facts']
+                    if facts:
+                        self._ledger_set(facts[:-1], 'coalesced_into',
+                                         seq=published_seq)
+                        self._ledger_set(facts[-1:], 'exact_visible',
+                                         seq=published_seq)
+            # The heartbeat must also refresh under SUSTAINED load.
             self._head_loop_tick()
 
     def _answer_resync_requests(self):
         """The receiver's RESYNC request (control/resync) is answered
         with a FULL generation of the LATEST committed snapshot
-        (protocol section 5: resync is triggered only by control
-        messages; the request file is consumed exactly once)."""
+        (protocol section 5; the request file is consumed exactly once)."""
         request = os.path.join(self.root, 'control', 'resync')
         if not os.path.exists(request):
             return False
@@ -167,16 +283,17 @@ class QueryExportPublisher:
             self._publish(snapshot, None, provenance_changed, True,
                           heal_hint=heal_hint)
             return True
-        except (WireError, OSError, ValueError) as error:
+        except (WireError, OSError, ValueError, RuntimeError) as error:
             self._encoder_error = str(error)
             self._mark_unhealthy(
                 'EXPORT_' + getattr(error, 'reason', 'IO_ERROR'))
             return False
 
     def _head_loop_tick(self):
-        """head.json reflects the LATEST committed snapshot (not only
-        the last exported generation); the receiver's staleness view is
-        bounded by this heartbeat."""
+        """head.json heartbeat: refreshes the HEARTBEAT stamp only --
+        the commit stamp always carries the real offer time of the
+        newest committed fact (a heartbeat never resets the
+        propagation clock; plan section 4)."""
         now = self._clock_ns()
         if now - self._head_written_ns < self.HEAD_UPDATE_PERIOD_NS:
             return
@@ -193,8 +310,9 @@ class QueryExportPublisher:
                     'producer': self.incarnation,
                     'seq': self._seq,
                     'target_identity': list(snapshot.identity),
-                    'commit_monotonic_ns': self._clock_ns(),
-                    'published_monotonic_ns': self._clock_ns(),
+                    'commit_monotonic_ns': self._commit_ns,
+                    'heartbeat_monotonic_ns': now,
+                    'published_monotonic_ns': now,
                     'error': self._encoder_error,
                 }))
             os.replace(temp, head)
@@ -234,59 +352,72 @@ class QueryExportPublisher:
 
     def offer_committed(self, snapshot, dirty_blocks=None,
                         provenance_changed=True, force_full=False):
-        """Encode + publish one committed snapshot. Returns a result dict.
+        """Register one committed snapshot for export. Returns a result
+        dict. Never claims READY: delivery truth lives in the ledger.
 
         dirty_blocks: block ids whose payloads changed (the write path's
         dirty set INCLUDING frontier neighbourhoods). None -> FULL.
         """
-        if self._pending >= PENDING_LIMIT:
-            self._mark_unhealthy('EXPORT_BACKLOG_FULL')
-            return {'status': 'EXPORT_BACKLOG_FULL',
-                    'unpublished_from': self._unpublished_from}
+        now = self._clock_ns()
+        # The facts-latest-commit observation surface is updated even
+        # when the offer is rejected: head must never imply facts
+        # stopped at the previous accepted task (plan section 5.1).
+        self._commit_ns = now
+        self._latest_committed = (snapshot, dirty_blocks,
+                                   provenance_changed)
+        self._head_loop_tick()
+        if self._async:
+            entry = self._ledger_open(snapshot, now)
+            item = {'snapshot': snapshot, 'dirty': dirty_blocks,
+                    'provenance': bool(provenance_changed),
+                    'force_full': bool(force_full), 'commit_ns': now,
+                    'facts': [entry], 'attempts': 0}
+            with self._state_lock:
+                if self._closing:
+                    self._ledger_set([entry], 'export_failed')
+                    return {'status': 'EXPORT_CLOSING',
+                            'unpublished_from': self._unpublished_from}
+                # Fold an unresolved failure into this NEWER committed
+                # state: the union of dirty sets must still export.
+                if self._failure is not None:
+                    failed = self._failure
+                    item = self._coalesce(failed, item)
+                    item['facts'] = failed['facts'] + [entry]
+                    item['attempts'] = failed.get('attempts', 0)
+                    self._failure = None
+                if self._queued:
+                    waiting = self._queued.popleft()
+                    if (_world_of(waiting['snapshot']) is not None
+                            and _world_of(snapshot) is not None
+                            and _world_of(waiting['snapshot'])
+                            != _world_of(snapshot)):
+                        # Reset boundary: different worlds never merge;
+                        # the older world's task is dropped NOT-delivered
+                        # (a new-world READY must never write it off as
+                        # delivered -- plan section 1.1).
+                        self._ledger_set(waiting['facts'],
+                                         'superseded_by_reset')
+                        self._queued.append(item)
+                        status = 'WORLD_RESET'
+                    else:
+                        merged = self._coalesce(waiting, item)
+                        self._queued.append(merged)
+                        status = 'COALESCED'
+                else:
+                    self._queued.append(item)
+                    status = 'ACCEPTED'
+                self._wake.set()
+            return {'status': status, 'async': True,
+                    'seq': self._seq + 1,
+                    'coalesced': status == 'COALESCED'}
         staging = os.path.join(self.root, 'staging')
         if len(os.listdir(staging)) > STAGING_LIMIT:
             self._mark_unhealthy('EXPORT_BACKLOG_FULL')
             return {'status': 'EXPORT_BACKLOG_FULL', 'staging_busy': True}
-        self._pending += 1
-        if self._async:
-            # Coalescing (2026-10-27, the A7/B concurrent blocker): at
-            # most ONE unpublished item ever waits; a new offer
-            # REPLACES a still-queued item, unioning the dirty sets.
-            # Intermediate committed states ride along in a single
-            # generation -- the wire sees consecutive seqs (no gap
-            # resync) and the pending queue can never saturate under
-            # back-to-back commits (no EXPORT_BACKLOG_FULL windows ->
-            # no protocol fail-closed query rejections). Physical facts
-            # were already committed; the exporter's contract is to
-            # make the LATEST committed state visible.
-            while True:
-                try:
-                    previous = self._queue.get_nowait()
-                except queue.Empty:
-                    break
-                if previous is None:
-                    self._queue.put(None)
-                    break
-                previous_dirty = previous[1]
-                if dirty_blocks is None or previous_dirty is None:
-                    dirty_blocks = None  # either side wants a FULL
-                else:
-                    dirty_blocks = set(dirty_blocks) | set(previous_dirty)
-                self._pending = max(0, self._pending - 1)
-            # Async mode: enqueue immutable references only; encode+IO
-            # run on the single background encoder. The head heartbeat
-            # records the latest committed snapshot immediately.
-            self._latest_committed = (snapshot, dirty_blocks,
-                                      provenance_changed)
-            self._head_loop_tick()
-            self._queue.put((snapshot, dirty_blocks,
-                             provenance_changed))
-            return {'status': 'ACCEPTED', 'async': True,
-                    'seq': self._seq + 1,
-                    'coalesced': self._pending > 0}
         try:
             return self._publish(snapshot, dirty_blocks,
-                                 provenance_changed, force_full)
+                                 provenance_changed, force_full,
+                                 commit_ns=now)
         except WireError as error:
             self._mark_unhealthy('EXPORT_' + error.reason)
             return {'status': 'EXPORT_' + error.reason,
@@ -294,8 +425,6 @@ class QueryExportPublisher:
         except OSError as error:
             self._mark_unhealthy('EXPORT_IO_ERROR')
             return {'status': 'EXPORT_IO_ERROR', 'detail': str(error)}
-        finally:
-            self._pending = max(0, self._pending - 1)
 
     def publish_resync_full(self, snapshot):
         """Answer a replica resync request with a FULL generation."""
@@ -303,7 +432,7 @@ class QueryExportPublisher:
                                     force_full=True)
 
     def _publish(self, snapshot, dirty_blocks, provenance_changed,
-                 force_full, heal_hint=None):
+                 force_full, heal_hint=None, commit_ns=None):
         kind = 'FULL'
         base_identity = None
         base_sha = None
@@ -343,7 +472,9 @@ class QueryExportPublisher:
                     'origin': [float(v) for v in snapshot.grid.origin],
                     'resolution': float(snapshot.grid.resolution),
                 },
-                'commit_monotonic_ns': self._clock_ns(),
+                'commit_monotonic_ns': (commit_ns
+                                        if commit_ns is not None
+                                        else self._clock_ns()),
                 'distance_recipe_version': DISTANCE_RECIPE_VERSION,
                 'entries': {name: {'sha256': digest, 'bytes': len(payload),
                                    'type': 'object'}
@@ -365,12 +496,7 @@ class QueryExportPublisher:
             # Write new objects (content-addressed; unchanged skipped).
             # Precise healing (2026-10-27): the receiver's resync
             # request names the object digest it failed on; only that
-            # file is verified by hash and rewritten. The earlier
-            # blanket hash-everything-on-resync doubled the cost of a
-            # FULL at fine resolutions and, under resync churn, backed
-            # up the encoder into EXPORT_BACKLOG_FULL (measured:
-            # REPLICA_EXPORT_BACKLOG_FULL failures in the concurrent
-            # representative).
+            # file is verified by hash and rewritten.
             written = skipped = 0
             for name, (digest, payload) in emitted.items():
                 path = os.path.join(self.root, 'objects', digest)
@@ -431,13 +557,15 @@ class QueryExportPublisher:
     def _write_head(self, snapshot, manifest):
         head = os.path.join(self.root, 'head.json')
         temp = head + '.tmp'
+        now = self._clock_ns()
         with open(temp, 'wb') as handle:
             handle.write(canonical_json_bytes({
                 'producer': self.incarnation,
                 'seq': manifest['seq'],
                 'target_identity': list(snapshot.identity),
                 'commit_monotonic_ns': manifest['commit_monotonic_ns'],
-                'published_monotonic_ns': self._clock_ns(),
+                'heartbeat_monotonic_ns': now,
+                'published_monotonic_ns': now,
                 'error': '',
             }))
         os.replace(temp, head)
@@ -459,24 +587,42 @@ class QueryExportPublisher:
             pass
 
     def wait_pending(self, timeout_s=30.0):
-        """Block until the async queue drains (test/acceptance use)."""
+        """True only when queued, in-flight AND unresolved failures are
+        all clear (a blocked encoder keeps the item in flight)."""
         if not self._async:
             return True
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
-            if self._queue.empty() and not self._encoder_error:
+            with self._state_lock:
+                drained = (not self._queued and self._in_flight is None
+                           and self._failure is None)
+            if drained and not self._encoder_error:
                 return True
             time.sleep(0.005)
         return False
 
-    def close(self):
+    def close(self, timeout_s=5.0):
+        """Stop accepting offers, then drain bounded. SUCCESS releases
+        the owner lock; if the encoder did not exit (or the drain did
+        not finish) close FAILS and the owner lock is RETAINED so no
+        second publisher can write this root."""
         if self._async and self._encoder is not None:
-            self._queue.put(None)
-            self._encoder.join(timeout=5.0)
+            with self._state_lock:
+                self._closing = True
+                self._wake.set()
+            self._encoder.join(timeout=timeout_s)
+            if self._encoder.is_alive():
+                return False
+            with self._state_lock:
+                drained = (not self._queued and self._in_flight is None
+                           and self._failure is None)
+            if not drained:
+                return False
         try:
             os.unlink(os.path.join(self.root, 'owner.json'))
         except OSError:
             pass
+        return True
 
     # -- replica-facing reads ------------------------------------------
 

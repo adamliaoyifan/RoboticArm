@@ -26,8 +26,10 @@ class PublishBarrier:
         self.emitted = []
         self.finished = threading.Event()
 
-    def __call__(self, publisher, snapshot, dirty, provenance,
-                 full=False, heal_hint=None):
+    # NOTE: a callable OBJECT (not a function) patched onto the class
+    # receives no bound ``self`` -- the first argument IS the snapshot.
+    def __call__(self, snapshot, dirty, provenance,
+                 full=False, heal_hint=None, commit_ns=None):
         self.entered.set()
         if not self.release.wait(10):
             raise RuntimeError('barrier release timeout')
@@ -60,8 +62,11 @@ def test_third_offer_coalesces_instead_of_rejecting(tmp_path):
             publisher.close()
     snapshots = [item['snapshot'] for item in barrier.emitted]
     assert snapshots[-1] == 'generation-3'
+    # The coalesced generation's dirty set covers every change since
+    # the LAST successful publish (generation-1 already exported {1};
+    # the merged task carries {2,3}).
     dirty_union = barrier.emitted[-1]['dirty']
-    assert dirty_union is None or {1, 2, 3} <= set(dirty_union)
+    assert dirty_union is None or {2, 3} <= set(dirty_union)
 
 
 def test_wait_pending_false_while_publish_in_flight(tmp_path):
