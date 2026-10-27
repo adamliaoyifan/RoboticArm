@@ -153,6 +153,13 @@ class QueryIndexOwner:
         self._cursor_secret = secrets.token_bytes(32)
         self._surface = IncrementalSurfaceProjection()
         self._last_dirty_blocks = ()
+        # Review finding 1 (2026-10-27): one accepted transaction can
+        # refresh the indexes twice (mutate-time refresh, then the
+        # snapshot-build refresh); the exporter needs the COMPLETE
+        # transaction change set, so dirty ids ACCUMULATE here until an
+        # export consumes them (take_export_dirty). None = full rebuild
+        # pending -> the exporter must publish a FULL generation.
+        self._dirty_since_export = set()
 
     @property
     def work(self):
@@ -179,6 +186,9 @@ class QueryIndexOwner:
         self._frontier_count = int(self._frontiers.sum())
         self._last_work = MappingProxyType({'rebuild': True,
             'frontier_evaluated': grid.size, 'changed_cells': grid.size})
+        # A full rebuild invalidates every block: the next export must
+        # be FULL (None sentinel), not a DELTA over a partial set.
+        self._dirty_since_export = None
         self._initialize_blocks(mapper)
         self._surface.initialize(mapper)
         self._distance = DistanceIndex.initialize(self._blocks,
@@ -400,6 +410,28 @@ class QueryIndexOwner:
         # The exporter consumes this directly (protocol: the change set
         # is computed ONCE by the write path and shared -- no re-scan).
         self._last_dirty_blocks = tuple(sorted(dirty))
+        # Accumulate across refreshes within one transaction (the
+        # snapshot-build refresh sees an empty delta and must NOT erase
+        # the mutate-time refresh's dirt). See __init__ note.
+        if self._dirty_since_export is not None:
+            self._dirty_since_export.update(dirty)
+
+    def peek_export_dirty(self):
+        """Read (without consuming) the change set since the last export.
+
+        Returns None when a full rebuild is pending (the exporter then
+        publishes a FULL generation), else the sorted tuple of dirty
+        block ids since the previous offered generation.
+        """
+        pending = self._dirty_since_export
+        return None if pending is None else tuple(sorted(pending))
+
+    def clear_export_dirty(self):
+        """Consume the accumulated set -- ONLY after the corresponding
+        snapshot was accepted by the exporter. A failed/backlogged
+        offer keeps the set so the dirt ships with the next accepted
+        generation (never a silently empty DELTA)."""
+        self._dirty_since_export = set()
 
     def freeze_query(self, mapper, map_snapshot, summary):
         """Read-only construction; references only immutable block values."""

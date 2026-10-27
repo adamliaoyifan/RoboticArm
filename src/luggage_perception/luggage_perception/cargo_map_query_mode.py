@@ -96,20 +96,38 @@ def wire_store_export(store, export_root, dirty_tracker=None):
             # Priority-2 (user 2026-10-27): the change set is computed
             # ONCE by the write path (QueryIndexOwner._update_blocks)
             # and consumed here directly -- no all-block re-scan on the
-            # commit path. Falling back to the compare tracker only
-            # covers owners that predate the attribute.
+            # commit path.
+            #
+            # Review finding 1 (2026-10-27): one transaction can refresh
+            # the indexes twice (mutate-time + snapshot-build); the
+            # per-refresh _last_dirty_blocks only held the LAST (empty)
+            # set, so the exported DELTA dropped the real changes and
+            # the replica kept stale blocks under the new identity. The
+            # owner now ACCUMULATES dirty ids across refreshes; we peek
+            # the transaction set and clear it only once the exporter
+            # accepts the generation (a backlogged/failed offer keeps
+            # the dirt for the next generation). None = full rebuild
+            # pending -> FULL generation.
             owner = getattr(store, '_query_indexes', None)
-            dirty = getattr(owner, '_last_dirty_blocks', None)
-            if dirty is None:
+            if hasattr(owner, 'peek_export_dirty'):
+                dirty = owner.peek_export_dirty()
+                data = snapshot_query_data(store)
+            else:
+                # Owners predating the accumulator: compare-tracker
+                # fallback (correct though less precise).
                 data = snapshot_query_data(store)
                 dirty = tracker(previous['snapshot'], data)
-            else:
-                data = snapshot_query_data(store)
-            hook.offer_committed(
+            status = hook.offer_committed(
                 data, set(dirty) if dirty is not None else None,
                 previous['snapshot'] is None
                 or tuple(data.identity)
                 != tuple(previous['snapshot'].identity))
+            # Consume the accumulated set ONLY on acceptance; a
+            # backlogged/failed offer keeps the dirt so it ships with
+            # the next generation (never a silently empty DELTA).
+            if not str(status.get('status', '')).startswith('EXPORT_'):
+                if hasattr(owner, 'clear_export_dirty'):
+                    owner.clear_export_dirty()
             previous['snapshot'] = data
         except Exception as error:  # noqa: BLE001
             # Export must never break the commit path.
