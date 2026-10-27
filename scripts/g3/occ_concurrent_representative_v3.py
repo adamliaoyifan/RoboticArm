@@ -107,7 +107,7 @@ while time.time() < deadline:
     except Exception as error:                 # noqa: BLE001 - recorded
         err = 'exception:' + type(error).__name__
     total_ms = (time.perf_counter_ns() - t0) / 1e6
-    record = {'kind': 'query', 'request_id': 'q%d' % request_id,
+    record = {'kind': 'query', 'request_id': 'q' + str(request_id),
               'expected': 'CURRENT',
               'returned': (list(replica.snapshot.identity[:2])
                           if replica.snapshot is not None else None),

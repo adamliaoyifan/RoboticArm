@@ -1116,8 +1116,8 @@ def main():
 
     gates = results['gates']
     not_evaluated = sum(g.get('not_evaluated', 0) for g in gates.values())
-    results['pass'] = (all(g.get('pass') for g in gates.values())
-                       and gates)
+    results['pass'] = bool(gates) and all(
+        bool(g.get('pass')) for g in gates.values())
     results['not_evaluated'] = not_evaluated
     with open(args.out, 'w') as handle:
         json.dump(results, handle, indent=1)
