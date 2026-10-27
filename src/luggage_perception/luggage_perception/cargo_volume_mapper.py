@@ -778,26 +778,149 @@ class CargoVolumeMapper:
 
         miss_indices.difference_update(hit_records)
 
-        # --- Grid updates: misses first, then hits (same order) ---
-        occupancy = self._occupancy
-        all_miss = sorted(miss_indices)
-        if all_miss:
-            self._observe_voxels(tuple(all_miss))
-            for idx in all_miss:
-                self._grid[idx] = occupancy.apply_miss(idx)
-                self._record_sensor_miss(idx)
-                if self._grid[idx] == FREE and \
-                        self._source[idx] != SOURCE_GEOMETRY:
-                    self._source[idx] = SOURCE_NONE
-                    self._labels[idx] = 0
-                    self._instance_ids[idx] = 0
-
-        for x, y, z, lbl, iid in hit_records.values():
-            self.mark_occupied_world(x, y, z, label=lbl, instance_id=iid)
+        # --- Batch grid updates: misses then hits, same order ---
+        # All bytearray/array fields support the buffer protocol ->
+        # np.frombuffer gives zero-copy WRITABLE views for vectorized
+        # ops. Only _occupancy.values is a Python list (read with
+        # fromiter, write with loop -- still far cheaper than 158k
+        # per-cell function calls).
+        self._batch_miss_update(miss_indices)
+        self._batch_hit_update(hit_records)
 
         if hit_records or miss_indices:
             self._revision += 1
         return diagnostics
+
+    def _batch_miss_update(self, miss_indices):
+        """Vectorized miss update: log-odds + grid + sensor ledger.
+
+        Produces IDENTICAL results to the per-cell loop
+        (apply_miss + _record_sensor_miss + source/label reset).
+        """
+        if not miss_indices:
+            return
+        occ = self._occupancy
+        # Sorted for deterministic write order (same as original loop).
+        idx_arr = np.fromiter(sorted(miss_indices), dtype=np.int64,
+                              count=len(miss_indices))
+        # -- occupancy values (Python list: read gen, compute numpy, write loop)
+        values = occ.values
+        old_vals = np.fromiter((values[i] for i in idx_arr),
+                                dtype=np.float64, count=len(idx_arr))
+        new_vals = np.maximum(occ.minimum,
+                              np.minimum(occ.maximum,
+                                         old_vals + occ.miss_increment))
+        for j in range(len(idx_arr)):
+            values[int(idx_arr[j])] = float(new_vals[j])
+        # -- grid classification (bytearray -> zero-copy view)
+        grid_view = np.frombuffer(self._grid, dtype=np.uint8)
+        grid_new = np.where(
+            new_vals >= occ.occupied_threshold, np.uint8(OCCUPIED),
+            np.where(new_vals <= occ.free_threshold, np.uint8(FREE),
+                     np.uint8(UNKNOWN)))
+        grid_view[idx_arr] = grid_new
+        # -- sensor values (array('d') -> zero-copy view)
+        sv_view = np.frombuffer(self._sensor_values, dtype=np.float64)
+        sv_old = sv_view[idx_arr]
+        sv_new = np.maximum(occ.minimum,
+                             np.minimum(occ.maximum,
+                                        sv_old + occ.miss_increment))
+        sv_view[idx_arr] = sv_new
+        # -- sensor seen (bytearray)
+        ss_view = np.frombuffer(self._sensor_seen, dtype=np.uint8)
+        ss_view[idx_arr] = 1
+        # -- conditional label/instance reset (sensor FREE)
+        sensor_free = sv_new <= occ.free_threshold
+        reset_idx = idx_arr[sensor_free]
+        if len(reset_idx):
+            sl_view = np.frombuffer(self._sensor_labels, dtype=np.int64)
+            si_view = np.frombuffer(self._sensor_instance_ids,
+                                    dtype=np.int64)
+            sl_view[reset_idx] = 0
+            si_view[reset_idx] = 0
+        # -- source/label/instance reset (grid FREE and not geometry)
+        grid_free = grid_new == FREE
+        src_view = np.frombuffer(self._source, dtype=np.uint8)
+        not_geom = src_view[idx_arr] != SOURCE_GEOMETRY
+        reset2 = idx_arr[grid_free & not_geom]
+        if len(reset2):
+            src_view[reset2] = SOURCE_NONE
+            lbl_view = np.frombuffer(self._labels, dtype=np.int64)
+            inst_view = np.frombuffer(self._instance_ids,
+                                      dtype=np.int64)
+            lbl_view[reset2] = 0
+            inst_view[reset2] = 0
+        # -- delta builder notification (order-sensitive: after state)
+        self._observe_voxels(tuple(int(i) for i in idx_arr))
+
+    def _batch_hit_update(self, hit_records):
+        """Vectorized hit update: log-odds + grid + sensor + labels.
+
+        Produces IDENTICAL results to per-cell mark_occupied_world
+        (apply_hit + _record_sensor_hit + source/label/instance).
+        """
+        if not hit_records:
+            return
+        occ = self._occupancy
+        # hit_records: flat_idx -> (x, y, z, label, instance_id)
+        # Process in dict insertion order (same as original loop).
+        idx_list = list(hit_records.keys())
+        idx_arr = np.array(idx_list, dtype=np.int64)
+        labels_arr = np.array(
+            [hit_records[i][3] for i in idx_list], dtype=np.int64)
+        instances_arr = np.array(
+            [hit_records[i][4] for i in idx_list], dtype=np.int64)
+        # -- occupancy values (Python list)
+        values = occ.values
+        old_vals = np.fromiter((values[i] for i in idx_arr),
+                                dtype=np.float64, count=len(idx_arr))
+        new_vals = np.maximum(occ.minimum,
+                              np.minimum(occ.maximum,
+                                         old_vals + occ.hit_increment))
+        for j in range(len(idx_arr)):
+            values[int(idx_arr[j])] = float(new_vals[j])
+        # -- grid
+        grid_view = np.frombuffer(self._grid, dtype=np.uint8)
+        grid_new = np.where(
+            new_vals >= occ.occupied_threshold, np.uint8(OCCUPIED),
+            np.where(new_vals <= occ.free_threshold, np.uint8(FREE),
+                     np.uint8(UNKNOWN)))
+        grid_view[idx_arr] = grid_new
+        # -- sensor values
+        sv_view = np.frombuffer(self._sensor_values, dtype=np.float64)
+        sv_old = sv_view[idx_arr]
+        sv_new = np.minimum(occ.maximum,
+                             np.maximum(occ.minimum,
+                                        sv_old + occ.hit_increment))
+        sv_view[idx_arr] = sv_new
+        # -- sensor seen
+        ss_view = np.frombuffer(self._sensor_seen, dtype=np.uint8)
+        ss_view[idx_arr] = 1
+        # -- sensor labels / instances (unconditional for hits)
+        sl_view = np.frombuffer(self._sensor_labels, dtype=np.int64)
+        si_view = np.frombuffer(self._sensor_instance_ids,
+                                dtype=np.int64)
+        sl_view[idx_arr] = labels_arr
+        si_view[idx_arr] = instances_arr
+        # -- source: set if currently NONE
+        src_view = np.frombuffer(self._source, dtype=np.uint8)
+        is_none = src_view[idx_arr] == SOURCE_NONE
+        set_src = idx_arr[is_none]
+        if len(set_src):
+            src_view[set_src] = SOURCE_SENSOR
+        # -- labels: sensor source or label==0 -> write
+        lbl_view = np.frombuffer(self._labels, dtype=np.int64)
+        inst_view = np.frombuffer(self._instance_ids,
+                                  dtype=np.int64)
+        old_labels = lbl_view[idx_arr]
+        write_lbl = (old_labels == 0)  # source is SENSOR for all hits
+        set_lbl = idx_arr[write_lbl]
+        if len(set_lbl):
+            mask_positions = np.flatnonzero(write_lbl)
+            lbl_view[set_lbl] = labels_arr[mask_positions]
+            inst_view[set_lbl] = instances_arr[mask_positions]
+        # -- delta builder notification
+        self._observe_voxels(tuple(int(i) for i in idx_arr))
 
     def integrate_depth_view(self, points, origin):
         """Integrate full-depth returns, keeping model walls out of cargo hits.
