@@ -343,6 +343,34 @@ class TestExportTransactionDirtyE2E(unittest.TestCase):
                  if b.occupied else None))
         self.assertNotEqual(before.identity, after.identity)
 
+    def test_replica_surface_queries_match_source(self):
+        """Gen3 A9-pairing find #2: read_surface reads the surface
+        CONTRACT columns from map_snapshot; the wire never transported
+        them, so surface queries crashed on the replica path. The
+        'surface.contract' object now ships with every generation;
+        replica surface results must equal the source's."""
+        result = self._integrate(
+            np.array([[.05, .05, CENTER[2] - .4]]), 'view-surf')
+        self.assertTrue(result.accepted)
+        data = source_data(self.store)
+        self._drain(data.identity)
+        with self.store.acquire_query_snapshot() as handle:
+            source = handle.surface()
+        from luggage_perception.cargo_map_read_facade import (
+            QueryMapReadFacade)
+        facade = QueryMapReadFacade(self.replica)
+        replica_handle = facade.acquire_query_snapshot('CURRENT')
+        replica = replica_handle.surface()
+        self.assertEqual(replica.status, source.status)
+        self.assertEqual(replica.shape_xy, source.shape_xy)
+        self.assertEqual(replica.origin_index_xy, source.origin_index_xy)
+        for name in ('surface_z_container', 'height_above_floor',
+                     'contract_confidence'):
+            self.assertEqual(source.columns[name],
+                             replica.columns[name], name)
+        self.assertEqual(replica.floor_z_container,
+                         source.floor_z_container)
+
     def test_accumulator_consumed_only_on_accepted_offer(self):
         """A failed offer must keep the accumulated dirt so it ships
         with the NEXT accepted generation. (gen3: the async path can no

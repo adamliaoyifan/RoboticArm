@@ -321,7 +321,14 @@ class QueryReplica:
             manifest['entries']['provenance']['sha256'], 'provenance'))
         from luggage_perception.cargo_query_snapshot_wire import (
             _MapSnapshotView, wire_hull)
-        map_snapshot = _MapSnapshotView(provenance)
+        surface_contract = None
+        if 'surface.contract' in fresh:
+            surface_contract = wire_decode_json(fresh['surface.contract'])
+        elif 'surface.contract' in manifest['entries']:
+            surface_contract = wire_decode_json(self._load_payload(
+                manifest['entries']['surface.contract']['sha256'],
+                'surface.contract'))
+        map_snapshot = _MapSnapshotView(provenance, surface_contract)
         grid = GridInfo(
             tuple(grid_meta['shape']), tuple(grid_meta['origin']),
             grid_meta['resolution'], grid_meta['frame_id'],

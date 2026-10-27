@@ -130,6 +130,17 @@ def encode_snapshot(snapshot, producer_incarnation, seq, *,
         'last_settle': legs.last_settle,
         'ledger_details': legs.ledger_details,
     }))
+    if getattr(legs, 'surface_z_container', None) is not None:
+        # Surface-contract columns (read_surface consumes them via
+        # map_snapshot); without them surface queries CRASH on the
+        # replica path (gen3 A9 pairing find #2).
+        put('surface.contract', encode_json_object({
+            'surface_z_container': legs.surface_z_container,
+            'height_above_floor': legs.height_above_floor,
+            'contract_confidence': legs.contract_confidence,
+            'floor_z_container': float(legs.floor_z_container),
+            'ceiling_z_container': float(legs.ceiling_z_container),
+        }))
     put('identity', encode_json_object({
         'epoch': snapshot.identity.epoch,
         'revision': int(snapshot.identity.revision),
@@ -278,7 +289,10 @@ def rebuild_snapshot(objects, expected_identity=None):
     summary = _mapping(decode_json_object(payload('summary')))
     provenance = decode_json_object(payload('provenance'))
     identity_legs = decode_json_object(payload('identity'))
-    map_snapshot = _MapSnapshotView(provenance)
+    map_snapshot = _MapSnapshotView(
+        provenance,
+        decode_json_object(payload('surface.contract'))
+        if 'surface.contract' in objects else None)
     data = QuerySnapshotData(
         QueryIdentity(identity_legs['epoch'],
                       int(identity_legs['revision']),
@@ -325,7 +339,7 @@ class _HullView:
 class _MapSnapshotView:
     """Provenance legs the query surface reads, as a deep-immutable view."""
 
-    def __init__(self, provenance):
+    def __init__(self, provenance, surface_contract=None):
         identity = provenance['identity']
         self.identity = _SnapshotIdentity(identity[0], int(identity[1]),
                                           identity[2])
@@ -336,6 +350,18 @@ class _MapSnapshotView:
         self.pending_details = provenance['pending_details']
         self.last_settle = provenance['last_settle']
         self.ledger_details = provenance['ledger_details']
+        if surface_contract is not None:
+            # Surface-contract columns (see encode 'surface.contract').
+            self.surface_z_container = surface_contract[
+                'surface_z_container']
+            self.height_above_floor = surface_contract[
+                'height_above_floor']
+            self.contract_confidence = surface_contract[
+                'contract_confidence']
+            self.floor_z_container = float(
+                surface_contract['floor_z_container'])
+            self.ceiling_z_container = float(
+                surface_contract['ceiling_z_container'])
 
     def __getitem__(self, key):
         return getattr(self, key)
