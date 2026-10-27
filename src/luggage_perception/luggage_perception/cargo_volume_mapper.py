@@ -179,23 +179,30 @@ def _kernel_raycast(origins, ends, resolution, center,
                     half_l, half_w, half_h, nx, ny, nz, active):
     """Batch ray sampling. Returns concatenated flat indices (with dupes).
 
-    Each ray: steps = dist/(res*0.5), clip to AABB, sample t=step/steps,
-    transform to voxel, collect indices. Same math as _raycast_indices.
+    Hybrid approach: per-ray AABB clipping + step-range computation
+    (cheap Python loop, ~2000 iterations), then ONE batch coordinate
+    transform + voxel lookup for ALL samples concatenated (the
+    expensive part). Same math as the scalar _raycast_indices
+    (world-space interpolation, then world->local->voxel).
     """
-    all_indices = []
+    if len(ends) == 0:
+        return np.empty(0, dtype=np.int64), 0, 0
+    o = origins
     o_local = _kernel_world_to_local(
         origins.reshape(1, 3), center, cos_neg_yaw, sin_neg_yaw,
         cos_yaw, sin_yaw)[0]
     e_local = _kernel_world_to_local(
         ends, center, cos_neg_yaw, sin_neg_yaw, cos_yaw, sin_yaw)
     halves = (half_l, half_w, half_h)
+    all_t = []
+    all_ray = []
     for i in range(len(ends)):
         ol = o_local
         el = e_local[i]
         dist = math.sqrt(
-            (ends[i, 0] - origins[0]) ** 2
-            + (ends[i, 1] - origins[1]) ** 2
-            + (ends[i, 2] - origins[2]) ** 2)
+            (ends[i, 0] - o[0]) ** 2
+            + (ends[i, 1] - o[1]) ** 2
+            + (ends[i, 2] - o[2]) ** 2)
         if dist < resolution:
             continue
         steps = int(dist / (resolution * 0.5))
@@ -204,15 +211,15 @@ def _kernel_raycast(origins, ends, resolution, center,
         near, far = 0.0, 1.0
         clipped = True
         for axis in range(3):
-            start, end, half = ol[axis], el[axis], halves[axis]
-            delta = end - start
+            start_a, end_a, half = ol[axis], el[axis], halves[axis]
+            delta = end_a - start_a
             if delta == 0:
-                if abs(start) > half:
+                if abs(start_a) > half:
                     clipped = False
                     break
                 continue
             enter, leave = sorted(
-                ((-half - start) / delta, (half - start) / delta))
+                ((-half - start_a) / delta, (half - start_a) / delta))
             near, far = max(near, enter), min(far, leave)
             if near > far:
                 clipped = False
@@ -223,25 +230,28 @@ def _kernel_raycast(origins, ends, resolution, center,
         last = min(steps, int(math.ceil(far * steps)) + 2)
         if last <= first:
             continue
-        t_values = np.arange(first, last, dtype=np.float64) / steps
-        # Interpolate in WORLD space (same as the scalar _raycast_indices:
-        # px = ox + (hx-ox)*t), then batch-transform to local. This is
-        # critical: interpolating in local space introduces a different
-        # float rounding path than the original per-step world->local.
-        wx = origins[0] + (ends[i, 0] - origins[0]) * t_values
-        wy = origins[1] + (ends[i, 1] - origins[1]) * t_values
-        wz = origins[2] + (ends[i, 2] - origins[2]) * t_values
-        world_samples = np.column_stack((wx, wy, wz))
-        samples = _kernel_world_to_local(
-            world_samples, center, cos_neg_yaw, sin_neg_yaw,
-            cos_yaw, sin_yaw)
-        valid, flat = _kernel_local_to_voxel(
-            samples, resolution, half_l, half_w, half_h, nx, ny, nz,
-            active)
-        all_indices.append(flat[valid])
-    if not all_indices:
-        return np.empty(0, dtype=np.int64)
-    return np.concatenate(all_indices)
+        t = np.arange(first, last, dtype=np.float64) / steps
+        all_t.append(t)
+        all_ray.append(np.full(len(t), i, dtype=np.int64))
+    if not all_t:
+        return np.empty(0, dtype=np.int64), 0, 0
+    ray_intersecting = len(all_t)  # one entry per non-clipped ray
+    samples_visited = sum(len(t) for t in all_t)
+    t_all = np.concatenate(all_t)
+    ray_all = np.concatenate(all_ray)
+    # World-space interpolation for all samples at once
+    sel_ends = ends[ray_all]
+    wx = o[0] + (sel_ends[:, 0] - o[0]) * t_all
+    wy = o[1] + (sel_ends[:, 1] - o[1]) * t_all
+    wz = o[2] + (sel_ends[:, 2] - o[2]) * t_all
+    world_samples = np.column_stack((wx, wy, wz))
+    local_samples = _kernel_world_to_local(
+        world_samples, center, cos_neg_yaw, sin_neg_yaw,
+        cos_yaw, sin_yaw)
+    valid, flat = _kernel_local_to_voxel(
+        local_samples, resolution, half_l, half_w, half_h, nx, ny, nz,
+        active)
+    return flat[valid], ray_intersecting, samples_visited
 
 
 class CargoVolumeMapper:
@@ -727,53 +737,12 @@ class CargoVolumeMapper:
             ray_finite = ray_arr[np.isfinite(ray_arr).all(axis=1)]
             diagnostics["rays_selected"] = len(ray_finite)
             origin_arr = np.asarray(origin, dtype=np.float64)
-            # Diagnostics: replicate _raycast_indices' AABB-clipped
-            # sample count (first..last per ray), not the raw step count.
-            ol = _kernel_world_to_local(
-                origin_arr.reshape(1, 3), self.center,
-                cos_neg, sin_neg, cos_yaw, sin_yaw)[0]
-            el_all = _kernel_world_to_local(
-                ray_finite, self.center, cos_neg, sin_neg,
-                cos_yaw, sin_yaw)
-            halves3 = (half_l, half_w, half_h)
-            for i in range(len(ray_finite)):
-                el = el_all[i]
-                d = math.sqrt(
-                    (ray_finite[i, 0] - origin_arr[0]) ** 2
-                    + (ray_finite[i, 1] - origin_arr[1]) ** 2
-                    + (ray_finite[i, 2] - origin_arr[2]) ** 2)
-                if d < resolution:
-                    continue
-                steps = int(d / (resolution * 0.5))
-                if steps < 1:
-                    continue
-                near, far = 0.0, 1.0
-                ok = True
-                for axis in range(3):
-                    start, end, half = ol[axis], el[axis], halves3[axis]
-                    delta = end - start
-                    if delta == 0:
-                        if abs(start) > half:
-                            ok = False
-                            break
-                        continue
-                    enter, leave = sorted(
-                        ((-half - start) / delta,
-                         (half - start) / delta))
-                    near, far = max(near, enter), min(far, leave)
-                    if near > far:
-                        ok = False
-                        break
-                if not ok:
-                    continue
-                diagnostics["ray_intersecting"] += 1
-                first = max(0, int(math.floor(near * steps)) - 1)
-                last = min(steps, int(math.ceil(far * steps)) + 2)
-                diagnostics["samples_visited"] += max(0, last - first)
-            miss_flat = _kernel_raycast(
+            miss_flat, ri, sv = _kernel_raycast(
                 origin_arr, ray_finite, resolution, self.center,
                 cos_neg, sin_neg, cos_yaw, sin_yaw,
                 half_l, half_w, half_h, nx, ny, nz, active)
+            diagnostics['ray_intersecting'] = ri
+            diagnostics['samples_visited'] = sv
             miss_indices = set(int(x) for x in miss_flat)
 
         miss_indices.difference_update(hit_records)
@@ -805,13 +774,20 @@ class CargoVolumeMapper:
                               count=len(miss_indices))
         # -- occupancy values (Python list: read gen, compute numpy, write loop)
         values = occ.values
-        old_vals = np.fromiter((values[i] for i in idx_arr),
-                                dtype=np.float64, count=len(idx_arr))
+        if isinstance(values, list):
+            old_vals = np.fromiter(map(values.__getitem__, idx_arr),
+                                    dtype=np.float64, count=len(idx_arr))
+        else:
+            old_vals = np.frombuffer(values, dtype=np.float64)[idx_arr]
         new_vals = np.maximum(occ.minimum,
                               np.minimum(occ.maximum,
                                          old_vals + occ.miss_increment))
-        for j in range(len(idx_arr)):
-            values[int(idx_arr[j])] = float(new_vals[j])
+        if isinstance(values, list):
+            for j in range(len(idx_arr)):
+                values[int(idx_arr[j])] = float(new_vals[j])
+        else:
+            values_arr = np.frombuffer(values, dtype=np.float64)
+            values_arr[idx_arr] = new_vals
         # -- grid classification (bytearray -> zero-copy view)
         grid_view = np.frombuffer(self._grid, dtype=np.uint8)
         grid_new = np.where(
@@ -872,13 +848,20 @@ class CargoVolumeMapper:
             [hit_records[i][4] for i in idx_list], dtype=np.int64)
         # -- occupancy values (Python list)
         values = occ.values
-        old_vals = np.fromiter((values[i] for i in idx_arr),
-                                dtype=np.float64, count=len(idx_arr))
+        if isinstance(values, list):
+            old_vals = np.fromiter(map(values.__getitem__, idx_arr),
+                                    dtype=np.float64, count=len(idx_arr))
+        else:
+            old_vals = np.frombuffer(values, dtype=np.float64)[idx_arr]
         new_vals = np.maximum(occ.minimum,
                               np.minimum(occ.maximum,
                                          old_vals + occ.hit_increment))
-        for j in range(len(idx_arr)):
-            values[int(idx_arr[j])] = float(new_vals[j])
+        if isinstance(values, list):
+            for j in range(len(idx_arr)):
+                values[int(idx_arr[j])] = float(new_vals[j])
+        else:
+            values_arr = np.frombuffer(values, dtype=np.float64)
+            values_arr[idx_arr] = new_vals
         # -- grid
         grid_view = np.frombuffer(self._grid, dtype=np.uint8)
         grid_new = np.where(
