@@ -630,7 +630,7 @@ class CargoVolumeMapper:
         return indices
 
     def integrate_points(self, points, origin=None, labels=None, instance_ids=None,
-                         ray_points=None, _vectorized=False):
+                         ray_points=None, _vectorized=True):
         """Integrate observed points into the voxel grid.
 
         Args:
