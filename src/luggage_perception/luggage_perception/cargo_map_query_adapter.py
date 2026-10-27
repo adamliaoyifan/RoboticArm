@@ -182,6 +182,37 @@ class QuerySnapshotRegistry:
                     return data
             raise QueryError('SNAPSHOT_EXPIRED')
 
+    def open_retained(self, expected_identity):
+        """Open a session on a RETAINED (non-newest) generation.
+
+        Bounded-stale pinned reads (plan d87c5731 section 3.1): the
+        CALLER gates the same-world / lag-bound policy; the registry
+        only binds identity to a retained generation and enforces the
+        session budget. The newest generation falls through to the
+        normal open path (identical semantics)."""
+        with self._lock:
+            now = self._clock_ns()
+            self._expire_locked(now)
+            if self._error:
+                raise QueryError(self._error)
+            try:
+                want = tuple(expected_identity)
+            except TypeError:
+                raise QueryError('SNAPSHOT_IDENTITY_MISMATCH') from None
+            for index, data in enumerate(self._generations):
+                actual = tuple(data.identity)
+                if want in (actual, actual[:3]):
+                    if index == 0:
+                        break
+                    if len(self._sessions) >= MAX_SESSIONS:
+                        raise QueryError('RESOURCE_LIMIT')
+                    token = secrets.token_hex(16)
+                    self._sessions[token] = (data.identity,
+                                             now + TOKEN_LIFETIME_NS)
+                    return MapQuerySnapshot(data.identity, data.grid,
+                                            token, self)
+            return self._open_body(expected_identity)
+
     def resume(self, token, expected_identity):
         """Continue a typed-service handle; never extends its expiry."""
         try:

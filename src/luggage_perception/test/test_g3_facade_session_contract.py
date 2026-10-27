@@ -17,9 +17,9 @@ from luggage_perception.occupancy_map_store import (
     MapUpdate, OccupancyMapStore, UpdateKind)
 
 
-def make_store():
+def make_store(epoch='g3-facade'):
     mapper = CargoVolumeMapper((0.4, 0.4, 0.4), (0, 0, 0.2), 0, 0.025)
-    return OccupancyMapStore(mapper, epoch='g3-facade')
+    return OccupancyMapStore(mapper, epoch=epoch)
 
 
 class ReplicaStub:
@@ -87,7 +87,12 @@ def test_held_handle_stays_on_old_generation():
     # The held handle must still resolve to generation 1 data.
     assert tuple(held.identity) == old_identity
     assert held._data().identity == old_identity       # 8a372dee: rev2
-    assert held.summary() == old_summary
+    new_summary = held.summary()
+    assert (new_summary.status,
+            tuple(new_summary.snapshot_identity),
+            new_summary.values) == (old_summary.status,
+                                    tuple(old_summary.snapshot_identity),
+                                    old_summary.values)
 
 
 def test_old_pinned_identity_read_within_bound():
@@ -170,16 +175,30 @@ def test_current_rejects_immediately_on_known_newer_head():
 
 
 def test_static_healthy_map_stays_readable():
-    """No map age rejection when head identity == local identity and
-    control is healthy, even after a long quiet period."""
+    """No MAP-age rejection when head identity == local identity and
+    control keeps heartbeating, even after a long quiet commit period
+    (plan section 4: a map that is legitimately static is not stale).
+    The heartbeat itself stays fresh -- a writer silent for 60 s is
+    control-lost and must reject (next test)."""
     store = make_store()
     with store.acquire_query_snapshot() as handle:
         data = handle._data()
     replica = ReplicaStub(data)
     facade = QueryMapReadFacade(replica)
     replica._head['commit_monotonic_ns'] = time.monotonic_ns() - 60_000_000_000
-    replica._head['published_monotonic_ns'] = time.monotonic_ns() - 60_000_000_000
     assert facade.acquire_query_snapshot('CURRENT').summary().status == 'OK'
+
+
+def test_stale_heartbeat_rejects_after_control_loss():
+    store = make_store()
+    with store.acquire_query_snapshot() as handle:
+        data = handle._data()
+    replica = ReplicaStub(data)
+    facade = QueryMapReadFacade(replica)
+    replica._head['published_monotonic_ns'] = (
+        time.monotonic_ns() - 60_000_000_000)
+    with pytest.raises(QueryError):
+        facade.acquire_query_snapshot('CURRENT')
 
 
 def test_unknown_requested_identity_rejected():
@@ -192,3 +211,108 @@ def test_unknown_requested_identity_rejected():
     bogus[1] += 7
     with pytest.raises(QueryError):
         facade.acquire_query_snapshot(tuple(bogus))
+
+
+# -- fake-clock section (plan section 4: clock injection, no sleeps) --
+
+class FakeClock:
+    def __init__(self):
+        self.now = time.monotonic_ns()
+
+    def __call__(self):
+        return self.now
+
+    def advance_s(self, seconds):
+        self.now += int(seconds * 1e9)
+
+
+def test_fake_clock_static_map_readable_for_60s():
+    store = make_store()
+    with store.acquire_query_snapshot() as handle:
+        data = handle._data()
+    replica = ReplicaStub(data)
+    clock = FakeClock()
+    replica._head['published_monotonic_ns'] = clock.now
+    facade = QueryMapReadFacade(replica, clock_ns=clock)
+    for _ in range(60):
+        clock.advance_s(1.0)
+        replica._head['published_monotonic_ns'] = clock.now  # heartbeat
+        assert facade.acquire_query_snapshot(
+            'CURRENT').summary().status == 'OK'
+
+
+def test_fake_clock_control_loss_after_2s():
+    store = make_store()
+    with store.acquire_query_snapshot() as handle:
+        data = handle._data()
+    replica = ReplicaStub(data)
+    clock = FakeClock()
+    replica._head['published_monotonic_ns'] = clock.now
+    facade = QueryMapReadFacade(replica, clock_ns=clock)
+    clock.advance_s(2.0)                    # heartbeat refresh at t+2s
+    replica._head['published_monotonic_ns'] = clock.now
+    assert facade.acquire_query_snapshot('CURRENT').summary().status == 'OK'
+    clock.advance_s(2.001)                  # no refresh past the bound
+    with pytest.raises(QueryError):
+        facade.acquire_query_snapshot('CURRENT')
+
+
+def test_fake_clock_pinned_out_of_bound_expired():
+    store = make_store()
+    with store.acquire_query_snapshot() as handle:
+        old = handle._data()
+    replica = ReplicaStub(old)
+    clock = FakeClock()
+    replica._head['published_monotonic_ns'] = clock.now
+    facade = QueryMapReadFacade(replica, clock_ns=clock)
+    held = facade.acquire_query_snapshot('CURRENT')
+    old_identity = tuple(held.identity)
+    update = replica.advance(store)
+    replica._head['target_identity'] = list(update.identity)
+    replica._head['commit_monotonic_ns'] = clock.now
+    clock.advance_s(2.001)
+    replica._head['published_monotonic_ns'] = clock.now  # heartbeat alive
+    with pytest.raises(QueryError) as caught:
+        facade.acquire_query_snapshot(old_identity)
+    assert caught.value.reason == 'SNAPSHOT_EXPIRED'
+
+
+def test_world_switch_invalidates_old_pinned():
+    store = make_store()
+    with store.acquire_query_snapshot() as handle:
+        old = handle._data()
+    other = make_store(epoch='g3-facade-other')   # new epoch = new world
+    with other.acquire_query_snapshot() as handle:
+        new_world = handle._data()
+    replica = ReplicaStub(old)
+    facade = QueryMapReadFacade(replica)
+    held = facade.acquire_query_snapshot('CURRENT')
+    old_identity = tuple(held.identity)
+    assert old_identity[0] != tuple(new_world.identity)[0]
+    replica.snapshot = new_world
+    replica.manifest = {'target_identity': list(new_world.identity)}
+    replica._head['target_identity'] = list(new_world.identity)
+    # The pinned identity is cross-world: named reject; the world
+    # switch also evicts the held session's retained generation.
+    with pytest.raises(QueryError) as caught:
+        facade.acquire_query_snapshot(old_identity)
+    assert caught.value.reason in ('SNAPSHOT_EXPIRED',
+                                   'SNAPSHOT_IDENTITY_MISMATCH')
+    with pytest.raises(QueryError):
+        held._data()
+
+
+def test_malformed_head_named_failure():
+    store = make_store()
+    with store.acquire_query_snapshot() as handle:
+        data = handle._data()
+    replica = ReplicaStub(data)
+    facade = QueryMapReadFacade(replica)
+    original = replica.head_state
+    replica.head_state = lambda: {'published_monotonic_ns': 'garbage'}
+    with pytest.raises(QueryError):
+        facade.acquire_query_snapshot('CURRENT')
+    replica.head_state = lambda: {'target_identity': None}
+    with pytest.raises(QueryError):
+        facade.acquire_query_snapshot('CURRENT')
+    replica.head_state = original

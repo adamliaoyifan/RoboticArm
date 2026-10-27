@@ -188,16 +188,23 @@ class TestNamedFailuresFacade(unittest.TestCase):
                                      separators=(',', ':')))
         os.replace(temp, head_path)
         self.replica.state = ReplicaState.READY  # local view unchanged
-        # Beyond the lag bound: named failure.
+        # G4-A gen3 contract (plan d87c5731 1.1, review_8a372dee P1-3):
+        # CURRENT is STRICT -- a known newer committed head rejects
+        # regardless of the lag bound; a fresh heartbeat never masks
+        # the lag. The bounded-stale window belongs to PINNED reads.
         with self.assertRaises(QueryError) as caught:
             self.facade._lag_bound_s = 0.0
             self.facade.acquire_query_snapshot()
         self.assertEqual(caught.exception.reason, 'REPLICA_LAGGING')
-        # Within the bound: serves the local complete generation with
-        # its exact echoed identity (bounded-stale read, not an older
-        # generation and not a failure).
         self.facade._lag_bound_s = 2.0
-        snapshot = self.facade.acquire_query_snapshot()
+        with self.assertRaises(QueryError) as caught:
+            self.facade.acquire_query_snapshot('CURRENT')
+        self.assertEqual(caught.exception.reason, 'REPLICA_LAGGING')
+        # A PINNED read of the local identity inside the same-world
+        # bound still serves the local complete generation with its
+        # exact echoed identity.
+        snapshot = self.facade.acquire_query_snapshot(
+            tuple(self.replica.manifest['target_identity']))
         self.assertEqual(
             tuple(snapshot.identity),
             tuple(self.replica.manifest['target_identity']))

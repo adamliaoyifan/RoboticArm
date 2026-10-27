@@ -132,7 +132,19 @@ class MapQueryService:
             if snapshot is not None and (query.release_after_query or
                     (not query.snapshot_token and response.meta.status
                      not in ('OK', 'QUERY_BUDGET_EXHAUSTED'))):
-                snapshot.close()
+                # Plan d87c5731 3.2: a release failure must be NAMED,
+                # must never mask the business result/exception, and
+                # must never leave the callback without a response.
+                try:
+                    snapshot.close()
+                except Exception as error:  # noqa: BLE001
+                    self._logger.error(
+                        'snapshot release failed for %s: %r'
+                        % (query.request_id, error))
+                    if response.meta.status == 'OK':
+                        response.meta.status = 'SESSION_RELEASE_FAILED'
+                        response.meta.reason = 'SESSION_RELEASE_FAILED'
+                        response.meta.complete = False
             if _spans is not None:
                 _spans.append({
                     'kind': 'service',
