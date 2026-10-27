@@ -802,6 +802,15 @@ class CargoVolumeMapper:
 
         Produces IDENTICAL results to the per-cell loop
         (apply_miss + _record_sensor_miss + source/label reset).
+
+        Geometry-lock semantics (gen3 I3 fix, review_three_issues): the
+        scalar apply_miss BYPASSES locked cells entirely -- the live
+        occupancy value is protected while the sensor shadow ledger
+        still records the miss (so removing a placed box restores the
+        true sensor view). The batch kernel used to decrement every
+        index, so repeated free-space observations could erode a locked
+        box's occupancy to FREE -- a correctness defect, not rounding
+        noise (locked_miss_result.json: 3.5 -> FREE after 10 misses).
         """
         if not miss_indices:
             return
@@ -809,6 +818,11 @@ class CargoVolumeMapper:
         # Sorted for deterministic write order (same as original loop).
         idx_arr = np.fromiter(sorted(miss_indices), dtype=np.int64,
                               count=len(miss_indices))
+        # -- geometry lock mask (protects the LIVE occupancy only).
+        # geometry_locked is a Python list -> gather per index.
+        locked = np.fromiter(
+            map(occ.geometry_locked.__getitem__, idx_arr),
+            dtype=np.bool_, count=len(idx_arr))
         # -- occupancy values (Python list: read gen, compute numpy, write loop)
         values = occ.values
         if isinstance(values, list):
@@ -816,9 +830,16 @@ class CargoVolumeMapper:
                                     dtype=np.float64, count=len(idx_arr))
         else:
             old_vals = np.frombuffer(values, dtype=np.float64)[idx_arr]
-        new_vals = np.maximum(occ.minimum,
-                              np.minimum(occ.maximum,
-                                         old_vals + occ.miss_increment))
+        if occ.enabled:
+            candidate = np.maximum(
+                occ.minimum,
+                np.minimum(occ.maximum,
+                           old_vals + occ.miss_increment))
+        else:
+            # apply_miss disabled mode: unlocked cells go to minimum.
+            candidate = np.full(len(idx_arr), occ.minimum,
+                                dtype=np.float64)
+        new_vals = np.where(locked, old_vals, candidate)
         if isinstance(values, list):
             for j in range(len(idx_arr)):
                 values[int(idx_arr[j])] = float(new_vals[j])
