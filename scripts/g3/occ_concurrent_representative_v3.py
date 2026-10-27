@@ -145,6 +145,7 @@ while time.time() < deadline:
         err = 'exception:' + type(error).__name__
     total_ms = (time.perf_counter_ns() - t0) / 1e6
     record = {'kind': 'query', 'request_id': 'q' + str(request_id),
+              't_ns': time.monotonic_ns(),
               'expected': 'CURRENT', 'path': 'facade',
               'returned': (list(replica.snapshot.identity[:2])
                           if replica.snapshot is not None else None),
@@ -160,6 +161,7 @@ while time.time() < deadline:
         typed_ms = (time.perf_counter_ns() - t1) / 1e6
         out.write(json.dumps({
             'kind': 'query', 'request_id': 't' + str(request_id),
+            't_ns': time.monotonic_ns(),
             'expected': 'CURRENT', 'path': 'typed', 'returned': None,
             'status': status, 'reason': detail,
             'total_ms': round(typed_ms, 3),
