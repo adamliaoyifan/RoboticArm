@@ -43,7 +43,8 @@ int main(int argc, char** argv) {
       mode_name=="detailed" ? ProfileMode::Detailed : throw Error("INVALID_PROFILE_MODE");
     if (!manifest["frames"].IsSequence() || !manifest["frames"].size()) throw Error("NO_FRAMES");
     const auto cfg = load_configuration(opt.at("--geometry"),opt.at("--config"));
-    ObservationStore store(cfg.geometry,cfg.resolution,cfg.depth,cfg.clock_domain,cfg.digest);
+    ObservationStore store(cfg.geometry,cfg.resolution,cfg.depth,cfg.clock_domain,cfg.digest,
+                           cfg.discretize_endpoints);
     SnapshotRepository repo(store);
     if (std::filesystem::exists(opt.at("--out"))) throw Error("OUTPUT_ALREADY_EXISTS");
     std::ofstream output(opt.at("--out"));

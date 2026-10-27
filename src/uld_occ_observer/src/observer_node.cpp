@@ -32,7 +32,7 @@ class ObserverNode : public rclcpp::Node {
     if (mode_ == "subscription" && optical_frame_.empty()) throw Error("OPTICAL_FRAME_REQUIRED");
     if (config_.clock_domain != "ros") throw Error("ROS_CLOCK_DOMAIN_REQUIRED");
     store_ = std::make_unique<ObservationStore>(config_.geometry,config_.resolution,
-        config_.depth,config_.clock_domain,config_.digest);
+        config_.depth,config_.clock_domain,config_.digest,config_.discretize_endpoints);
     repository_ = std::make_unique<SnapshotRepository>(*store_);
     receipt_pub_ = create_publisher<msg::UpdateReceipt>("receipts",rclcpp::QoS(100).reliable());
     health_pub_ = create_publisher<std_msgs::msg::String>("health",rclcpp::QoS(10).reliable());

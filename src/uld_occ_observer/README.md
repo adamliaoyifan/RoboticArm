@@ -11,9 +11,17 @@ implementation; see the delegated Cursor task and frozen plan for O0--O9.
 `depth_z_min_m` / `depth_z_max_m`. `UldFrameAdapter` applies the acquisition-stamp
 rigid transform once to surviving endpoints and the true camera origin.
 `UldDomain` restricts evidence to the authoritative container geometry.
-`ObservationStore` is the only tree/version writer. Rays use real endpoints;
-there is no Euclidean maxrange truncation. Frame hit/free sets are deduplicated,
-with hit winning. Rejected points generate neither hit nor free evidence.
+`ObservationStore` publishes blocks and identity. `OccupancyGrid` is the only
+probability writer. Rays use real endpoints; there is no Euclidean maxrange
+truncation. Frame hit/free sets are deduplicated, with hit winning. Rejected
+points generate neither hit nor free evidence.
+
+`discretize_endpoints` defaults to false: every accepted endpoint casts a free
+ray. Setting it true keeps the first original endpoint in each OcTree cell for
+the free ray, so that evidence can change with input order. Occupied cells are
+still collected from every original endpoint. The default
+`config/observer.yaml` bytes stay unchanged. Writing the field into a loaded
+file changes the configuration digest.
 
 Normal updates retain one OcTree. The probability profile is hit=.7, miss=.4,
 threshold=.5, clamps=.1192/.971. Unknown is distinct from free. No timed decay or

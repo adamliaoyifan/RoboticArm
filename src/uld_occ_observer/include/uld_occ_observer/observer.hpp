@@ -1,7 +1,7 @@
 #pragma once
+#include "uld_occ_observer/occupancy_grid.hpp"
 #include "uld_occ_observer/preprocessing.hpp"
 #include "uld_occ_observer/snapshot.hpp"
-#include <octomap/OcTree.h>
 #include "uld_occ_observer/profiling.hpp"
 #include <deque>
 #include <mutex>
@@ -35,7 +35,8 @@ struct Diagnostics {
 class ObservationStore {
  public:
   ObservationStore(GeometryDescriptor descriptor, double resolution, DepthZConfig depth,
-                   std::string clock_domain, std::string config_digest);
+                   std::string clock_domain, std::string config_digest,
+                   bool discretize_endpoints = false);
   UpdateReceipt integrate(const OpticalObservation& observation,
                           ProfileMode profile_mode = ProfileMode::Off);
   std::shared_ptr<const Snapshot> snapshot() const;
@@ -45,13 +46,13 @@ class ObservationStore {
   Checkpoint checkpoint() const;
   std::uint64_t restore(const Checkpoint& checkpoint, std::uint64_t expected_epoch);
  private:
-  void configure_tree();
   SnapshotIdentity identity_unlocked() const;
   const std::shared_ptr<const UldDomain> domain_;
   const OpticalDepthPreprocessor preprocessor_;
   const std::string clock_domain_, config_digest_;
+  const bool discretize_endpoints_;
   mutable std::mutex mutex_;
-  std::unique_ptr<octomap::OcTree> tree_;
+  OccupancyGrid grid_;
   BlockRegistry blocks_;
   mutable std::shared_ptr<const Snapshot> cached_snapshot_;
   std::uint64_t epoch_{1}, map_revision_{}, observed_revision_{};

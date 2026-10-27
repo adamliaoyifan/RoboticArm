@@ -24,7 +24,8 @@ int main(int argc, char** argv) {
     if (argc != 9) throw Error("INVALID_ARGUMENTS_USE_HELP");
     for (int i = 1; i < argc; i += 2) options.emplace(argv[i],argv[i+1]);
     const auto config = load_configuration(options.at("--geometry"), options.at("--config"));
-    ObservationStore store(config.geometry,config.resolution,config.depth,config.clock_domain,config.digest);
+    ObservationStore store(config.geometry,config.resolution,config.depth,config.clock_domain,config.digest,
+                           config.discretize_endpoints);
     SnapshotRepository repository(store);
     const auto commands = YAML::LoadFile(options.at("--commands"));
     if (!commands.IsSequence()) throw Error("INVALID_COMMAND_SEQUENCE");

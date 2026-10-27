@@ -244,7 +244,7 @@ int run_o1(const ObserverConfiguration& cfg, int seeds, int frames, int boxes, s
   const auto depth = oracle_depth(cfg.depth);
   const auto box_list = make_boxes(boxes, geom);
   OccupancyOracle oracle(geom);
-  ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest);
+  ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, cfg.discretize_endpoints);
   std::size_t mismatches = 0;
   std::string reason = "ok";
   std::size_t done = 0;
@@ -372,7 +372,7 @@ int run_filter_cases(const ObserverConfiguration& cfg, const std::string& out) {
     reason = "near_euclid_setup";
   }
   check({0.4, 0.0, 0.40}, false, "z_below_even_if_euclid");
-  ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest);
+  ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, cfg.discretize_endpoints);
   const auto before = store.diagnostics();
   auto tf = look_into_container(-1.15, 0, 1.2, 1000);
   auto obs = base_observation(cfg, "empty", 1000, tf);
@@ -514,7 +514,7 @@ int run_o2(const ObserverConfiguration& cfg, int seeds, int frames, int boxes, c
   const auto depth = oracle_depth(cfg.depth);
   const auto box_list = make_boxes(boxes, geom);
   OccupancyOracle oracle(geom);
-  ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest);
+  ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, cfg.discretize_endpoints);
   std::size_t mismatches = 0;
   std::string reason = "ok";
   std::size_t done = 0;
@@ -593,7 +593,7 @@ int run_o3(const ObserverConfiguration& cfg, const std::string& out) {
   int reader_fail_total = 0;
   int pressure_ok = 0;
   for (int rep = 0; rep < 3; ++rep) {
-    ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest);
+    ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, cfg.discretize_endpoints);
     SnapshotRepository repo(store);
     auto tf0 = look_into_container(-1.15, 0, 1.2, 1'000'000'000);
     auto first = base_observation(cfg, "s0", 1'000'000'000, tf0);
@@ -665,7 +665,7 @@ int run_o4(const ObserverConfiguration& cfg, const std::string& dir) {
   std::string reason = "ok";
   std::uint64_t last_epoch = 0;
   for (int rep = 0; rep < 3; ++rep) {
-    ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest);
+    ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, cfg.discretize_endpoints);
     auto tf = look_into_container(-1.15, 0, 1.2, 1'000'000'000);
     auto obs = base_observation(cfg, "c0", 1'000'000'000, tf);
     obs.points_m = {{0, 0, 1.1}};
@@ -704,7 +704,7 @@ int run_o4(const ObserverConfiguration& cfg, const std::string& dir) {
     const auto ckpt_path = dir + ".ckpt.corrupt." + std::to_string(rep);
     std::error_code ec;
     std::filesystem::remove(ckpt_path, ec);
-    ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest);
+    ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, cfg.discretize_endpoints);
     auto tf = look_into_container(-1.15, 0, 1.2, 1'000'000'000);
     auto obs = base_observation(cfg, "c0", 1'000'000'000, tf);
     obs.points_m = {{0, 0, 1.1}};
@@ -738,7 +738,7 @@ int run_o4(const ObserverConfiguration& cfg, const std::string& dir) {
 int run_o8(const ObserverConfiguration& cfg, int boxes, const std::string& out) {
   const auto geom = oracle_geometry(cfg);
   const auto box_list = make_boxes(boxes, geom);
-  ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest);
+  ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, cfg.discretize_endpoints);
   auto tf = look_into_container(-1.15, 0, 1.2, 1'000'000'000);
   auto cloud = to_sut(generate_optical_cloud(geom, box_list, tf, 128, 0.0, 0.0, 7, false));
   std::vector<std::size_t> rss_warm, rss_a, rss_b;
@@ -801,7 +801,7 @@ int run_bench(const ObserverConfiguration& cfg, int boxes, std::size_t cloud, in
   const auto box_list = make_boxes(boxes, geom);
   std::vector<double> first_surface_ms, first_integrate_ms;
   for (int i = 0; i < repeat; ++i) {
-    ObservationStore cold(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest);
+    ObservationStore cold(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, cfg.discretize_endpoints);
     SnapshotRepository cold_repo(cold);
     const std::int64_t stamp = 1'000'000'000LL * (i + 1);
     auto tf = look_into_container(-1.15, 0, 1.2, stamp);
@@ -826,7 +826,7 @@ int run_bench(const ObserverConfiguration& cfg, int boxes, std::size_t cloud, in
     first_surface_ms.push_back(ms(t2, t3));
     if (capture) (void)cold.diagnostics();
   }
-  ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest);
+  ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, cfg.discretize_endpoints);
   std::vector<double> integrate_ms, acquire_ms, roi_ms, surface_ms;
   SnapshotRepository repo(store);
   auto once = [&](int i, bool score) {
@@ -882,6 +882,66 @@ int run_bench(const ObserverConfiguration& cfg, int boxes, std::size_t cloud, in
 
 }  // namespace
 
+int run_config_wire(const ObserverConfiguration& cfg, const std::string& out) {
+  UldDomain domain(cfg.geometry, cfg.resolution);
+  ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest,
+                         cfg.discretize_endpoints);
+  RigidTransform tf;
+  tf.stamp_ns = 1000;
+  const Vec3 origin{0, 0, 0};
+  octomap::OcTree probe(cfg.resolution);
+  bool found = false;
+  Vec3 first, second;
+  const auto shape = domain.shape();
+  for (int x = 0; x < shape.x && !found; ++x) {
+    for (int y = 0; y < shape.y && !found; ++y) {
+      for (int z = 0; z < shape.z && !found; ++z) {
+        if (!domain.active({x, y, z})) continue;
+        const auto center = domain.center({x, y, z});
+        const Vec3 a{center.x - 0.4 * cfg.resolution, center.y - 0.4 * cfg.resolution,
+                     center.z - 0.4 * cfg.resolution};
+        const Vec3 b{center.x + 0.4 * cfg.resolution, center.y + 0.4 * cfg.resolution,
+                     center.z + 0.4 * cfg.resolution};
+        if (a.z < cfg.depth.min_m || b.z < cfg.depth.min_m || a.z > cfg.depth.max_m || b.z > cfg.depth.max_m)
+          continue;
+        if (!domain.contains(a) || !domain.contains(b)) continue;
+        octomap::OcTreeKey ka, kb;
+        const auto oa = domain.octomap_coordinates(a);
+        const auto ob = domain.octomap_coordinates(b);
+        if (!probe.coordToKeyChecked(oa.x, oa.y, oa.z, ka) || !probe.coordToKeyChecked(ob.x, ob.y, ob.z, kb) ||
+            !(ka == kb))
+          continue;
+        auto obs_a = base_observation(cfg, "a", 1000, tf);
+        obs_a.points_m = {a};
+        auto obs_b = base_observation(cfg, "b", 2000, tf);
+        obs_b.points_m = {b};
+        ObservationStore sa(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, false);
+        ObservationStore sb(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, false);
+        const auto ra = sa.integrate(obs_a);
+        const auto rb = sb.integrate(obs_b);
+        if (ra.free_keys != rb.free_keys) {
+          first = a;
+          second = b;
+          found = true;
+        }
+      }
+    }
+  }
+  if (!found) return write_report(out, false, "config-wire", {{"reason", "no_pair"}});
+  auto paired = base_observation(cfg, "pair", 1000, tf);
+  paired.points_m = {first, second};
+  const auto receipt = store.integrate(paired);
+  std::ostringstream ax, ay, az, bx, by, bz;
+  ax << first.x; ay << first.y; az << first.z;
+  bx << second.x; by << second.y; bz << second.z;
+  return write_report(out, receipt.status == "INTEGRATED", "config-wire",
+                      {{"discretize", cfg.discretize_endpoints ? "true" : "false"},
+                       {"free_keys", std::to_string(receipt.free_keys)},
+                       {"hit_keys", std::to_string(receipt.hit_keys)},
+                       {"ax", ax.str()}, {"ay", ay.str()}, {"az", az.str()},
+                       {"bx", bx.str()}, {"by", by.str()}, {"bz", bz.str()}});
+}
+
 int main(int argc, char** argv) {
   try {
     std::map<std::string, std::string> opt;
@@ -903,6 +963,7 @@ int main(int argc, char** argv) {
     const double cross = std::stod(opt.count("--cross") ? opt["--cross"] : "0.0");
     const int warmup = std::stoi(opt.count("--warmup") ? opt["--warmup"] : "3");
     const int repeat = std::stoi(opt.count("--repeat") ? opt["--repeat"] : "30");
+    if (gate == "config-wire") return run_config_wire(cfg, out);
     if (gate == "o1-filter") return run_filter_cases(cfg, out);
     if (gate == "o1") return run_o1(cfg, seeds, frames, boxes, cloud, outside, cross, out);
     if (gate == "o2") return run_o2(cfg, seeds, frames, boxes, out);

@@ -40,11 +40,14 @@ ObserverConfiguration load_configuration(const std::string& geometry_file,
       geometry.chamfer = Chamfer{c["floor_y"].as<double>(), c["wall_y"].as<double>(), c["wall_z"].as<double>()};
     }
     const auto config = YAML::Load(config_bytes);
-    const std::set<std::string> allowed{"resolution_m", "depth_z_min_m", "depth_z_max_m", "clock_domain"};
+    const std::set<std::string> allowed{"resolution_m", "depth_z_min_m", "depth_z_max_m",
+                                       "clock_domain", "discretize_endpoints"};
     for (const auto& item : config)
       if (!allowed.count(item.first.as<std::string>())) throw Error("UNKNOWN_CONFIG_FIELD");
     result.resolution = config["resolution_m"].as<double>();
     result.depth = {config["depth_z_min_m"].as<double>(), config["depth_z_max_m"].as<double>()};
+    if (config["discretize_endpoints"])
+      result.discretize_endpoints = config["discretize_endpoints"].as<bool>();
     result.depth.validate();
     result.clock_domain = config["clock_domain"].as<std::string>();
     if (result.clock_domain.empty()) throw Error("INVALID_CLOCK_DOMAIN");

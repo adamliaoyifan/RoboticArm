@@ -9,7 +9,8 @@ find_package(OpenSSL REQUIRED)
 find_package(Threads REQUIRED)
 find_package(yaml-cpp REQUIRED)
 add_library(uld_occ_observer_core
-  src/preprocessing.cpp src/geometry.cpp src/snapshot.cpp src/observer.cpp src/snapshot_repository.cpp src/observation_worker.cpp)
+  src/preprocessing.cpp src/geometry.cpp src/snapshot.cpp src/occupancy_grid.cpp src/observer.cpp
+  src/snapshot_repository.cpp src/observation_worker.cpp)
 target_include_directories(uld_occ_observer_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include> ${OCTOMAP_INCLUDE_DIRS})
@@ -24,6 +25,15 @@ if(BUILD_TESTING)
   add_executable(observer_profile_checks test/test_profiling.cpp)
   target_link_libraries(observer_profile_checks PRIVATE uld_occ_observer_core)
   add_test(NAME observer_profile_checks COMMAND observer_profile_checks)
+  add_executable(observer_keyset_checks test/test_occupancy_keyset.cpp)
+  target_link_libraries(observer_keyset_checks PRIVATE uld_occ_observer_io)
+  target_compile_definitions(observer_keyset_checks PRIVATE OBSERVER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  add_test(NAME observer_keyset_checks COMMAND observer_keyset_checks)
+  add_test(NAME observer_config_entry
+    COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/test/test_config_entry.py
+            $<TARGET_FILE:observer_cli> $<TARGET_FILE:observer_profile_cli>
+            $<TARGET_FILE:observer_eval_native>
+            ${CMAKE_CURRENT_SOURCE_DIR}/config/observer.yaml)
 endif()
 add_executable(observer_profile_cli src/profile_cli.cpp)
 target_link_libraries(observer_profile_cli PRIVATE uld_occ_observer_io)
@@ -73,7 +83,10 @@ if(OBSERVER_WITH_ROS)
   rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
   target_link_libraries(observer_node "${cpp_typesupport_target}")
   set_target_properties(observer_node PROPERTIES BUILD_RPATH "${OCTOMAP_LIBRARY_DIRS}" INSTALL_RPATH "${OCTOMAP_LIBRARY_DIRS}")
-  install(TARGETS observer_node DESTINATION lib/${PROJECT_NAME})
+  add_executable(ros_discretize_client test/ros_discretize_client.cpp)
+  target_link_libraries(ros_discretize_client "${cpp_typesupport_target}")
+  ament_target_dependencies(ros_discretize_client rclcpp sensor_msgs)
+  install(TARGETS observer_node ros_discretize_client DESTINATION lib/${PROJECT_NAME})
   install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
   if(BUILD_TESTING)
     find_package(ament_cmake_pytest REQUIRED)

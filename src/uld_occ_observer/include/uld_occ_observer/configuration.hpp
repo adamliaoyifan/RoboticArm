@@ -7,6 +7,7 @@ struct ObserverConfiguration {
   GeometryDescriptor geometry;
   DepthZConfig depth;
   double resolution{.01};
+  bool discretize_endpoints{false};
   std::string clock_domain;
   std::string digest;
 };

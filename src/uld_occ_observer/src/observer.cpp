@@ -27,15 +27,6 @@ std::string fingerprint(const OpticalObservation& observation) {
     stream << ';' << point.x << ',' << point.y << ',' << point.z;
   return sha256(stream.str());
 }
-CellIndex index_from_key(const octomap::OcTreeKey& key) {
-  return {static_cast<int>(key[0])-32768, static_cast<int>(key[1])-32768,
-          static_cast<int>(key[2])-32768};
-}
-octomap::OcTreeKey key_from_index(CellIndex i) {
-  return {static_cast<octomap::key_type>(i.x+32768),
-          static_cast<octomap::key_type>(i.y+32768),
-          static_cast<octomap::key_type>(i.z+32768)};
-}
 }
 std::string sha256(const std::string& bytes) {
   unsigned char digest[EVP_MAX_MD_SIZE]; unsigned int size{};
@@ -47,16 +38,13 @@ std::string sha256(const std::string& bytes) {
   return stream.str();
 }
 ObservationStore::ObservationStore(GeometryDescriptor descriptor, double resolution,
-    DepthZConfig depth, std::string clock_domain, std::string config_digest)
+    DepthZConfig depth, std::string clock_domain, std::string config_digest,
+    bool discretize_endpoints)
     : domain_(std::make_shared<const UldDomain>(std::move(descriptor), resolution)),
       preprocessor_(depth), clock_domain_(std::move(clock_domain)),
-      config_digest_(std::move(config_digest)), tree_(std::make_unique<octomap::OcTree>(resolution)) {
+      config_digest_(std::move(config_digest)), discretize_endpoints_(discretize_endpoints),
+      grid_(resolution) {
   if (clock_domain_.empty() || config_digest_.empty()) throw Error("INVALID_CONFIG_IDENTITY");
-  configure_tree();
-}
-void ObservationStore::configure_tree() {
-  tree_->setProbHit(.7); tree_->setProbMiss(.4); tree_->setOccupancyThres(.5);
-  tree_->setClampingThresMin(.1192); tree_->setClampingThresMax(.971);
 }
 SnapshotIdentity ObservationStore::identity_unlocked() const {
   return {epoch_, map_revision_, observed_revision_, last_integrated_stamp_ns_,
@@ -115,75 +103,23 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
     receipt.preprocessing_ms = milliseconds(start, prepared_points);
     if (frame.points.empty()) throw Error("NO_VALID_POINTS");
 
-    std::set<CellIndex> hits, frees;
-    { ProfileSpan span(receipt.profile, ProfileStage::RayPreparation);
-      const auto origin = domain_->octomap_coordinates(frame.origin);
-      octomap::OcTreeKey origin_key;
-      if (!tree_->coordToKeyChecked(origin.x, origin.y, origin.z, origin_key))
-        throw Error("ORIGIN_OUT_OF_KEY_RANGE");
-      octomap::KeyRay ray;
-      for (const auto& endpoint : frame.points) {
-        if (receipt.profile.enabled()) ++receipt.profile.rays_attempted;
-        const auto p = domain_->octomap_coordinates(endpoint);
-        octomap::OcTreeKey endpoint_key;
-        if (!tree_->coordToKeyChecked(p.x, p.y, p.z, endpoint_key))
-          throw Error("ENDPOINT_OUT_OF_KEY_RANGE");
-        // No maxrange: traverse the real ray. Domain restrictions apply to keys only.
-        { ProfileSpan ray_span(receipt.profile, ProfileStage::RayGeneration, true);
-        if (!tree_->computeRayKeys(octomap::point3d(origin.x, origin.y, origin.z),
-                                  octomap::point3d(p.x, p.y, p.z), ray))
-          throw Error("RAY_PREPARATION_FAILED");
-        }
-        ProfileSpan filter_span(receipt.profile, ProfileStage::RayFilterDedup, true);
-        std::uint64_t active_visits = 0;
-        if (receipt.profile.enabled()) receipt.profile.ray_keys_generated += ray.size();
-        for (const auto& key : ray) {
-          const auto index = index_from_key(key);
-          if (domain_->active(index)) {
-            const bool inserted = frees.insert(index).second;
-            if (receipt.profile.enabled()) {
-              ++active_visits;
-              ++receipt.profile.active_ray_key_visits;
-              if (!inserted) ++receipt.profile.free_insert_duplicates;
-            }
-          } else if (receipt.profile.enabled()) ++receipt.profile.inactive_ray_key_visits;
-        }
-        if (receipt.profile.enabled()) {
-          if (active_visits) ++receipt.profile.rays_with_active_keys;
-          else ++receipt.profile.rays_without_active_keys;
-        }
-        if (domain_->contains(endpoint)) {
-          const auto index = index_from_key(endpoint_key);
-          if (domain_->active(index)) hits.insert(index);
-        }
-      }
-      if (receipt.profile.enabled()) receipt.profile.free_unique_before_hit_removal = frees.size();
-      for (const auto& hit : hits) frees.erase(hit);
-    }
-    receipt.free_keys = frees.size(); receipt.hit_keys = hits.size();
+    const OccupancyScan scan = grid_.collect(frame.origin, frame.points, *domain_,
+                                             OccupancyScanOptions{discretize_endpoints_},
+                                             &receipt.profile);
+    receipt.free_keys = scan.free_cells.size();
+    receipt.hit_keys = scan.occupied_cells.size();
     const auto prepared = Clock::now();
     receipt.preparation_ms = milliseconds(prepared_points, prepared);
     { ProfileSpan fusion_span(receipt.profile, ProfileStage::Fusion);
+      const auto mutations = grid_.apply(scan, &receipt.profile);
       std::map<CellIndex, std::shared_ptr<CellBlock>> modified;
-      auto update = [&](CellIndex index, bool hit) {
-        bool existed, old_occupied, occupied;
-        float old, new_log_odds;
-        { ProfileSpan tree_span(receipt.profile, ProfileStage::TreeUpdate, true);
-        const auto key = key_from_index(index);
-        const auto* before = tree_->search(key);
-        existed = before != nullptr;
-        old = existed ? before->getLogOdds() : 0;
-        old_occupied = existed && tree_->isNodeOccupied(before);
-        auto* after = tree_->updateNode(key, hit, false);
-        occupied = tree_->isNodeOccupied(after);
-        new_log_odds = after->getLogOdds();
-        }
-        if (existed && old == new_log_odds) return;
+      for (const auto& change : mutations) {
         ProfileSpan block_span(receipt.profile, ProfileStage::BlockMaintenance, true);
         ++receipt.changed_keys;
-        if (!existed || old_occupied != occupied) ++receipt.occupancy_changed_keys;
-        if (!existed) ++known_cells_;
-        const auto block_index = Snapshot::block_index(index);
+        if (!change.existed || change.old_occupied != change.occupied)
+          ++receipt.occupancy_changed_keys;
+        if (!change.existed) ++known_cells_;
+        const auto block_index = Snapshot::block_index(change.index);
         auto& block = modified[block_index];
         if (!block) {
           const auto existing = blocks_.find(block_index);
@@ -194,10 +130,8 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
           block = existing == blocks_.end() ? std::make_shared<CellBlock>() :
                   std::make_shared<CellBlock>(*existing->second);
         }
-        (*block)[index] = {new_log_odds, occupied};
-      };
-      for (const auto& index : frees) update(index, false);
-      for (const auto& index : hits) update(index, true);
+        (*block)[change.index] = {change.new_log_odds, change.occupied};
+      }
       for (auto& entry : modified) blocks_[entry.first] = std::move(entry.second);
       receipt.rebuilt_blocks = modified.size();
     }
@@ -234,13 +168,13 @@ std::shared_ptr<const Snapshot> ObservationStore::snapshot() const {
 }
 Diagnostics ObservationStore::diagnostics() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  return {identity_unlocked(), tree_->size(), known_cells_, blocks_.size(), tree_->memoryUsage(),
+  return {identity_unlocked(), grid_.nodeCount(), known_cells_, blocks_.size(), grid_.memoryUsage(),
           received_, integrated_, rejected_, duplicates_, full_serializations_};
 }
 std::uint64_t ObservationStore::reset(std::uint64_t expected_epoch) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (epoch_ != expected_epoch) throw Error("EPOCH_MISMATCH");
-  tree_ = std::make_unique<octomap::OcTree>(domain_->resolution()); configure_tree();
+  grid_.reset();
   ++epoch_; map_revision_ = observed_revision_ = 0; last_integrated_stamp_ns_ = 0;
   known_cells_ = 0; blocks_.clear(); cached_snapshot_.reset();
   sensor_stamps_.clear(); fingerprints_.clear(); fingerprint_order_.clear();
@@ -248,10 +182,8 @@ std::uint64_t ObservationStore::reset(std::uint64_t expected_epoch) {
 }
 Checkpoint ObservationStore::checkpoint() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  std::ostringstream stream(std::ios::binary);
-  if (!tree_->write(stream)) throw Error("CHECKPOINT_FAILED");
   ++full_serializations_;
-  return {identity_unlocked(), stream.str(), sensor_stamps_, fingerprints_, fingerprint_order_};
+  return {identity_unlocked(), grid_.serialize(), sensor_stamps_, fingerprints_, fingerprint_order_};
 }
 std::uint64_t ObservationStore::restore(const Checkpoint& checkpoint, std::uint64_t expected_epoch) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -268,31 +200,22 @@ std::uint64_t ObservationStore::restore(const Checkpoint& checkpoint, std::uint6
   for (const auto& sensor : checkpoint.sensor_stamps)
     if (sensor.first.empty() || sensor.second <= 0 || sensor.second > id.last_integrated_stamp_ns)
       throw Error("INVALID_CHECKPOINT_STAMP");
-  std::istringstream stream(checkpoint.tree_bytes, std::ios::binary);
-  std::unique_ptr<octomap::AbstractOcTree> raw(octomap::AbstractOcTree::read(stream));
-  auto* restored = dynamic_cast<octomap::OcTree*>(raw.get());
-  if (!restored || restored->getResolution() != domain_->resolution() || !stream)
-    throw Error("INVALID_CHECKPOINT_TREE");
-  // Full rebuilding is allowed only for explicit restore, never normal observations.
+  // Read, expand, and validate on a temporary grid. A bad leaf must not replace live state.
+  auto candidate = OccupancyGrid::fromCheckpointBytes(checkpoint.tree_bytes, domain_->resolution());
+  candidate.validateLeaves(*domain_);
   std::map<CellIndex, std::shared_ptr<CellBlock>> rebuilt;
   std::size_t known = 0;
-  // Expand pruned known leaves to the finest query grid before publishing anything.
-  restored->expand();
-  for (auto it = restored->begin_leafs(); it != restored->end_leafs(); ++it) {
-    const auto index = index_from_key(it.getKey());
-    if (!domain_->active(index) || !std::isfinite(it->getLogOdds()) ||
-        it->getLogOdds() < octomap::logodds(.1192)-1e-6 ||
-        it->getLogOdds() > octomap::logodds(.971)+1e-6)
-      throw Error("INVALID_CHECKPOINT_CELL");
+  candidate.forEachLeaf([&](CellIndex index, float log_odds) {
     auto& block = rebuilt[Snapshot::block_index(index)];
     if (!block) block = std::make_shared<CellBlock>();
-    (*block)[index] = {it->getLogOdds(), it->getLogOdds() >= 0};
+    (*block)[index] = {log_odds, log_odds >= 0};
     ++known;
-  }
+  });
   BlockRegistry published;
   for (auto& entry : rebuilt) published.emplace(entry.first, std::move(entry.second));
-  raw.release(); tree_.reset(restored); configure_tree();
-  blocks_ = std::move(published); known_cells_ = known;
+  grid_ = std::move(candidate);
+  blocks_ = std::move(published);
+  known_cells_ = known;
   ++epoch_; map_revision_ = id.map_revision; observed_revision_ = id.observed_revision;
   last_integrated_stamp_ns_ = id.last_integrated_stamp_ns;
   sensor_stamps_ = checkpoint.sensor_stamps;
