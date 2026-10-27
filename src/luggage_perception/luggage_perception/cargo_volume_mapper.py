@@ -254,6 +254,19 @@ def _kernel_raycast(origins, ends, resolution, center,
     return flat[valid], ray_intersecting, samples_visited
 
 
+# JIT kernels (B round): used INSTEAD of the numpy versions above
+# when numba is available; graceful fallback keeps the numpy path.
+try:
+    from luggage_perception.fusion_kernels_jit import (
+        HAS_NUMBA, _jit_world_to_local, _jit_local_to_voxel)
+    if HAS_NUMBA:
+        _USE_JIT = True
+    else:
+        _USE_JIT = False
+except ImportError:
+    _USE_JIT = False
+
+
 class CargoVolumeMapper:
     """Axis-aligned voxel grid in container-local frame (yaw-aligned with base)."""
 
@@ -707,11 +720,24 @@ class CargoVolumeMapper:
         # --- Hit marking (batch) ---
         pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
         finite = np.isfinite(pts).all(axis=1)
-        local = _kernel_world_to_local(
-            pts[finite], self.center, cos_neg, sin_neg, cos_yaw, sin_yaw)
-        valid_hit, hit_flat = _kernel_local_to_voxel(
-            local, resolution, half_l, half_w, half_h, nx, ny, nz,
-            active)
+        # JIT path: use compiled kernels with bool-array active mask
+        if _USE_JIT:
+            active_bool = (np.frombuffer(bytes(active), dtype=np.uint8)
+                           .astype(np.bool_) if active is not None
+                           else None)
+            local = _jit_world_to_local(
+                pts[finite], np.asarray(self.center, dtype=np.float64),
+                cos_neg, sin_neg)
+            valid_hit, hit_flat = _jit_local_to_voxel(
+                local, resolution, half_l, half_w, half_h,
+                nx, ny, nz, active_bool)
+        else:
+            local = _kernel_world_to_local(
+                pts[finite], self.center, cos_neg, sin_neg,
+                cos_yaw, sin_yaw)
+            valid_hit, hit_flat = _kernel_local_to_voxel(
+                local, resolution, half_l, half_w, half_h, nx, ny, nz,
+                active)
 
         # Build hit_records: flat_index -> (x, y, z, label, instance)
         # Later points overwrite earlier ones (same as dict assignment
