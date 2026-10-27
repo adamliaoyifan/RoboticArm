@@ -97,11 +97,14 @@ def integrate(store, mapper, cloud, stamp):
 
 
 def nearest_rank_p95(values):
-    """Nearest-rank P95: the 29th of 30 (sorted[28]). Returns None when
-    fewer than 30 samples -- not_evaluated, never a recomputed guess."""
+    """Nearest-rank P95: sorted[ceil(0.95*n)-1]. For n=30 this is the
+    29th value (sorted[28]); the previous hardcoded [28] was wrong for
+    every other n (review 2026-10-26: ceil, not a fixed index). Returns
+    None when fewer than 30 samples -- not_evaluated, never a guess."""
+    import math
     if len(values) < 30:
         return None
-    return sorted(values)[28]
+    return sorted(values)[math.ceil(0.95 * len(values)) - 1]
 
 
 def stats(values):
