@@ -96,7 +96,8 @@ class QueryExportPublisher:
         os.makedirs(os.path.join(self.root, 'control'), exist_ok=True)
         owner = os.path.join(self.root, 'owner.json')
         if os.path.exists(owner):
-            raise ExportError('OWNER_LOCK_HELD', owner)
+            if not self._takeover_stale_owner(owner):
+                raise ExportError('OWNER_LOCK_HELD', owner)
         self.incarnation = (producer_incarnation
                             or new_producer_incarnation())
         fd = os.open(owner, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -135,6 +136,36 @@ class QueryExportPublisher:
         with self._state_lock:
             return (len(self._queued) + (self._in_flight is not None)
                     + (self._failure is not None))
+
+    @staticmethod
+    def _takeover_stale_owner(owner_path):
+        """Crash recovery (gen3 A6: a REAL writer process restart):
+        if the recorded owner PID no longer exists on this host, the
+        lock is stale and may be taken over; a live owner is never
+        displaced. Same-host PID check only, per the protocol's
+        same-machine monotonic-clock assumption."""
+        try:
+            with open(owner_path, 'rb') as handle:
+                record = json.loads(handle.read().decode('utf-8'))
+            pid = int(record['pid'])
+        except (OSError, ValueError, KeyError, TypeError):
+            return False              # unreadable: assume a live owner
+        try:
+            # A live owner is NEVER displaced -- even when it is this
+            # same process (a second publisher in one process must
+            # still fail OWNER_LOCK_HELD).
+            os.kill(pid, 0)           # liveness probe, signal 0
+        except ProcessLookupError:
+            # Owner gone: drop the stale lock so the caller's normal
+            # O_CREAT|O_EXCL create re-establishes it exclusively.
+            try:
+                os.unlink(owner_path)
+                return True
+            except OSError:
+                return False
+        except PermissionError:
+            return False              # exists but not ours
+        return False                  # alive: never displace
 
     def _ledger_open(self, snapshot, commit_ns):
         self._ledger_seq += 1
@@ -409,6 +440,7 @@ class QueryExportPublisher:
                 self._wake.set()
             return {'status': status, 'async': True,
                     'seq': self._seq + 1,
+                    'ledger_id': entry['ledger_id'],
                     'coalesced': status == 'COALESCED'}
         staging = os.path.join(self.root, 'staging')
         if len(os.listdir(staging)) > STAGING_LIMIT:

@@ -65,6 +65,23 @@ class QueryReplica:
         self.cache_misses = 0
         self.control_age_s = None
         self.control_healthy = False
+        # G4-A gen3 (plan d87c5731 section 6.1): bounded receive-side
+        # event history -- received / validated / ready / resync /
+        # unavailable with the target's FULL identity, so measurement
+        # can prove commit-to-READY delivery instead of guessing it
+        # from the latest observed state.
+        import collections as _collections
+        self.event_log = _collections.deque(maxlen=8192)
+
+    def _record(self, event, **fields):
+        import time as _time
+        self.event_log.append(dict({'event': event,
+                                    't_ns': _time.monotonic_ns()},
+                                   **fields))
+
+    def events(self):
+        """Immutable copy of the receive-side event history."""
+        return tuple(dict(entry) for entry in self.event_log)
 
     # -- polling -------------------------------------------------------
 
@@ -110,9 +127,21 @@ class QueryReplica:
         except (WireError, OSError, ValueError) as error:
             return self._fail(str(getattr(error, 'reason', error)))
         if manifest is None:
+            if self.manifest is not None:
+                # The stream vanished while we HELD a generation: an
+                # observable control-plane loss (fault-gate detection
+                # event), not silent idling.
+                self._record('no_published',
+                             seq=self.manifest.get('seq'))
             self.state = ReplicaState.SYNCING
             self.last_error = 'NO_PUBLISHED_GENERATION'
             return self.state
+        if (self.manifest is None or int(manifest['seq'])
+                != int(self.manifest['seq'])):
+            self._record('received', seq=manifest['seq'],
+                         kind=manifest['kind'],
+                         target_identity=list(
+                             manifest['target_identity']))
         if self.manifest is not None:
             # Producer/epoch/schema first, THEN seq (protocol 5.3): a
             # new incarnation restarts the sequence legitimately, and a
@@ -140,6 +169,16 @@ class QueryReplica:
                                            self._head_seq))
                 pass  # self-contained resync answer: apply directly
             elif int(manifest['seq']) <= int(self.manifest['seq']):
+                if (int(manifest['seq']) == int(self.manifest['seq'])
+                        and manifest.get('checksum')
+                        != self.manifest.get('checksum')):
+                    # Same seq with DIFFERENT content: never silently
+                    # ignore a rewritten history (gen3 plan 6.3) --
+                    # named detection + resync.
+                    return self._resync('MANIFEST_CONTENT_CONFLICT',
+                                        'seq %s re-published with a '
+                                        'different checksum'
+                                        % manifest['seq'])
                 self.state = ReplicaState.READY
                 return self.state
             elif int(manifest['seq']) != int(self.manifest['seq']) + 1:
@@ -175,14 +214,20 @@ class QueryReplica:
                     objects,
                     expected_identity=manifest['target_identity'])
         except WireError as error:
+            self._record('validate_failed', seq=manifest['seq'],
+                         reason=str(error.reason))
             return self._resync(error.reason, error.detail)
         # Atomic swap: registry state changes only after full validation.
+        self._record('validated', seq=manifest['seq'],
+                     target_identity=list(manifest['target_identity']))
         self.snapshot = snapshot
         self.manifest = manifest
         self._ack(manifest)
         self.state = ReplicaState.READY
         self.last_error = ''
         self._resync_attempts = 0
+        self._record('ready', seq=manifest['seq'],
+                     target_identity=list(manifest['target_identity']))
         return self.state
 
     # -- internals -----------------------------------------------------
@@ -365,6 +410,8 @@ class QueryReplica:
             distance_members)
 
     def _resync(self, reason, detail=''):
+        self._record('resync', reason=str(reason),
+                     seq=(self.manifest or {}).get('seq'))
         self.state = ReplicaState.RESYNC_REQUIRED
         self.last_error = '%s %s' % (reason, detail)
         request = os.path.join(self.root, 'control', 'resync')
@@ -384,6 +431,7 @@ class QueryReplica:
         return self.state
 
     def _fail(self, reason):
+        self._record('unavailable', error=str(reason))
         self.state = ReplicaState.UNAVAILABLE
         self.last_error = str(reason)
         return self.state
