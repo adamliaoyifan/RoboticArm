@@ -47,6 +47,29 @@ def main():
     scaling.add_argument('--samples', type=int, default=20)
     scaling.add_argument('--out', required=True)
 
+    faults_v3 = sub.add_parser('faults-v3')
+    faults_v3.add_argument('--gates', default='A4,A5,A6')
+    faults_v3.add_argument('--resolution', type=float, default=0.05)
+    faults_v3.add_argument('--out', required=True)
+
+    rep_v3 = sub.add_parser('representative-v3')
+    rep_v3.add_argument('--boxes', type=int, default=0)
+    rep_v3.add_argument('--resolution', type=float, default=0.01)
+    rep_v3.add_argument('--duration-s', type=float, default=60.0)
+    rep_v3.add_argument('--query-p95-ms', type=float, default=100.0)
+    rep_v3.add_argument('--query-max-ms', type=float, default=250.0)
+    rep_v3.add_argument('--vis-p95-ms', type=float, default=1000.0)
+    rep_v3.add_argument('--vis-max-ms', type=float, default=2000.0)
+    rep_v3.add_argument('--out', required=True)
+
+    judge = sub.add_parser('judge')
+    judge.add_argument('events_jsonl')
+    judge.add_argument('--query-p95-ms', type=float, default=100.0)
+    judge.add_argument('--query-max-ms', type=float, default=250.0)
+    judge.add_argument('--vis-p95-ms', type=float, default=1000.0)
+    judge.add_argument('--vis-max-ms', type=float, default=2000.0)
+    judge.add_argument('--summary', default=None)
+
     args = parser.parse_args()
     if args.stage == 'codec':
         # The codec gate is the C1/C2 unit suites (round-trip oracle).
@@ -79,6 +102,33 @@ def main():
             [sys.executable, script, '--boxes', args.boxes,
              '--resolution', str(args.resolution),
              '--samples', str(args.samples), '--out', args.out])
+    if args.stage == 'faults-v3':
+        script = os.path.join(_HERE, 'occ_fault_gates_v3.py')
+        return subprocess.call(
+            [sys.executable, script, '--gates', args.gates,
+             '--resolution', str(args.resolution), '--out', args.out])
+    if args.stage == 'representative-v3':
+        script = os.path.join(_HERE, 'occ_concurrent_representative_v3.py')
+        return subprocess.call(
+            [sys.executable, script,
+             '--boxes', str(args.boxes),
+             '--resolution', str(args.resolution),
+             '--duration-s', str(args.duration_s),
+             '--query-p95-ms', str(args.query_p95_ms),
+             '--query-max-ms', str(args.query_max_ms),
+             '--vis-p95-ms', str(args.vis_p95_ms),
+             '--vis-max-ms', str(args.vis_max_ms),
+             '--out', args.out])
+    if args.stage == 'judge':
+        script = os.path.join(_HERE, 'occ_metrics_g3.py')
+        cmd = [sys.executable, script, args.events_jsonl,
+               '--query-p95-ms', str(args.query_p95_ms),
+               '--query-max-ms', str(args.query_max_ms),
+               '--vis-p95-ms', str(args.vis_p95_ms),
+               '--vis-max-ms', str(args.vis_max_ms)]
+        if args.summary:
+            cmd += ['--out', args.summary]
+        return subprocess.call(cmd)
     return 2
 
 

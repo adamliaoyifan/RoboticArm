@@ -176,14 +176,16 @@ def main():
                         help='output prefix: <out>.events.jsonl + <out>.json')
     args = parser.parse_args()
 
-    lock_fd = os.open(PERF_LOCK, os.O_CREAT | os.O_RDWR)
-    fcntl.flock(lock_fd, fcntl.LOCK_EX)
-
     events_path = args.out + '.events.jsonl'
     worker_events = args.out + '.worker.jsonl'
-    for path in (events_path, worker_events):
+    # Path validation BEFORE taking the perf lock: an invalid run must
+    # never queue behind (or block) a legitimate re-timing campaign.
+    for path in (events_path, worker_events, args.out + '.json'):
         if os.path.exists(path):
             raise SystemExit('refusing to overwrite %s' % path)
+
+    lock_fd = os.open(PERF_LOCK, os.O_CREAT | os.O_RDWR)
+    fcntl.flock(lock_fd, fcntl.LOCK_EX)
 
     def emit(record):
         record['t_ns'] = time.monotonic_ns()
