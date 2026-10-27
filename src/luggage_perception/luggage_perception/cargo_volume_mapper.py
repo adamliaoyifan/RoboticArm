@@ -773,6 +773,17 @@ class CargoVolumeMapper:
 
         miss_indices.difference_update(hit_records)
 
+        # --- Evidence notification BEFORE mutation (same contract as
+        # the scalar loop, lines above: _observe_voxels precedes the
+        # grid writes). The batch kernels used to notify AFTER the
+        # state change, so record_before captured the NEW evidence as
+        # "old" -> before==after -> empty voxel deltas -> every
+        # derived index/export/replica was blind to vectorized fusion
+        # writes (caught by test_500_mutations_per_seed on the merged
+        # tree 2026-10-27).
+        self._observe_voxels(miss_indices)
+        self._observe_voxels(hit_records)
+
         # --- Batch grid updates: misses then hits, same order ---
         # All bytearray/array fields support the buffer protocol ->
         # np.frombuffer gives zero-copy WRITABLE views for vectorized
@@ -852,8 +863,8 @@ class CargoVolumeMapper:
                                       dtype=np.int64)
             lbl_view[reset2] = 0
             inst_view[reset2] = 0
-        # -- delta builder notification (order-sensitive: after state)
-        self._observe_voxels(tuple(int(i) for i in idx_arr))
+        # NOTE: no _observe_voxels here -- the orchestrator notifies
+        # the delta builder BEFORE mutation (record_before contract).
 
     def _batch_hit_update(self, hit_records):
         """Vectorized hit update: log-odds + grid + sensor + labels.
@@ -928,8 +939,8 @@ class CargoVolumeMapper:
             mask_positions = np.flatnonzero(write_lbl)
             lbl_view[set_lbl] = labels_arr[mask_positions]
             inst_view[set_lbl] = instances_arr[mask_positions]
-        # -- delta builder notification
-        self._observe_voxels(tuple(int(i) for i in idx_arr))
+        # NOTE: no _observe_voxels here -- the orchestrator notifies
+        # the delta builder BEFORE mutation (record_before contract).
 
     def integrate_depth_view(self, points, origin):
         """Integrate full-depth returns, keeping model walls out of cargo hits.

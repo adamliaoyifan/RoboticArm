@@ -163,5 +163,43 @@ class TestFusionVectorizationOracle(unittest.TestCase):
             self.assertEqual(state_a[key], state_b[key], key)
 
 
+class TestVectorizedDeltaCapture(unittest.TestCase):
+    """The vectorized path must feed the VoxelDeltaBuilder with the
+    OLD evidence (record_before contract): the batch kernels used to
+    notify AFTER mutation, so before==after and every fusion write
+    produced an EMPTY delta -- derived indexes, exports and replicas
+    were blind to vectorized fusion (merged-tree regression
+    2026-10-27, caught by test_500_mutations_per_seed)."""
+
+    def test_vectorized_integrate_records_delta(self):
+        from luggage_perception.cargo_voxel_delta import VoxelDeltaBuilder
+        m = CargoVolumeMapper((.12, .12, .12), (0, 0, .06), 0, .02,
+                              max_raycast_points=4)
+        m._voxel_delta = VoxelDeltaBuilder(m)
+        m.integrate_points([(0.0, 0.0, 0.05)], origin=(0, 0, .2),
+                           labels=[2], instance_ids=[3])
+        delta = m._voxel_delta.finalize()
+        self.assertEqual(len(delta.indices), 4,
+                         'vectorized fusion must record its changed '
+                         'cells (scalar path records 4 for this input)')
+
+    def test_scalar_and_vectorized_deltas_match(self):
+        from luggage_perception.cargo_voxel_delta import VoxelDeltaBuilder
+        deltas = []
+        for vectorized in (False, True):
+            m = CargoVolumeMapper((.12, .12, .12), (0, 0, .06), 0, .02,
+                                  max_raycast_points=4)
+            m._voxel_delta = VoxelDeltaBuilder(m)
+            m.integrate_points([(0.0, 0.0, 0.05), (.02, .01, 0.05)],
+                               origin=(0, 0, .2), labels=[2, 2],
+                               instance_ids=[3, 3],
+                               _vectorized=vectorized)
+            deltas.append(m._voxel_delta.finalize())
+        self.assertEqual(sorted(int(i) for i in deltas[0].indices),
+                         sorted(int(i) for i in deltas[1].indices),
+                         'scalar and vectorized paths must record the '
+                         'same delta cell set')
+
+
 if __name__ == "__main__":
     unittest.main()
