@@ -97,7 +97,10 @@ def run_tree(tree, boxes, resolution, samples, candidate, nohook=False):
 
 
 def p95(values):
-    return sorted(values)[28] if len(values) >= 30 else None
+    """Nearest-rank P95: ceil(0.95*n)-1 (sorted[28] only when n=30)."""
+    import math
+    return sorted(values)[math.ceil(0.95 * len(values)) - 1] \
+        if len(values) >= 30 else None
 
 
 def main():

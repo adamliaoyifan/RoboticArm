@@ -66,6 +66,7 @@ class QueryExportPublisher:
         self._queue = queue.Queue()
         self._encoder = None
         self._encoder_error = ''
+        self.healed_objects = 0
         self._latest_committed = None   # (snapshot, dirty, provenance)
         self._head_written_ns = 0
         os.makedirs(os.path.join(self.root, 'objects'), exist_ok=True)
@@ -324,12 +325,23 @@ class QueryExportPublisher:
             if len(manifest['entries']) > MAX_PENDING_ENTRIES:
                 raise WireError('ENTRY_TABLE_TOO_LARGE')
             # Write new objects (content-addressed; unchanged skipped).
+            # A RESYNC/force-full publish rebuilds receiver trust, so an
+            # existing object file is trusted by NAME on normal publishes
+            # but VERIFIED by hash here: a corrupted file in the root
+            # would otherwise never heal (the receiver keeps rejecting
+            # the same digest and no normal publish rewrites it).
             written = skipped = 0
             for name, (digest, payload) in emitted.items():
                 path = os.path.join(self.root, 'objects', digest)
                 if os.path.exists(path):
-                    skipped += 1
-                    continue
+                    if not force_full:
+                        skipped += 1
+                        continue
+                    with open(path, 'rb') as handle:
+                        if sha256_hex(handle.read()) == digest:
+                            skipped += 1
+                            continue
+                    self.healed_objects += 1
                 temp = path + '.tmp'
                 with open(temp, 'wb') as handle:
                     handle.write(payload)

@@ -158,8 +158,16 @@ class QueryReplica:
             return cached
         self.cache_misses += 1
         path = os.path.join(self.root, 'objects', digest)
-        with open(path, 'rb') as handle:
-            payload = handle.read(MAX_OBJECT_BYTES + 1)
+        try:
+            with open(path, 'rb') as handle:
+                payload = handle.read(MAX_OBJECT_BYTES + 1)
+        except FileNotFoundError:
+            # A vanished object file is a TRANSPORT fault (A5 lost-
+            # object injection): a named failure into the resync path,
+            # never an uncaught crash of the receiver process.
+            raise WireError('OBJECT_MISSING', name) from None
+        except OSError as error:
+            raise WireError('OBJECT_IO_ERROR', str(error)) from None
         if len(payload) > MAX_OBJECT_BYTES:
             raise WireError('OBJECT_TOO_LARGE', name)
         if sha256_hex(payload) != digest:
