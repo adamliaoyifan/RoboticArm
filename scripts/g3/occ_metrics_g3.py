@@ -69,7 +69,24 @@ def judge_query_gate(queries, p95_bound_ms, max_bound_ms=None,
                      min_samples=30):
     """PASS requires: every request closed (no silent non-READY
     success), >=min_samples completed, P95 and max within bounds.
-    Failures are REPORTED, never filtered away to rescue a PASS."""
+    Failures are REPORTED, never filtered away to rescue a PASS.
+    Requests are evaluated PER PATH (facade core vs typed ROS
+    roundtrip): the gate must hold on every measured path."""
+    paths = sorted({q.get('path', 'facade') for q in queries})
+    if len(paths) > 1:
+        overall, worst_report = PASS, {}
+        for path in paths:
+            code, report = judge_query_gate(
+                [q for q in queries if q.get('path', 'facade') == path],
+                p95_bound_ms, max_bound_ms, min_samples)
+            worst_report[path] = {'verdict': code,
+                                  **{k: v for k, v in report.items()
+                                     if k != 'violations'}}
+            if code == FAIL:
+                overall = FAIL
+            elif code == NOT_EVALUATED and overall != FAIL:
+                overall = NOT_EVALUATED
+        return overall, {'per_path': worst_report}
     closed, violations = close_requests(queries)
     steady = [q for q in closed if q['status'] == 'ok'
               and not q.get('startup')]

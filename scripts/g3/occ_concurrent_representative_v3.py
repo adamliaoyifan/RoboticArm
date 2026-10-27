@@ -50,8 +50,9 @@ PERF_LOCK = '/tmp/elfin-occ-backend-perf.lock'
 
 WORKER = r'''
 import json, os, sys, time
-root, events_path, duration_s, interval_ms = (
-    sys.argv[1], sys.argv[2], float(sys.argv[3]), float(sys.argv[4]))
+root, events_path, duration_s, interval_ms, typed_flag = (
+    sys.argv[1], sys.argv[2], float(sys.argv[3]), float(sys.argv[4]),
+    sys.argv[5] == 'typed')
 for entry in (%r + "/src/luggage_description",
               %r + "/src/luggage_perception", %r):
     sys.path.insert(0, entry)
@@ -85,6 +86,42 @@ request_id = 0
 seen_events = 0
 startup = True
 next_rss = 0.0
+
+typed_node = None
+typed_client = None
+if typed_flag:
+    import rclpy
+    from luggage_msgs.srv import QueryCargoCellsV2
+    from luggage_perception.cargo_map_query_service import MapQueryService
+    rclpy.init()
+    typed_node = rclpy.create_node('occ_g3_typed_worker')
+    MapQueryService(typed_node, facade, None)
+    typed_client = typed_node.create_client(
+        QueryCargoCellsV2, '/cargo_map/query_cells_v2')
+
+
+def typed_query_roundtrip():
+    """REAL typed ROS roundtrip over the graph (serialization + DDS
+    transport + callback), recorded as its own measurement path."""
+    from luggage_msgs.srv import QueryCargoCellsV2
+    request = QueryCargoCellsV2.Request()
+    request.query.request_id = 'typed-g3'
+    request.query.frame_id = 'container_link'
+    request.query.use_current = True
+    request.query.release_after_query = True
+    future = typed_client.call_async(request)
+    deadline = time.monotonic() + 2.0
+    while not future.done() and time.monotonic() < deadline:
+        rclpy.spin_once(typed_node, timeout_sec=0.001)
+    if not future.done():
+        return 'timeout', None
+    response = future.result()
+    status = response.meta.status
+    if status != 'OK':
+        return 'named_reject', status
+    return 'ok', None
+
+
 deadline = time.time() + duration_s
 while time.time() < deadline:
     t0 = time.perf_counter_ns()
@@ -108,7 +145,7 @@ while time.time() < deadline:
         err = 'exception:' + type(error).__name__
     total_ms = (time.perf_counter_ns() - t0) / 1e6
     record = {'kind': 'query', 'request_id': 'q' + str(request_id),
-              'expected': 'CURRENT',
+              'expected': 'CURRENT', 'path': 'facade',
               'returned': (list(replica.snapshot.identity[:2])
                           if replica.snapshot is not None else None),
               'status': ('ok' if err is None else
@@ -117,11 +154,24 @@ while time.time() < deadline:
               'reason': err, 'total_ms': round(total_ms, 3),
               'state_at_request': str(state), 'startup': startup}
     out.write(json.dumps(record) + '\n')
+    if typed_client is not None:
+        t1 = time.perf_counter_ns()
+        status, detail = typed_query_roundtrip()
+        typed_ms = (time.perf_counter_ns() - t1) / 1e6
+        out.write(json.dumps({
+            'kind': 'query', 'request_id': 't' + str(request_id),
+            'expected': 'CURRENT', 'path': 'typed', 'returned': None,
+            'status': status, 'reason': detail,
+            'total_ms': round(typed_ms, 3),
+            'state_at_request': str(state), 'startup': startup}) + '\n')
     if time.time() >= next_rss:
         emit({'kind': 'rss', 'process': 'query', 'rss_mb': rss_mb()})
         next_rss = time.time() + 1.0
     time.sleep(interval_ms / 1000.0)
 emit({'kind': 'rss', 'process': 'query', 'rss_mb': rss_mb()})
+if typed_node is not None:
+    typed_node.destroy_node()
+    rclpy.shutdown()
 out.close()
 '''
 
@@ -172,6 +222,12 @@ def main():
     parser.add_argument('--query-max-ms', type=float, default=250.0)
     parser.add_argument('--vis-p95-ms', type=float, default=1000.0)
     parser.add_argument('--vis-max-ms', type=float, default=2000.0)
+    parser.add_argument('--mode', choices=('d0', 'd1'), default='d1',
+                        help='d1: overlapping writes (visibility gated);'
+                             ' d0: read-only window (visibility N/A)')
+    parser.add_argument('--typed', action='store_true',
+                        help='also measure REAL typed ROS roundtrips '
+                             '(separate judge path)')
     parser.add_argument('--out', required=True,
                         help='output prefix: <out>.events.jsonl + <out>.json')
     args = parser.parse_args()
@@ -219,14 +275,56 @@ def main():
         [sys.executable, '-c',
          WORKER % (_WS_SRC, _WS_SRC, _WS_SRC),
          root, worker_events, str(args.duration_s + 3.0),
-         str(args.query_interval_ms)],
+         str(args.query_interval_ms),
+         'typed' if args.typed else 'plain'],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     revision = 3
     emitted_ledgers = set()
     next_rss = 0.0
-    deadline = time.time() + args.duration_s
     writes = []
+    if args.mode == 'd0':
+        # Read-only window: the writer idles; only the worker queries.
+        deadline = time.time() + args.duration_s
+        while time.time() < deadline:
+            time.sleep(0.5)
+            emit({'kind': 'rss', 'process': 'writer',
+                  'rss_mb': rss_mb_self(),
+                  'worker_rss_mb': rss_mb_pid(worker.pid)})
+        worker.communicate(timeout=30)
+        hook.wait_pending(60.0)
+        emit({'kind': 'rss', 'process': 'writer', 'rss_mb': rss_mb_self(),
+              'worker_rss_mb': None})
+        hook.close()
+        os.close(lock_fd)
+        records = []
+        for path in (events_path, worker_events):
+            with open(path) as handle:
+                for line in handle:
+                    if line.strip():
+                        records.append(json.loads(line))
+        records.sort(key=lambda r: r.get('t_ns', 0))
+        with open(events_path, 'w') as handle:
+            for record in records:
+                handle.write(json.dumps(record) + '\n')
+        gates = {'query': {'p95_bound_ms': args.query_p95_ms,
+                           'max_bound_ms': args.query_max_ms}}
+        verdict = judge(records, gates)
+        summary = {
+            'revision': subprocess.check_output(
+                ['git', 'rev-parse', 'HEAD'], cwd=_WS_SRC,
+                text=True).strip(),
+            'mode': 'd0',
+            'scope': ('gen3 D0 read-only window: query gate only '
+                      '(visibility N/A per plan 7.2)'),
+            'boxes': args.boxes, 'resolution': args.resolution,
+            'duration_s': args.duration_s, 'raw_events': events_path,
+            'gates': verdict['gates'], 'exit': verdict['exit']}
+        with open(args.out + '.json', 'w') as handle:
+            json.dump(summary, handle, indent=1)
+        print(json.dumps(summary, indent=1))
+        return verdict['exit']
+    deadline = time.time() + args.duration_s
     while time.time() < deadline:
         t0 = time.perf_counter_ns()
         result = integrate(store, mapper, cloud, 1000 + revision)
