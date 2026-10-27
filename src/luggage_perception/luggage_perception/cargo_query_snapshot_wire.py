@@ -163,6 +163,36 @@ def _encode_distance_index(index):
         np.asarray(index.upper, dtype='<f8'))
 
 
+def decode_surface_object(payload):
+    """'surface' payload -> SurfaceProjection (single decode source for
+    the full rebuild AND the delta apply path)."""
+    surface_meta = decode_json_object(payload)
+    tiles = []
+    for tile in surface_meta['tiles']:
+        fields = {}
+        for name, values in tile['fields'].items():
+            # Numeric and string fields both rebuild exact dtypes.
+            from luggage_perception.cargo_surface_projection import (
+                FIELD_DTYPES)
+            dtype = np.dtype(FIELD_DTYPES[name])
+            fields[name] = immutable_array(
+                np.asarray(values, dtype=dtype))
+        tiles.append(SurfaceTile(
+            tuple(int(v) for v in tile['start']),
+            tuple(int(v) for v in tile['shape']),
+            MappingProxyType(fields)))
+    return SurfaceProjection(
+        tuple(int(v) for v in surface_meta['shape']), tuple(tiles))
+
+
+def decode_distance_object(lower_payload, upper_payload):
+    return DistanceIndex(
+        immutable_array(np.asarray(decode_array_object(lower_payload),
+                                   dtype='<f8')),
+        immutable_array(np.asarray(decode_array_object(upper_payload),
+                                   dtype='<f8')))
+
+
 def rebuild_snapshot(objects, expected_identity=None):
     """Wire objects -> deep-immutable QuerySnapshotData (stage A1a)."""
     def payload(name):
@@ -238,31 +268,12 @@ def rebuild_snapshot(objects, expected_identity=None):
             decode_json_object(payload('unbound_geometry_count'))))
     surface_projection = None
     if 'surface' in objects:
-        surface_meta = decode_json_object(payload('surface'))
-        tiles = []
-        for tile in surface_meta['tiles']:
-            fields = {}
-            for name, values in tile['fields'].items():
-                dtype = None
-                # Numeric and string fields both rebuild exact dtypes.
-                from luggage_perception.cargo_surface_projection import (
-                    FIELD_DTYPES)
-                dtype = np.dtype(FIELD_DTYPES[name])
-                fields[name] = immutable_array(
-                    np.asarray(values, dtype=dtype))
-            tiles.append(SurfaceTile(
-                tuple(int(v) for v in tile['start']),
-                tuple(int(v) for v in tile['shape']),
-                MappingProxyType(fields)))
-        surface_projection = SurfaceProjection(
-            tuple(int(v) for v in surface_meta['shape']), tuple(tiles))
+        surface_projection = decode_surface_object(payload('surface'))
     distance_index = None
     if 'distance_index.lower' in objects:
-        distance_index = DistanceIndex(
-            immutable_array(np.asarray(decode_array_object(
-                payload('distance_index.lower')), dtype='<f8')),
-            immutable_array(np.asarray(decode_array_object(
-                payload('distance_index.upper')), dtype='<f8')))
+        distance_index = decode_distance_object(
+            payload('distance_index.lower'),
+            payload('distance_index.upper'))
     data_with_derived = QuerySnapshotData(
         data.identity, data.grid, data.blocks, data.sensor_blocks,
         data.box_blocks, data.summary_values, data.map_snapshot, b'',

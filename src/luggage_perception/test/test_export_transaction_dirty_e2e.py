@@ -26,6 +26,7 @@ import os
 import sys
 import tempfile
 import time
+import json
 import unittest
 
 PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(
@@ -272,6 +273,41 @@ class TestExportTransactionDirtyE2E(unittest.TestCase):
                 self.assertEqual(
                     list(entry['identity'] or [])[:1],
                     [final.identity[0]])
+
+    def test_delta_apply_updates_derived_surface_and_distance(self):
+        """Gen3 defect pin (found by the fault gate's full-snapshot wire
+        fingerprint): _apply_delta used to carry the PREVIOUS
+        generation's surface_projection/distance_index forward, serving
+        stale derived data under the new identity. After any DELTA
+        apply, the replica's COMPLETE wire encoding must equal the
+        source's -- every object, including surface/distance."""
+        from luggage_perception.cargo_query_snapshot_wire import (
+            encode_snapshot)
+        from luggage_perception.cargo_query_wire import sha256_hex
+
+        def fingerprint(snapshot):
+            payloads = encode_snapshot(
+                snapshot, 'pin', 0, dirty_blocks=None,
+                provenance_changed=True)
+            table = {name: sha256_hex(payload)
+                     for name, payload in sorted(payloads.items())}
+            import hashlib
+            return hashlib.sha256(json.dumps(
+                table, sort_keys=True).encode()).hexdigest()
+
+        points = np.array([[.0, .0, CENTER[2] - .4],
+                           [.02, .02, CENTER[2] - .4]])
+        for index in range(3):
+            self.assertTrue(
+                self._integrate(points, 'derived-%d' % index).accepted)
+            data = source_data(self.store)
+            self._drain(data.identity)
+            self._assert_content_matches(data)
+            assert self.replica.snapshot is not None
+            self.assertEqual(fingerprint(self.replica.snapshot),
+                             fingerprint(data),
+                             'full wire fingerprint diverged after '
+                             'DELTA %d (stale derived object?)' % index)
 
     def test_accumulator_consumed_only_on_accepted_offer(self):
         """A failed offer must keep the accumulated dirt so it ships

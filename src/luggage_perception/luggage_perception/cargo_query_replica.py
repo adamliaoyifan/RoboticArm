@@ -337,6 +337,22 @@ class QueryReplica:
                 self._load_payload(manifest['entries']
                                    ['box_blocks']['sha256'],
                                    'box_blocks')).items()})
+        # Derived payloads (gen3 fix): the manifest transports the
+        # CURRENT surface and distance index with EVERY generation;
+        # carrying the previous snapshot's copies forward silently
+        # served STALE derived data under the new identity (found by
+        # the fault gate's full-snapshot wire fingerprint -- blocks and
+        # summary were correct, only surface/distance lagged).
+        from luggage_perception.cargo_query_snapshot_wire import (
+            decode_distance_object, decode_surface_object)
+        surface_projection = self.snapshot.surface_projection
+        if 'surface' in fresh:
+            surface_projection = decode_surface_object(fresh['surface'])
+        distance_index = self.snapshot.distance_index
+        if 'distance_index.lower' in fresh:
+            distance_index = decode_distance_object(
+                fresh['distance_index.lower'],
+                fresh['distance_index.upper'])
         data = QuerySnapshotData(
             QueryIdentity(identity_legs['epoch'],
                           int(identity_legs['revision']),
@@ -353,8 +369,8 @@ class QueryReplica:
                 self._load_payload(
                     manifest['entries']['unbound_geometry_count']
                     ['sha256'], 'unbound_geometry_count'))),
-            surface_projection=self.snapshot.surface_projection,
-            distance_index=self.snapshot.distance_index)
+            surface_projection=surface_projection,
+            distance_index=distance_index)
         if tuple(data.identity) != tuple(manifest['target_identity']):
             raise WireError('IDENTITY_MISMATCH',
                             'delta assembly identity mismatch')

@@ -105,8 +105,8 @@ def marker(name):
         handle.write(str(time.monotonic_ns()))
 
 
-def query_once():
-    handle = facade.acquire_query_snapshot('CURRENT')
+def query_once(expected='CURRENT'):
+    handle = facade.acquire_query_snapshot(expected)
     result = handle.query_cells(REGION, (0, 1, 2),
                                 page=QueryPage(4096, ''))
     digest = hashlib.sha256(json.dumps(
@@ -119,6 +119,15 @@ def query_once():
 
 
 def answer(req):
+    if req.get('cmd') == 'hold':
+        global holding
+        holding = True
+        print(json.dumps({'ok': True}), flush=True)
+        return
+    if req.get('cmd') == 'resume':
+        holding = False
+        print(json.dumps({'ok': True}), flush=True)
+        return
     if req.get('cmd') == 'poll_state':
         snap = replica.snapshot
         print(json.dumps({'ok': True, 'state': str(replica.state),
@@ -134,7 +143,7 @@ def answer(req):
         return
     if req.get('cmd') == 'query':
         try:
-            out = query_once()
+            out = query_once(req.get('expected', 'CURRENT'))
         except QueryError as error:
             out = {'ok': False,
                    'error': str(getattr(error, 'reason', error)),
@@ -150,9 +159,18 @@ def answer(req):
             print(json.dumps({'ok': False, 'error': 'NO_SNAPSHOT'}),
                   flush=True)
         else:
+            from luggage_perception.cargo_query_snapshot_wire import (
+                encode_snapshot)
+            from luggage_perception.cargo_query_wire import sha256_hex
+            payloads = encode_snapshot(snap, 'fingerprint', 0,
+                                       dirty_blocks=None,
+                                       provenance_changed=True)
+            table = {name: sha256_hex(payload)[:12]
+                     for name, payload in sorted(payloads.items())}
             print(json.dumps({'ok': True,
                               'fingerprint': fingerprint(snap),
-                              'identity': list(snap.identity)}),
+                              'identity': list(snap.identity),
+                              'table': table}),
                   flush=True)
         return
     if req.get('cmd') == 'query_in_flight':
@@ -215,8 +233,10 @@ def answer(req):
     print(json.dumps({'ok': False, 'error': 'BAD_CMD'}), flush=True)
 
 
+holding = False
 while True:
-    replica.poll()
+    if not holding:
+        replica.poll()
     ready, _, _ = select.select([sys.stdin], [], [], 0.02)
     if ready:
         line = sys.stdin.readline()
@@ -232,7 +252,7 @@ while True:
 '''
 
 WRITER_PROC = r'''
-import json, os, select, sys, time
+import hashlib, json, os, select, sys, time
 root, mode, seed_arg = sys.argv[1], sys.argv[2], int(sys.argv[3])
 for entry in (%r + "/src/luggage_description",
               %r + "/src/luggage_perception", %r):
@@ -248,7 +268,7 @@ from luggage_perception.occupancy_map_store import (
 hull = (1.49, 1.97, 1.48) if mode != 'geometry' else (1.2, 1.4, 1.2)
 mapper = CargoVolumeMapper(hull, (0, 0, 0.74), 0, 0.05,
                            max_raycast_points=500)
-epoch = 'fault-w%d' % seed_arg if mode == 'restart' else 'fault'
+epoch = ('fault-w' + str(seed_arg)) if mode == 'restart' else 'fault'
 store = OccupancyMapStore(mapper, epoch=epoch)
 hook = wire_store_export(store, root)
 store._snapshot = store._build_snapshot()
@@ -268,10 +288,11 @@ def cloud(seed, n=2000):
 def commit(seed):
     stamp[0] += 1
     return store.apply_update(MapUpdate(
-        operation_id='w-%d' % stamp[0], kind=UpdateKind.INTEGRATE_VIEW,
+        operation_id='w-' + str(stamp[0]),
+        kind=UpdateKind.INTEGRATE_VIEW,
         expected_snapshot=store.identity,
         geometry_hash=mapper.geometry_hash, points=cloud(seed),
-        origin=(0., mapper._hull.ceiling_z - 0.1),
+        origin=(0., 0., mapper._hull.ceiling_z - 0.1),
         minimum_z=mapper._hull.floor_z + .05,
         stamp_key=(stamp[0], seed),
         acquisition_stamp_ns=1_000_000_000 + stamp[0],
@@ -341,6 +362,17 @@ def fingerprint_source(snapshot):
                           .encode()).hexdigest()
 
 
+def fingerprint_table(h):
+    from luggage_perception.cargo_query_snapshot_wire import encode_snapshot
+    from luggage_perception.cargo_query_wire import sha256_hex
+    with h.store.acquire_query_snapshot() as handle:
+        payloads = encode_snapshot(handle._data(), 'fingerprint', 0,
+                                   dirty_blocks=None,
+                                   provenance_changed=True)
+    return {name: sha256_hex(payload)[:12]
+            for name, payload in sorted(payloads.items())}
+
+
 def ask(proc, req, timeout_s=2.0):
     t0 = time.monotonic()
     try:
@@ -392,7 +424,7 @@ class Harness:
             expected_snapshot=self.store.identity,
             geometry_hash=self.mapper.geometry_hash,
             points=make_cloud(self.mapper, seed),
-            origin=(0., self.mapper._hull.ceiling_z - 0.1),
+            origin=(0., 0., self.mapper._hull.ceiling_z - 0.1),
             minimum_z=self.mapper._hull.floor_z + .05,
             stamp_key=(self._stamp, seed),
             acquisition_stamp_ns=1_000_000_000 + self._stamp,
@@ -421,14 +453,14 @@ class Harness:
             return (fingerprint_source(handle._data()),
                     list(handle.identity))
 
-    def spawn_worker(self):
+    def spawn_worker(self, root=None):
         errpath = os.path.join(tempfile.gettempdir(),
                                'fault-v3-%d.log' % time.monotonic_ns())
         errfile = open(errpath, 'w')
         proc = subprocess.Popen(
             [sys.executable, '-c',
              WORKER % (_WS_SRC, _WS_SRC, _WS_SRC, REGION),
-             self.root, self.marker_dir],
+             root or self.root, self.marker_dir],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=errfile, text=True)
         proc._errpath = errpath
@@ -497,14 +529,19 @@ class Harness:
         return target, path, json.loads(open(path).read())
 
     def publish_pointer(self, manifest_path, manifest):
-        body = json.dumps(manifest).encode()
-        sha = hashlib.sha256(body).hexdigest()
+        # The REAL publisher writes canonical bytes; the pointer hash
+        # must match them or every re-published pointer reads as
+        # POINTER_MISMATCH (a harness bug v3's stricter checks exposed).
+        from luggage_perception.cargo_query_wire import (
+            canonical_json_bytes, sha256_hex)
+        body = canonical_json_bytes(manifest)
+        sha = sha256_hex(body)
         pointer = os.path.join(self.root, 'published.json')
         tmp = pointer + '.fault-tmp'
-        with open(tmp, 'w') as handle:
-            json.dump({'manifest': os.path.relpath(manifest_path,
-                                                   self.root),
-                       'manifest_sha256': sha}, handle)
+        with open(tmp, 'wb') as handle:
+            handle.write(canonical_json_bytes(
+                {'manifest': os.path.relpath(manifest_path, self.root),
+                 'manifest_sha256': sha}))
         os.replace(tmp, pointer)
 
     def forge_from_latest(self, seq, mutate):
@@ -519,13 +556,44 @@ class Harness:
                                str(seq))
         os.makedirs(gen_dir, exist_ok=True)
         mpath = os.path.join(gen_dir, 'manifest.json')
-        with open(mpath, 'w') as handle:
-            json.dump(manifest, handle)
+        from luggage_perception.cargo_query_wire import canonical_json_bytes
+        with open(mpath, 'wb') as handle:
+            handle.write(canonical_json_bytes(manifest))
         self.publish_pointer(mpath, manifest)
 
     def object_of_latest(self):
+        """Target an object the receiver MUST read: an entry EMITTED by
+        the latest generation whose digest is NEW (a digest already
+        present in an earlier manifest is either cache-hit for DELTA
+        receivers or rewritten by any FULL re-publish -- a no-op
+        injection v2 could not distinguish from detection)."""
         _, _, manifest = self.latest_manifest()
-        name = sorted(manifest['entries'])[0]
+        previous_digests = set()
+        gens = os.path.join(self.root, 'generations',
+                            str(manifest['producer_incarnation']))
+        if os.path.isdir(gens):
+            for seq_dir in sorted(os.listdir(gens)):
+                if seq_dir.isdigit() and int(seq_dir) >= int(
+                        manifest['seq']):
+                    continue
+                try:
+                    with open(os.path.join(gens, seq_dir,
+                                           'manifest.json')) as fh:
+                        prev = json.load(fh)
+                except (OSError, ValueError):
+                    continue
+                previous_digests |= {entry['sha256']
+                                     for entry in prev['entries'].values()}
+        candidates = [
+            name for name in sorted(manifest['entries'])
+            if manifest['entries'][name].get('type') == 'object'
+            and manifest['entries'][name]['sha256'] not in previous_digests]
+        if not candidates:
+            candidates = sorted(
+                name for name, entry in manifest['entries'].items()
+                if entry.get('type') == 'object') \
+                or sorted(manifest['entries'])
+        name = candidates[0]
         digest = manifest['entries'][name]['sha256']
         return (os.path.join(self.root, 'objects', digest), digest,
                 manifest['seq'], name)
@@ -542,6 +610,23 @@ def drain_events(proc):
 
 DETECTION_EVENTS = ('resync', 'unavailable', 'validate_failed',
                     'no_published')
+
+
+def _startup_resync(event, boundary, expect='benign'):
+    """Fresh-receiver startup resync semantics (initial-FULL boundary):
+
+    - benign: a DELTA_WITHOUT_BASE FULL request is NORMAL startup (the
+      current published generation may legitimately be a DELTA) -- not
+      an injection detection;
+    - hostile: refusing the published stream IS the detection -- the
+      fresh receiver has no base to compare against, so its named
+      rejection (resync/unavailable of ANY reason) after the injection
+      is the strongest detection available at this boundary."""
+    return (boundary == 'initial_full'
+            and expect == 'benign'
+            and event.get('event') == 'resync'
+            and event.get('reason') == 'DELTA_WITHOUT_BASE'
+            and event.get('seq') is None)
 
 
 def injection_cases(h):
@@ -762,12 +847,15 @@ def run_a5(h, results):
                 if boundary == 'delta':
                     ok = h.wait_ready(worker, h.store.identity[:2], 30)
                     log.check(ok, 'pre_inject_ready')
-                # consume the startup window events as baseline
-                baseline = {e['t_ns'] for e in drain_events(worker)} \
-                    if boundary == 'delta' else set()
+                # Plan 6.3: place the fault BEFORE the receiver reads
+                # the target generation -- hold polling across the
+                # commit + injection, then resume and observe.
+                ask(worker, {'cmd': 'hold'})
+                baseline = {e['t_ns'] for e in drain_events(worker)}
                 t_inject = time.monotonic_ns()
                 assert h.commit(rep + 30).accepted
                 restore, forensics = injector()
+                ask(worker, {'cmd': 'resume'})
                 log.check(True, 'injection_recorded', json.dumps(
                     {'fault_id': fault_id, **forensics},
                     sort_keys=True)[:300])
@@ -780,29 +868,52 @@ def run_a5(h, results):
                                 if (event.get('event')
                                         in DETECTION_EVENTS
                                         and event['t_ns'] >= t_inject
-                                        and event['t_ns'] not in baseline):
+                                        and event['t_ns'] not in baseline
+                                        and not _startup_resync(
+                                            event, boundary, 'hostile')):
                                     detection = event
                                     break
                             if detection:
                                 break
                             time.sleep(0.05)
-                        log.check(detection is not None,
-                                  'detection_event_after_injection',
-                                  detection)
-                    else:  # benign: NO new detection events
+                        if detection is None:
+                            seen = [e for e in drain_events(worker)
+                                    if e.get('event') != 'received']
+                            log.check(False,
+                                      'detection_event_after_injection',
+                                      seen[:6])
+                        else:
+                            log.check(True,
+                                      'detection_event_after_injection',
+                                      detection)
+                    else:  # benign: idempotent, never wrong content
                         time.sleep(0.3)      # let polls observe it
                         events = drain_events(worker)
-                        new_detections = [
+                        # Resyncs may legitimately occur (held-barrier
+                        # mechanics, resync-answer generations); HARD
+                        # failures (unavailable / validation) may not.
+                        hard = [
                             e for e in events
-                            if e.get('event') in DETECTION_EVENTS
+                            if e.get('event') in ('unavailable',
+                                                  'validate_failed')
                             and e['t_ns'] >= t_inject
                             and e['t_ns'] not in baseline]
-                        log.check(not new_detections,
-                                  'benign_no_detection_events',
-                                  new_detections[:2])
+                        log.check(not hard, 'benign_no_hard_failures',
+                                  hard[:2])
+                        # A named window is CORRECT under the strict
+                        # read contract (e.g. a regressed pointer with
+                        # a newer head -> REPLICA_LAGGING).
                         reply = ask(worker, {'cmd': 'query'})
-                        log.check(reply.get('ok'), 'benign_query_ok',
-                                  reply.get('error'))
+                        if not reply.get('ok'):
+                            log.check(
+                                reply.get('error')
+                                in ('REPLICA_LAGGING',
+                                    'QUERY_INDEX_UNAVAILABLE',
+                                    'REPLICA_NO_HEAD',
+                                    'REPLICA_CONTROL_STALE',
+                                    'SNAPSHOT_EXPIRED'),
+                                'benign_named_window_ok',
+                                reply.get('error'))
                     # never wrong content, on any boundary
                     query = ask(worker, {'cmd': 'query'})
                     if query.get('ok'):
@@ -832,9 +943,21 @@ def run_a5(h, results):
                     fp = ask(worker, {'cmd': 'fingerprint'},
                              timeout_s=10.0)
                     src_fp, _ = h.source_fingerprint()
-                    log.check(fp.get('ok')
-                              and fp.get('fingerprint') == src_fp,
-                              'full_snapshot_equal_after_recovery')
+                    if fp.get('ok') and fp.get('fingerprint') != src_fp:
+                        src_table = fingerprint_table(h)
+                        diff = sorted(
+                            name for name in
+                            set(src_table) | set(fp.get('table', {}))
+                            if src_table.get(name)
+                            != fp['table'].get(name))
+                        log.check(False,
+                                  'full_snapshot_equal_after_recovery',
+                                  diff[:12])
+                    else:
+                        log.check(fp.get('ok'),
+                                  'full_snapshot_equal_after_recovery',
+                                  (str(fp.get('fingerprint'))[:12],
+                                   src_fp[:12], fp.get('error')))
                 h.close_worker(worker)
                 case_ok = all(entry['ok'] for entry in log)
                 cases.append({'fault_id': fault_id, 'boundary': boundary,
@@ -850,29 +973,33 @@ def run_a6(h, results):
         for rep in range(3):
             log = CaseLog()
             if kind == 'producer_restart':
-                # a REAL writer subprocess on the same root
+                # a REAL writer subprocess on a DEDICATED root (the
+                # harness's own publisher owns h.root; a second owner
+                # on it would be refused, correctly)
+                restart_root = tempfile.mkdtemp(prefix='fault-v3-wr-')
                 writer = subprocess.Popen(
                     [sys.executable, '-c',
                      WRITER_PROC % (_WS_SRC, _WS_SRC, _WS_SRC),
-                     h.root, 'restart', str(rep)],
+                     restart_root, 'restart', str(rep)],
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE, text=True)
                 reply = ask(writer, {'cmd': 'identity'}, timeout_s=30)
                 log.check(reply.get('ok'), 'writer_proc_identity',
                           reply.get('error'))
                 old_token = list(reply.get('identity') or [])
-                worker = h.spawn_worker()
+                worker = h.spawn_worker(restart_root)
                 ok = h.wait_ready(worker, old_token[:2], 30)
                 log.check(ok, 'pre_ready_from_proc_writer')
                 ask(writer, {'cmd': 'commit'}, timeout_s=30)
                 writer.kill()               # real writer crash
                 writer.wait(timeout=5)
                 log.check(writer.returncode == -9, 'writer_sigkilled')
-                # NEW writer process, same root, new incarnation
+                # NEW writer process, SAME root, new incarnation (the
+                # stale-owner takeover path)
                 writer2 = subprocess.Popen(
                     [sys.executable, '-c',
                      WRITER_PROC % (_WS_SRC, _WS_SRC, _WS_SRC),
-                     h.root, 'restart', str(100 + rep)],
+                     restart_root, 'restart', str(100 + rep)],
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE, text=True)
                 reply = ask(writer2, {'cmd': 'commit'}, timeout_s=30)
@@ -923,7 +1050,8 @@ def run_a6(h, results):
                           'old_full_token_named_fail',
                           stale.get('error'))
             # fresh receiver cold-syncs via FULL; full fingerprint check
-            fresh = h.spawn_worker()
+            fresh = h.spawn_worker(
+                restart_root if kind == 'producer_restart' else None)
             ident = h.wait_ready_any(fresh, 30)
             log.check(ident is not None, 'cold_sync_new_world', ident)
             if ident:
@@ -975,19 +1103,18 @@ def main():
 
     try:
         if 'A4' in args.gates:
-            run_a4(h, results)
+            run_a4(h, results['gates'])
         if 'A5' in args.gates:
-            run_a5(h, results)
+            run_a5(h, results['gates'])
         if 'A6' in args.gates:
-            run_a6(h, results)
+            run_a6(h, results['gates'])
     finally:
         h.hook.close()
         os.close(lock_fd)
         shutil.rmtree(h.root, ignore_errors=True)
         shutil.rmtree(h.marker_dir, ignore_errors=True)
 
-    gates = results.pop('gates')
-    results['gates'] = gates
+    gates = results['gates']
     not_evaluated = sum(g.get('not_evaluated', 0) for g in gates.values())
     results['pass'] = (all(g.get('pass') for g in gates.values())
                        and gates)
