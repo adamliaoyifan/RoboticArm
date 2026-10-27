@@ -26,6 +26,7 @@ import json, sys, time
 root_tree = sys.argv[1]
 boxes = int(sys.argv[2]); resolution = float(sys.argv[3])
 samples = int(sys.argv[4]); warm = int(sys.argv[5])
+outside = float(sys.argv[6]); crossing = float(sys.argv[7]) > 0
 sys.path.insert(0, root_tree + "/src/luggage_perception")
 sys.path.insert(0, root_tree + "/src/luggage_description")
 sys.path.insert(0, root_tree)
@@ -56,18 +57,35 @@ if CANDIDATE and not NOHOOK:
     store._snapshot = store._build_snapshot()
     hook.wait_pending(120.0)
 
-cloud = np.column_stack([
-    np.random.default_rng(3).uniform(-0.6, 0.6, 30000),
-    np.random.default_rng(4).uniform(-0.8, 0.8, 30000),
-    np.random.default_rng(5).uniform(
-        mapper._hull.floor_z + .1, mapper._hull.floor_z + 1.2, 30000)])
+# FROZEN workload generator (compare_occ_crop.workload semantics,
+# review_8a372dee P2: the A8 gate measures the protocol's
+# outside/crossing profiles, not an all-inside uniform cloud):
+# inside points span the container; the outside fraction sits either
+# far away (crossing 0) or just beyond the wall so rays from the
+# external origin CROSS the container (crossing .5).
+def frozen_cloud(n, outside_fraction, crossing_capable):
+    rng = np.random.default_rng(20261023)
+    inside_n = int(round(n * (1 - outside_fraction)))
+    inside = rng.uniform([-.60, -.6, .7], [.60, .4, 1.7], (inside_n, 3))
+    if crossing_capable:
+        external = rng.uniform([1.1, -.6, .7], [1.6, .4, 1.7],
+                               (n - inside_n, 3))
+    else:
+        external = rng.uniform([-2.5, -.6, .7], [-1.5, .4, 1.7],
+                               (n - inside_n, 3))
+    points = np.concatenate([inside, external])
+    rng.shuffle(points)
+    return points
+
+cloud = frozen_cloud(30000, outside, crossing)
+ORIGIN = (-1.2, 0., 1.1)          # external sensor, as frozen
 
 def integrate(stamp):
     return store.apply_update(MapUpdate(
         operation_id='a8-%d' % stamp, kind=UpdateKind.INTEGRATE_VIEW,
         expected_snapshot=store.identity,
         geometry_hash=mapper.geometry_hash, points=cloud,
-        origin=(0., 0., mapper._hull.ceiling_z - 0.1),
+        origin=ORIGIN,
         minimum_z=mapper._hull.floor_z + .05,
         stamp_key=(stamp, 0),
         acquisition_stamp_ns=1_000_000_000 + stamp,
@@ -82,12 +100,14 @@ for stamp in range(warm, warm + samples):
 '''
 
 
-def run_tree(tree, boxes, resolution, samples, candidate, nohook=False):
+def run_tree(tree, boxes, resolution, samples, candidate, nohook=False,
+             outside=0.5, crossing=0.0):
     extra = ('nohook' if nohook else
              ('candidate' if candidate else 'baseline'))
     result = subprocess.run(
         [sys.executable, '-c', WORKER, tree, str(boxes),
-         str(resolution), str(samples), '3', extra],
+         str(resolution), str(samples), '3', str(outside),
+         str(crossing), extra],
         capture_output=True, text=True, timeout=3600)
     if result.returncode != 0:
         raise RuntimeError('%s worker failed: %s'
@@ -110,18 +130,32 @@ def main():
     parser.add_argument('--boxes', type=int, default=0)
     parser.add_argument('--resolution', type=float, default=0.01)
     parser.add_argument('--samples', type=int, default=30)
+    parser.add_argument('--outside', type=float, default=None,
+                        help='frozen outside fraction; default: .5 for '
+                             '0 boxes, .9 for 20 boxes (plan 7.2)')
+    parser.add_argument('--crossing', type=float, default=None,
+                        help='frozen crossing profile; default: 0 for '
+                             '0 boxes, .5 for 20 boxes')
     parser.add_argument('--out', required=True)
     args = parser.parse_args()
+    outside = (args.outside if args.outside is not None
+               else (0.5 if args.boxes == 0 else 0.9))
+    crossing = (args.crossing if args.crossing is not None
+                else (0.0 if args.boxes == 0 else 0.5))
 
     lock_fd = os.open(PERF_LOCK, os.O_CREAT | os.O_RDWR)
     fcntl.flock(lock_fd, fcntl.LOCK_EX)
     try:
         baseline = run_tree(args.baseline_tree, args.boxes,
-                            args.resolution, args.samples, False)
+                            args.resolution, args.samples, False,
+                            outside, crossing)
         nohook = run_tree(args.candidate_tree, args.boxes,
-                          args.resolution, args.samples, False, nohook=True)
+                          args.resolution, args.samples, False,
+                          nohook=True, outside=outside,
+                          crossing=crossing)
         candidate = run_tree(args.candidate_tree, args.boxes,
-                             args.resolution, args.samples, True)
+                             args.resolution, args.samples, True,
+                             outside, crossing)
     finally:
         os.close(lock_fd)
 
@@ -137,6 +171,11 @@ def main():
         'baseline_tree': args.baseline_tree,
         'candidate_tree': args.candidate_tree,
         'boxes': args.boxes, 'resolution': args.resolution,
+        'workload': {'points': 30000, 'outside': outside,
+                     'crossing': crossing,
+                     'generator': 'frozen (compare_occ_crop.workload '
+                                  'semantics, rng 20261023, external '
+                                  'origin)'},
         'baseline_p95_ms': round(b_p95, 3) if b_p95 else None,
         'candidate_p95_ms': round(c_p95, 3) if c_p95 else None,
         'ratio': ratio,
