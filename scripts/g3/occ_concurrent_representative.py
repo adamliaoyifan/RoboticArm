@@ -59,6 +59,7 @@ facade = QueryMapReadFacade(replica)
 floor = 0.0
 region = ((-0.15, -0.15, floor), (0.15, 0.15, floor + 0.3))
 rows, errors, states = [], [], {}
+startup_errors = 0
 deadline = time.time() + duration_s
 ready_seen = False
 while time.time() < deadline:
@@ -79,10 +80,19 @@ while time.time() < deadline:
         rows.append({'t': time.time(), 'ms': round(elapsed_ms, 3),
                      'identity': ident})
     elif err is not None:
-        errors.append(err)
+        # Queries before the FIRST successful sync are startup, not
+        # steady-state: the receiver is still fetching its first FULL
+        # (heavy decode at fine resolutions). Reported separately.
+        detail = (err + '|last=' + replica.last_error[:40]
+                  + '|snap=' + str(snap is not None))
+        if ready_seen:
+            errors.append(detail)
+        else:
+            startup_errors += 1
     time.sleep(interval_ms / 1000.0)
 print(json.dumps({'rows': rows, 'errors': errors[:10],
-                  'error_count': len(errors), 'states': states,
+                  'error_count': len(errors),
+                  'startup_errors': startup_errors, 'states': states,
                   'ready_seen': ready_seen}))
 '''
 
@@ -227,6 +237,8 @@ def main():
                     'p95_ms': nearest_rank_p95(lat),
                     'max_ms': round(lat[-1], 3) if lat else None,
                     'errors': queried['error_count'],
+                    'startup_errors': queried.get('startup_errors'),
+                    'error_samples': queried['errors'],
                     'replica_states': queried['states'],
                     'ready_seen': queried['ready_seen']},
         'freshness': {'n': len(lag_ms),

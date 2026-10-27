@@ -68,6 +68,41 @@ class QueryReplica:
 
     # -- polling -------------------------------------------------------
 
+
+    # Slack for the publisher's 0.25s head heartbeat under back-to-back
+    # commits: a real manifest never runs more than this far ahead of
+    # the publisher's own heartbeat sequence.
+    HEAD_SEQ_SLACK = 8
+
+    @property
+    def _head_seq(self):
+        try:
+            head = self.head_state()
+        except Exception:  # noqa: BLE001 - heartbeat is advisory
+            return None
+        if not head:
+            return None
+        producer = head.get('producer')
+        seq = head.get('seq')
+        if not isinstance(seq, int):
+            return None
+        return (str(producer), int(seq))
+
+    def _seq_plausible(self, manifest):
+        """True when the manifest's seq is consistent with what the
+        PUBLISHER itself has heartbeat-ed (guards the forged-manifest
+        wedge: a valid-checksum forged FULL with a huge seq would be
+        applied and then wedge the receiver against all real
+        generations). No heartbeat or a different producer -> judge
+        unknown, stay permissive (other checks govern)."""
+        head = self._head_seq
+        if head is None:
+            return True
+        producer, head_seq = head
+        if producer != str(manifest['producer_incarnation']):
+            return True
+        return int(manifest['seq']) <= head_seq + self.HEAD_SEQ_SLACK
+
     def poll(self):
         """One non-blocking poll cycle. Returns the state after it."""
         try:
@@ -90,6 +125,19 @@ class QueryReplica:
                                         'delta from a new incarnation')
             elif manifest['kind'] == 'FULL' and \
                     int(manifest['seq']) > int(self.manifest['seq']):
+                # Self-contained resync answer: apply directly -- but a
+                # manifest whose seq runs far AHEAD of the publisher's
+                # own heartbeat was never published by this producer
+                # (A5 forged-manifest injection): applying it would
+                # wedge the receiver, which would then ignore every
+                # real lower-seq generation as "old". Reject + resync.
+                # Slack covers the 0.25s heartbeat cadence under
+                # back-to-back commits.
+                if not self._seq_plausible(manifest):
+                    return self._resync('MANIFEST_SEQ_AHEAD',
+                                        'seq %s vs head %s'
+                                        % (manifest['seq'],
+                                           self._head_seq))
                 pass  # self-contained resync answer: apply directly
             elif int(manifest['seq']) <= int(self.manifest['seq']):
                 self.state = ReplicaState.READY
@@ -98,6 +146,13 @@ class QueryReplica:
                 return self._resync('SEQ_GAP',
                                     '%s -> %s' % (self.manifest['seq'],
                                                   manifest['seq']))
+        if self.manifest is None and manifest['kind'] == 'FULL' \
+                and not self._seq_plausible(manifest):
+            # A fresh receiver must not adopt a forged high-seq FULL
+            # either (same wedge as below).
+            return self._resync('MANIFEST_SEQ_AHEAD',
+                                'seq %s vs head %s'
+                                % (manifest['seq'], self._head_seq))
         if manifest['kind'] == 'DELTA':
             if self.manifest is None:
                 return self._resync('DELTA_WITHOUT_BASE')
@@ -164,13 +219,18 @@ class QueryReplica:
         except FileNotFoundError:
             # A vanished object file is a TRANSPORT fault (A5 lost-
             # object injection): a named failure into the resync path,
-            # never an uncaught crash of the receiver process.
+            # never an uncaught crash of the receiver process. The
+            # digest rides the resync request so the publisher can
+            # heal exactly this object (precise healing).
+            self._resync_object_hint = digest
             raise WireError('OBJECT_MISSING', name) from None
         except OSError as error:
+            self._resync_object_hint = digest
             raise WireError('OBJECT_IO_ERROR', str(error)) from None
         if len(payload) > MAX_OBJECT_BYTES:
             raise WireError('OBJECT_TOO_LARGE', name)
         if sha256_hex(payload) != digest:
+            self._resync_object_hint = digest
             raise WireError('OBJECT_HASH_MISMATCH', name)
         self._object_cache[digest] = payload
         return payload
@@ -308,11 +368,14 @@ class QueryReplica:
         self.state = ReplicaState.RESYNC_REQUIRED
         self.last_error = '%s %s' % (reason, detail)
         request = os.path.join(self.root, 'control', 'resync')
+        hint = getattr(self, '_resync_object_hint', None)
+        self._resync_object_hint = None
         try:
             with open(request + '.tmp', 'w') as handle:
                 handle.write(json.dumps({'reason': reason,
                                          'seq': (self.manifest or {})
-                                         .get('seq', 0)}))
+                                         .get('seq', 0),
+                                         'object': hint}))
             os.replace(request + '.tmp', request)
         except OSError:
             pass

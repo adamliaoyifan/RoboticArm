@@ -134,6 +134,11 @@ class QueryExportPublisher:
                 # offer path decremented nothing, so two offers permanently
                 # saturated the queue into EXPORT_BACKLOG_FULL).
                 self._pending = max(0, self._pending - 1)
+            # The heartbeat must also refresh under SUSTAINED load: it
+            # used to tick only on queue-empty, so back-to-back commits
+            # starved head.json and the receiver's seq-plausibility
+            # guard saw a stale heartbeat (still throttled to 0.25s).
+            self._head_loop_tick()
 
     def _answer_resync_requests(self):
         """The receiver's RESYNC request (control/resync) is answered
@@ -144,6 +149,13 @@ class QueryExportPublisher:
         if not os.path.exists(request):
             return False
         latest = self._latest_committed
+        heal_hint = None
+        try:
+            with open(request, 'rb') as handle:
+                heal_hint = (json.loads(handle.read() or b'{}')
+                             .get('object'))
+        except (OSError, ValueError):
+            heal_hint = None
         try:
             os.unlink(request)
         except OSError:
@@ -152,7 +164,8 @@ class QueryExportPublisher:
             return False
         snapshot, dirty_blocks, provenance_changed = latest
         try:
-            self._publish(snapshot, None, provenance_changed, True)
+            self._publish(snapshot, None, provenance_changed, True,
+                          heal_hint=heal_hint)
             return True
         except (WireError, OSError, ValueError) as error:
             self._encoder_error = str(error)
@@ -265,7 +278,7 @@ class QueryExportPublisher:
                                     force_full=True)
 
     def _publish(self, snapshot, dirty_blocks, provenance_changed,
-                 force_full):
+                 force_full, heal_hint=None):
         kind = 'FULL'
         base_identity = None
         base_sha = None
@@ -325,16 +338,19 @@ class QueryExportPublisher:
             if len(manifest['entries']) > MAX_PENDING_ENTRIES:
                 raise WireError('ENTRY_TABLE_TOO_LARGE')
             # Write new objects (content-addressed; unchanged skipped).
-            # A RESYNC/force-full publish rebuilds receiver trust, so an
-            # existing object file is trusted by NAME on normal publishes
-            # but VERIFIED by hash here: a corrupted file in the root
-            # would otherwise never heal (the receiver keeps rejecting
-            # the same digest and no normal publish rewrites it).
+            # Precise healing (2026-10-27): the receiver's resync
+            # request names the object digest it failed on; only that
+            # file is verified by hash and rewritten. The earlier
+            # blanket hash-everything-on-resync doubled the cost of a
+            # FULL at fine resolutions and, under resync churn, backed
+            # up the encoder into EXPORT_BACKLOG_FULL (measured:
+            # REPLICA_EXPORT_BACKLOG_FULL failures in the concurrent
+            # representative).
             written = skipped = 0
             for name, (digest, payload) in emitted.items():
                 path = os.path.join(self.root, 'objects', digest)
                 if os.path.exists(path):
-                    if not force_full:
+                    if digest != heal_hint:
                         skipped += 1
                         continue
                     with open(path, 'rb') as handle:
