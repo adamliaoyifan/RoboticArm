@@ -22,11 +22,12 @@ GATES = {'query': {'p95_bound_ms': 100.0, 'max_bound_ms': 250.0},
          'visibility': {'p95_bound_ms': 1000.0, 'max_bound_ms': 2000.0}}
 
 
-def query(i, ms=10.0, status='ok', state='READY', startup=False):
+def query(i, ms=10.0, status='ok', state='READY', startup=False,
+          reason=None):
     return {'kind': 'query', 'request_id': 'q%d' % i, 'expected':
             'CURRENT', 'returned': None, 'status': status,
-            'total_ms': ms, 'state_at_request': state,
-            'startup': startup}
+            'reason': reason, 'total_ms': ms,
+            'state_at_request': state, 'startup': startup}
 
 
 def commit(i, revision, t_ns, ledger_id=None, accepted=True):
@@ -125,14 +126,63 @@ def test_non_ready_silent_success_fails_query_gate():
     assert report['violations'][0]['problem'] == 'non_ready_silent'
 
 
-def test_rejected_queries_fail_query_gate():
+def test_named_rejects_reported_not_dropped():
+    """Named rejects are LEGAL strict-contract terminals: the gate
+    still passes with bounds intact, but the rate and reasons are
+    REPORTED -- never silently dropped from the record."""
     events = healthy_events()
     for i in range(5):
-        events.append(query(2000 + i, status='named_reject', ms=None))
+        events.append(query(2000 + i, status='named_reject', ms=None,
+                            reason='REPLICA_LAGGING'))
+    code, report = judge_query_gate(
+        [e for e in events if e.get('kind') == 'query'], 100.0, 250.0)
+    assert code == PASS
+    assert report['named_rejects'] == 5
+    assert report['named_reject_reasons'] == ['REPLICA_LAGGING']
+    assert report['steady_ok'] == 40
+
+
+def test_exceptions_fail_query_gate():
+    events = healthy_events()
+    for i in range(3):
+        events.append(query(3000 + i, status='exception', ms=None))
     code, report = judge_query_gate(
         [e for e in events if e.get('kind') == 'query'], 100.0, 250.0)
     assert code == FAIL
-    assert report['steady_failures'] == 5
+    assert report['steady_failures'] == 3
+
+
+def test_rejects_alone_cannot_pass():
+    """Only rejects and 5 samples: insufficient completed -> the gate
+    is NOT_EVALUATED, never a PASS rescued by filtered samples."""
+    events = [query(i, status='named_reject', ms=None,
+                    reason='REPLICA_LAGGING') for i in range(35)]
+    code, report = judge_query_gate(events, 100.0, 250.0)
+    assert code == NOT_EVALUATED
+    assert report['steady_ok'] == 0
+
+
+def test_cold_start_full_covers_early_commits():
+    """Commits whose own seqs were superseded by the receiver's first
+    FULL: any LATER same-epoch READY covers them."""
+    events, t = [], 0
+    for i in range(35):
+        t += 10_000_000
+        events.append(commit(i, i, t, ledger_id=i))
+        events.append(ledger(i, i, 'exact_visible', i + 1, t, t + 5e6))
+    # receiver cold-starts at seq 20: only ready(20) then 21..
+    events.append(ready(20, 19, 5 * 10_000_000 + 2_000_000))
+    for i in range(20, 35):
+        events.append(ready(i + 1, i, (i + 1) * 10_000_000 + 2_000_000))
+    for i in range(40):
+        events.append(query(i, ms=9.0))
+    code, report = judge_visibility(
+        [e for e in events if e.get('kind') == 'commit'],
+        [e for e in events if e.get('kind') == 'ledger'],
+        [e for e in events if e.get('event') == 'ready'])
+    assert code == PASS, report['by_status']
+    by = report['by_status']
+    assert by.get('exact_visible', 0) + by.get('coalesced_into', 0) == 35
 
 
 def test_export_failed_ledger_entry_fails_visibility():

@@ -90,19 +90,38 @@ def judge_query_gate(queries, p95_bound_ms, max_bound_ms=None,
     closed, violations = close_requests(queries)
     steady = [q for q in closed if q['status'] == 'ok'
               and not q.get('startup')]
-    failures = [q for q in closed if q['status'] != 'ok'
+    rejects = [q for q in closed if q['status'] == 'named_reject'
+               and not q.get('startup')]
+    failures = [q for q in closed if q['status'] in ('exception',
+                                                     'timeout',
+                                                     'incomplete')
                 and not q.get('startup')]
     startup = [q for q in queries if q.get('startup')]
     report = {'total': len(queries), 'steady_ok': len(steady),
-              'steady_failures': len(failures), 'startup': len(startup),
+              'named_rejects': len(rejects),
+              'named_reject_rate': (round(len(rejects) / len(steady
+                                                             + rejects), 4)
+                                    if (steady or rejects) else None),
+              'named_reject_reasons': sorted(
+                  {str(q.get('reason')) for q in rejects}),
+              'steady_failures': len(failures),
+              'startup': len(startup),
               'violations': violations[:10],
               'violation_count': len(violations)}
     if violations:
         return FAIL, report
+    # Diagnostics even on failure: bounds are always reported.
+    report['p95_ms'] = nearest_rank_p95(
+        [q['total_ms'] for q in steady], min_samples=min_samples)
+    report['max_ms'] = max((q['total_ms'] for q in steady), default=None)
     if failures:
+        # Exceptions/timeouts/incomplete are NEVER contract-correct.
         report['failure_statuses'] = sorted(
             {q['status'] for q in failures})
         return FAIL, report
+    # Named rejects are LEGAL strict-contract terminals (fail-closed
+    # during overlap); the rate and reasons are reported -- never
+    # silently dropped, never allowed to rescue the sample size.
     p95 = nearest_rank_p95([q['total_ms'] for q in steady],
                            min_samples=min_samples)
     report['p95_ms'] = p95
@@ -137,12 +156,29 @@ def judge_visibility(commits, ledgers, readies, deadline_s=2.0,
     Undelivered commits stay in the denominator."""
     ready_by_seq = {}
     ready_by_identity = {}
+    ready_seq_list = []
     for event in readies:
         seq = int(event['seq'])
         ready_by_seq.setdefault(seq, event['t_ns'])
         identity = tuple(event['target_identity'])
         ready_by_identity.setdefault(identity, event['t_ns'])
+        ready_seq_list.append((seq, event['t_ns'],
+                                identity[0] if identity else None))
+    ready_seq_list.sort()
     ledger_by_id = {int(entry['ledger_id']): entry for entry in ledgers}
+
+    def covering_ready_ns(published_seq, epoch):
+        """First READY at or after the covering generation: catches
+        cold-start commits whose own seqs were superseded by the
+        receiver's first FULL (a FULL is self-contained, so any LATER
+        same-epoch READY provably includes every committed fact before
+        it)."""
+        if published_seq in ready_by_seq:
+            return ready_by_seq[published_seq]
+        for seq, t_ns, ready_epoch in ready_seq_list:
+            if seq > published_seq and ready_epoch == epoch:
+                return t_ns
+        return None
 
     outcomes, latencies = [], []
     delivered = failed = 0
@@ -165,12 +201,15 @@ def judge_visibility(commits, ledgers, readies, deadline_s=2.0,
             if entry and entry['status'] == 'superseded_by_reset':
                 outcome['status'] = 'superseded_reset'
             elif entry and entry['status'] in ('exact_visible',
-                                               'coalesced_into') \
-                    and seq in ready_by_seq:
-                ready_ns = ready_by_seq[seq]
-                outcome.update(status='coalesced_into',
-                               ready_t_ns=ready_ns,
-                               latency_ms=(ready_ns - t_commit) / 1e6)
+                                               'coalesced_into'):
+                ready_ns = covering_ready_ns(
+                    seq, identity[0] if identity else None)
+                if ready_ns is not None:
+                    outcome.update(status='coalesced_into',
+                                   ready_t_ns=ready_ns,
+                                   latency_ms=(ready_ns - t_commit) / 1e6)
+                else:
+                    outcome['status'] = 'not_delivered'
             else:
                 outcome['status'] = 'not_delivered'
         if outcome['status'] in ('exact_visible', 'coalesced_into'):
