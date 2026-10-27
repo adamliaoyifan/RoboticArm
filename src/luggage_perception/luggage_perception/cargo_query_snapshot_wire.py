@@ -69,13 +69,22 @@ def encode_snapshot(snapshot, producer_incarnation, seq, *,
         objects[name] = payload
 
     grid = snapshot.grid
-    put('grid', encode_json_object({
+    grid_payload = {
         'shape': [int(v) for v in grid.shape],
         'origin': [float(v) for v in grid.origin],
         'resolution': float(grid.resolution),
         'frame_id': grid.frame_id,
         'geometry_hash': grid.geometry_hash,
-    }))
+    }
+    hull = getattr(grid, 'hull', None)
+    descriptor = getattr(hull, 'descriptor', None)
+    if descriptor is not None:
+        # Full hull metrics so the REBUILT snapshot supports
+        # hull-dependent queries (nearest_obstacles/contains_point);
+        # the hash-only _HullView placeholder predating this crashed
+        # distance queries on the replica path (gen3 A9 pairing find).
+        grid_payload['hull_descriptor'] = descriptor()
+    put('grid', encode_json_object(grid_payload))
     for block in snapshot.blocks:
         if not block_emits(block.block_id):
             # Unchanged block: skip the ENTIRE payload construction
@@ -163,6 +172,22 @@ def _encode_distance_index(index):
         np.asarray(index.upper, dtype='<f8'))
 
 
+def wire_hull(grid_meta):
+    """Grid hull for a decoded snapshot: a REAL ContainerGeometry when
+    the manifest carries the hull descriptor (hash-verified), the
+    hash-only placeholder for pre-descriptor manifests."""
+    descriptor = grid_meta.get('hull_descriptor')
+    if descriptor:
+        from luggage_description.container_geometry import (
+            normalize_descriptor)
+        hull = normalize_descriptor(dict(descriptor))
+        if hull.geometry_hash != grid_meta.get('geometry_hash'):
+            raise WireError('HULL_HASH_MISMATCH',
+                            hull.geometry_hash)
+        return hull
+    return _HullView(grid_meta['geometry_hash'])
+
+
 def decode_surface_object(payload):
     """'surface' payload -> SurfaceProjection (single decode source for
     the full rebuild AND the delta apply path)."""
@@ -201,11 +226,11 @@ def rebuild_snapshot(objects, expected_identity=None):
         return objects[name]
 
     grid_meta = decode_json_object(payload('grid'))
-    hull_placeholder = _HullView(grid_meta['geometry_hash'])
     grid = GridInfo(tuple(grid_meta['shape']),
                     tuple(grid_meta['origin']),
                     grid_meta['resolution'], grid_meta['frame_id'],
-                    grid_meta['geometry_hash'], hull_placeholder)
+                    grid_meta['geometry_hash'],
+                    wire_hull(grid_meta))
 
     block_ids = sorted(int(name.split('.')[1]) for name in objects
                        if name.startswith('block.')

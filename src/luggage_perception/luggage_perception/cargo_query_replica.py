@@ -320,13 +320,12 @@ class QueryReplica:
         provenance = wire_decode_json(self._load_payload(
             manifest['entries']['provenance']['sha256'], 'provenance'))
         from luggage_perception.cargo_query_snapshot_wire import (
-            _HullView, _MapSnapshotView)
+            _MapSnapshotView, wire_hull)
         map_snapshot = _MapSnapshotView(provenance)
         grid = GridInfo(
             tuple(grid_meta['shape']), tuple(grid_meta['origin']),
             grid_meta['resolution'], grid_meta['frame_id'],
-            grid_meta['geometry_hash'], _HullView(
-                grid_meta['geometry_hash']))
+            grid_meta['geometry_hash'], wire_hull(grid_meta))
         sensor_blocks = MappingProxyType({
             int(k): tuple(v) for k, v in wire_decode_json(
                 self._load_payload(manifest['entries']

@@ -309,6 +309,40 @@ class TestExportTransactionDirtyE2E(unittest.TestCase):
                              'full wire fingerprint diverged after '
                              'DELTA %d (stale derived object?)' % index)
 
+    def test_replica_distance_queries_match_source(self):
+        """Gen3 A9-pairing find: wire-rebuilt snapshots used to carry
+        a hash-only hull placeholder, so nearest_obstacles CRASHED on
+        the replica path (AttributeError half_x). The grid object now
+        transports the hull descriptor; replica distance results must
+        equal the source's."""
+        points = [(.1, .1, .8), (-.3, .2, .9), (.5, -.5, 1.2),
+                  (0., 0., .6)]
+        before = source_data(self.store)
+        result = self._integrate(
+            np.array([[.0, .0, CENTER[2] - .4]]), 'view-dist')
+        self.assertTrue(result.accepted)
+        after = source_data(self.store)
+        self._drain(after.identity)
+        with self.store.acquire_query_snapshot() as handle:
+            source = handle.nearest_obstacles(points, 0.5, 'separate')
+        from luggage_perception.cargo_map_read_facade import (
+            QueryMapReadFacade)
+        facade = QueryMapReadFacade(self.replica)
+        replica_handle = facade.acquire_query_snapshot('CURRENT')
+        replica = replica_handle.nearest_obstacles(points, 0.5,
+                                                   'separate')
+        self.assertEqual(replica.status, source.status)
+        self.assertEqual(len(replica.results), len(source.results))
+        for a, b in zip(source.results, replica.results):
+            self.assertEqual(a.point, b.point)
+            self.assertEqual(a.status, b.status)
+            self.assertEqual(
+                (a.occupied.exact, a.occupied.distance_m
+                 if a.occupied else None),
+                (b.occupied.exact, b.occupied.distance_m
+                 if b.occupied else None))
+        self.assertNotEqual(before.identity, after.identity)
+
     def test_accumulator_consumed_only_on_accepted_offer(self):
         """A failed offer must keep the accumulated dirt so it ships
         with the NEXT accepted generation. (gen3: the async path can no
