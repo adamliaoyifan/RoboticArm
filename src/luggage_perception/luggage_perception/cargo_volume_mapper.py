@@ -4,6 +4,8 @@
 from __future__ import division
 
 import math
+
+import numpy as np
 from copy import deepcopy
 from array import array
 
@@ -120,6 +122,149 @@ def normalize_ledger_slot(center_xyz, yaw, size, source_frame="world",
     dx, dy = center[0] - tx, center[1] - ty
     return ([dx * cos_y - dy * sin_y, dx * sin_y + dy * cos_y, center[2] - tz],
             yaw - float(container_yaw), size)
+
+
+# ---------------------------------------------------------------------------
+# Fusion kernels (module-level pure functions; @njit-ready for the B step).
+# Each takes ONLY numpy arrays / scalars -- no mapper state -- so numba
+# can compile them directly. The mapper's integrate_points calls these
+# with its own parameters unpacked.
+
+
+def _kernel_world_to_local(points, center, cos_neg_yaw, sin_neg_yaw,
+                           cos_yaw, sin_yaw):
+    """Batch world->local. Same formula as _world_to_local.
+
+    The caller must pass cos(-yaw), sin(-yaw), cos(yaw), sin(yaw) each
+    computed from the raw yaw exactly as the scalar path does."""
+    dx = points[:, 0] - center[0]
+    dy = points[:, 1] - center[1]
+    dz = points[:, 2] - center[2]
+    # Identical expression order to the scalar _world_to_local:
+    #   local_x = cos(-yaw) * dx - sin(-yaw) * dy
+    #   local_y = sin(-yaw) * dx + cos(-yaw) * dy
+    lx = cos_neg_yaw * dx - sin_neg_yaw * dy
+    ly = sin_neg_yaw * dx + cos_neg_yaw * dy
+    return np.column_stack((lx, ly, dz))
+
+
+def _kernel_local_to_voxel(local, resolution, half_l, half_w, half_h,
+                           nx, ny, nz, active):
+    """Batch local->voxel. Returns (valid_mask, flat_index).
+
+    Mirrors _local_to_voxel exactly: boundary check -> int() -> clamp ->
+    active check. int() on positive values == trunc.
+    """
+    inside = ((np.abs(local[:, 0]) <= half_l)
+              & (np.abs(local[:, 1]) <= half_w)
+              & (np.abs(local[:, 2]) <= half_h))
+    ix = np.trunc((local[:, 0] + half_l) / resolution).astype(np.int64)
+    iy = np.trunc((local[:, 1] + half_w) / resolution).astype(np.int64)
+    iz = np.trunc((local[:, 2] + half_h) / resolution).astype(np.int64)
+    ix = np.clip(ix, 0, nx - 1)
+    iy = np.clip(iy, 0, ny - 1)
+    iz = np.clip(iz, 0, nz - 1)
+    flat = ix + nx * (iy + ny * iz)
+    valid = inside.copy()
+    if active is not None:
+        if not isinstance(active, np.ndarray):
+            active = np.frombuffer(bytes(active), dtype=np.uint8)
+            active = active.astype(bool)
+        valid &= active[flat]
+    return valid, flat
+
+
+def _kernel_raycast(origins, ends, resolution, center,
+                    cos_neg_yaw, sin_neg_yaw, cos_yaw, sin_yaw,
+                    half_l, half_w, half_h, nx, ny, nz, active):
+    """Batch ray sampling. Returns concatenated flat indices (with dupes).
+
+    Hybrid approach: per-ray AABB clipping + step-range computation
+    (cheap Python loop, ~2000 iterations), then ONE batch coordinate
+    transform + voxel lookup for ALL samples concatenated (the
+    expensive part). Same math as the scalar _raycast_indices
+    (world-space interpolation, then world->local->voxel).
+    """
+    if len(ends) == 0:
+        return np.empty(0, dtype=np.int64), 0, 0
+    o = origins
+    o_local = _kernel_world_to_local(
+        origins.reshape(1, 3), center, cos_neg_yaw, sin_neg_yaw,
+        cos_yaw, sin_yaw)[0]
+    e_local = _kernel_world_to_local(
+        ends, center, cos_neg_yaw, sin_neg_yaw, cos_yaw, sin_yaw)
+    halves = (half_l, half_w, half_h)
+    all_t = []
+    all_ray = []
+    for i in range(len(ends)):
+        ol = o_local
+        el = e_local[i]
+        dist = math.sqrt(
+            (ends[i, 0] - o[0]) ** 2
+            + (ends[i, 1] - o[1]) ** 2
+            + (ends[i, 2] - o[2]) ** 2)
+        if dist < resolution:
+            continue
+        steps = int(dist / (resolution * 0.5))
+        if steps < 1:
+            continue
+        near, far = 0.0, 1.0
+        clipped = True
+        for axis in range(3):
+            start_a, end_a, half = ol[axis], el[axis], halves[axis]
+            delta = end_a - start_a
+            if delta == 0:
+                if abs(start_a) > half:
+                    clipped = False
+                    break
+                continue
+            enter, leave = sorted(
+                ((-half - start_a) / delta, (half - start_a) / delta))
+            near, far = max(near, enter), min(far, leave)
+            if near > far:
+                clipped = False
+                break
+        if not clipped:
+            continue
+        first = max(0, int(math.floor(near * steps)) - 1)
+        last = min(steps, int(math.ceil(far * steps)) + 2)
+        if last <= first:
+            continue
+        t = np.arange(first, last, dtype=np.float64) / steps
+        all_t.append(t)
+        all_ray.append(np.full(len(t), i, dtype=np.int64))
+    if not all_t:
+        return np.empty(0, dtype=np.int64), 0, 0
+    ray_intersecting = len(all_t)  # one entry per non-clipped ray
+    samples_visited = sum(len(t) for t in all_t)
+    t_all = np.concatenate(all_t)
+    ray_all = np.concatenate(all_ray)
+    # World-space interpolation for all samples at once
+    sel_ends = ends[ray_all]
+    wx = o[0] + (sel_ends[:, 0] - o[0]) * t_all
+    wy = o[1] + (sel_ends[:, 1] - o[1]) * t_all
+    wz = o[2] + (sel_ends[:, 2] - o[2]) * t_all
+    world_samples = np.column_stack((wx, wy, wz))
+    local_samples = _kernel_world_to_local(
+        world_samples, center, cos_neg_yaw, sin_neg_yaw,
+        cos_yaw, sin_yaw)
+    valid, flat = _kernel_local_to_voxel(
+        local_samples, resolution, half_l, half_w, half_h, nx, ny, nz,
+        active)
+    return flat[valid], ray_intersecting, samples_visited
+
+
+# JIT kernels (B round): used INSTEAD of the numpy versions above
+# when numba is available; graceful fallback keeps the numpy path.
+try:
+    from luggage_perception.fusion_kernels_jit import (
+        HAS_NUMBA, _jit_world_to_local, _jit_local_to_voxel)
+    if HAS_NUMBA:
+        _USE_JIT = True
+    else:
+        _USE_JIT = False
+except ImportError:
+    _USE_JIT = False
 
 
 class CargoVolumeMapper:
@@ -485,7 +630,7 @@ class CargoVolumeMapper:
         return indices
 
     def integrate_points(self, points, origin=None, labels=None, instance_ids=None,
-                         ray_points=None):
+                         ray_points=None, _vectorized=True):
         """Integrate observed points into the voxel grid.
 
         Args:
@@ -493,7 +638,12 @@ class CargoVolumeMapper:
             origin: optional camera position for free-space raycasting.
             labels: optional parallel list of per-point semantic class labels.
             instance_ids: optional parallel list of per-point instance IDs.
+            _vectorized: use the batch-numpy kernel path (oracle-tested
+                to produce identical results to the original loop).
         """
+        if _vectorized:
+            return self._integrate_points_vectorized(
+                points, origin, labels, instance_ids, ray_points)
         hit_records = {}
         diagnostics = dict(rays_selected=0, ray_intersecting=0, samples_visited=0)
         miss_indices = set()
@@ -543,6 +693,243 @@ class CargoVolumeMapper:
         if hit_records or miss_indices:
             self._revision += 1
         return diagnostics
+
+    def _integrate_points_vectorized(self, points, origin=None,
+                                     labels=None, instance_ids=None,
+                                     ray_points=None):
+        """Batch-numpy path: identical results to the original loop.
+
+        Kernels are module-level pure functions (numba-ready); this
+        method unpacks mapper state into scalar/array parameters,
+        calls the kernels, then applies grid/ledger updates in the
+        same order as the original (misses first, then hits).
+        """
+        diagnostics = dict(rays_selected=0, ray_intersecting=0,
+                           samples_visited=0)
+        resolution = self.resolution
+        half_l = self.inner_l * 0.5
+        half_w = self.inner_w * 0.5
+        half_h = self.inner_h * 0.5
+        cos_yaw = math.cos(self.yaw)
+        sin_yaw = math.sin(self.yaw)
+        cos_neg = math.cos(-self.yaw)
+        sin_neg = math.sin(-self.yaw)
+        active = self._active
+        nx, ny, nz = self.nx, self.ny, self.nz
+
+        # --- Hit marking (batch) ---
+        pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        finite = np.isfinite(pts).all(axis=1)
+        # JIT path: use compiled kernels with bool-array active mask
+        if _USE_JIT:
+            active_bool = (np.frombuffer(bytes(active), dtype=np.uint8)
+                           .astype(np.bool_) if active is not None
+                           else None)
+            local = _jit_world_to_local(
+                pts[finite], np.asarray(self.center, dtype=np.float64),
+                cos_neg, sin_neg)
+            valid_hit, hit_flat = _jit_local_to_voxel(
+                local, resolution, half_l, half_w, half_h,
+                nx, ny, nz, active_bool)
+        else:
+            local = _kernel_world_to_local(
+                pts[finite], self.center, cos_neg, sin_neg,
+                cos_yaw, sin_yaw)
+            valid_hit, hit_flat = _kernel_local_to_voxel(
+                local, resolution, half_l, half_w, half_h, nx, ny, nz,
+                active)
+
+        # Build hit_records: flat_index -> (x, y, z, label, instance)
+        # Later points overwrite earlier ones (same as dict assignment
+        # in the original loop's insertion order).
+        hit_records = {}
+        valid_indices = np.flatnonzero(finite)[valid_hit]
+        for i in range(len(valid_indices)):
+            src = valid_indices[i]
+            pt = points[src]
+            lbl = int(labels[src]) if labels is not None else 0
+            iid = int(instance_ids[src]) if instance_ids is not None else 0
+            hit_records[int(hit_flat[i])] = (pt[0], pt[1], pt[2], lbl, iid)
+
+        # --- Ray casting (batch) ---
+        miss_indices = set()
+        if origin is not None:
+            ray_pts = ray_points if ray_points is not None else points
+            if self.max_raycast_points and \
+                    len(ray_pts) > self.max_raycast_points:
+                stride = max(1, len(ray_pts) // self.max_raycast_points)
+                ray_pts = ray_pts[::stride]
+            ray_arr = np.asarray(ray_pts, dtype=np.float64).reshape(-1, 3)
+            ray_finite = ray_arr[np.isfinite(ray_arr).all(axis=1)]
+            diagnostics["rays_selected"] = len(ray_finite)
+            origin_arr = np.asarray(origin, dtype=np.float64)
+            miss_flat, ri, sv = _kernel_raycast(
+                origin_arr, ray_finite, resolution, self.center,
+                cos_neg, sin_neg, cos_yaw, sin_yaw,
+                half_l, half_w, half_h, nx, ny, nz, active)
+            diagnostics['ray_intersecting'] = ri
+            diagnostics['samples_visited'] = sv
+            miss_indices = set(int(x) for x in miss_flat)
+
+        miss_indices.difference_update(hit_records)
+
+        # --- Batch grid updates: misses then hits, same order ---
+        # All bytearray/array fields support the buffer protocol ->
+        # np.frombuffer gives zero-copy WRITABLE views for vectorized
+        # ops. Only _occupancy.values is a Python list (read with
+        # fromiter, write with loop -- still far cheaper than 158k
+        # per-cell function calls).
+        self._batch_miss_update(miss_indices)
+        self._batch_hit_update(hit_records)
+
+        if hit_records or miss_indices:
+            self._revision += 1
+        return diagnostics
+
+    def _batch_miss_update(self, miss_indices):
+        """Vectorized miss update: log-odds + grid + sensor ledger.
+
+        Produces IDENTICAL results to the per-cell loop
+        (apply_miss + _record_sensor_miss + source/label reset).
+        """
+        if not miss_indices:
+            return
+        occ = self._occupancy
+        # Sorted for deterministic write order (same as original loop).
+        idx_arr = np.fromiter(sorted(miss_indices), dtype=np.int64,
+                              count=len(miss_indices))
+        # -- occupancy values (Python list: read gen, compute numpy, write loop)
+        values = occ.values
+        if isinstance(values, list):
+            old_vals = np.fromiter(map(values.__getitem__, idx_arr),
+                                    dtype=np.float64, count=len(idx_arr))
+        else:
+            old_vals = np.frombuffer(values, dtype=np.float64)[idx_arr]
+        new_vals = np.maximum(occ.minimum,
+                              np.minimum(occ.maximum,
+                                         old_vals + occ.miss_increment))
+        if isinstance(values, list):
+            for j in range(len(idx_arr)):
+                values[int(idx_arr[j])] = float(new_vals[j])
+        else:
+            values_arr = np.frombuffer(values, dtype=np.float64)
+            values_arr[idx_arr] = new_vals
+        # -- grid classification (bytearray -> zero-copy view)
+        grid_view = np.frombuffer(self._grid, dtype=np.uint8)
+        grid_new = np.where(
+            new_vals >= occ.occupied_threshold, np.uint8(OCCUPIED),
+            np.where(new_vals <= occ.free_threshold, np.uint8(FREE),
+                     np.uint8(UNKNOWN)))
+        grid_view[idx_arr] = grid_new
+        # -- sensor values (array('d') -> zero-copy view)
+        sv_view = np.frombuffer(self._sensor_values, dtype=np.float64)
+        sv_old = sv_view[idx_arr]
+        sv_new = np.maximum(occ.minimum,
+                             np.minimum(occ.maximum,
+                                        sv_old + occ.miss_increment))
+        sv_view[idx_arr] = sv_new
+        # -- sensor seen (bytearray)
+        ss_view = np.frombuffer(self._sensor_seen, dtype=np.uint8)
+        ss_view[idx_arr] = 1
+        # -- conditional label/instance reset (sensor FREE)
+        sensor_free = sv_new <= occ.free_threshold
+        reset_idx = idx_arr[sensor_free]
+        if len(reset_idx):
+            sl_view = np.frombuffer(self._sensor_labels, dtype=np.int64)
+            si_view = np.frombuffer(self._sensor_instance_ids,
+                                    dtype=np.int64)
+            sl_view[reset_idx] = 0
+            si_view[reset_idx] = 0
+        # -- source/label/instance reset (grid FREE and not geometry)
+        grid_free = grid_new == FREE
+        src_view = np.frombuffer(self._source, dtype=np.uint8)
+        not_geom = src_view[idx_arr] != SOURCE_GEOMETRY
+        reset2 = idx_arr[grid_free & not_geom]
+        if len(reset2):
+            src_view[reset2] = SOURCE_NONE
+            lbl_view = np.frombuffer(self._labels, dtype=np.int64)
+            inst_view = np.frombuffer(self._instance_ids,
+                                      dtype=np.int64)
+            lbl_view[reset2] = 0
+            inst_view[reset2] = 0
+        # -- delta builder notification (order-sensitive: after state)
+        self._observe_voxels(tuple(int(i) for i in idx_arr))
+
+    def _batch_hit_update(self, hit_records):
+        """Vectorized hit update: log-odds + grid + sensor + labels.
+
+        Produces IDENTICAL results to per-cell mark_occupied_world
+        (apply_hit + _record_sensor_hit + source/label/instance).
+        """
+        if not hit_records:
+            return
+        occ = self._occupancy
+        # hit_records: flat_idx -> (x, y, z, label, instance_id)
+        # Process in dict insertion order (same as original loop).
+        idx_list = list(hit_records.keys())
+        idx_arr = np.array(idx_list, dtype=np.int64)
+        labels_arr = np.array(
+            [hit_records[i][3] for i in idx_list], dtype=np.int64)
+        instances_arr = np.array(
+            [hit_records[i][4] for i in idx_list], dtype=np.int64)
+        # -- occupancy values (Python list)
+        values = occ.values
+        if isinstance(values, list):
+            old_vals = np.fromiter(map(values.__getitem__, idx_arr),
+                                    dtype=np.float64, count=len(idx_arr))
+        else:
+            old_vals = np.frombuffer(values, dtype=np.float64)[idx_arr]
+        new_vals = np.maximum(occ.minimum,
+                              np.minimum(occ.maximum,
+                                         old_vals + occ.hit_increment))
+        if isinstance(values, list):
+            for j in range(len(idx_arr)):
+                values[int(idx_arr[j])] = float(new_vals[j])
+        else:
+            values_arr = np.frombuffer(values, dtype=np.float64)
+            values_arr[idx_arr] = new_vals
+        # -- grid
+        grid_view = np.frombuffer(self._grid, dtype=np.uint8)
+        grid_new = np.where(
+            new_vals >= occ.occupied_threshold, np.uint8(OCCUPIED),
+            np.where(new_vals <= occ.free_threshold, np.uint8(FREE),
+                     np.uint8(UNKNOWN)))
+        grid_view[idx_arr] = grid_new
+        # -- sensor values
+        sv_view = np.frombuffer(self._sensor_values, dtype=np.float64)
+        sv_old = sv_view[idx_arr]
+        sv_new = np.minimum(occ.maximum,
+                             np.maximum(occ.minimum,
+                                        sv_old + occ.hit_increment))
+        sv_view[idx_arr] = sv_new
+        # -- sensor seen
+        ss_view = np.frombuffer(self._sensor_seen, dtype=np.uint8)
+        ss_view[idx_arr] = 1
+        # -- sensor labels / instances (unconditional for hits)
+        sl_view = np.frombuffer(self._sensor_labels, dtype=np.int64)
+        si_view = np.frombuffer(self._sensor_instance_ids,
+                                dtype=np.int64)
+        sl_view[idx_arr] = labels_arr
+        si_view[idx_arr] = instances_arr
+        # -- source: set if currently NONE
+        src_view = np.frombuffer(self._source, dtype=np.uint8)
+        is_none = src_view[idx_arr] == SOURCE_NONE
+        set_src = idx_arr[is_none]
+        if len(set_src):
+            src_view[set_src] = SOURCE_SENSOR
+        # -- labels: sensor source or label==0 -> write
+        lbl_view = np.frombuffer(self._labels, dtype=np.int64)
+        inst_view = np.frombuffer(self._instance_ids,
+                                  dtype=np.int64)
+        old_labels = lbl_view[idx_arr]
+        write_lbl = (old_labels == 0)  # source is SENSOR for all hits
+        set_lbl = idx_arr[write_lbl]
+        if len(set_lbl):
+            mask_positions = np.flatnonzero(write_lbl)
+            lbl_view[set_lbl] = labels_arr[mask_positions]
+            inst_view[set_lbl] = instances_arr[mask_positions]
+        # -- delta builder notification
+        self._observe_voxels(tuple(int(i) for i in idx_arr))
 
     def integrate_depth_view(self, points, origin):
         """Integrate full-depth returns, keeping model walls out of cargo hits.
