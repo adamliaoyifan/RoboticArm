@@ -23,8 +23,21 @@ the SAME schedule with the recorder off in BOTH buckets -- it must
 PASS; the SLOW control (ON recorder sleeps 10ms) must FAIL.
 
 Every measurement sample persists latency + pair + order + position
-+ arm (+ request identity for ON), so the order decomposition is
-auditable from the output alone.
++ arm + the request identity the handle returned, so the order
+decomposition AND the capture join are auditable from the output
+alone.
+
+v4.1 (reviews follow-up on ed44accb -- two fixes ONLY; schedule,
+gate and control definitions unchanged): (a) the identical control
+now computes the effective recorder state AT THE SOURCE, so the ON
+bucket appends NO per-request join record either (the v4 probe
+still appended one); the identical report must show records == 0.
+(b) capture completeness is a REAL identity join implemented once
+in capture_join_complete() and called by BOTH the CLI and the
+behavior tests: every ON measurement sample must be matched by
+exactly one record whose request_id encodes its (kind, pair) and
+whose identity EQUALS the identity that request actually returned
+-- unique ids + non-empty identities + count alone is not a join.
 
 Exit 0 pass / 3 fail / 4 not_evaluated.
 """
@@ -103,6 +116,82 @@ def position_order_effect(samples, arm):
     }
 
 
+def capture_join_complete(samples_by_kind, records, expected_pairs,
+                          kinds=KINDS):
+    """REAL per-request identity join (v4.1; the single judge shared
+    by the CLI and the behavior tests). For every kind, each ON-arm
+    measurement sample (pair 0..expected_pairs-1) must be matched by
+    EXACTLY ONE record whose request_id is '<kind>-p<pair>' and whose
+    identity EQUALS the identity that request returned (stamped on
+    the sample by the worker). Records with unknown/duplicate ids,
+    empty identities, identity mismatches, missing pairs or
+    duplicated ON samples all FAIL -- unique ids + non-empty
+    identities + count alone is NOT a join."""
+    expected = {'%s-p%d' % (kind, pair)
+                for kind in kinds for pair in range(expected_pairs)}
+    on_identity = {}
+    duplicate_on_samples = []
+    for kind, samples in samples_by_kind.items():
+        for sample in samples:
+            if sample.get('arm') != 'on' or sample.get('warmup'):
+                continue
+            key = '%s-p%d' % (kind, sample['pair'])
+            if key in on_identity:
+                duplicate_on_samples.append(key)
+            else:
+                on_identity[key] = sample.get('identity')
+    seen = set()
+    joined = set()
+    duplicate_ids, unmatched_ids = [], []
+    missing_identity, identity_mismatch = [], []
+    for record in records:
+        rid = record.get('request_id')
+        if rid in seen:
+            duplicate_ids.append(str(rid))
+            continue
+        seen.add(rid)
+        if rid not in expected:
+            unmatched_ids.append(str(rid))
+            continue
+        identity = record.get('identity')
+        if not identity:
+            missing_identity.append(str(rid))
+            continue
+        if identity != on_identity.get(rid):
+            identity_mismatch.append(str(rid))
+            continue
+        joined.add(rid)
+    missing = sorted(expected - joined)
+    complete = (not missing and not duplicate_ids and not unmatched_ids
+                and not missing_identity and not identity_mismatch
+                and not duplicate_on_samples
+                and len(records) == len(expected))
+    return {
+        'records': len(records),
+        'expected': len(expected),
+        'joined': len(joined),
+        'on_measurement_samples': len(on_identity),
+        'missing': missing[:10],
+        'duplicate_ids': duplicate_ids[:10],
+        'unmatched_ids': unmatched_ids[:10],
+        'missing_identity': missing_identity[:10],
+        'identity_mismatch': identity_mismatch[:10],
+        'duplicate_on_samples': duplicate_on_samples[:10],
+        'rule': ('record identity == sample identity per (kind,pair), '
+                 'exactly one record per ON measurement request'),
+        'complete': complete,
+    }
+
+
+def identical_recorder_off(records):
+    """Identical-control contract (v4.1): the recorder is fully off in
+    BOTH buckets -- no replica events, no spans, and no per-request
+    join records either. Anything beyond zero records FAILs."""
+    return {'records': len(records),
+            'recorder_fully_off': not records,
+            'rule': 'identical control must produce zero join records'}
+
+
 WORKER = r'''
 import json, os, sys, time
 root, out_path, mode_flag = sys.argv[1:4]
@@ -129,11 +218,10 @@ def record(entry):
 def set_capture(on):
     """The ONLY variable between arms, toggled PER SAMPLE inside a
     pre-fixed AB/BA pair schedule so machine drift and position bias
-    hit both arms equally. A9V2_IDENTICAL=1 forces the recorder off
-    in BOTH buckets (the same-path control; buckets stay real and
-    separate)."""
-    if os.environ.get('A9V2_IDENTICAL') == '1':
-        on = False
+    hit both arms equally. The caller passes the EFFECTIVE state:
+    in the identical control the recorder is disabled at the call
+    site for BOTH buckets, so no arm records events, spans, or
+    per-request join records (v4.1)."""
     replica._record_events = on
     core.set_span_collector(spans if on else None)
 
@@ -175,10 +263,15 @@ for kind in ('roi', 'distance', 'surface'):
         arms = ('on', 'off') if order == 'AB' else ('off', 'on')
         warmup = pair_index < WARMUP_PAIRS
         for position, arm in enumerate(arms, start=1):
-            # capture_enabled is the RECORDER state -- identical mode
-            # forces it off in BOTH buckets while the buckets
+            # capture_enabled is the EFFECTIVE recorder state,
+            # computed at the source (v4.1): the identical control
+            # (A9V2_IDENTICAL=1) disables the recorder for BOTH
+            # buckets entirely -- no events, no spans, and no
+            # per-request join record either -- while the buckets
             # themselves stay REAL and separate (labels unchanged).
-            capture_enabled = arm == 'on'
+            capture_enabled = (arm == 'on'
+                               and os.environ.get('A9V2_IDENTICAL')
+                               != '1')
             set_capture(capture_enabled)
             t0 = time.perf_counter_ns()
             handle = facade.acquire_query_snapshot('CURRENT')
@@ -197,7 +290,7 @@ for kind in ('roi', 'distance', 'surface'):
             t3 = time.perf_counter_ns()
             sample = {'pair': pair_index - WARMUP_PAIRS,
                       'order': order, 'arm': arm, 'position': position,
-                      'warmup': warmup,
+                      'warmup': warmup, 'identity': ident,
                       'full_ms': round((t3 - t0) / 1e6, 4),
                       'direct_ms': round((t2 - t1) / 1e6, 4)}
             samples.append(sample)
@@ -280,8 +373,9 @@ def main():
     hook.wait_pending(120.0)
 
     if args.mode == 'identical':
-        # both buckets recorder-OFF: patch the worker's set_capture
-        # to a no-op via env so ON samples run the identical path
+        # both buckets recorder-OFF AT THE SOURCE (v4.1): the worker
+        # computes the effective state per sample, so ON samples run
+        # the identical recorder-off path AND append no join records
         os.environ['A9V2_IDENTICAL'] = '1'
     mode_flag = ('slow' if args.mode == 'slow'
                  else 'identical' if args.mode == 'identical'
@@ -299,21 +393,23 @@ def main():
     hook.close()
     os.close(lock_fd)
 
-    # Capture completeness (ON bucket): PER-REQUEST join -- exactly
-    # one record per counted ON request, unique request_ids, and each
-    # record's identity must equal the identity actually returned by
-    # that request (the worker stamps it from the handle). Missing,
-    # duplicated or wrong-identity records FAIL. identical mode has no
-    # records by construction (recorder off in both buckets).
+    # Capture completeness (ON bucket): REAL per-request identity join
+    # via the shared judge -- exactly one record per counted ON
+    # request, and each record's identity must EQUAL the identity that
+    # request returned (the worker stamps it on the sample). Missing,
+    # duplicated, unknown-id or identity-mismatched records FAIL.
+    # identical mode must show ZERO records (recorder fully off in
+    # both buckets, v4.1).
     records = data.get('records', [])
-    ids = [r['request_id'] for r in records]
-    complete = True
-    join_detail = {'records': len(records),
-                   'unique_ids': len(set(ids))}
-    if args.mode != 'identical':
-        complete = (len(ids) == len(set(ids))
-                    and all(r.get('identity') for r in records)
-                    and len(records) == args.samples * len(KINDS))
+    if args.mode == 'identical':
+        join_detail = identical_recorder_off(records)
+        complete = join_detail['recorder_fully_off']
+    else:
+        join_detail = capture_join_complete(
+            {kind: payload['samples']
+             for kind, payload in data['kinds'].items()},
+            records, args.samples)
+        complete = join_detail['complete']
 
     report = {
         'revision': subprocess.check_output(
@@ -326,7 +422,8 @@ def main():
         'scope': ('capture recorder on/off, independent query process '
                   'both arms, same isolated backend; pre-fixed balanced '
                   'AB/BA pair schedule; full-request P95 ratio per kind; '
-                  'completeness = one join record per request'),
+                  'completeness = exact per-request identity join '
+                  '(record identity == sample identity per (kind,pair))'),
         'capture_join': join_detail,
         'records_on': records[:5],
         'recorder_boundary': ('in-memory ring/list append only (the '

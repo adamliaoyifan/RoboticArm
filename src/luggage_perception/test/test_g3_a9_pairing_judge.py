@@ -1,7 +1,11 @@
-"""G4-A gen3 A9 pairing judge behavior tests (review_d9a28e4e P1):
-the reducer must have real discriminating power -- synthetic
-distributions produce the true ratio, and per-request join violations
-(missing / duplicated / wrong-identity records) FAIL, never pass.
+"""G4-A gen3 A9 pairing judge behavior tests (review_d9a28e4e P1 +
+reviews follow-up on ed44accb): the reducer must have real
+discriminating power, and the capture-completeness judge is the REAL
+one the CLI calls (capture_join_complete / identical_recorder_off
+imported from the script -- no re-written mirror). Join violations
+(missing / duplicated / unknown-id / wrong-identity records, wrong
+ids with non-empty wrong identities, duplicated ON samples) FAIL,
+never pass.
 """
 
 import os
@@ -13,7 +17,8 @@ sys.path.insert(0, os.path.join(
     'scripts', 'g3'))
 
 from occ_a9_capture_pairing_v2 import (  # noqa: E402
-    nearest_rank_p95, pair_schedule, position_order_effect)
+    capture_join_complete, identical_recorder_off, nearest_rank_p95,
+    pair_schedule, position_order_effect)
 
 
 def reducer(off_times, on_times, ratio_bound=1.10, min_samples=30):
@@ -24,19 +29,6 @@ def reducer(off_times, on_times, ratio_bound=1.10, min_samples=30):
         return 4, None
     ratio = round(on_p95 / off_p95, 4)
     return (3 if ratio > ratio_bound else 0), ratio
-
-
-def join_check(records, expected_count):
-    """Per-request completeness as a pure function: unique ids, every
-    record carries an identity, exact count."""
-    ids = [r['request_id'] for r in records]
-    if len(ids) != len(set(ids)):
-        return False, 'duplicate ids'
-    if any(not r.get('identity') for r in records):
-        return False, 'missing identity'
-    if len(records) != expected_count:
-        return False, 'count %d != %d' % (len(records), expected_count)
-    return True, 'ok'
 
 
 def times(value, count=30):
@@ -68,41 +60,125 @@ def test_reducer_insufficient_samples_not_evaluated():
     assert code == 4 and ratio is None
 
 
+def a9_kinds(pairs=30):
+    """samples_by_kind shaped like the v4.1 worker output: per kind
+    the full pair-schedule samples with the request identity stamped
+    on every sample (identity = [pair, position])."""
+    kinds = {}
+    for kind in ('roi', 'distance', 'surface'):
+        samples = samples_from_schedule(
+            pair_schedule(pairs), lambda a, p, i: 1.0)
+        for sample in samples:
+            sample['identity'] = [sample['pair'], sample['position']]
+        kinds[kind] = samples
+    return kinds
+
+
+def on_samples(kinds, kind):
+    return [s for s in kinds[kind]
+            if s['arm'] == 'on' and not s['warmup']]
+
+
+def clean_records(kinds):
+    """The records a correct v4.1 worker would emit: one per ON
+    measurement request, identity taken from that request's sample."""
+    return [{'request_id': '%s-p%d' % (kind, s['pair']),
+             'identity': list(s['identity'])}
+            for kind in ('roi', 'distance', 'surface')
+            for s in on_samples(kinds, kind)]
+
+
+def test_join_clean_passes_real_judge():
+    kinds = a9_kinds()
+    detail = capture_join_complete(kinds, clean_records(kinds), 30)
+    assert detail['complete'] is True
+    assert detail['joined'] == 90 and detail['expected'] == 90
+    assert detail['on_measurement_samples'] == 90
+
+
+def test_join_wrong_ids_with_nonempty_identities_fails():
+    # THE reviews probe on v4: 90 records, ids unique and of the right
+    # shape but assigned to the WRONG requests, each carrying a
+    # non-empty (but wrong) identity -- v4's unique/non-empty/count
+    # check passed this; the real join must FAIL it.
+    kinds = a9_kinds()
+    shifted = []
+    for kind in ('roi', 'distance', 'surface'):
+        for sample in on_samples(kinds, kind):
+            shifted.append({
+                'request_id': '%s-p%d' % (kind, (sample['pair'] + 1) % 30),
+                'identity': list(sample['identity'])})
+    assert len(shifted) == 90
+    assert len({r['request_id'] for r in shifted}) == 90
+    assert all(r['identity'] for r in shifted)
+    detail = capture_join_complete(kinds, shifted, 30)
+    assert detail['complete'] is False
+    assert detail['identity_mismatch']
+
+
+def test_join_wrong_identity_nonempty_fails():
+    kinds = a9_kinds()
+    records = clean_records(kinds)
+    for record in records:
+        record['identity'] = [999, 999]        # non-empty but wrong
+    detail = capture_join_complete(kinds, records, 30)
+    assert detail['complete'] is False
+    assert detail['identity_mismatch']
+
+
 def test_join_duplicate_id_fails():
-    records = ([{'request_id': 'r%d' % i, 'identity': [1]}
-                for i in range(29)]
-               + [{'request_id': 'r0', 'identity': [1]}])
-    ok, why = join_check(records, 30)
-    assert not ok and why == 'duplicate ids'
+    kinds = a9_kinds()
+    records = clean_records(kinds)
+    records.append(dict(records[0]))           # duplicate request_id
+    detail = capture_join_complete(kinds, records, 30)
+    assert detail['complete'] is False
+    assert detail['duplicate_ids']
 
 
 def test_join_missing_one_fails():
-    records = [{'request_id': 'r%d' % i, 'identity': [1]}
-               for i in range(29)]
-    ok, why = join_check(records, 30)
-    assert not ok
+    kinds = a9_kinds()
+    records = clean_records(kinds)[:-1]
+    detail = capture_join_complete(kinds, records, 30)
+    assert detail['complete'] is False
+    assert detail['joined'] == 89 and detail['missing']
 
 
-def test_join_wrong_count_extra_records_fail():
-    records = [{'request_id': 'r%d' % i, 'identity': [1]}
-               for i in range(31)]
-    ok, why = join_check(records, 30)
-    assert not ok
+def test_join_unknown_id_fails():
+    kinds = a9_kinds()
+    records = clean_records(kinds)
+    records.append({'request_id': 'roi2-p0', 'identity': [1, 1]})
+    detail = capture_join_complete(kinds, records, 30)
+    assert detail['complete'] is False
+    assert detail['unmatched_ids'] == ['roi2-p0']
 
 
 def test_join_missing_identity_fails():
-    records = [{'request_id': 'r%d' % i, 'identity': [1]}
-               for i in range(29)]
-    records.append({'request_id': 'r29', 'identity': None})
-    ok, why = join_check(records, 30)
-    assert not ok and why == 'missing identity'
+    kinds = a9_kinds()
+    records = clean_records(kinds)
+    records[3]['identity'] = None
+    detail = capture_join_complete(kinds, records, 30)
+    assert detail['complete'] is False
+    assert detail['missing_identity']
 
 
-def test_join_clean_passes():
-    records = [{'request_id': 'r%d' % i, 'identity': [1, 2]}
-               for i in range(30)]
-    ok, why = join_check(records, 30)
-    assert ok
+def test_join_duplicate_on_sample_fails():
+    # harness structural error: two ON measurement samples for the
+    # same (kind, pair) -- even clean records must not pass
+    kinds = a9_kinds()
+    records = clean_records(kinds)
+    extra = dict(on_samples(kinds, 'roi')[0])
+    kinds['roi'].append(extra)
+    detail = capture_join_complete(kinds, records, 30)
+    assert detail['complete'] is False
+    assert detail['duplicate_on_samples']
+
+
+def test_identical_recorder_off_contract():
+    assert identical_recorder_off([])['recorder_fully_off'] is True
+    detail = identical_recorder_off(
+        [{'request_id': 'roi-p0', 'identity': [1, 1]}])
+    assert detail['recorder_fully_off'] is False
+    assert detail['records'] == 1
 
 
 def samples_from_schedule(schedule, value_for, warmup_pairs=2):
