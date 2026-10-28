@@ -5,12 +5,6 @@
 #include <sstream>
 
 namespace uld_occ_observer {
-namespace {
-UpdateProfile& profile_of(UpdateProfile* profile, UpdateProfile& disabled) {
-  return profile ? *profile : disabled;
-}
-}
-
 CellIndex cell_index_from_key(const octomap::OcTreeKey& key) {
   return {static_cast<int>(key[0]) - 32768, static_cast<int>(key[1]) - 32768,
           static_cast<int>(key[2]) - 32768};
@@ -35,48 +29,44 @@ void OccupancyGrid::configure() {
   tree_->setClampingThresMax(.971);
 }
 
-void OccupancyGrid::castFreeRay(OccupancyScan& scan, UpdateProfile& prof, const UldDomain& domain,
-                                const octomap::point3d& origin, octomap::KeyRay& ray, const Vec3& endpoint_uld,
-                                const octomap::point3d& endpoint_om, const octomap::OcTreeKey& endpoint_key,
-                                bool admit_occupied) {
-  if (prof.enabled()) ++prof.rays_attempted;
+void OccupancyGrid::castFreeRay(OccupancyScan& scan, OccupancyDiagnostic& diagnostic,
+                                const UldDomain& domain, const octomap::point3d& origin, octomap::KeyRay& ray,
+                                const Vec3& endpoint_uld, const octomap::point3d& endpoint_om,
+                                const octomap::OcTreeKey& endpoint_key, bool admit_occupied) {
+  diagnostic.ray_attempted();
   ++scan.rays_attempted;
   ++scan.endpoints_used;
-  { ProfileSpan ray_span(prof, ProfileStage::RayGeneration, true);
+  { auto ray_span = diagnostic.detail(ProfileStage::RayGeneration);
     if (!tree_->computeRayKeys(origin, endpoint_om, ray)) throw Error("RAY_PREPARATION_FAILED");
   }
-  ProfileSpan filter_span(prof, ProfileStage::RayFilterDedup, true);
-  std::uint64_t active_visits = 0;
-  const bool diagnose = prof.enabled();
-  if (diagnose) {
-    prof.ray_keys_generated += ray.size();
-    scan.ray_keys_generated += ray.size();
-  }
+  auto filter_span = diagnostic.detail(ProfileStage::RayFilterDedup);
+  diagnostic.keys_generated(ray.size());
+  bool saw_active = false;
   for (const auto& key : ray) {
     const auto index = cell_index_from_key(key);
-    if (domain.active(index)) {
-      const bool inserted = scan.free_cells.insert(key).second;
-      if (diagnose) {
-        ++active_visits;
-        ++prof.active_ray_key_visits;
-        ++scan.active_visits;
-        if (!inserted) {
-          ++prof.free_insert_duplicates;
-          ++scan.free_insert_duplicates;
-        }
-      }
-    } else if (diagnose) {
-      ++prof.inactive_ray_key_visits;
-      ++scan.inactive_visits;
+    bool active = false;
+    { auto timer = diagnostic.domain_check();
+      active = domain.active(index); }
+    if (active) {
+      saw_active = true;
+      bool inserted = false;
+      { auto timer = diagnostic.free_insert();
+        inserted = scan.free_cells.insert(key).second; }
+      diagnostic.active_visit(inserted);
+    } else {
+      diagnostic.inactive_visit();
     }
   }
-  if (diagnose) {
-    if (active_visits) ++prof.rays_with_active_keys;
-    else ++prof.rays_without_active_keys;
-  }
+  diagnostic.classify_ray(saw_active);
   if (admit_occupied && domain.contains(endpoint_uld)) {
     const auto index = cell_index_from_key(endpoint_key);
-    if (domain.active(index)) scan.occupied_cells.insert(endpoint_key);
+    bool active = false;
+    { auto timer = diagnostic.domain_check();
+      active = domain.active(index); }
+    if (active) {
+      auto timer = diagnostic.occupied_insert();
+      scan.occupied_cells.insert(endpoint_key);
+    }
   }
 }
 
@@ -85,24 +75,17 @@ static void clear_scan(OccupancyScan& scan) {
   scan.occupied_cells.clear();
   scan.rays_attempted = 0;
   scan.endpoints_used = 0;
-  scan.ray_keys_generated = 0;
-  scan.active_visits = 0;
-  scan.inactive_visits = 0;
-  scan.free_insert_duplicates = 0;
-  scan.free_unique_before_hit_removal = 0;
 }
 
 void OccupancyGrid::collect(OccupancyScan& scan, const Vec3& origin_uld,
                                 const std::vector<Vec3>& endpoints_uld, const UldDomain& domain,
-                                OccupancyScanOptions options, UpdateProfile* profile) {
+                                OccupancyScanOptions options, OccupancyDiagnostic& diagnostic) {
   clear_scan(scan);
   if (options.discretize_endpoints) {
-    collectDiscretized(scan, origin_uld, endpoints_uld, domain, profile);
+    collectDiscretized(scan, origin_uld, endpoints_uld, domain, diagnostic);
     return;
   }
-  UpdateProfile disabled;
-  auto& prof = profile_of(profile, disabled);
-  { ProfileSpan span(prof, ProfileStage::RayPreparation);
+  { auto span = diagnostic.span(ProfileStage::RayPreparation);
     const auto origin = domain.octomap_coordinates(origin_uld);
     octomap::OcTreeKey origin_key;
     if (!tree_->coordToKeyChecked(origin.x, origin.y, origin.z, origin_key))
@@ -114,23 +97,19 @@ void OccupancyGrid::collect(OccupancyScan& scan, const Vec3& origin_uld,
       octomap::OcTreeKey endpoint_key;
       if (!tree_->coordToKeyChecked(point.x, point.y, point.z, endpoint_key))
         throw Error("ENDPOINT_OUT_OF_KEY_RANGE");
-      castFreeRay(scan, prof, domain, origin_point, ray, endpoint,
+      castFreeRay(scan, diagnostic, domain, origin_point, ray, endpoint,
                   octomap::point3d(point.x, point.y, point.z), endpoint_key, true);
     }
-    if (prof.enabled()) {
-      prof.free_unique_before_hit_removal = scan.free_cells.size();
-      scan.free_unique_before_hit_removal = scan.free_cells.size();
-    }
-    for (const auto& hit : scan.occupied_cells) scan.free_cells.erase(hit);
+    diagnostic.free_keys_before_hit_removal(scan.free_cells.size());
+    { auto timer = diagnostic.hit_erase();
+      for (const auto& hit : scan.occupied_cells) scan.free_cells.erase(hit); }
   }
 }
 
 void OccupancyGrid::collectDiscretized(OccupancyScan& scan, const Vec3& origin_uld,
                                                    const std::vector<Vec3>& endpoints_uld,
-                                                   const UldDomain& domain, UpdateProfile* profile) {
-  UpdateProfile disabled;
-  auto& prof = profile_of(profile, disabled);
-  { ProfileSpan span(prof, ProfileStage::RayPreparation);
+                                                   const UldDomain& domain, OccupancyDiagnostic& diagnostic) {
+  { auto span = diagnostic.span(ProfileStage::RayPreparation);
     const auto origin = domain.octomap_coordinates(origin_uld);
     octomap::OcTreeKey origin_key;
     if (!tree_->coordToKeyChecked(origin.x, origin.y, origin.z, origin_key))
@@ -150,7 +129,13 @@ void OccupancyGrid::collectDiscretized(OccupancyScan& scan, const Vec3& origin_u
       endpoints.push_back({endpoint, octomap::point3d(point.x, point.y, point.z), endpoint_key});
       if (domain.contains(endpoint)) {
         const auto index = cell_index_from_key(endpoint_key);
-        if (domain.active(index)) scan.occupied_cells.insert(endpoint_key);
+        bool active = false;
+        { auto timer = diagnostic.domain_check();
+          active = domain.active(index); }
+        if (active) {
+          auto timer = diagnostic.occupied_insert();
+          scan.occupied_cells.insert(endpoint_key);
+        }
       }
     }
     std::vector<Endpoint> rays;
@@ -161,24 +146,21 @@ void OccupancyGrid::collectDiscretized(OccupancyScan& scan, const Vec3& origin_u
     const octomap::point3d origin_point(origin.x, origin.y, origin.z);
     octomap::KeyRay ray;
     for (const auto& endpoint : rays)
-      castFreeRay(scan, prof, domain, origin_point, ray, endpoint.uld, endpoint.octomap, endpoint.key, false);
-    if (prof.enabled()) {
-      prof.free_unique_before_hit_removal = scan.free_cells.size();
-      scan.free_unique_before_hit_removal = scan.free_cells.size();
-    }
-    for (const auto& hit : scan.occupied_cells) scan.free_cells.erase(hit);
+      castFreeRay(scan, diagnostic, domain, origin_point, ray, endpoint.uld, endpoint.octomap,
+                  endpoint.key, false);
+    diagnostic.free_keys_before_hit_removal(scan.free_cells.size());
+    { auto timer = diagnostic.hit_erase();
+      for (const auto& hit : scan.occupied_cells) scan.free_cells.erase(hit); }
   }
 }
 
 std::vector<OccupancyMutation> OccupancyGrid::apply(const OccupancyScan& scan,
-                                                    UpdateProfile* profile) {
-  UpdateProfile disabled;
-  auto& prof = profile_of(profile, disabled);
+                                                    OccupancyDiagnostic& diagnostic) {
   std::vector<OccupancyMutation> mutations;
   auto update = [&](const octomap::OcTreeKey& key, bool hit) {
     bool existed, old_occupied, occupied;
     float old_log_odds, new_log_odds;
-    { ProfileSpan tree_span(prof, ProfileStage::TreeUpdate, true);
+    { auto tree_span = diagnostic.detail(ProfileStage::TreeUpdate);
       const auto* before = tree_->search(key);
       existed = before != nullptr;
       old_log_odds = existed ? before->getLogOdds() : 0;

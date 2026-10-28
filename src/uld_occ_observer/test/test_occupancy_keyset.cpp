@@ -79,9 +79,12 @@ octomap::OcTreeKey endpoint_key(const UldDomain& domain, double resolution, cons
 }
 
 OccupancyScan collect_of(OccupancyGrid& grid, const Vec3& origin, const std::vector<Vec3>& points,
-                         const UldDomain& domain, OccupancyScanOptions options, UpdateProfile* profile) {
+                         const UldDomain& domain, OccupancyScanOptions options,
+                         OccupancyDiagnostic* diagnostic) {
+  OccupancyDiagnostic off(ProfileMode::Off);
+  OccupancyDiagnostic& session = diagnostic ? *diagnostic : off;
   OccupancyScan scan;
-  grid.collect(scan, origin, points, domain, options, profile);
+  grid.collect(scan, origin, points, domain, options, session);
   return scan;
 }
 
@@ -270,28 +273,30 @@ void check_config_identity() {
 void check_profile_diagnostics(const UldDomain& domain, double resolution, const Vec3& origin,
                                const std::vector<Vec3>& points) {
   OccupancyGrid off_grid(resolution);
-  UpdateProfile off;
+  OccupancyDiagnostic off(ProfileMode::Off);
   const auto off_scan = collect_of(off_grid, origin, points, domain, {}, &off);
-  require(off.rays_attempted == 0 && off.ray_keys_generated == 0 && off.active_ray_key_visits == 0,
+  require(off.report().rays_attempted == 0 && off.report().ray_keys_generated == 0 &&
+              off.report().active_ray_key_visits == 0 && off.report().domain_check_ms == 0 &&
+              off.report().free_insert_ms == 0 && off.report().release_free_ms == 0,
           "Off profile collected diagnostics");
-  require(off_scan.ray_keys_generated == 0 && off_scan.active_visits == 0 &&
-              off_scan.free_insert_duplicates == 0 && off_scan.inactive_visits == 0,
-          "Off scan collected diagnostics");
   OccupancyGrid stages_grid(resolution);
-  UpdateProfile stages;
-  stages.mode = ProfileMode::Stages;
+  OccupancyDiagnostic stages(ProfileMode::Stages);
   const auto stages_scan = collect_of(stages_grid, origin, points, domain, {}, &stages);
   OccupancyGrid detailed_grid(resolution);
-  UpdateProfile detailed;
-  detailed.mode = ProfileMode::Detailed;
+  OccupancyDiagnostic detailed(ProfileMode::Detailed);
   const auto detailed_scan = collect_of(detailed_grid, origin, points, domain, {}, &detailed);
   require(cells_of(off_scan.free_cells) == cells_of(stages_scan.free_cells) &&
               cells_of(stages_scan.free_cells) == cells_of(detailed_scan.free_cells),
           "profile mode changed the free set");
   require(cells_of(off_scan.occupied_cells) == cells_of(detailed_scan.occupied_cells),
           "profile mode changed the hit set");
-  require(stages.rays_attempted == points.size() && stages.ray_keys_generated > 0,
+  require(stages.report().rays_attempted == points.size() && stages.report().ray_keys_generated > 0,
           "Stages did not collect diagnostics");
+  require(stages.report().domain_check_ms == 0 && stages.report().free_insert_ms == 0 &&
+              stages.report().hit_erase_ms == 0,
+          "Stages read split clocks");
+  require(detailed.report().domain_check_ms > 0 && detailed.report().free_insert_ms > 0,
+          "Detailed did not time domain checks and inserts");
   GeometryDescriptor geometry{"fixture_geometry", "fixture_digest", 0.8, 0.8, 0, 1.2, {}};
   ObservationStore a(geometry, resolution, {}, "test_clock", "config");
   ObservationStore b(geometry, resolution, {}, "test_clock", "config");
@@ -313,22 +318,22 @@ void check_scan_reuse(const UldDomain& domain, double resolution) {
   const std::vector<Vec3> second{{0.2, -0.1, 0.85}, {0.0, 0.1, 0.75}, {0.15, 0, 1.0}};
   OccupancyGrid grid(resolution);
   OccupancyScan scan;
-  UpdateProfile profile;
-  profile.mode = ProfileMode::Detailed;
-  grid.collect(scan, origin, first, domain, {}, &profile);
-  require(!scan.free_cells.empty() && scan.active_visits > 0 && scan.ray_keys_generated > 0,
+  OccupancyDiagnostic detailed(ProfileMode::Detailed);
+  grid.collect(scan, origin, first, domain, {}, detailed);
+  require(!scan.free_cells.empty() && detailed.report().active_ray_key_visits > 0 &&
+              detailed.report().ray_keys_generated > 0,
           "enabled collect left no diagnostics");
-  const auto enabled_visits = profile.active_ray_key_visits;
-  const auto enabled_duplicates = profile.free_insert_duplicates;
+  const auto enabled_visits = detailed.report().active_ray_key_visits;
+  const auto enabled_duplicates = detailed.report().free_insert_duplicates;
   require(enabled_visits > 0, "enabled profile counted no visits");
 
-  profile.mode = ProfileMode::Off;
-  grid.collect(scan, origin, second, domain, {}, &profile);
+  OccupancyDiagnostic off(ProfileMode::Off);
+  grid.collect(scan, origin, second, domain, {}, off);
   OccupancyGrid fresh(resolution);
   OccupancyScan expected;
-  fresh.collect(expected, origin, second, domain, {}, nullptr);
+  fresh.collect(expected, origin, second, domain, {}, off);
   OccupancyScan first_only;
-  fresh.collect(first_only, origin, first, domain, {}, nullptr);
+  fresh.collect(first_only, origin, first, domain, {}, off);
   require(cells_of(first_only.free_cells) != cells_of(expected.free_cells),
           "reuse inputs did not differ");
   require(cells_of(scan.free_cells) == cells_of(expected.free_cells),
@@ -337,12 +342,13 @@ void check_scan_reuse(const UldDomain& domain, double resolution) {
           "reused scan kept the previous hit set");
   require(scan.rays_attempted == second.size() && scan.endpoints_used == second.size(),
           "reused scan kept the previous ray count");
-  require(scan.ray_keys_generated == 0 && scan.active_visits == 0 && scan.inactive_visits == 0 &&
-              scan.free_insert_duplicates == 0 && scan.free_unique_before_hit_removal == 0,
-          "Off reuse left diagnostic counters on the scan");
-  require(profile.active_ray_key_visits == enabled_visits &&
-              profile.free_insert_duplicates == enabled_duplicates &&
-              profile.ray_keys_generated > 0,
+  require(off.report().ray_keys_generated == 0 && off.report().active_ray_key_visits == 0 &&
+              off.report().inactive_ray_key_visits == 0 && off.report().free_insert_duplicates == 0 &&
+              off.report().domain_check_ms == 0 && off.report().free_insert_ms == 0,
+          "Off reuse collected diagnostics");
+  require(detailed.report().active_ray_key_visits == enabled_visits &&
+              detailed.report().free_insert_duplicates == enabled_duplicates &&
+              detailed.report().ray_keys_generated > 0,
           "Off collect changed counters left by the enabled pass");
 }
 
@@ -373,17 +379,18 @@ void check_failed_endpoint_skips_apply(const UldDomain& domain, double resolutio
 
   OccupancyGrid grid(resolution);
   OccupancyScan scan;
+  OccupancyDiagnostic off(ProfileMode::Off);
   bool rejected = false;
-  try { grid.collect(scan, origin, mixed, domain, {}, nullptr); }
+  try { grid.collect(scan, origin, mixed, domain, {}, off); }
   catch (const Error& error) { rejected = std::string(error.what()) == "ENDPOINT_OUT_OF_KEY_RANGE"; }
   require(rejected, "collect accepted an endpoint outside the key range");
   require(scan.rays_attempted == valid.size() && !scan.free_cells.empty(),
           "failure did not keep the valid prefix");
   const auto nodes_before = grid.nodeCount();
-  grid.collect(scan, origin, valid, domain, {}, nullptr);
+  grid.collect(scan, origin, valid, domain, {}, off);
   OccupancyScan fresh;
   OccupancyGrid other(resolution);
-  other.collect(fresh, origin, valid, domain, {}, nullptr);
+  other.collect(fresh, origin, valid, domain, {}, off);
   require(cells_of(scan.free_cells) == cells_of(fresh.free_cells) &&
               cells_of(scan.occupied_cells) == cells_of(fresh.occupied_cells),
           "reuse after failure kept a partial result");

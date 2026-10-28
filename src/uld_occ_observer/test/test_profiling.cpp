@@ -15,6 +15,11 @@ OpticalObservation observation(std::string id, std::int64_t stamp) {
 }
 void check_profile(const UpdateReceipt& r) {
   const auto& p = r.profile;
+  if (!p.detailed()) {
+    require(p.domain_check_ms==0 && p.free_insert_ms==0 && p.occupied_insert_ms==0 &&
+                p.hit_erase_ms==0 && p.release_free_ms==0 && p.release_occupied_ms==0,
+            "split timers ran outside Detailed");
+  }
   if (!p.enabled()) {
     for (auto value : p.milliseconds) require(value==0,"disabled timing nonzero");
     require(p.rays_attempted==0,"disabled counter nonzero"); return;
@@ -66,6 +71,9 @@ int main() {
       require(bytes==stages.checkpoint().tree_bytes && bytes==detailed.checkpoint().tree_bytes,"mode changed full probability tree");
       if (i==0) {
         require(c.profile.inactive_ray_key_visits>0 && c.profile.free_insert_duplicates>0,"fixture missed exterior/duplicate paths");
+        require(c.changed_keys>0 && c.free_keys>0,"release cleared the scan before apply");
+        require(c.profile.domain_check_ms>0 && c.profile.free_insert_ms>0 && c.profile.hit_erase_ms>0,
+                "detailed split timers did not record");
         old_snapshot=detailed.snapshot();
       }
       if (i==6) require(c.profile.rays_without_active_keys==c.accepted_points,"exterior-ray fixture misclassified");
@@ -78,6 +86,11 @@ int main() {
     require(!first.cache_hit && first.scanned_cells>0,"first surface not measured");
     require(second.cache_hit && second.scanned_cells==0 && surface==again,"cache hit changed output or scanned");
     require(first.build_ms<=first.total_ms+.1 && second.build_ms==0,"surface spans inconsistent");
+    OccupancyDiagnostic surface_session(ProfileMode::Off);
+    surface_session.record_surface(first);
+    require(surface_session.report().surface_recorded &&
+                surface_session.report().surface.scanned_cells==first.scanned_cells,
+            "surface sample was not recorded");
     require(old_snapshot->identity().map_revision<=snapshot->identity().map_revision,"old snapshot changed");
     std::cout << "PASS profiling semantic equivalence: " << cases.size() << " cases x3 modes; counters/timings/cache paths\n";
     return 0;

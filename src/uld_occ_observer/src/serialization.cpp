@@ -20,6 +20,12 @@ YAML::Node profile_to_yaml(const UpdateProfile& profile) {
   out["free_unique_before_hit_removal"] = profile.free_unique_before_hit_removal;
   out["copied_blocks"] = profile.copied_blocks;
   out["copied_cells"] = profile.copied_cells;
+  out["domain_check_ms"] = profile.domain_check_ms;
+  out["free_insert_ms"] = profile.free_insert_ms;
+  out["occupied_insert_ms"] = profile.occupied_insert_ms;
+  out["hit_erase_ms"] = profile.hit_erase_ms;
+  out["release_free_ms"] = profile.release_free_ms;
+  out["release_occupied_ms"] = profile.release_occupied_ms;
   return out;
 }
 YAML::Node surface_profile_to_yaml(const SurfaceProfile& profile) {

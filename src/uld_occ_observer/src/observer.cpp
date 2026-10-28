@@ -54,9 +54,15 @@ SnapshotIdentity ObservationStore::identity_unlocked() const {
 UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation, ProfileMode profile_mode) {
   const auto start = Clock::now();
   UpdateReceipt receipt;
-  receipt.profile.mode = profile_mode;
+  OccupancyDiagnostic diagnostic(profile_mode);
+  auto publish = [&] {
+    receipt.identity = identity_unlocked();
+    receipt.total_ms = milliseconds(start, Clock::now());
+    diagnostic.finish(receipt.total_ms);
+    receipt.profile = diagnostic.report();
+  };
   std::unique_lock<std::mutex> lock(mutex_, std::defer_lock);
-  { ProfileSpan span(receipt.profile, ProfileStage::LockWait); lock.lock(); }
+  { auto span = diagnostic.span(ProfileStage::LockWait); lock.lock(); }
   ++received_;
   receipt.sensor_id = observation.identity.sensor_id;
   receipt.observation_id = observation.identity.observation_id;
@@ -64,17 +70,17 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
   receipt.raw_points = observation.points_m.size();
   try {
     const auto& id = observation.identity;
-    { ProfileSpan span(receipt.profile, ProfileStage::Validation);
+    { auto span = diagnostic.span(ProfileStage::Validation);
       if (id.epoch != epoch_) throw Error("EPOCH_MISMATCH");
       if (id.geometry_hash != domain_->descriptor().geometry_hash) throw Error("GEOMETRY_MISMATCH");
       if (id.clock_domain != clock_domain_) throw Error("CLOCK_DOMAIN_MISMATCH");
       observation.uld_from_optical.validate(id.stamp_ns);
     }
     std::string digest;
-    { ProfileSpan span(receipt.profile, ProfileStage::Fingerprint); digest = fingerprint(observation); }
+    { auto span = diagnostic.span(ProfileStage::Fingerprint); digest = fingerprint(observation); }
     const auto dedup_key = std::make_pair(id.sensor_id, id.observation_id);
     bool duplicate = false;
-    { ProfileSpan span(receipt.profile, ProfileStage::Dedup);
+    { auto span = diagnostic.span(ProfileStage::Dedup);
       const auto prior = fingerprints_.find(dedup_key);
       if (prior != fingerprints_.end()) {
         if (prior->second != digest) throw Error("CONFLICT");
@@ -87,16 +93,14 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
     }
     if (duplicate) {
       ++duplicates_; receipt.status = "ALREADY_PROCESSED";
-      receipt.identity = identity_unlocked();
-      receipt.total_ms = milliseconds(start, Clock::now());
-      receipt.profile.finish(receipt.total_ms);
+      publish();
       return receipt;
     }
     FilterResult filtered;
-    { ProfileSpan span(receipt.profile, ProfileStage::DepthFilter);
+    { auto span = diagnostic.span(ProfileStage::DepthFilter);
       filtered = preprocessor_.prepare(observation.points_m); }
     UldObservation frame;
-    { ProfileSpan span(receipt.profile, ProfileStage::Transform);
+    { auto span = diagnostic.span(ProfileStage::Transform);
       frame = UldFrameAdapter::transform(id, filtered, observation.uld_from_optical); }
     receipt.accepted_points = frame.points.size();
     const auto prepared_points = Clock::now();
@@ -105,16 +109,16 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
 
     OccupancyScan scan;
     grid_.collect(scan, frame.origin, frame.points, *domain_,
-                  OccupancyScanOptions{discretize_endpoints_}, &receipt.profile);
+                  OccupancyScanOptions{discretize_endpoints_}, diagnostic);
     receipt.free_keys = scan.free_cells.size();
     receipt.hit_keys = scan.occupied_cells.size();
     const auto prepared = Clock::now();
     receipt.preparation_ms = milliseconds(prepared_points, prepared);
-    { ProfileSpan fusion_span(receipt.profile, ProfileStage::Fusion);
-      const auto mutations = grid_.apply(scan, &receipt.profile);
+    { auto fusion_span = diagnostic.span(ProfileStage::Fusion);
+      const auto mutations = grid_.apply(scan, diagnostic);
       std::map<CellIndex, std::shared_ptr<CellBlock>> modified;
       for (const auto& change : mutations) {
-        ProfileSpan block_span(receipt.profile, ProfileStage::BlockMaintenance, true);
+        auto block_span = diagnostic.detail(ProfileStage::BlockMaintenance);
         ++receipt.changed_keys;
         if (!change.existed || change.old_occupied != change.occupied)
           ++receipt.occupancy_changed_keys;
@@ -123,10 +127,7 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
         auto& block = modified[block_index];
         if (!block) {
           const auto existing = blocks_.find(block_index);
-          if (receipt.profile.enabled() && existing != blocks_.end()) {
-            ++receipt.profile.copied_blocks;
-            receipt.profile.copied_cells += existing->second->size();
-          }
+          if (existing != blocks_.end()) diagnostic.block_copied(existing->second->size());
           block = existing == blocks_.end() ? std::make_shared<CellBlock>() :
                   std::make_shared<CellBlock>(*existing->second);
         }
@@ -135,7 +136,7 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
       for (auto& entry : modified) blocks_[entry.first] = std::move(entry.second);
       receipt.rebuilt_blocks = modified.size();
     }
-    { ProfileSpan final_span(receipt.profile, ProfileStage::Finalization);
+    { auto final_span = diagnostic.span(ProfileStage::Finalization);
       if (receipt.changed_keys) ++map_revision_;
       ++observed_revision_; ++integrated_;
       last_integrated_stamp_ns_ = std::max(last_integrated_stamp_ns_, id.stamp_ns);
@@ -149,12 +150,14 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
       receipt.status = "INTEGRATED";
     }
     receipt.fusion_ms = milliseconds(prepared, Clock::now());
+    { auto release = diagnostic.release_free();
+      scan.free_cells.clear(); }
+    { auto release = diagnostic.release_occupied();
+      scan.occupied_cells.clear(); }
   } catch (const Error& error) {
     ++rejected_; receipt.status = error.what();
   }
-  receipt.identity = identity_unlocked();
-  receipt.total_ms = milliseconds(start, Clock::now());
-  receipt.profile.finish(receipt.total_ms);
+  publish();
   return receipt;
 }
 
