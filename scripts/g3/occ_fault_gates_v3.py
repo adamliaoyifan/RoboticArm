@@ -869,6 +869,16 @@ def _a5_case(h, name, injector, expect, boundary, rep):
     """One A5 attempt. Returns (case_record, triggered, case_ok)."""
     log = CaseLog()
     fault_id = '%s/%s/%d' % (name, boundary, rep)
+    # Harness-ordering hygiene: a LEFTOVER resync request from an
+    # earlier case would be answered mid-case, and the answer FULL
+    # re-materializes sabotaged object files (the publisher rewrites
+    # objects that are absent) -- erasing the injection before the
+    # receiver ever reads it. Consume pending control messages and
+    # drain the encoder BEFORE arming the case.
+    resync_path = os.path.join(h.root, 'control', 'resync')
+    if os.path.exists(resync_path):
+        os.remove(resync_path)
+    h.hook.wait_pending(60.0)
     worker = h.spawn_worker()
     if boundary == 'delta':
         ok = h.wait_ready(worker, h.store.identity[:2], 30)
