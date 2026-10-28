@@ -842,147 +842,187 @@ def run_a5(h, results):
     for name, injector, expect in injection_cases(h):
         for boundary in ('initial_full', 'delta'):
             for rep in range(3):
-                log = CaseLog()
-                fault_id = '%s/%s/%d' % (name, boundary, rep)
-                worker = h.spawn_worker()
-                if boundary == 'delta':
-                    ok = h.wait_ready(worker, h.store.identity[:2], 30)
-                    log.check(ok, 'pre_inject_ready')
-                # Plan 6.3: place the fault BEFORE the receiver reads
-                # the target generation -- hold polling across the
-                # commit + injection, then resume and observe.
-                ask(worker, {'cmd': 'hold'})
-                baseline = {e['t_ns'] for e in drain_events(worker)}
-                t_inject = time.monotonic_ns()
-                assert h.commit(rep + 30).accepted
-                restore, forensics = injector()
-                ask(worker, {'cmd': 'resume'})
-                log.check(True, 'injection_recorded', json.dumps(
-                    {'fault_id': fault_id, **forensics},
-                    sort_keys=True)[:300])
-                try:
-                    if expect == 'hostile':
-                        deadline = time.monotonic() + 10
-                        detection = None
-                        while time.monotonic() < deadline:
-                            for event in drain_events(worker):
-                                if (event.get('event')
-                                        in DETECTION_EVENTS
-                                        and event['t_ns'] >= t_inject
-                                        and event['t_ns'] not in baseline
-                                        and not _startup_resync(
-                                            event, boundary, 'hostile')):
-                                    detection = event
-                                    break
-                            if detection:
-                                break
-                            # A receiver that is NOT READY with a
-                            # NAMED error while the fault is in place
-                            # is an OBSERVED fail-closed detection (a
-                            # fresh receiver whose stream broke before
-                            # its first sync sits SYNCING/NO_PUBLISHED
-                            # by design -- there is no earlier state
-                            # to compare against, so the named
-                            # non-READY state IS the detection).
-                            reply = ask(worker, {'cmd': 'poll_state'})
-                            if (reply.get('ok')
-                                    and reply.get('state') != 'READY'
-                                    and reply.get('last_error')):
-                                detection = {
-                                    'kind': 'named_non_ready_state',
-                                    'state': reply.get('state'),
-                                    'error': reply.get('last_error')}
-                                break
-                            time.sleep(0.05)
-                        if detection is None:
-                            seen = [e for e in drain_events(worker)
-                                    if e.get('event') != 'received']
-                            log.check(False,
-                                      'detection_event_after_injection',
-                                      seen[:6])
-                        else:
-                            log.check(True,
-                                      'detection_event_after_injection',
-                                      detection)
-                    else:  # benign: idempotent, never wrong content
-                        time.sleep(0.3)      # let polls observe it
-                        events = drain_events(worker)
-                        # Resyncs may legitimately occur (held-barrier
-                        # mechanics, resync-answer generations); HARD
-                        # failures (unavailable / validation) may not.
-                        hard = [
-                            e for e in events
-                            if e.get('event') in ('unavailable',
-                                                  'validate_failed')
-                            and e['t_ns'] >= t_inject
-                            and e['t_ns'] not in baseline]
-                        log.check(not hard, 'benign_no_hard_failures',
-                                  hard[:2])
-                        # A named window is CORRECT under the strict
-                        # read contract (e.g. a regressed pointer with
-                        # a newer head -> REPLICA_LAGGING).
-                        reply = ask(worker, {'cmd': 'query'})
-                        if not reply.get('ok'):
-                            log.check(
-                                reply.get('error')
-                                in ('REPLICA_LAGGING',
-                                    'QUERY_INDEX_UNAVAILABLE',
-                                    'REPLICA_NO_HEAD',
-                                    'REPLICA_CONTROL_STALE',
-                                    'SNAPSHOT_EXPIRED'),
-                                'benign_named_window_ok',
-                                reply.get('error'))
-                    # never wrong content, on any boundary
-                    query = ask(worker, {'cmd': 'query'})
-                    if query.get('ok'):
-                        reported = tuple(query.get('identity')[:2])
-                        src_digest = h.expected_digests.get(reported)
-                        log.check(src_digest is not None
-                                  and query['digest'] == src_digest,
-                                  'never_wrong_content',
-                                  'ident %s known=%s'
-                                  % (query.get('identity'),
-                                     src_digest is not None))
-                finally:
-                    restore()
-                # recovery: detection->ready chain + full fingerprint
-                h.recover(rep + 40)
-                ident2 = list(h.store.identity[:2])
-                ok = h.wait_ready(worker, ident2, 30)
-                log.check(ok, 'recovered_ready_30s', ident2)
-                if ok:
-                    ready_after = [
-                        e for e in drain_events(worker)
-                        if e.get('event') == 'ready'
-                        and e['t_ns'] >= t_inject]
-                    if expect == 'hostile':
-                        log.check(bool(ready_after),
-                                  'recovery_ready_event_chain')
-                    fp = ask(worker, {'cmd': 'fingerprint'},
-                             timeout_s=10.0)
-                    src_fp, _ = h.source_fingerprint()
-                    if fp.get('ok') and fp.get('fingerprint') != src_fp:
-                        src_table = fingerprint_table(h)
-                        diff = sorted(
-                            name for name in
-                            set(src_table) | set(fp.get('table', {}))
-                            if src_table.get(name)
-                            != fp['table'].get(name))
-                        log.check(False,
-                                  'full_snapshot_equal_after_recovery',
-                                  diff[:12])
-                    else:
-                        log.check(fp.get('ok'),
-                                  'full_snapshot_equal_after_recovery',
-                                  (str(fp.get('fingerprint'))[:12],
-                                   src_fp[:12], fp.get('error')))
-                h.close_worker(worker)
-                case_ok = all(entry['ok'] for entry in log)
-                cases.append({'fault_id': fault_id, 'boundary': boundary,
-                              'rep': rep, 'expectation': expect,
-                              'checks': list(log), 'pass': case_ok})
-    results['A5'] = {'cases': cases, 'injections': len(cases),
-                     'pass': all(c['pass'] for c in cases)}
+                # Plan 6.3: up to 5 trigger attempts per case. An
+                # attempt is UNTRIGGERED when the receiver never
+                # encountered the sabotaged generation (e.g. a leftover
+                # resync-answer FULL from an earlier case lets it heal
+                # past the target DELTA without reading it) -- that is
+                # an invalid attempt, not a product failure; exhausted
+                # attempts => not_evaluated, never a retry-until-pass.
+                attempts, triggered, case_log, case_ok = 0, False, None, None
+                while attempts < 5 and not triggered:
+                    attempts += 1
+                    case_log, triggered, case_ok = _a5_case(
+                        h, name, injector, expect, boundary, rep)
+                cases.append(case_log)
+                if not triggered:
+                    cases[-1]['result'] = 'not_evaluated'
+                    cases[-1]['pass'] = False
+    results['A5'] = {
+        'cases': cases, 'injections': len(cases),
+        'not_evaluated': sum(1 for c in cases
+                             if c.get('result') == 'not_evaluated'),
+        'pass': bool(cases) and all(c['pass'] for c in cases)}
+
+
+def _a5_case(h, name, injector, expect, boundary, rep):
+    """One A5 attempt. Returns (case_record, triggered, case_ok)."""
+    log = CaseLog()
+    fault_id = '%s/%s/%d' % (name, boundary, rep)
+    worker = h.spawn_worker()
+    if boundary == 'delta':
+        ok = h.wait_ready(worker, h.store.identity[:2], 30)
+        log.check(ok, 'pre_inject_ready')
+    # Plan 6.3: place the fault BEFORE the receiver reads the target
+    # generation -- hold polling across commit + injection, then
+    # resume and observe.
+    ask(worker, {'cmd': 'hold'})
+    baseline = {e['t_ns'] for e in drain_events(worker)}
+    t_inject = time.monotonic_ns()
+    assert h.commit(rep + 30).accepted
+    _, _, committed_manifest = h.latest_manifest()
+    target_seq = int(committed_manifest['seq'])
+    restore, forensics = injector()
+    target_seq = int(forensics.get('forged_seq', target_seq))
+    ask(worker, {'cmd': 'resume'})
+    log.check(True, 'injection_recorded', json.dumps(
+        {'fault_id': fault_id, 'target_seq': target_seq,
+         **forensics}, sort_keys=True)[:300])
+    detection = None
+    seen_events = []
+    try:
+        if expect == 'hostile':
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                for event in drain_events(worker):
+                    seen_events.append(event)
+                    if (event.get('event') in DETECTION_EVENTS
+                            and event['t_ns'] >= t_inject
+                            and event['t_ns'] not in baseline
+                            and not _startup_resync(event, boundary,
+                                                    'hostile')):
+                        detection = event
+                        break
+                if detection:
+                    break
+                # A receiver that is NOT READY with a NAMED error while
+                # the fault is in place is an OBSERVED fail-closed
+                # detection (a fresh receiver whose stream broke before
+                # its first sync sits SYNCING/NO_PUBLISHED by design).
+                reply = ask(worker, {'cmd': 'poll_state'})
+                if (reply.get('ok')
+                        and reply.get('state') != 'READY'
+                        and reply.get('last_error')):
+                    detection = {
+                        'kind': 'named_non_ready_state',
+                        'state': reply.get('state'),
+                        'error': reply.get('last_error')}
+                    break
+                time.sleep(0.05)
+            if detection is not None:
+                log.check(True, 'detection_event_after_injection',
+                          detection)
+            else:
+                for event in drain_events(worker):
+                    seen_events.append(event)
+                # TRIGGER ENCOUNTER: did the receiver ever read the
+                # sabotaged generation? A leftover resync-answer FULL
+                # can let it heal PAST the target DELTA without reading
+                # it -- an untriggered attempt (retry), never a pass.
+                received = {e.get('seq') for e in seen_events
+                            if e.get('event') == 'received'}
+                current = ask(worker, {'cmd': 'poll_state'})
+                current_seq = None
+                if current.get('ok') and current.get('identity'):
+                    snap_seq = None
+                    # identity carries 5 legs; seq comes from events
+                    readies = [e for e in seen_events
+                               if e.get('event') == 'ready']
+                    if readies:
+                        current_seq = readies[-1].get('seq')
+                encountered = (target_seq in received
+                               or (current_seq is not None
+                                   and int(current_seq)
+                                   <= int(target_seq)))
+                log.check(bool(encountered),
+                          'injection_encountered',
+                          'target %s received %s latest_ready %s'
+                          % (target_seq, sorted(
+                              s for s in received
+                              if s is not None)[:8], current_seq))
+                if not encountered:
+                    h.close_worker(worker)
+                    return ({'fault_id': fault_id,
+                             'boundary': boundary, 'rep': rep,
+                             'expectation': expect,
+                             'checks': list(log), 'pass': False,
+                             'result': 'untriggered'},
+                            False, False)
+                log.check(False, 'detection_event_after_injection',
+                          [e for e in seen_events
+                           if e.get('event') != 'received'][:6])
+        else:  # benign: idempotent, never wrong content
+            time.sleep(0.3)      # let polls observe it
+            events = drain_events(worker)
+            seen_events.extend(events)
+            hard = [e for e in events
+                    if e.get('event') in ('unavailable',
+                                          'validate_failed')
+                    and e['t_ns'] >= t_inject
+                    and e['t_ns'] not in baseline]
+            log.check(not hard, 'benign_no_hard_failures', hard[:2])
+            reply = ask(worker, {'cmd': 'query'})
+            if not reply.get('ok'):
+                log.check(
+                    reply.get('error')
+                    in ('REPLICA_LAGGING', 'QUERY_INDEX_UNAVAILABLE',
+                        'REPLICA_NO_HEAD', 'REPLICA_CONTROL_STALE',
+                        'SNAPSHOT_EXPIRED'),
+                    'benign_named_window_ok', reply.get('error'))
+        # never wrong content, on any boundary
+        query = ask(worker, {'cmd': 'query'})
+        if query.get('ok'):
+            reported = tuple(query.get('identity')[:2])
+            src_digest = h.expected_digests.get(reported)
+            log.check(src_digest is not None
+                      and query['digest'] == src_digest,
+                      'never_wrong_content',
+                      'ident %s known=%s'
+                      % (query.get('identity'),
+                         src_digest is not None))
+    finally:
+        restore()
+    # recovery: detection->ready chain + full fingerprint
+    h.recover(rep + 40)
+    ident2 = list(h.store.identity[:2])
+    ok = h.wait_ready(worker, ident2, 30)
+    log.check(ok, 'recovered_ready_30s', ident2)
+    if ok:
+        ready_after = [e for e in drain_events(worker)
+                       if e.get('event') == 'ready'
+                       and e['t_ns'] >= t_inject]
+        if expect == 'hostile':
+            log.check(bool(ready_after), 'recovery_ready_event_chain')
+        fp = ask(worker, {'cmd': 'fingerprint'}, timeout_s=10.0)
+        src_fp, _ = h.source_fingerprint()
+        if fp.get('ok') and fp.get('fingerprint') != src_fp:
+            src_table = fingerprint_table(h)
+            diff = sorted(
+                obj_name for obj_name in
+                set(src_table) | set(fp.get('table', {}))
+                if src_table.get(obj_name) != fp['table'].get(obj_name))
+            log.check(False, 'full_snapshot_equal_after_recovery',
+                      diff[:12])
+        else:
+            log.check(fp.get('ok'),
+                      'full_snapshot_equal_after_recovery',
+                      (str(fp.get('fingerprint'))[:12], src_fp[:12],
+                       fp.get('error')))
+    h.close_worker(worker)
+    case_ok = all(entry['ok'] for entry in log)
+    return ({'fault_id': fault_id, 'boundary': boundary, 'rep': rep,
+             'expectation': expect, 'checks': list(log),
+             'pass': case_ok}, True, case_ok)
 
 
 def run_a6(h, results):

@@ -123,7 +123,7 @@ out = {'kinds': {}}
 for kind_index, kind in enumerate(('roi', 'distance', 'surface')):
     buckets = {'on': {'full': [], 'direct': []},
                'off': {'full': [], 'direct': []}}
-    for i in range(3 + 30):
+    for i in range(3 + 60):
         # capture ON for even samples (odd kinds swap the parity so
         # ordering bias cannot align with the arm)
         on = (i %% 2 == 0) == (kind_index %% 2 == 0)
@@ -253,7 +253,6 @@ def main():
         'spans_on': data.get('spans'),
         'capture_records_expected': expected,
         'capture_complete': complete,
-        'spans_on': on['spans'],
         'kinds': {},
         'exit': None,
     }
