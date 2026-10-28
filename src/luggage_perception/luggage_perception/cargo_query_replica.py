@@ -242,12 +242,17 @@ class QueryReplica:
 
     def _catchup(self, latest):
         """Bounded catch-up over retained intermediate generations
-        (spec OCC_SEQ_GAP_CATCHUP_SPEC_20261028). Returns the final
-        poll state on success, None when the named FULL resync path
-        must run (the caller keeps its current manifest -- no partial
-        application: each link swaps state only after full
-        validation, and a failing link aborts to resync with the
-        receiver still on its last VALID generation)."""
+        (spec OCC_SEQ_GAP_CATCHUP_SPEC_20261028, I6 as amended:
+        SINGLE-GENERATION atomic). Each link is fully validated
+        before its snapshot/manifest swap; a LATER link's failure
+        keeps the EARLIER applied links (each a complete, valid
+        generation) -- the receiver then sits on its last valid
+        generation, CURRENT named-rejects (lagging), pinned handles
+        keep their acquired generation, and the named FULL resync
+        path runs. Limits (32 links / 512MiB wire bytes) are checked
+        BEFORE any application; they are link/byte caps, not a time
+        budget. Returns the final poll state on success, None when
+        the resync path must run."""
         expected = int(self.manifest['seq']) + 1
         latest_seq = int(latest['seq'])
         links = latest_seq - expected + 1
