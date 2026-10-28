@@ -46,9 +46,10 @@ octomap::OcTreeKey key_from_cell_index(CellIndex index);
 class OccupancyGrid {
  public:
   explicit OccupancyGrid(double resolution);
-  OccupancyScan collect(const Vec3& origin_uld, const std::vector<Vec3>& endpoints_uld,
-                        const UldDomain& domain, OccupancyScanOptions options,
-                        UpdateProfile* profile);
+  // Overwrites out. On failure out may contain a partial result; do not apply it.
+  // KeySet is a TR1 hashtable, so the caller keeps ownership instead of a returned copy.
+  void collect(OccupancyScan& out, const Vec3& origin_uld, const std::vector<Vec3>& endpoints_uld,
+               const UldDomain& domain, OccupancyScanOptions options, UpdateProfile* profile);
   std::vector<OccupancyMutation> apply(const OccupancyScan& scan, UpdateProfile* profile);
   void reset();
   std::string serialize() const;
@@ -61,11 +62,12 @@ class OccupancyGrid {
  private:
   void configure();
   void castFreeRay(OccupancyScan& scan, UpdateProfile& profile, const UldDomain& domain,
-                   const octomap::point3d& origin, const Vec3& endpoint_uld,
+                   const octomap::point3d& origin, octomap::KeyRay& ray, const Vec3& endpoint_uld,
                    const octomap::point3d& endpoint_om, const octomap::OcTreeKey& endpoint_key,
                    bool admit_occupied);
-  OccupancyScan collectDiscretized(const Vec3& origin_uld, const std::vector<Vec3>& endpoints_uld,
-                                   const UldDomain& domain, UpdateProfile* profile);
+  void collectDiscretized(OccupancyScan& out, const Vec3& origin_uld,
+                          const std::vector<Vec3>& endpoints_uld, const UldDomain& domain,
+                          UpdateProfile* profile);
   double resolution_;
   std::unique_ptr<octomap::OcTree> tree_;
 };

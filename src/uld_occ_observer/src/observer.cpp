@@ -103,9 +103,9 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
     receipt.preprocessing_ms = milliseconds(start, prepared_points);
     if (frame.points.empty()) throw Error("NO_VALID_POINTS");
 
-    const OccupancyScan scan = grid_.collect(frame.origin, frame.points, *domain_,
-                                             OccupancyScanOptions{discretize_endpoints_},
-                                             &receipt.profile);
+    OccupancyScan scan;
+    grid_.collect(scan, frame.origin, frame.points, *domain_,
+                  OccupancyScanOptions{discretize_endpoints_}, &receipt.profile);
     receipt.free_keys = scan.free_cells.size();
     receipt.hit_keys = scan.occupied_cells.size();
     const auto prepared = Clock::now();

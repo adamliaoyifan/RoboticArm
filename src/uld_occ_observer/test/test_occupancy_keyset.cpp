@@ -78,10 +78,17 @@ octomap::OcTreeKey endpoint_key(const UldDomain& domain, double resolution, cons
   return key;
 }
 
+OccupancyScan collect_of(OccupancyGrid& grid, const Vec3& origin, const std::vector<Vec3>& points,
+                         const UldDomain& domain, OccupancyScanOptions options, UpdateProfile* profile) {
+  OccupancyScan scan;
+  grid.collect(scan, origin, points, domain, options, profile);
+  return scan;
+}
+
 OccupancyScan cast_one(const UldDomain& domain, double resolution, const Vec3& origin, const Vec3& point,
                        bool discretize) {
   OccupancyGrid grid(resolution);
-  return grid.collect(origin, {point}, domain, OccupancyScanOptions{discretize}, nullptr);
+  return collect_of(grid, origin, {point}, domain, OccupancyScanOptions{discretize}, nullptr);
 }
 
 void check_discretize(const UldDomain& domain, double resolution) {
@@ -113,7 +120,7 @@ void check_discretize(const UldDomain& domain, double resolution) {
   std::vector<Vec3> repeated(30, first);
   OccupancyGrid grid(resolution);
   const auto once = cast_one(domain, resolution, origin, first, true);
-  const auto many = grid.collect(origin, repeated, domain, OccupancyScanOptions{true}, nullptr);
+  const auto many = collect_of(grid, origin, repeated, domain, OccupancyScanOptions{true}, nullptr);
   require(many.endpoints_used == 1 && many.rays_attempted == 1, "repeated point still cast extra rays");
   require(cells_of(many.free_cells) == cells_of(once.free_cells), "repeated point changed free evidence");
   require(cells_of(many.occupied_cells) == cells_of(once.occupied_cells), "repeated point changed hits");
@@ -121,9 +128,9 @@ void check_discretize(const UldDomain& domain, double resolution) {
   const auto only_first = cast_one(domain, resolution, origin, first, false);
   const auto only_second = cast_one(domain, resolution, origin, second, false);
   OccupancyGrid both_grid(resolution);
-  const auto both = both_grid.collect(origin, {first, second}, domain, {}, nullptr);
-  const auto forward = both_grid.collect(origin, {first, second}, domain, OccupancyScanOptions{true}, nullptr);
-  const auto reverse = both_grid.collect(origin, {second, first}, domain, OccupancyScanOptions{true}, nullptr);
+  const auto both = collect_of(both_grid, origin, {first, second}, domain, {}, nullptr);
+  const auto forward = collect_of(both_grid, origin, {first, second}, domain, OccupancyScanOptions{true}, nullptr);
+  const auto reverse = collect_of(both_grid, origin, {second, first}, domain, OccupancyScanOptions{true}, nullptr);
   require(both.endpoints_used == 2 && both.rays_attempted == 2, "discretize leaked into the default path");
   require(forward.endpoints_used == 1 && reverse.endpoints_used == 1, "same-cell pair kept both rays");
   require(cells_of(forward.occupied_cells) == cells_of(reverse.occupied_cells), "order changed occupied cells");
@@ -136,8 +143,8 @@ void check_discretize(const UldDomain& domain, double resolution) {
           "unique-endpoint fixture collided");
   OccupancyGrid unique_grid(resolution);
   const std::vector<Vec3> unique_points{first, other};
-  const auto plain = unique_grid.collect(origin, unique_points, domain, {}, nullptr);
-  const auto discrete = unique_grid.collect(origin, unique_points, domain, OccupancyScanOptions{true}, nullptr);
+  const auto plain = collect_of(unique_grid, origin, unique_points, domain, {}, nullptr);
+  const auto discrete = collect_of(unique_grid, origin, unique_points, domain, OccupancyScanOptions{true}, nullptr);
   require(discrete.endpoints_used == unique_points.size(), "already-unique endpoints were dropped");
   require(cells_of(plain.free_cells) == cells_of(discrete.free_cells) &&
               cells_of(plain.occupied_cells) == cells_of(discrete.occupied_cells),
@@ -185,7 +192,7 @@ void check_chamfer_hit() {
   OccupancyGrid grid(resolution);
   const std::vector<std::vector<Vec3>> orders{{inside, outside}, {outside, inside}};
   for (const auto& order : orders) {
-    const auto scan = grid.collect(origin, order, domain, OccupancyScanOptions{true}, nullptr);
+    const auto scan = collect_of(grid, origin, order, domain, OccupancyScanOptions{true}, nullptr);
     require(scan.endpoints_used == 1, "chamfer pair cast two free rays");
     require(cells_of(scan.occupied_cells).count(cell_index_from_key(shared)) == 1,
             "inside chamfer point lost its hit");
@@ -240,7 +247,7 @@ void check_config_identity() {
   require(receipt.status == "INTEGRATED", "configured store rejected the cloud");
   OccupancyGrid probe(enabled.resolution);
   UldDomain domain(enabled.geometry, enabled.resolution);
-  const auto scan = probe.collect({0, 0, 0}, std::vector<Vec3>(30, repeated), domain,
+  const auto scan = collect_of(probe, {0, 0, 0}, std::vector<Vec3>(30, repeated), domain,
                                   OccupancyScanOptions{true}, nullptr);
   require(receipt.free_keys == scan.free_cells.size() && receipt.hit_keys == scan.occupied_cells.size(),
           "store flag did not match discretize=true");
@@ -264,7 +271,7 @@ void check_profile_diagnostics(const UldDomain& domain, double resolution, const
                                const std::vector<Vec3>& points) {
   OccupancyGrid off_grid(resolution);
   UpdateProfile off;
-  const auto off_scan = off_grid.collect(origin, points, domain, {}, &off);
+  const auto off_scan = collect_of(off_grid, origin, points, domain, {}, &off);
   require(off.rays_attempted == 0 && off.ray_keys_generated == 0 && off.active_ray_key_visits == 0,
           "Off profile collected diagnostics");
   require(off_scan.ray_keys_generated == 0 && off_scan.active_visits == 0 &&
@@ -273,11 +280,11 @@ void check_profile_diagnostics(const UldDomain& domain, double resolution, const
   OccupancyGrid stages_grid(resolution);
   UpdateProfile stages;
   stages.mode = ProfileMode::Stages;
-  const auto stages_scan = stages_grid.collect(origin, points, domain, {}, &stages);
+  const auto stages_scan = collect_of(stages_grid, origin, points, domain, {}, &stages);
   OccupancyGrid detailed_grid(resolution);
   UpdateProfile detailed;
   detailed.mode = ProfileMode::Detailed;
-  const auto detailed_scan = detailed_grid.collect(origin, points, domain, {}, &detailed);
+  const auto detailed_scan = collect_of(detailed_grid, origin, points, domain, {}, &detailed);
   require(cells_of(off_scan.free_cells) == cells_of(stages_scan.free_cells) &&
               cells_of(stages_scan.free_cells) == cells_of(detailed_scan.free_cells),
           "profile mode changed the free set");
@@ -298,6 +305,89 @@ void check_profile_diagnostics(const UldDomain& domain, double resolution, const
   require(oa.profile.rays_attempted == 0 && oa.profile.ray_keys_generated == 0, "Off receipt collected diagnostics");
   require(ob.free_keys == oc.free_keys && ob.hit_keys == oc.hit_keys && ob.changed_keys == oc.changed_keys,
           "profile mode changed published counts");
+}
+
+void check_scan_reuse(const UldDomain& domain, double resolution) {
+  const Vec3 origin{0, 0, 0};
+  const std::vector<Vec3> first{{0.1, 0, 0.8}, {-0.2, 0.1, 0.9}};
+  const std::vector<Vec3> second{{0.2, -0.1, 0.85}, {0.0, 0.1, 0.75}, {0.15, 0, 1.0}};
+  OccupancyGrid grid(resolution);
+  OccupancyScan scan;
+  UpdateProfile profile;
+  profile.mode = ProfileMode::Detailed;
+  grid.collect(scan, origin, first, domain, {}, &profile);
+  require(!scan.free_cells.empty() && scan.active_visits > 0 && scan.ray_keys_generated > 0,
+          "enabled collect left no diagnostics");
+  const auto enabled_visits = profile.active_ray_key_visits;
+  const auto enabled_duplicates = profile.free_insert_duplicates;
+  require(enabled_visits > 0, "enabled profile counted no visits");
+
+  profile.mode = ProfileMode::Off;
+  grid.collect(scan, origin, second, domain, {}, &profile);
+  OccupancyGrid fresh(resolution);
+  OccupancyScan expected;
+  fresh.collect(expected, origin, second, domain, {}, nullptr);
+  OccupancyScan first_only;
+  fresh.collect(first_only, origin, first, domain, {}, nullptr);
+  require(cells_of(first_only.free_cells) != cells_of(expected.free_cells),
+          "reuse inputs did not differ");
+  require(cells_of(scan.free_cells) == cells_of(expected.free_cells),
+          "reused scan kept the previous free set");
+  require(cells_of(scan.occupied_cells) == cells_of(expected.occupied_cells),
+          "reused scan kept the previous hit set");
+  require(scan.rays_attempted == second.size() && scan.endpoints_used == second.size(),
+          "reused scan kept the previous ray count");
+  require(scan.ray_keys_generated == 0 && scan.active_visits == 0 && scan.inactive_visits == 0 &&
+              scan.free_insert_duplicates == 0 && scan.free_unique_before_hit_removal == 0,
+          "Off reuse left diagnostic counters on the scan");
+  require(profile.active_ray_key_visits == enabled_visits &&
+              profile.free_insert_duplicates == enabled_duplicates &&
+              profile.ray_keys_generated > 0,
+          "Off collect changed counters left by the enabled pass");
+}
+
+void check_failed_endpoint_skips_apply(const UldDomain& domain, double resolution) {
+  GeometryDescriptor geometry{"fixture_geometry", "fixture_digest", 0.8, 0.8, 0, 1.2, {}};
+  const Vec3 origin{0, 0, 0};
+  const std::vector<Vec3> valid{{0.1, 0, 0.8}, {0.2, 0.0, 0.9}};
+  std::vector<Vec3> mixed = valid;
+  mixed.push_back({100000.0, 0.0, 1.0});
+  ObservationStore store(geometry, resolution, {}, "test_clock", "config");
+  require(store.integrate(observation(valid, 1000)).status == "INTEGRATED", "seed frame rejected");
+  const auto before = store.checkpoint();
+  const auto known = store.diagnostics().known_cells;
+  const auto identity = store.diagnostics().identity;
+  auto bad = observation(mixed, 2000);
+  bad.identity.observation_id = "bad-endpoint";
+  const auto receipt = store.integrate(bad);
+  require(receipt.status == "ENDPOINT_OUT_OF_KEY_RANGE", "illegal endpoint was integrated");
+  require(receipt.free_keys == 0 && receipt.hit_keys == 0 && receipt.changed_keys == 0,
+          "failed integrate published a partial scan");
+  require(store.checkpoint().tree_bytes == before.tree_bytes, "failed integrate changed the tree");
+  require(store.diagnostics().known_cells == known, "failed integrate changed known cells");
+  const auto after = store.diagnostics().identity;
+  require(after.epoch == identity.epoch && after.map_revision == identity.map_revision &&
+              after.observed_revision == identity.observed_revision &&
+              after.last_integrated_stamp_ns == identity.last_integrated_stamp_ns,
+          "failed integrate advanced store identity");
+
+  OccupancyGrid grid(resolution);
+  OccupancyScan scan;
+  bool rejected = false;
+  try { grid.collect(scan, origin, mixed, domain, {}, nullptr); }
+  catch (const Error& error) { rejected = std::string(error.what()) == "ENDPOINT_OUT_OF_KEY_RANGE"; }
+  require(rejected, "collect accepted an endpoint outside the key range");
+  require(scan.rays_attempted == valid.size() && !scan.free_cells.empty(),
+          "failure did not keep the valid prefix");
+  const auto nodes_before = grid.nodeCount();
+  grid.collect(scan, origin, valid, domain, {}, nullptr);
+  OccupancyScan fresh;
+  OccupancyGrid other(resolution);
+  other.collect(fresh, origin, valid, domain, {}, nullptr);
+  require(cells_of(scan.free_cells) == cells_of(fresh.free_cells) &&
+              cells_of(scan.occupied_cells) == cells_of(fresh.occupied_cells),
+          "reuse after failure kept a partial result");
+  require(grid.nodeCount() == nodes_before, "collect wrote the tree");
 }
 
 void apply_reference(octomap::OcTree& tree, const ReferenceSets& keys) {
@@ -332,7 +422,7 @@ void check_sequence_and_restore(const UldDomain& domain, double resolution) {
     const auto receipt = store.integrate(obs);
     require(receipt.status == "INTEGRATED", "sequence frame rejected");
     OccupancyGrid check(resolution);
-    const auto scan = check.collect(origin, frame, domain, {}, nullptr);
+    const auto scan = collect_of(check, origin, frame, domain, {}, nullptr);
     require(cells_of(scan.free_cells) == expected.frees && cells_of(scan.occupied_cells) == expected.hits,
             "sequence free/hit set mismatch");
     const auto snapshot = store.snapshot();
@@ -411,7 +501,7 @@ int main() {
                                    {-0.2, 0.1, 0.9}, {0.7, 0, 1.0}};
     const auto expected = reference_sets(domain, origin, points, resolution);
     OccupancyGrid grid(resolution);
-    const auto scan = grid.collect(origin, points, domain, {}, nullptr);
+    const auto scan = collect_of(grid, origin, points, domain, {}, nullptr);
     require(cells_of(scan.free_cells) == expected.frees, "free set mismatch");
     require(cells_of(scan.occupied_cells) == expected.hits, "hit set mismatch");
     require(scan.rays_attempted == points.size(), "ray count changed");
@@ -483,7 +573,7 @@ int main() {
     const auto ref_cloud = reference_sets(domain, origin, cloud, resolution);
     const auto t1 = std::chrono::steady_clock::now();
     OccupancyGrid timed(resolution);
-    const auto key_cloud = timed.collect(origin, cloud, domain, {}, nullptr);
+    const auto key_cloud = collect_of(timed, origin, cloud, domain, {}, nullptr);
     const auto t2 = std::chrono::steady_clock::now();
     require(cells_of(key_cloud.free_cells) == ref_cloud.frees, "cloud free set mismatch");
     require(cells_of(key_cloud.occupied_cells) == ref_cloud.hits, "cloud hit set mismatch");
@@ -495,6 +585,8 @@ int main() {
     check_discretize(domain, resolution);
     check_chamfer_hit();
     check_profile_diagnostics(domain, resolution, origin, points);
+    check_scan_reuse(domain, resolution);
+    check_failed_endpoint_skips_apply(domain, resolution);
     check_sequence_and_restore(domain, resolution);
     check_config_identity();
     std::cout << "discretize_checks=ok\n";

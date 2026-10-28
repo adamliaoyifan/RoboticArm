@@ -36,13 +36,12 @@ void OccupancyGrid::configure() {
 }
 
 void OccupancyGrid::castFreeRay(OccupancyScan& scan, UpdateProfile& prof, const UldDomain& domain,
-                                const octomap::point3d& origin, const Vec3& endpoint_uld,
+                                const octomap::point3d& origin, octomap::KeyRay& ray, const Vec3& endpoint_uld,
                                 const octomap::point3d& endpoint_om, const octomap::OcTreeKey& endpoint_key,
                                 bool admit_occupied) {
   if (prof.enabled()) ++prof.rays_attempted;
   ++scan.rays_attempted;
   ++scan.endpoints_used;
-  octomap::KeyRay ray;
   { ProfileSpan ray_span(prof, ProfileStage::RayGeneration, true);
     if (!tree_->computeRayKeys(origin, endpoint_om, ray)) throw Error("RAY_PREPARATION_FAILED");
   }
@@ -81,28 +80,42 @@ void OccupancyGrid::castFreeRay(OccupancyScan& scan, UpdateProfile& prof, const 
   }
 }
 
-OccupancyScan OccupancyGrid::collect(const Vec3& origin_uld,
-                                     const std::vector<Vec3>& endpoints_uld,
-                                     const UldDomain& domain, OccupancyScanOptions options,
-                                     UpdateProfile* profile) {
-  if (options.discretize_endpoints)
-    return collectDiscretized(origin_uld, endpoints_uld, domain, profile);
+static void clear_scan(OccupancyScan& scan) {
+  scan.free_cells.clear();
+  scan.occupied_cells.clear();
+  scan.rays_attempted = 0;
+  scan.endpoints_used = 0;
+  scan.ray_keys_generated = 0;
+  scan.active_visits = 0;
+  scan.inactive_visits = 0;
+  scan.free_insert_duplicates = 0;
+  scan.free_unique_before_hit_removal = 0;
+}
+
+void OccupancyGrid::collect(OccupancyScan& scan, const Vec3& origin_uld,
+                                const std::vector<Vec3>& endpoints_uld, const UldDomain& domain,
+                                OccupancyScanOptions options, UpdateProfile* profile) {
+  clear_scan(scan);
+  if (options.discretize_endpoints) {
+    collectDiscretized(scan, origin_uld, endpoints_uld, domain, profile);
+    return;
+  }
   UpdateProfile disabled;
   auto& prof = profile_of(profile, disabled);
-  OccupancyScan scan;
   { ProfileSpan span(prof, ProfileStage::RayPreparation);
     const auto origin = domain.octomap_coordinates(origin_uld);
     octomap::OcTreeKey origin_key;
     if (!tree_->coordToKeyChecked(origin.x, origin.y, origin.z, origin_key))
       throw Error("ORIGIN_OUT_OF_KEY_RANGE");
     const octomap::point3d origin_point(origin.x, origin.y, origin.z);
+    octomap::KeyRay ray;
     for (const auto& endpoint : endpoints_uld) {
       const auto point = domain.octomap_coordinates(endpoint);
       octomap::OcTreeKey endpoint_key;
       if (!tree_->coordToKeyChecked(point.x, point.y, point.z, endpoint_key))
         throw Error("ENDPOINT_OUT_OF_KEY_RANGE");
-      castFreeRay(scan, prof, domain, origin_point, endpoint, octomap::point3d(point.x, point.y, point.z),
-                  endpoint_key, true);
+      castFreeRay(scan, prof, domain, origin_point, ray, endpoint,
+                  octomap::point3d(point.x, point.y, point.z), endpoint_key, true);
     }
     if (prof.enabled()) {
       prof.free_unique_before_hit_removal = scan.free_cells.size();
@@ -110,15 +123,13 @@ OccupancyScan OccupancyGrid::collect(const Vec3& origin_uld,
     }
     for (const auto& hit : scan.occupied_cells) scan.free_cells.erase(hit);
   }
-  return scan;
 }
 
-OccupancyScan OccupancyGrid::collectDiscretized(const Vec3& origin_uld,
+void OccupancyGrid::collectDiscretized(OccupancyScan& scan, const Vec3& origin_uld,
                                                    const std::vector<Vec3>& endpoints_uld,
                                                    const UldDomain& domain, UpdateProfile* profile) {
   UpdateProfile disabled;
   auto& prof = profile_of(profile, disabled);
-  OccupancyScan scan;
   { ProfileSpan span(prof, ProfileStage::RayPreparation);
     const auto origin = domain.octomap_coordinates(origin_uld);
     octomap::OcTreeKey origin_key;
@@ -148,15 +159,15 @@ OccupancyScan OccupancyGrid::collectDiscretized(const Vec3& origin_uld,
       if (seen_endpoints.insert(endpoint.key).second) rays.push_back(endpoint);
     }
     const octomap::point3d origin_point(origin.x, origin.y, origin.z);
+    octomap::KeyRay ray;
     for (const auto& endpoint : rays)
-      castFreeRay(scan, prof, domain, origin_point, endpoint.uld, endpoint.octomap, endpoint.key, false);
+      castFreeRay(scan, prof, domain, origin_point, ray, endpoint.uld, endpoint.octomap, endpoint.key, false);
     if (prof.enabled()) {
       prof.free_unique_before_hit_removal = scan.free_cells.size();
       scan.free_unique_before_hit_removal = scan.free_cells.size();
     }
     for (const auto& hit : scan.occupied_cells) scan.free_cells.erase(hit);
   }
-  return scan;
 }
 
 std::vector<OccupancyMutation> OccupancyGrid::apply(const OccupancyScan& scan,
