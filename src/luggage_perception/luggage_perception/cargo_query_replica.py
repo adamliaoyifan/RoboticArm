@@ -45,11 +45,15 @@ class ReplicaState:
 class QueryReplica:
     """Receiver side. Polls the export root; holds the rebuilt registry."""
 
-    def __init__(self, root, resync_requester=None):
+    def __init__(self, root, resync_requester=None, record_events=True):
         self.root = os.path.abspath(root)
         self.state = ReplicaState.STARTING
         self.snapshot = None
         self.manifest = None
+        # A9 capture pairing (review_5c5c1842): the receive-event
+        # recorder is the diagnostic whose cost the gate measures;
+        # production keeps the default (always on).
+        self._record_events = bool(record_events)
         self._resync_requester = resync_requester
         self._resync_attempts = 0
         self._resync_deadline_ns = None
@@ -74,6 +78,8 @@ class QueryReplica:
         self.event_log = _collections.deque(maxlen=8192)
 
     def _record(self, event, **fields):
+        if not self._record_events:
+            return
         import time as _time
         self.event_log.append(dict({'event': event,
                                     't_ns': _time.monotonic_ns()},
@@ -182,9 +188,19 @@ class QueryReplica:
                 self.state = ReplicaState.READY
                 return self.state
             elif int(manifest['seq']) != int(self.manifest['seq']) + 1:
-                return self._resync('SEQ_GAP',
-                                    '%s -> %s' % (self.manifest['seq'],
-                                                  manifest['seq']))
+                # Bounded catch-up FIRST (gen3 review_5c5c1842 Finding
+                # 2, spec OCC_SEQ_GAP_CATCHUP_SPEC_20261028): one
+                # stalled poll must not be amplified into a full
+                # rebuild when the retained intermediate chain is
+                # present and valid. Falls back to the named FULL
+                # resync on any invariant violation.
+                outcome = self._catchup(manifest)
+                if outcome is not None:
+                    return outcome
+                return self._resync(
+                    'SEQ_GAP',
+                    '%s -> %s (catch-up unavailable)'
+                    % (self.manifest['seq'], manifest['seq']))
         if self.manifest is None and manifest['kind'] == 'FULL' \
                 and not self._seq_plausible(manifest):
             # A fresh receiver must not adopt a forged high-seq FULL
@@ -203,6 +219,115 @@ class QueryReplica:
             if manifest['producer_incarnation'] != \
                     self.manifest['producer_incarnation']:
                 return self._resync('PRODUCER_CHANGED')
+        return self._apply_manifest(manifest)
+
+    CATCHUP_MAX_GENERATIONS = 32
+    CATCHUP_MAX_BYTES = 512 * 1024 * 1024
+
+    def _read_generation_manifest(self, producer, seq):
+        """Read one RETAINED intermediate manifest from disk (catch-up
+        chain member); None when the file is gone."""
+        path = os.path.join(self.root, 'generations', str(producer),
+                            str(int(seq)), 'manifest.json')
+        try:
+            with open(path, 'rb') as handle:
+                body = handle.read(8 * 1024 * 1024 + 1)
+        except OSError:
+            return None
+        if len(body) > 8 * 1024 * 1024:
+            raise WireError('MANIFEST_TOO_LARGE', path)
+        manifest = json.loads(body.decode('utf-8'))
+        validate_manifest(manifest)
+        return manifest
+
+    def _catchup(self, latest):
+        """Bounded catch-up over retained intermediate generations
+        (spec OCC_SEQ_GAP_CATCHUP_SPEC_20261028). Returns the final
+        poll state on success, None when the named FULL resync path
+        must run (the caller keeps its current manifest -- no partial
+        application: each link swaps state only after full
+        validation, and a failing link aborts to resync with the
+        receiver still on its last VALID generation)."""
+        expected = int(self.manifest['seq']) + 1
+        latest_seq = int(latest['seq'])
+        links = latest_seq - expected + 1
+        if links <= 0 or links > self.CATCHUP_MAX_GENERATIONS:
+            self._record('catchup', status='limit_generations',
+                         links=links)
+            return None
+        producer = latest['producer_incarnation']
+        chain = []
+        anchor = self.manifest
+        total_bytes = 0
+        for seq in range(expected, latest_seq + 1):
+            try:
+                manifest = self._read_generation_manifest(producer,
+                                                          seq)
+            except (WireError, OSError, ValueError) as error:
+                self._record('catchup', status='unreadable',
+                             seq=seq, reason=str(
+                                 getattr(error, 'reason', error))[:80])
+                return None
+            if manifest is None:
+                self._record('catchup', status='missing', seq=seq)
+                return None
+            # I1 same world on every link
+            if (manifest['producer_incarnation'] != producer
+                    or manifest['map_epoch'] != self.manifest[
+                        'map_epoch']
+                    or int(manifest['wire_schema_version'])
+                    != int(self.manifest['wire_schema_version'])
+                    or manifest['geometry_hash'] != self.manifest[
+                        'geometry_hash']):
+                self._record('catchup', status='world_change', seq=seq)
+                return None
+            # I2 consecutive
+            if int(manifest['seq']) != seq:
+                self._record('catchup', status='seq_mismatch', seq=seq)
+                return None
+            # I3 chain anchor (a FULL link is self-contained and
+            # becomes the new anchor, guarded by seq plausibility)
+            if manifest['kind'] == 'FULL':
+                if not self._seq_plausible(manifest):
+                    self._record('catchup', status='seq_implausible',
+                                 seq=seq)
+                    return None
+                anchor = manifest
+            else:
+                if (list(manifest['base_identity'])
+                        != list(anchor['target_identity'])
+                        or manifest['base_manifest_sha']
+                        != anchor['checksum']):
+                    self._record('catchup', status='base_mismatch',
+                                 seq=seq)
+                    return None
+                anchor = manifest
+            total_bytes += sum(
+                entry.get('bytes', 0)
+                for entry in manifest['entries'].values()
+                if entry.get('type') == 'object')
+            if total_bytes > self.CATCHUP_MAX_BYTES:
+                self._record('catchup', status='limit_bytes',
+                             bytes=total_bytes)
+                return None
+            chain.append(manifest)
+        applied = 0
+        for manifest in chain:
+            state = self._apply_manifest(manifest, record_ready=False)
+            if state != ReplicaState.READY:
+                self._record('catchup', status='apply_failed',
+                             seq=manifest['seq'])
+                return None
+            applied += 1
+        self._record('catchup', status='applied', links=applied,
+                     bytes=total_bytes)
+        self.state = ReplicaState.READY
+        self._record('ready', seq=self.manifest['seq'],
+                     target_identity=list(
+                         self.manifest['target_identity']))
+        return self.state
+
+    def _apply_manifest(self, manifest, record_ready=True):
         try:
             self.state = ReplicaState.SYNCING
             if (manifest['kind'] == 'DELTA' and self.snapshot is not None
@@ -216,7 +341,9 @@ class QueryReplica:
         except WireError as error:
             self._record('validate_failed', seq=manifest['seq'],
                          reason=str(error.reason))
-            return self._resync(error.reason, error.detail)
+            if record_ready:
+                return self._resync(error.reason, error.detail)
+            return ReplicaState.RESYNC_REQUIRED
         # Atomic swap: registry state changes only after full validation.
         self._record('validated', seq=manifest['seq'],
                      target_identity=list(manifest['target_identity']))
@@ -226,8 +353,10 @@ class QueryReplica:
         self.state = ReplicaState.READY
         self.last_error = ''
         self._resync_attempts = 0
-        self._record('ready', seq=manifest['seq'],
-                     target_identity=list(manifest['target_identity']))
+        if record_ready:
+            self._record('ready', seq=manifest['seq'],
+                         target_identity=list(
+                             manifest['target_identity']))
         return self.state
 
     # -- internals -----------------------------------------------------
