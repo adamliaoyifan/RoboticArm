@@ -1,4 +1,5 @@
 #include "uld_occ_observer/observer.hpp"
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -41,6 +42,73 @@ void check_profile(const UpdateReceipt& r) {
   require(p.copied_blocks<=r.rebuilt_blocks,"too many block copies");
   require(p.free_unique_before_hit_removal>=r.free_keys,"hit removal grew free set");
 }
+void check_surface_matches_cell_scan() {
+  GeometryDescriptor box{"box","digest",0.8,0.8,0,1.2,{}};
+  auto domain = std::make_shared<const UldDomain>(box, 0.05);
+  const CellIndex low{2,2,1};
+  const CellIndex high{2,2,4};
+  auto both = std::make_shared<CellBlock>();
+  (*both)[low] = CellValue{0.8f, true};
+  (*both)[high] = CellValue{0.8f, true};
+  BlockRegistry blocks;
+  blocks[Snapshot::block_index(low)] = both;
+  Snapshot populated{{}, domain, blocks};
+  SurfaceProfile profile;
+  const auto columns = populated.surface(&profile);
+  const auto shape = domain->shape();
+  std::vector<SurfaceColumn> oracle;
+  for (int y = 0; y < shape.y; ++y) {
+    for (int x = 0; x < shape.x; ++x) {
+      SurfaceColumn column;
+      column.x = x; column.y = y;
+      for (int z = 0; z < shape.z; ++z) {
+        const auto sample = populated.cell({x,y,z});
+        column.active_count += sample.active;
+        column.known_count += sample.known;
+        if (sample.known && sample.value.occupied) {
+          column.has_occupied = true;
+          column.top_z = std::min(domain->descriptor().ceiling_z,
+              domain->origin().z + (z+1)*domain->resolution());
+        }
+      }
+      oracle.push_back(column);
+    }
+  }
+  require(columns->size()==oracle.size() && profile.scanned_cells==2, "surface shape");
+  for (std::size_t i = 0; i < oracle.size(); ++i) {
+    const auto& got = (*columns)[i];
+    const auto& expect = oracle[i];
+    require(got.active_count==expect.active_count && got.known_count==expect.known_count &&
+                got.has_occupied==expect.has_occupied && got.top_z==expect.top_z,
+            "block surface differed from a full cell scan");
+  }
+  auto lower = std::make_shared<CellBlock>();
+  (*lower)[low] = CellValue{0.8f, true};
+  BlockRegistry only_low;
+  only_low[Snapshot::block_index(low)] = lower;
+  Snapshot removed{{}, domain, only_low};
+  const auto dropped = removed.surface();
+  const auto column = static_cast<std::size_t>(low.y) * shape.x + low.x;
+  require((*dropped)[column].has_occupied &&
+              (*dropped)[column].top_z == domain->origin().z + (low.z+1)*domain->resolution() &&
+              (*dropped)[column].top_z < (*columns)[column].top_z,
+          "removing the higher occupied cell kept the old top");
+  GeometryDescriptor chamfer_box{"chamfer","digest",1.0,1.0,0.0,1.0,Chamfer{0.0,0.2,0.4}};
+  auto chamfer = std::make_shared<const UldDomain>(chamfer_box, 0.05);
+  Snapshot empty{{}, chamfer, {}};
+  const auto built = empty.surface();
+  const auto chamfer_shape = chamfer->shape();
+  for (int y = 0; y < chamfer_shape.y; ++y) {
+    for (int x = 0; x < chamfer_shape.x; ++x) {
+      std::size_t active = 0;
+      for (int z = 0; z < chamfer_shape.z; ++z) active += empty.cell({x,y,z}).active;
+      require((*built)[static_cast<std::size_t>(y)*chamfer_shape.x+x].active_count==active &&
+                  (*built)[static_cast<std::size_t>(y)*chamfer_shape.x+x].known_count==0,
+              "chamfer column active count drifted");
+    }
+  }
+}
+
 int main() {
   try {
     GeometryDescriptor geometry{"fixture_geometry","fixture_digest",.8,.8,0,1.2,{}};
@@ -92,6 +160,7 @@ int main() {
                 surface_session.report().surface.scanned_cells==first.scanned_cells,
             "surface sample was not recorded");
     require(old_snapshot->identity().map_revision<=snapshot->identity().map_revision,"old snapshot changed");
+    check_surface_matches_cell_scan();
     std::cout << "PASS profiling semantic equivalence: " << cases.size() << " cases x3 modes; counters/timings/cache paths\n";
     return 0;
   } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 3; }

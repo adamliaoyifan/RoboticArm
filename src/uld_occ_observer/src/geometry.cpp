@@ -1,5 +1,6 @@
 #include "uld_occ_observer/geometry.hpp"
 #include <cmath>
+#include <mutex>
 
 namespace uld_occ_observer {
 UldDomain::UldDomain(GeometryDescriptor descriptor, double resolution)
@@ -40,6 +41,20 @@ bool UldDomain::contains(const Vec3& p) const {
     if (p.y > c.floor_y + slope*(p.z-d.floor_z) + eps) return false;
   }
   return true;
+}
+
+const std::vector<std::uint32_t>& UldDomain::column_active_counts() const {
+  std::call_once(active_once_, [&] {
+    active_counts_.assign(static_cast<std::size_t>(shape_.x) * shape_.y, 0);
+    for (int y = 0; y < shape_.y; ++y) {
+      for (int x = 0; x < shape_.x; ++x) {
+        std::uint32_t count = 0;
+        for (int z = 0; z < shape_.z; ++z) count += active({x, y, z});
+        active_counts_[static_cast<std::size_t>(y) * shape_.x + x] = count;
+      }
+    }
+  });
+  return active_counts_;
 }
 
 bool UldDomain::active(const CellIndex& i) const {

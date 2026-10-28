@@ -1,6 +1,9 @@
 #pragma once
 #include "uld_occ_observer/types.hpp"
+#include <cstdint>
+#include <mutex>
 #include <optional>
+#include <vector>
 
 namespace uld_occ_observer {
 struct Chamfer {
@@ -27,10 +30,14 @@ class UldDomain {
   CellIndex shape() const { return shape_; }
   double resolution() const { return resolution_; }
   const GeometryDescriptor& descriptor() const { return descriptor_; }
+  // Active cell counts per column. The domain does not change, so this is computed once.
+  const std::vector<std::uint32_t>& column_active_counts() const;
  private:
   const GeometryDescriptor descriptor_;
   const double resolution_;
   Vec3 origin_;
   CellIndex shape_;
+  mutable std::once_flag active_once_;
+  mutable std::vector<std::uint32_t> active_counts_;
 };
 }  // namespace uld_occ_observer

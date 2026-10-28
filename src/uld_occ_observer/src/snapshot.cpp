@@ -62,29 +62,42 @@ std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface(SurfaceProfi
     }
     return surface_cache_->value;
   }
-  auto output = std::make_shared<std::vector<SurfaceColumn>>();
   const auto shape = domain_->shape();
-  output->reserve(static_cast<std::size_t>(shape.x)*shape.y);
+  const auto& active_counts = domain_->column_active_counts();
+  auto output = std::make_shared<std::vector<SurfaceColumn>>(active_counts.size());
+  std::vector<int> highest_occupied(active_counts.size(), -1);
   for (int y = 0; y < shape.y; ++y) {
     for (int x = 0; x < shape.x; ++x) {
-      SurfaceColumn column;
-      column.x = x; column.y = y;
-      for (int z = 0; z < shape.z; ++z) {
-        const auto sample = cell({x,y,z});
-        column.active_count += sample.active;
-        column.known_count += sample.known;
-        if (sample.known && sample.value.occupied) {
-          column.has_occupied = true;
-          column.top_z = std::min(domain_->descriptor().ceiling_z,
-              domain_->origin().z + (z+1)*domain_->resolution());
-        }
+      const auto column_index = static_cast<std::size_t>(y) * shape.x + x;
+      auto& column = (*output)[column_index];
+      column.x = x;
+      column.y = y;
+      column.active_count = active_counts[column_index];
+    }
+  }
+  std::uint64_t scanned = 0;
+  const double ceiling = domain_->descriptor().ceiling_z;
+  const double origin_z = domain_->origin().z;
+  const double resolution = domain_->resolution();
+  for (const auto& entry : blocks_) {
+    for (const auto& item : *entry.second) {
+      ++scanned;
+      const auto& index = item.first;
+      if (!domain_->active(index)) continue;
+      const auto column_index = static_cast<std::size_t>(index.y) * shape.x + index.x;
+      if (column_index >= output->size()) continue;
+      auto& column = (*output)[column_index];
+      ++column.known_count;
+      if (item.second.occupied && index.z > highest_occupied[column_index]) {
+        highest_occupied[column_index] = index.z;
+        column.has_occupied = true;
+        column.top_z = std::min(ceiling, origin_z + (index.z + 1) * resolution);
       }
-      output->push_back(column);
     }
   }
   surface_cache_->value = output;
   if (profile) {
-    profile->scanned_cells = static_cast<std::uint64_t>(shape.x)*shape.y*shape.z;
+    profile->scanned_cells = scanned;
     profile->output_columns = output->size();
     const auto finished = Clock::now();
     profile->build_ms = std::chrono::duration<double,std::milli>(finished-locked).count();
