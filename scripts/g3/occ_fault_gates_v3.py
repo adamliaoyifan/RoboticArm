@@ -131,6 +131,7 @@ def answer(req):
     if req.get('cmd') == 'poll_state':
         snap = replica.snapshot
         print(json.dumps({'ok': True, 'state': str(replica.state),
+                          'last_error': replica.last_error[:80],
                           'identity': list(snap.identity)
                           if snap is not None else None}), flush=True)
         return
@@ -874,6 +875,23 @@ def run_a5(h, results):
                                     detection = event
                                     break
                             if detection:
+                                break
+                            # A receiver that is NOT READY with a
+                            # NAMED error while the fault is in place
+                            # is an OBSERVED fail-closed detection (a
+                            # fresh receiver whose stream broke before
+                            # its first sync sits SYNCING/NO_PUBLISHED
+                            # by design -- there is no earlier state
+                            # to compare against, so the named
+                            # non-READY state IS the detection).
+                            reply = ask(worker, {'cmd': 'poll_state'})
+                            if (reply.get('ok')
+                                    and reply.get('state') != 'READY'
+                                    and reply.get('last_error')):
+                                detection = {
+                                    'kind': 'named_non_ready_state',
+                                    'state': reply.get('state'),
+                                    'error': reply.get('last_error')}
                                 break
                             time.sleep(0.05)
                         if detection is None:

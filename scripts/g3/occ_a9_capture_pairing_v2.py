@@ -91,7 +91,7 @@ def set_capture(on):
     if os.environ.get('A9V2_IDENTICAL') == '1':
         on = False
     replica._record_events = on
-    core.set_span_collector(spans.append if on else None)
+    core.set_span_collector(spans if on else None)
 
 
 replica = QueryReplica(root, record_events=False)
@@ -222,15 +222,13 @@ def main():
         # to a no-op via env so ON samples run the identical path
         os.environ['A9V2_IDENTICAL'] = '1'
     data = run_worker(root, 'slow' if args.mode == 'slow' else 'normal')
+    # normalize both modes out of the interleaved buckets
+    off = {'kinds': {k: {'full_ms': v['off']['full'],
+                         'direct_ms': v['off']['direct']}
+                     for k, v in data['kinds'].items()}}
     if args.mode == 'identical':
-        off = data
-        on = data            # same run, buckets identical by construction
-        expected_records = 0
+        on = off               # recorder forced off in both buckets
     else:
-        # normal/slow: 'on' bucket = capture recorder engaged
-        off = {'kinds': {k: {'full_ms': v['off']['full'],
-                             'direct_ms': v['off']['direct']}
-                         for k, v in data['kinds'].items()}}
         on = {'kinds': {k: {'full_ms': v['on']['full'],
                             'direct_ms': v['on']['direct']}
                         for k, v in data['kinds'].items()}}
