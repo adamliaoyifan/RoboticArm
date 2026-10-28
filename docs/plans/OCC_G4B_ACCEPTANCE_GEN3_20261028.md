@@ -1,12 +1,12 @@
 # OCC G4-B gen3 验收合同：容量实测与节拍解耦
 
 - date: 2026-10-28
-- status: cadence_revision_authorized_pending_binding
+- status: approved_pending_install_binding
 - parent: OCC-QUERY-INDEX-20261025
 - subtask: G4-B-FULL-ACCEPTANCE
 - generation: 3
 - owner: eng/claude/glm-5.3
-- candidate_revision: 0da4086b（候选，不是 Binding）
+- candidate_revision: 0da4086bce23be49ec8eeb934a15fb6829803abe（源码已核实干净；独立install待绑定）
 - baseline_revision: b33dda919521ef043fa9e30b07dcc79c87f76fce
 - supersedes: G4-B gen2 的节拍、并发聚合及派发规则；不追改历史结果
 - inherited_plans: 1c0049d4 的 OCC_QUERY_G4_AB_PROTOCOL_20261026.md；bcaa882165ac72eb94b3491ba7d6fd25b1908fa2 的 OCC_BLOCK_INCREMENTAL_G4A_G2_20261026.md
@@ -105,8 +105,18 @@ Binding 前固定原矩阵输入 manifest/hash、确切产品与脚本 commit、
 
 代表组失败先保存并停全矩阵；不在评分中修改产品或改阈值。既有 A 门不因这次节拍调整重跑；若 B 暴露产品缺陷，回 A 后继修复，再绑定受影响 B 门。
 
-## 7. 尚未解除的准入项及交接
+## 7. 已批准的协议、资源归属与交接
 
-本次只批准节拍修订，不批准 catch-up proposed 协议，不把分项 resource ledger 当统一512MiB通过。资源原定义覆盖双方派生缓存/索引、共享文件按对象去重、队列/staging/resync/临时buffer；RSS与物理派生预算分别判断。原门不删，A/B之间补证责任另行裁定。
+用户于2026-10-28 16:57明确批准 catch-up 协议及资源门归属裁定。catch-up规格 `OCC_SEQ_GAP_CATCHUP_SPEC_20261028.md` 正式准入，单代原子/失败resync/严格CURRENT保持。不存在继续等待同一项策略批准的前置；下列资源分工是本次授权的落地定义，不是宣称资源已PASS。
 
-G4-B gen2线程追加 generation3 规格事件；原历史元数据/Result不改。只有 reviews 关闭协议和资源归属准入项后，才追加 Binding（本计划精确SHA、最终产品SHA、独立install哈希、完整矩阵与环境清单），置 dispatch_ready=yes 并通知 eng/claude/glm-5.3 领取。0da4086b当前只是候选，不自动替换生产 b33，不启动 Gazebo/MoveIt/装箱，不宣称 n=3通过。
+| 责任 | 判定与交付 |
+|---|---|
+| G4-A | 已完成产品实现、已关闭门及现有分项资源账作为交付依据；不为资源全矩阵重开A，也不追签原ledger为统一512MiB PASS |
+| G4-B（eng/claude/glm-5.3） | 承担完整部署资源补证、统一预算核算和全部B矩阵；先验收仪表、再资源代表组、最后完整矩阵 |
+| reviews | 核对输入/判官/资源归因及最终结果；不以批准协议代替事实验收，不将采样0认定为分配峰值0 |
+
+资源口径保持原协议§4：合计RSS<=2GiB，派生唯一物理资源<=512MiB，init/reset<=30s。512MiB覆盖writer新增派生缓存、receiver解码/索引、共享文件/映射（按对象或inode去重）、双方队列、staging、resync副本及在途临时buffer；主OCC本体只计RSS。必须分项给出计费依据/生命周期/去重键，不能把逻辑registry预算直接当物理账，也不能简单将磁盘/RSS/PSS相加。不能准确覆盖某项时标unknown/not_evaluated，不默认0。
+
+B准备阶段用已知大小的分配/共享/释放fixture验证资源账：同一对象共享不双计，独立副本分别计，短命staging/resync计入峰值；超512MiB负对照必须拒绝PASS。实际运行保留双PID RSS/PSS及high-water、至少1Hz历史、分配/映射/staging事件峰值。先复用B首批1cm倒角0/20箱代表输入、3预热+30提交的计时窗核算（包含启动、变更导出、接收和排空），并补一次受控FULL resync资源窗口；不能仅用旧0.02m/5箱账外推。首批即属B证据，不追加独立优化战役；代表组FAIL或缺必需字段则停止全矩阵。通过后资源监测覆盖B全部组及原故障/清理边界，原2GiB/512MiB门不变。RGBD束/TF完整链采集仍属任务外，OCC提交/传播/查询边界不可缺。
+
+当前可以准备B绑定：锁定源码 `0da4086bce23be49ec8eeb934a15fb6829803abe`、本批准计划精确SHA，并登记独立install哈希、真实IDL、完整矩阵与环境清单。准备/仪表测试不是评分，必要的脚手架修改须独立提交且不得改受验产品。reviews核对这些机械准入项后追加Binding、置dispatch_ready=yes；不需要再次请用户批准同一协议或资源分工。当前未取得install证据，故不虚写已Binding。G4-B gen2线程追加generation3事件，原历史元数据/Result不改。生产b33不替换，不启动Gazebo/MoveIt/装箱，不宣称n=3通过。
