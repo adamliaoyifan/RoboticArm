@@ -1,16 +1,16 @@
 # OCC G4-B gen3 验收合同：容量实测与节拍解耦
 
 - date: 2026-10-28
-- status: approved_pending_install_binding
+- status: approved_bound_preparation_open
 - parent: OCC-QUERY-INDEX-20261025
 - subtask: G4-B-FULL-ACCEPTANCE
 - generation: 3
 - owner: eng/claude/glm-5.3
-- candidate_revision: 0da4086bce23be49ec8eeb934a15fb6829803abe（源码已核实干净；独立install待绑定）
+- candidate_revision: 0da4086bce23be49ec8eeb934a15fb6829803abe（源码与独立install已绑定，见§8）
 - baseline_revision: b33dda919521ef043fa9e30b07dcc79c87f76fce
 - supersedes: G4-B gen2 的节拍、并发聚合及派发规则；不追改历史结果
 - inherited_plans: 1c0049d4 的 OCC_QUERY_G4_AB_PROTOCOL_20261026.md；bcaa882165ac72eb94b3491ba7d6fd25b1908fa2 的 OCC_BLOCK_INCREMENTAL_G4A_G2_20261026.md
-- dispatch_ready: no
+- dispatch_ready: yes
 - authorization: 用户要求修改原 B 吞吐门、放宽节拍、按新现状修改合同
 
 ## 1. 本次裁定与不变边界
@@ -120,3 +120,24 @@ Binding 前固定原矩阵输入 manifest/hash、确切产品与脚本 commit、
 B准备阶段用已知大小的分配/共享/释放fixture验证资源账：同一对象共享不双计，独立副本分别计，短命staging/resync计入峰值；超512MiB负对照必须拒绝PASS。实际运行保留双PID RSS/PSS及high-water、至少1Hz历史、分配/映射/staging事件峰值。先复用B首批1cm倒角0/20箱代表输入、3预热+30提交的计时窗核算（包含启动、变更导出、接收和排空），并补一次受控FULL resync资源窗口；不能仅用旧0.02m/5箱账外推。首批即属B证据，不追加独立优化战役；代表组FAIL或缺必需字段则停止全矩阵。通过后资源监测覆盖B全部组及原故障/清理边界，原2GiB/512MiB门不变。RGBD束/TF完整链采集仍属任务外，OCC提交/传播/查询边界不可缺。
 
 当前可以准备B绑定：锁定源码 `0da4086bce23be49ec8eeb934a15fb6829803abe`、本批准计划精确SHA，并登记独立install哈希、真实IDL、完整矩阵与环境清单。准备/仪表测试不是评分，必要的脚手架修改须独立提交且不得改受验产品。reviews核对这些机械准入项后追加Binding、置dispatch_ready=yes；不需要再次请用户批准同一协议或资源分工。当前未取得install证据，故不虚写已Binding。G4-B gen2线程追加generation3事件，原历史元数据/Result不改。生产b33不替换，不启动Gazebo/MoveIt/装箱，不宣称n=3通过。
+
+## 8. Binding（2026-10-28，替代§7末段的等待状态）
+
+reviews独立逐文件复核manifest v2后接受机械准入；B generation3允许eng/claude/glm-5.3领取，准备阶段开放，评分尚未开始。权威证据 `docs/status/evidence/occ_owner_b1/occ_query_g4b_gen3_20261028/prep/REVIEW_BINDING_V2.md`。旧install/IDL v1摘要不可追溯，不再用于绑定；原文件保留。
+
+| 项 | 冻结值 |
+|---|---|
+| 产品基座 | 0da4086bce23be49ec8eeb934a15fb6829803abe，clean |
+| 基准基座 | b33dda919521ef043fa9e30b07dcc79c87f76fce，clean |
+| candidate install | /tmp/elfin-occ-boundary-repair-g4a-g3/install/g4b；2748文件；a1180acb4fc2b1f56ec014524fca839da6aa1f13bdd74a72b40dcca299fcdcbe |
+| baseline install | /tmp/elfin-b33-pairing/install/g4b；2431文件；a6f2dc37908a48dfd40971a8f37bd6d52ca92817e33f6f0c4f79def443b97114 |
+| candidate IDL | 182项；e9fd1867ba377cda92cbc44dfde0a8e3ddaf9fd472c593ebcfe2feb5c446916a |
+| baseline IDL | 161项；bb73e2205a8f5286b8dde3f633fd9ef9cd4c6355e1d2ffc0e9e140c6a417791a |
+
+摘要采用 `binding_prep_v2.json` 的根路径相对名、LC_ALL=C字节排序、全常规文件（含隐藏及COLCON_IGNORE），symlink拒绝；逐文件size/hash完整保留在files_*.jsonl。不能拿旧路径前缀算法的摘要比较成文件变化。
+
+IDL新增21项、共享161项逐字节相同、删除0。candidate typed-V2验绝对门，共享语义用baseline oracle；禁止baseline facade与candidate typed时延直接求比。现有重放受控失败/健康对照接受为判别力证据，不外推全部故障类型。
+
+领取后顺序固定：C1/C2脚手架与专用行为tests、资源仪表fixture、完整输入manifest及CLI命令展开 → 冻结脚本SHA与评分启动清单 → 资源代表组 → 全矩阵。脚手架在独立B worktree提交，产品src/st09_contracts/配置相对0da4086b无变化；专用tests允许。输入seed=3点云与A8既有负载均须展开逐case/hash，脚本/输入未冻结不得评分。新增install路径、文件或重新构建须重核manifest，不静默替换绑定。
+
+准备完成须回帖脚本SHA、行为测试结果、原矩阵完整列表与命令、环境复录；满足合同方可进入代表组，不需再请用户批准同一策略。代表失败保存并停全矩阵；产品修复回A后继，不在B评分中修改。只读旧A证据，不重跑A7/A8/A9。性能持互斥锁；当前机器负载、频率/affinity及ROS domain在每run重录，不能沿用prep空闲声明。
