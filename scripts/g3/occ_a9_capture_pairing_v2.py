@@ -425,7 +425,10 @@ def main():
                   'completeness = exact per-request identity join '
                   '(record identity == sample identity per (kind,pair))'),
         'capture_join': join_detail,
-        'records_on': records[:5],
+        # FULL record set retained (v4.1: reviews -- keeping only the
+        # first 5 made the 90/90 join impossible to re-verify from
+        # the output alone)
+        'records_on': records,
         'recorder_boundary': ('in-memory ring/list append only (the '
                               'production recorders are the replica '
                               'event deque and the span list; no per-'
