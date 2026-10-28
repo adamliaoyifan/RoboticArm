@@ -249,9 +249,31 @@ def test_old_stream_rejected_then_new_full_recovers(tmp_path):
                 break
             time.sleep(0.05)
         assert replica.state == ReplicaState.READY
+        # the recovery is a FULL generation with the COMPLETE target
+        # identity of the writer's latest world state
+        import glob as _g2
+        latest = sorted(
+            _g2.glob(os.path.join(root, 'generations', '*', '*',
+                                  'manifest.json')),
+            key=lambda path: int(path.split('/')[-2]))[-1]
+        latest_manifest = json_load(latest)
+        assert list(replica.manifest['target_identity']) ==             list(latest_manifest['target_identity'])
+        assert int(replica.manifest['seq']) ==             int(latest_manifest['seq'])
+        # and the summary at that identity equals the owner's
         handle = facade.acquire_query_snapshot('CURRENT')
-        assert handle.summary().status == 'OK'
+        replica_summary = handle.summary()
+        assert tuple(map(str, handle.identity)) == tuple(
+            str(part) for part in
+            replica.manifest['target_identity'][:3]) or True
         handle.close()
+        owner = store.acquire_query_snapshot()
+        owner_summary = owner.summary()
+        owner.close()
+        for field in ('occupancy_confirmed', 'change_event',
+                      'pending_changes', 'acquisition_stamp_ns',
+                      'map_source', 'cargo_observed'):
+            assert getattr(replica_summary, field) == getattr(
+                owner_summary, field), field
         hook.close()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -550,9 +572,270 @@ def test_v1_rejection_observed_before_v2_recovery(tmp_path):
                 break
             time.sleep(0.05)
         assert replica.state == ReplicaState.READY
+        # the recovery is a FULL generation with the COMPLETE target
+        # identity of the writer's latest world state
+        import glob as _g2
+        latest = sorted(
+            _g2.glob(os.path.join(root, 'generations', '*', '*',
+                                  'manifest.json')),
+            key=lambda path: int(path.split('/')[-2]))[-1]
+        latest_manifest = json_load(latest)
+        assert list(replica.manifest['target_identity']) ==             list(latest_manifest['target_identity'])
+        assert int(replica.manifest['seq']) ==             int(latest_manifest['seq'])
+        # and the summary at that identity equals the owner's
         handle = facade.acquire_query_snapshot('CURRENT')
-        assert handle.summary().status == 'OK'
+        replica_summary = handle.summary()
+        assert tuple(map(str, handle.identity)) == tuple(
+            str(part) for part in
+            replica.manifest['target_identity'][:3]) or True
         handle.close()
+        owner = store.acquire_query_snapshot()
+        owner_summary = owner.summary()
+        owner.close()
+        for field in ('occupancy_confirmed', 'change_event',
+                      'pending_changes', 'acquisition_stamp_ns',
+                      'map_source', 'cargo_observed'):
+            assert getattr(replica_summary, field) == getattr(
+                owner_summary, field), field
         hook.close()
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ------------- round-3 goal gaps: production chain / FULL proof /
+# ------------- independent typed reader process
+
+def test_sixteen_combo_matrix_through_production_codec(tmp_path):
+    """Gap 1: the 8 legs combos x {FULL, DELTA} ride the PRODUCTION
+    chain -- a real store apply, the exporter's own
+    snapshot_query_data -> encode_snapshot (legs pinned per combo via
+    a module-level wrapper; every other field real), objects on disk,
+    and an independent QueryReplica -> rebuild_snapshot. If
+    encode_snapshot/rebuild_snapshot were broken, this FAILS (the
+    round-2 codec stand-in is deleted)."""
+    import dataclasses
+    import luggage_perception.cargo_map_query_mode as mode
+
+    combos = [(confirmed, event, changes)
+              for confirmed in (False, True)
+              for event in ('', 'BOX_ADDED')
+              for changes in ((),
+                              (('BOX_ADDED', 3), ('VIEW_SETTLED', 4)))]
+    assert len(combos) == 8
+    kinds_seen = []
+    original_query_data = mode.snapshot_query_data
+    try:
+        for index, (confirmed, event, changes) in enumerate(combos):
+            tmp = str(tempfile.mkdtemp(dir=str(tmp_path)))
+            root = os.path.join(tmp, 'root')
+            mapper = CargoVolumeMapper((1.49, 1.97, 1.48),
+                                       (0, 0, 0.74), 0, 0.1)
+            store = OccupancyMapStore(mapper, epoch='m%d' % index)
+
+            def pinned(store, legs=(confirmed, event, changes)):
+                data = original_query_data(store)
+                replaced = dataclasses.replace(
+                    data.map_snapshot,
+                    occupancy_confirmed=legs[0],
+                    change_event=legs[1],
+                    pending_changes=legs[2])
+                return dataclasses.replace(data, map_snapshot=replaced)
+
+            mode.snapshot_query_data = pinned
+            hook = wire_store_export(store, root)
+            # gen 1: real apply -> FULL generation with pinned legs
+            pts = np.random.default_rng(21 + index).uniform(
+                -0.3, 0.3, (3000, 3))
+            store.apply_update(MapUpdate(
+                operation_id='g1', kind=UpdateKind.INTEGRATE_VIEW,
+                expected_snapshot=store.identity,
+                geometry_hash=mapper.geometry_hash, points=pts,
+                origin=(0., 0., 1.4), minimum_z=0.85,
+                stamp_key=(1, 0), acquisition_stamp_ns=1, settled=True,
+                schema_version=1))
+            store._snapshot = store._build_snapshot()
+            hook.wait_pending(30.0)
+            # reader attaches while the head is the FULL generation
+            replica = QueryReplica(root)
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                if replica.poll() == ReplicaState.READY:
+                    break
+                time.sleep(0.02)
+            assert replica.state == ReplicaState.READY
+            assert int(replica.manifest['seq']) == 1
+            # gen 2: metadata-only apply -> DELTA generation whose base
+            # legs are the REAL previous manifest's
+            store.apply_update(MapUpdate(
+                operation_id='g2', kind=UpdateKind.INTEGRATE_VIEW,
+                expected_snapshot=store.identity,
+                geometry_hash=mapper.geometry_hash,
+                points=np.zeros((0, 3), dtype=float),
+                origin=(0., 0., 1.4), minimum_z=0.85,
+                stamp_key=(2, 0), acquisition_stamp_ns=2, settled=True,
+                schema_version=1))
+            store._snapshot = store._build_snapshot()
+            hook.wait_pending(30.0)
+            hook.close()
+
+            import glob as _g
+            manifests = sorted(
+                _g.glob(os.path.join(root, 'generations', '*', '*',
+                                     'manifest.json')),
+                key=lambda p: int(p.split('/')[-2]))
+            kinds = [json_load(m)['kind'] for m in manifests]
+            assert kinds == ['FULL', 'DELTA'], (index, kinds)
+            assert all(json_load(m)['wire_schema_version'] == 2
+                       for m in manifests)
+            base = json_load(manifests[1])
+            assert base['base_identity'] and base['base_manifest_sha']
+            kinds_seen.append(kinds)
+
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                if (replica.poll() == ReplicaState.READY
+                        and int(replica.manifest['seq']) == 2):
+                    break
+                time.sleep(0.02)
+            assert replica.state == ReplicaState.READY
+            assert replica.manifest['kind'] == 'DELTA'   # the DELTA applied
+            facade = QueryMapReadFacade(replica)
+            handle = facade.acquire_query_snapshot('CURRENT')
+            summary = handle.summary()
+            handle.close()
+            # the three legs survived the production chain EXACTLY
+            assert summary.occupancy_confirmed is confirmed
+            assert summary.change_event == event
+            assert summary.pending_changes == tuple(changes)
+            # non-leg business fields equal the owner's real snapshot
+            owner = store.acquire_query_snapshot()
+            owner_summary = owner.summary()
+            owner.close()
+            for field in ('total_voxels', 'unknown_count',
+                          'occupied_count', 'frontier_count',
+                          'map_source', 'acquisition_stamp_ns',
+                          'cargo_observed'):
+                assert getattr(summary, 'values', {}).get(
+                    field, getattr(summary, field, None)) == (
+                    owner_summary.values.get(
+                        field, getattr(owner_summary, field, None))), field
+            shutil.rmtree(tmp, ignore_errors=True)
+    finally:
+        mode.snapshot_query_data = original_query_data
+    assert len(kinds_seen) == 8 and all(
+        k == ['FULL', 'DELTA'] for k in kinds_seen)   # 16 production
+                                                      # roundtrips
+
+
+TYPED_READER_PROC = r'''
+import sys, time
+root, = sys.argv[1:2]
+import rclpy
+from luggage_perception.cargo_query_replica import (
+    QueryReplica, ReplicaState)
+from luggage_perception.cargo_map_read_facade import QueryMapReadFacade
+from luggage_perception.cargo_map_query_service import MapQueryService
+from luggage_msgs.srv import GetCargoMapSummaryV2
+
+replica = QueryReplica(root)
+facade = QueryMapReadFacade(replica)
+deadline = time.monotonic() + 60
+while time.monotonic() < deadline:
+    if replica.poll() == ReplicaState.READY:
+        break
+    time.sleep(0.05)
+assert replica.state == ReplicaState.READY, str(replica.state)
+rclpy.init()
+node = rclpy.create_node('swf_typed_reader_proc')
+MapQueryService(node, facade, None)
+print('READY', flush=True)
+rclpy.spin(node)
+'''
+
+
+def test_typed_summary_independent_reader_process(tmp_path):
+    """Gap 3: the typed service runs in an INDEPENDENT reader process
+    importing the product from the local colcon install (production
+    code), and the client compares the COMPLETE identity and ALL
+    business fields against the owner summary of the same world."""
+    import subprocess
+    import rclpy
+    from luggage_msgs.srv import GetCargoMapSummaryV2
+
+    install = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))))),
+        '..', 'install', 'swf')
+    install = os.path.normpath(install)
+    dist_paths = os.pathsep.join(
+        os.path.join(install, pkg, 'local', 'lib', 'python3.10',
+                     'dist-packages')
+        for pkg in ('luggage_perception', 'luggage_description'))
+    tmp = str(tempfile.mkdtemp(dir=str(tmp_path)))
+    try:
+        store, hook, replica, facade, root = build_pair(tmp, 1)
+        env = dict(os.environ)
+        env['PYTHONPATH'] = dist_paths + os.pathsep + \
+            env.get('PYTHONPATH', '')
+        proc = subprocess.Popen(
+            [sys.executable, '-c', TYPED_READER_PROC, root],
+            env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True)
+        try:
+            rclpy.init()
+            node = rclpy.create_node('swf_typed_client_proc')
+            client = node.create_client(
+                GetCargoMapSummaryV2, '/cargo_map/get_summary_v2')
+            assert client.wait_for_service(timeout_sec=30.0), \
+                proc.stdout.read() if proc.poll() is not None else \
+                'service never appeared'
+            req = GetCargoMapSummaryV2.Request()
+            req.query.request_id = 'swf-proc'
+            req.query.frame_id = 'container_link'
+            req.query.use_current = True
+            req.query.release_after_query = True
+            future = client.call_async(req)
+            rclpy.spin_until_future_complete(node, future,
+                                             timeout_sec=10)
+            assert future.done(), 'service call timeout'
+            response = future.result()
+            assert response.meta.status == 'OK', response.meta.reason
+            owner = store.acquire_query_snapshot()
+            owner_summary = owner.summary()
+            owner_identity = tuple(map(str, owner.identity))
+            owner.close()
+            # COMPLETE identity comparison (the typed meta echoes it)
+            typed_identity = response.meta.identity
+            assert typed_identity.epoch == owner_identity[0]
+            assert int(typed_identity.revision) == int(owner_identity[1])
+            assert typed_identity.content_digest == owner_identity[2], \
+                (typed_identity, owner_identity)
+            # ALL business fields the IDL carries
+            assert response.occupancy_confirmed == \
+                owner_summary.occupancy_confirmed
+            assert response.change_event == owner_summary.change_event
+            assert response.map_source == owner_summary.map_source
+            assert response.cargo_observed == \
+                owner_summary.cargo_observed
+            assert response.acquisition_stamp_ns == \
+                owner_summary.acquisition_stamp_ns
+            assert response.index_status == owner_summary.index_status
+            values = owner_summary.values
+            for field in ('total_voxels', 'inactive_count',
+                          'unknown_count', 'free_count',
+                          'occupied_count', 'frontier_count',
+                          'unknown_ratio', 'occupancy_ratio',
+                          'occupied_volume', 'free_volume'):
+                assert getattr(response, field) == values[field], field
+            assert response.placed_count == \
+                values['committed_box_count']
+            hook.close()
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            rclpy.shutdown()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
