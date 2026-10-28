@@ -2,6 +2,9 @@
 #include "uld_occ_observer/geometry.hpp"
 #include <octomap/OcTree.h>
 #include <cmath>
+#include <algorithm>
+#include <limits>
+#include <new>
 #include <sstream>
 
 namespace uld_occ_observer {
@@ -16,9 +19,48 @@ octomap::OcTreeKey key_from_cell_index(CellIndex index) {
           static_cast<octomap::key_type>(index.z + 32768)};
 }
 
-OccupancyGrid::OccupancyGrid(double resolution)
-    : resolution_(resolution), tree_(std::make_unique<octomap::OcTree>(resolution)) {
+OccupancyGrid::OccupancyGrid(double resolution, std::size_t bitmap_limit_bytes)
+    : resolution_(resolution), tree_(std::make_unique<octomap::OcTree>(resolution)),
+      bitmap_limit_bytes_(bitmap_limit_bytes) {
   configure();
+}
+
+void OccupancyGrid::beginFrame(const UldDomain& domain) {
+  const auto shape = domain.shape();
+  std::size_t cells = 1;
+  for (const int extent : {shape.x, shape.y, shape.z}) {
+    if (extent <= 0 || cells > std::numeric_limits<std::size_t>::max() /
+                                  static_cast<std::size_t>(extent))
+      throw Error("FRAME_BITMAP_SIZE_OVERFLOW");
+    cells *= static_cast<std::size_t>(extent);
+  }
+  const auto words = cells / 32 + (cells % 32 != 0);
+  if (words > bitmap_limit_bytes_ / sizeof(std::uint64_t) ||
+      words > frame_visits_.max_size())
+    throw Error("FRAME_BITMAP_LIMIT_EXCEEDED");
+  try {
+    // Full reset includes cached inactive cells. No classification survives a frame,
+    // failure, geometry change, or restoration of the probability tree.
+    frame_visits_.assign(words, 0);
+  } catch (const std::bad_alloc&) {
+    throw Error("FRAME_BITMAP_ALLOCATION_FAILED");
+  }
+  frame_shape_ = shape;
+}
+
+OccupancyGrid::Visit OccupancyGrid::visitCell(CellIndex index, const UldDomain& domain) {
+  if (index.x < 0 || index.y < 0 || index.z < 0 ||
+      index.x >= frame_shape_.x || index.y >= frame_shape_.y || index.z >= frame_shape_.z)
+    return Visit::Inactive;
+  const auto linear = (static_cast<std::size_t>(index.z) * frame_shape_.y + index.y) *
+                          frame_shape_.x + index.x;
+  auto& word = frame_visits_[linear / 32];
+  const auto shift = static_cast<unsigned>((linear % 32) * 2);
+  const auto state = (word >> shift) & 3U;
+  if (state != 0) return state == 2 ? Visit::RepeatedActive : Visit::Inactive;
+  const bool active = domain.active(index);
+  word |= static_cast<std::uint64_t>(active ? 2 : 1) << shift;
+  return active ? Visit::FirstActive : Visit::Inactive;
 }
 
 void OccupancyGrid::configure() {
@@ -45,8 +87,10 @@ void OccupancyGrid::castFreeRay(OccupancyScan& scan, OccupancyDiagnostic& diagno
   bool saw_active = false;
   for (const auto& key : ray) {
     const auto index = cell_index_from_key(key);
-    if (domain.active(index)) {
-      const bool inserted = scan.free_cells.insert(key).second;
+    const auto visit = visitCell(index, domain);
+    if (visit != Visit::Inactive) {
+      const bool inserted = visit == Visit::FirstActive;
+      if (inserted) scan.free_cells.push_back(key);
       if (diagnose) {
         saw_active = true;
         diagnostic.active_visit(inserted);
@@ -72,12 +116,15 @@ static void clear_scan(OccupancyScan& scan) {
 void OccupancyGrid::collect(OccupancyScan& scan, const Vec3& origin_uld,
                                 const std::vector<Vec3>& endpoints_uld, const UldDomain& domain,
                                 OccupancyScanOptions options, OccupancyDiagnostic& diagnostic) {
+  scan.complete_ = false;
   clear_scan(scan);
   if (options.discretize_endpoints) {
     collectDiscretized(scan, origin_uld, endpoints_uld, domain, diagnostic);
+    scan.complete_ = true;
     return;
   }
   { auto span = diagnostic.span(ProfileStage::RayPreparation);
+    beginFrame(domain);
     const auto origin = domain.octomap_coordinates(origin_uld);
     octomap::OcTreeKey origin_key;
     if (!tree_->coordToKeyChecked(origin.x, origin.y, origin.z, origin_key))
@@ -93,14 +140,18 @@ void OccupancyGrid::collect(OccupancyScan& scan, const Vec3& origin_uld,
                   octomap::point3d(point.x, point.y, point.z), endpoint_key, true);
     }
     diagnostic.free_keys_before_hit_removal(scan.free_cells.size());
-    for (const auto& hit : scan.occupied_cells) scan.free_cells.erase(hit);
+    scan.free_cells.erase(std::remove_if(scan.free_cells.begin(), scan.free_cells.end(),
+        [&](const octomap::OcTreeKey& key) { return scan.occupied_cells.count(key) != 0; }),
+        scan.free_cells.end());
   }
+  scan.complete_ = true;
 }
 
 void OccupancyGrid::collectDiscretized(OccupancyScan& scan, const Vec3& origin_uld,
                                                    const std::vector<Vec3>& endpoints_uld,
                                                    const UldDomain& domain, OccupancyDiagnostic& diagnostic) {
   { auto span = diagnostic.span(ProfileStage::RayPreparation);
+    beginFrame(domain);
     const auto origin = domain.octomap_coordinates(origin_uld);
     octomap::OcTreeKey origin_key;
     if (!tree_->coordToKeyChecked(origin.x, origin.y, origin.z, origin_key))
@@ -134,12 +185,15 @@ void OccupancyGrid::collectDiscretized(OccupancyScan& scan, const Vec3& origin_u
       castFreeRay(scan, diagnostic, domain, origin_point, ray, endpoint.uld, endpoint.octomap,
                   endpoint.key, false);
     diagnostic.free_keys_before_hit_removal(scan.free_cells.size());
-    for (const auto& hit : scan.occupied_cells) scan.free_cells.erase(hit);
+    scan.free_cells.erase(std::remove_if(scan.free_cells.begin(), scan.free_cells.end(),
+        [&](const octomap::OcTreeKey& key) { return scan.occupied_cells.count(key) != 0; }),
+        scan.free_cells.end());
   }
 }
 
 std::vector<OccupancyMutation> OccupancyGrid::apply(const OccupancyScan& scan,
                                                     OccupancyDiagnostic& diagnostic) {
+  if (!scan.complete_) throw Error("INCOMPLETE_OCCUPANCY_SCAN");
   std::vector<OccupancyMutation> mutations;
   auto update = [&](const octomap::OcTreeKey& key, bool hit) {
     bool existed, old_occupied, occupied;
@@ -164,6 +218,7 @@ std::vector<OccupancyMutation> OccupancyGrid::apply(const OccupancyScan& scan,
 
 void OccupancyGrid::reset() {
   tree_ = std::make_unique<octomap::OcTree>(resolution_);
+  frame_visits_.clear();
   configure();
 }
 

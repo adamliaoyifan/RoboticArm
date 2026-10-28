@@ -10,6 +10,7 @@
 #include <set>
 #include <sstream>
 #include <cstdlib>
+#include <random>
 #include <unistd.h>
 
 using namespace uld_occ_observer;
@@ -29,6 +30,7 @@ void configure(octomap::OcTree& tree) {
 struct ReferenceSets {
   std::set<CellIndex> frees;
   std::set<CellIndex> hits;
+  std::uint64_t generated{}, active{}, inactive{}, duplicates{}, rays_active{}, free_before_hits{};
 };
 
 ReferenceSets reference_sets(const UldDomain& domain, const Vec3& origin,
@@ -44,20 +46,29 @@ ReferenceSets reference_sets(const UldDomain& domain, const Vec3& origin,
     require(probe.computeRayKeys(octomap::point3d(origin_om.x, origin_om.y, origin_om.z),
                                  octomap::point3d(point.x, point.y, point.z), ray),
             "reference ray");
+    out.generated += ray.size();
+    bool had_active = false;
     for (const auto& key : ray) {
       const auto index = cell_index_from_key(key);
-      if (domain.active(index)) out.frees.insert(index);
+      if (domain.active(index)) {
+        had_active = true;
+        ++out.active;
+        if (!out.frees.insert(index).second) ++out.duplicates;
+      } else ++out.inactive;
     }
+    if (had_active) ++out.rays_active;
     if (domain.contains(endpoint)) {
       const auto index = cell_index_from_key(endpoint_key);
       if (domain.active(index)) out.hits.insert(index);
     }
   }
+  out.free_before_hits = out.frees.size();
   for (const auto& hit : out.hits) out.frees.erase(hit);
   return out;
 }
 
-std::set<CellIndex> cells_of(const octomap::KeySet& keys) {
+template <class Keys>
+std::set<CellIndex> cells_of(const Keys& keys) {
   std::set<CellIndex> out;
   for (const auto& key : keys) out.insert(cell_index_from_key(key));
   return out;
@@ -406,6 +417,9 @@ void check_failed_endpoint_skips_apply(const UldDomain& domain, double resolutio
   OccupancyGrid grid(resolution);
   OccupancyScan scan;
   OccupancyDiagnostic off(ProfileMode::Off);
+  // A previously completed output must lose permission to apply when reused
+  // for a frame that fails partway through collection.
+  grid.collect(scan, origin, valid, domain, {}, off);
   bool rejected = false;
   try { grid.collect(scan, origin, mixed, domain, {}, off); }
   catch (const Error& error) { rejected = std::string(error.what()) == "ENDPOINT_OUT_OF_KEY_RANGE"; }
@@ -413,6 +427,11 @@ void check_failed_endpoint_skips_apply(const UldDomain& domain, double resolutio
   require(scan.rays_attempted == valid.size() && !scan.free_cells.empty(),
           "failure did not keep the valid prefix");
   const auto nodes_before = grid.nodeCount();
+  const auto tree_before = grid.serialize();
+  rejected = false;
+  try { grid.apply(scan, off); }
+  catch (const Error& error) { rejected = std::string(error.what()) == "INCOMPLETE_OCCUPANCY_SCAN"; }
+  require(rejected && grid.serialize() == tree_before, "apply accepted a failed scan");
   grid.collect(scan, origin, valid, domain, {}, off);
   OccupancyScan fresh;
   OccupancyGrid other(resolution);
@@ -524,6 +543,96 @@ void check_sequence_and_restore(const UldDomain& domain, double resolution) {
           "bad restore changed the snapshot");
 }
 
+void check_bitmap_boundaries_and_sequence() {
+  // Replayable synthetic inputs: same origin per frame, all original endpoints
+  // retained. Reference uses the old set traversal, never the bitmap classifier.
+  for (const double resolution : {0.01, 0.05}) {
+    GeometryDescriptor geometry{"bitmap", "bitmap", .6, .8, .0, .8, Chamfer{.1, .4, .3}};
+    UldDomain domain(geometry, resolution);
+    OccupancyGrid grid(resolution);
+    octomap::OcTree reference(resolution);
+    configure(reference);
+    std::mt19937 rng(20261028);
+    std::uniform_real_distribution<double> xy(-.8, .8), z(-.2, 1.0);
+    std::uint64_t inactive_total = 0, duplicates_total = 0;
+    for (int frame = 0; frame < 10; ++frame) {
+      const Vec3 origin{frame % 2 ? -.9 : .9, -.7, .4};
+      std::vector<Vec3> points{{-.3, -.4, 0}, {.3, .4, .8}, {0, .35, .1},
+                               {0, 0, .3}, {0, 0, .6}, {0, 0, .3}};
+      for (int i = 0; i < 150; ++i) points.push_back({xy(rng), xy(rng), z(rng)});
+      // Force repeated invalid chamfer and active rays, as well as rays fully
+      // outside the integer bounds; these must never address the bitmap.
+      for (int i = 0; i < 30; ++i) points.push_back(points[i % 6]);
+      const auto expected = reference_sets(domain, origin, points, resolution);
+      OccupancyDiagnostic diagnostic(frame % 2 ? ProfileMode::Stages : ProfileMode::Detailed);
+      OccupancyScan scan;
+      grid.collect(scan, origin, points, domain, {}, diagnostic);
+      const auto& p = diagnostic.report();
+      require(cells_of(scan.free_cells) == expected.frees &&
+                  cells_of(scan.occupied_cells) == expected.hits, "bitmap boundary sets differ");
+      require(cells_of(scan.free_cells).size() == scan.free_cells.size(), "duplicate free list entry");
+      require(p.ray_keys_generated == expected.generated &&
+                  p.active_ray_key_visits == expected.active &&
+                  p.inactive_ray_key_visits == expected.inactive &&
+                  p.free_insert_duplicates == expected.duplicates &&
+                  p.rays_with_active_keys == expected.rays_active &&
+                  p.rays_without_active_keys == points.size() - expected.rays_active &&
+                  p.free_unique_before_hit_removal == expected.free_before_hits,
+              "bitmap changed diagnostic counter meanings");
+      inactive_total += expected.inactive;
+      duplicates_total += expected.duplicates;
+      for (const auto& index : expected.frees) reference.updateNode(key_from_cell_index(index), false, false);
+      for (const auto& index : expected.hits) reference.updateNode(key_from_cell_index(index), true, false);
+      grid.apply(scan, diagnostic);
+      std::ostringstream bytes(std::ios::binary);
+      require(reference.write(bytes), "reference checkpoint write failed");
+      require(grid.serialize() == bytes.str(), "bitmap multi-frame probability tree differs");
+      if (frame == 4) {
+        auto restored = OccupancyGrid::fromCheckpointBytes(grid.serialize(), resolution);
+        restored.validateLeaves(domain);
+        grid = std::move(restored);
+      }
+    }
+    require(inactive_total > 0 && duplicates_total > 0, "bitmap fixture missed repeated or inactive visits");
+    grid.reset();
+    require(grid.nodeCount() == 0, "reset retained probability nodes");
+    // Same grid and resolution, different bounds/origin and chamfer. No cached
+    // classification may survive from the former domain, even with equal shape.
+    for (const double length : {.6, .4}) {
+      GeometryDescriptor moved{"moved", "moved", length, .8, .2, 1.0, {}};
+      UldDomain other(moved, resolution);
+      const Vec3 origin{-.7, -.7, .1};
+      const std::vector<Vec3> points{{0, .35, .3}, {0, 0, .7}, {1, 1, .4}};
+      const auto expected = reference_sets(other, origin, points, resolution);
+      OccupancyDiagnostic off(ProfileMode::Off);
+      OccupancyScan scan;
+      grid.collect(scan, origin, points, other, {}, off);
+      require(cells_of(scan.free_cells) == expected.frees &&
+                  cells_of(scan.occupied_cells) == expected.hits, "stale bitmap after domain change");
+      grid.collect(scan, origin, {}, other, {}, off);
+      require(scan.free_cells.empty() && scan.occupied_cells.empty(), "empty frame retained visits");
+      require(grid.apply(scan, off).empty(), "empty frame applied updates");
+    }
+  }
+  // Capacity failure does not allocate a huge grid or silently drop points.
+  OccupancyGrid limited(.01, 8);  // one word, 32 cells
+  OccupancyDiagnostic off(ProfileMode::Off);
+  OccupancyScan scan;
+  UldDomain small({"small", "small", .02, .02, 0, .02, {}}, .01);
+  UldDomain large({"large", "large", 300, 300, 0, 300, {}}, .01);
+  bool rejected = false;
+  try { limited.collect(scan, {0, 0, 0}, {}, large, {}, off); }
+  catch (const Error& e) { rejected = std::string(e.what()) == "FRAME_BITMAP_LIMIT_EXCEEDED"; }
+  require(rejected, "huge bitmap was not rejected before allocation");
+  rejected = false;
+  try { limited.apply(scan, off); }
+  catch (const Error& e) { rejected = std::string(e.what()) == "INCOMPLETE_OCCUPANCY_SCAN"; }
+  require(rejected && limited.nodeCount() == 0, "capacity failure was applied");
+  limited.collect(scan, {0, 0, 0}, {{0, 0, .015}}, small, {}, off);
+  require(!limited.apply(scan, off).empty(), "capacity failure poisoned next frame");
+  std::cout << "bitmap_checks=ok seed=20261028 resolutions=0.01,0.05 frames=20\n";
+}
+
 int main() {
   try {
     const double resolution = 0.05;
@@ -620,6 +729,7 @@ int main() {
     check_profile_diagnostics(domain, resolution, origin, points);
     check_scan_reuse(domain, resolution);
     check_failed_endpoint_skips_apply(domain, resolution);
+    check_bitmap_boundaries_and_sequence();
     check_sequence_and_restore(domain, resolution);
     check_config_identity();
     check_profile_schema();

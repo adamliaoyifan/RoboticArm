@@ -17,10 +17,14 @@ struct OccupancyScanOptions {
 };
 
 struct OccupancyScan {
-  octomap::KeySet free_cells;
+  // Unique first-visit order, with all occupied keys removed before completion.
+  std::vector<octomap::OcTreeKey> free_cells;
   octomap::KeySet occupied_cells;
   std::size_t rays_attempted{};
   std::size_t endpoints_used{};
+ private:
+  friend class OccupancyGrid;
+  bool complete_{false};
 };
 
 struct OccupancyMutation {
@@ -39,9 +43,10 @@ octomap::OcTreeKey key_from_cell_index(CellIndex index);
 // Sole owner of the OcTree. Ray keys, KeySet dedup, and probability writes live here.
 class OccupancyGrid {
  public:
-  explicit OccupancyGrid(double resolution);
+  // Limit is for two-bit scratch only, not the output lists or probability tree.
+  explicit OccupancyGrid(double resolution, std::size_t bitmap_limit_bytes = 64U * 1024U * 1024U);
   // Overwrites out. On failure out may contain a partial result; do not apply it.
-  // KeySet is a TR1 hashtable, so the caller keeps ownership instead of a returned copy.
+  // apply() rejects an incomplete scan. Scratch is reset even after a failed frame.
   void collect(OccupancyScan& out, const Vec3& origin_uld, const std::vector<Vec3>& endpoints_uld,
                const UldDomain& domain, OccupancyScanOptions options, OccupancyDiagnostic& diagnostic);
   std::vector<OccupancyMutation> apply(const OccupancyScan& scan, OccupancyDiagnostic& diagnostic);
@@ -54,6 +59,9 @@ class OccupancyGrid {
   std::size_t nodeCount() const;
   std::size_t memoryUsage() const;
  private:
+  enum class Visit { Inactive, FirstActive, RepeatedActive };
+  void beginFrame(const UldDomain& domain);
+  Visit visitCell(CellIndex index, const UldDomain& domain);
   void configure();
   void castFreeRay(OccupancyScan& scan, OccupancyDiagnostic& diagnostic, const UldDomain& domain,
                    const octomap::point3d& origin, octomap::KeyRay& ray, const Vec3& endpoint_uld,
@@ -64,5 +72,10 @@ class OccupancyGrid {
                           OccupancyDiagnostic& diagnostic);
   double resolution_;
   std::unique_ptr<octomap::OcTree> tree_;
+  // Owned by this grid, used only under the Store's existing writer lock.
+  // 32 cells/word: 00 unseen, 01 inactive, 10 active. Never indexed outside shape.
+  std::size_t bitmap_limit_bytes_;
+  CellIndex frame_shape_{};
+  std::vector<std::uint64_t> frame_visits_;
 };
 }  // namespace uld_occ_observer

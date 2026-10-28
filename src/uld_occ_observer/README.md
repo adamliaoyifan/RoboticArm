@@ -202,6 +202,32 @@ by actual cache_hit, not by request position. Unprofiled queries have unknown ca
 classification. Detailed timings are perturbed diagnostics until overhead is
 measured; use matched off-mode runs for latency decisions.
 
+Frame-local bitmap deduplication:
+
+`OccupancyGrid` owns two-bit classification scratch (unseen/inactive/active).
+Each `collect` clears it, including after a failed frame or domain change. Keys
+outside the integer grid bounds are rejected before indexing; inactive chamfer
+cells inside those bounds are remembered. All original DDA rays and endpoint
+admission rules remain unchanged. First active visits append to a unique free
+vector; every admitted endpoint still enters the occupied KeySet. Global hit
+precedence filters that vector before each key receives one probability update.
+Diagnostic active/inactive/duplicate counts retain their old meanings.
+
+Scratch defaults to a 64 MiB limit, configurable through the `OccupancyGrid`
+constructor's `bitmap_limit_bytes` argument (not a new ROS/YAML setting).
+Checked dimension multiplication and allocation report
+`FRAME_BITMAP_SIZE_OVERFLOW`, `FRAME_BITMAP_LIMIT_EXCEEDED` or
+`FRAME_BITMAP_ALLOCATION_FAILED`; there is no automatic resolution reduction.
+At 149x197x148 the two-bit scratch is about 1.09 MB. The unique free vector,
+occupied set and tree are additional memory, not covered by this scratch cap.
+The vector stores OcTreeKey values, not uint32 linear IDs.
+
+The caller owns `OccupancyScan`. Failure may leave a partial prefix, but
+`apply` rejects it with `INCOMPLETE_OCCUPANCY_SCAN`; the next `collect` overwrites
+both output and scratch. Store applies only after collect succeeds, under its
+existing single writer lock. This change adds no threads, endpoint merging or
+custom DDA and makes no performance-gate claim.
+
 Profiling implementation checks:
 
 ```bash
