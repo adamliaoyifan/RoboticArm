@@ -40,6 +40,14 @@ def fingerprint(snapshot):
                           .encode()).hexdigest()
 
 
+SEED_COUNTER = [1000]
+
+
+def next_seed():
+    SEED_COUNTER[0] += 1
+    return SEED_COUNTER[0]
+
+
 def make_wired(resolution=0.05, epoch='catchup'):
     mapper = CargoVolumeMapper((1.49, 1.97, 1.48), (0, 0, 0.74), 0,
                                resolution, max_raycast_points=500)
@@ -102,8 +110,8 @@ class CatchupMatrix(unittest.TestCase):
         """Commit `count` generations while the receiver is parked;
         returns the parked replica's expected catch-up window."""
         parked_seq = int(self.replica.manifest['seq'])
-        for seed in range(100, 100 + count):
-            commit(self.store, self.mapper, seed)
+        for _ in range(count):
+            commit(self.store, self.mapper, next_seed())
         self.hook.wait_pending(60.0)
         return parked_seq
 
@@ -143,7 +151,7 @@ class CatchupMatrix(unittest.TestCase):
         catchups = self._events('catchup')
         self.assertEqual(catchups[-1]['status'], 'missing')
         # recovery via a further commit still converges
-        commit(self.store, self.mapper, 200)
+        commit(self.store, self.mapper, next_seed())
         self.hook.wait_pending(60.0)
         self.assertTrue(settle(self.replica, self.store.identity, 30))
         src_fp, _ = self._source_fp()
@@ -162,7 +170,7 @@ class CatchupMatrix(unittest.TestCase):
             json.dump(body, handle)
         state = self.replica.poll()
         self.assertEqual(state, ReplicaState.RESYNC_REQUIRED)
-        commit(self.store, self.mapper, 201)
+        commit(self.store, self.mapper, next_seed())
         self.hook.wait_pending(60.0)
         self.assertTrue(settle(self.replica, self.store.identity, 30))
         src_fp, _ = self._source_fp()
@@ -223,7 +231,7 @@ class CatchupMatrix(unittest.TestCase):
         state = self.replica.poll()
         self.assertEqual(state, ReplicaState.RESYNC_REQUIRED)
         self.replica._load_payload = original
-        commit(self.store, self.mapper, 202)
+        commit(self.store, self.mapper, next_seed())
         self.hook.wait_pending(60.0)
         self.assertTrue(settle(self.replica, self.store.identity, 30))
         src_fp, _ = self._source_fp()
@@ -268,6 +276,108 @@ class CatchupMatrix(unittest.TestCase):
         self.assertTrue(settle(self.replica, self.store.identity, 30))
         src_fp, _ = self._source_fp()
         self.assertEqual(fingerprint(self.replica.snapshot), src_fp)
+
+    def test_midchain_failure_single_generation_atomic(self):
+        """I6 amended semantics: a LATER link's object failure keeps
+        the EARLIER applied (fully valid) links; the receiver then
+        holds its last valid generation, CURRENT named-rejects, an
+        already-acquired pinned handle does not drift, and a wrong
+        identity is never READY."""
+        from luggage_perception.cargo_map_read_facade import (
+            QueryMapReadFacade)
+        from luggage_perception.cargo_map_query import QueryError
+        facade = QueryMapReadFacade(self.replica)
+        pinned = facade.acquire_query_snapshot('CURRENT')
+        pinned_identity = tuple(pinned.identity)
+        self._gap(4)
+        producer = self.replica.manifest['producer_incarnation']
+        # corrupt an object of the THIRD intermediate link
+        target = os.path.join(self.root, 'generations', producer,
+                              str(self.base_seq + 3), 'manifest.json')
+        body = json.load(open(target))
+        prev_path = os.path.join(self.root, 'generations', producer,
+                                 str(self.base_seq + 2),
+                                 'manifest.json')
+        prev = json.load(open(prev_path))
+        prev_digests = {e['sha256'] for e in prev['entries'].values()}
+        fresh = sorted(n for n, e in body['entries'].items()
+                       if e.get('type') == 'object'
+                       and e['sha256'] not in prev_digests)
+        assert fresh, 'link3 must introduce at least one new object'
+        victim = fresh[0]
+        digest = body['entries'][victim]['sha256']
+        obj_path = os.path.join(self.root, 'objects', digest)
+        raw = open(obj_path, 'rb').read()
+        open(obj_path, 'wb').write(raw[:max(1, len(raw) // 3)])
+        state = self.replica.poll()
+        # named fallback, receiver on its LAST VALID generation (the
+        # second link): later than the base, earlier than the corrupt
+        held = int(self.replica.manifest['seq'])
+        self.assertEqual(state, ReplicaState.RESYNC_REQUIRED)
+        self.assertGreater(held, self.base_seq)
+        self.assertLess(held, self.base_seq + 3)
+        # CURRENT named-rejects while lagging
+        with self.assertRaises(QueryError):
+            facade.acquire_query_snapshot('CURRENT')
+        # the pinned handle still resolves to its acquired generation
+        self.assertEqual(tuple(pinned.identity), pinned_identity)
+        self.assertEqual(pinned._data().identity, pinned_identity)
+        # wrong identity never READY
+        with self.assertRaises(QueryError):
+            facade.acquire_query_snapshot(
+                ('other', 999, 'x', 'y', 2))
+        pinned.close()
+        # recovery converges and content equals the source
+        commit(self.store, self.mapper, next_seed())
+        self.hook.wait_pending(60.0)
+        self.assertTrue(settle(self.replica, self.store.identity, 30))
+        src_fp, _ = self._source_fp()
+        self.assertEqual(fingerprint(self.replica.snapshot), src_fp)
+
+    def test_generation_limit_boundary(self):
+        """Exactly CATCHUP_MAX_GENERATIONS links: catch-up; one more:
+        named limit fallback (limits checked BEFORE application)."""
+        replica_cls = type(self.replica)
+        saved = replica_cls.CATCHUP_MAX_GENERATIONS
+        replica_cls.CATCHUP_MAX_GENERATIONS = 4
+        try:
+            self._gap(4)
+            self.assertEqual(self.replica.poll(), ReplicaState.READY)
+            catchups = self._events('catchup')
+            self.assertEqual(catchups[-1]['status'], 'applied')
+            # a 5-link gap exceeds the cap
+            self._gap(5)
+            state = self.replica.poll()
+            self.assertEqual(state, ReplicaState.RESYNC_REQUIRED)
+            catchups = self._events('catchup')
+            self.assertEqual(catchups[-1]['status'],
+                             'limit_generations')
+            commit(self.store, self.mapper, next_seed())
+            self.hook.wait_pending(60.0)
+            self.assertTrue(settle(self.replica, self.store.identity,
+                                   30))
+        finally:
+            replica_cls.CATCHUP_MAX_GENERATIONS = saved
+
+    def test_byte_limit_fallback_before_application(self):
+        replica_cls = type(self.replica)
+        saved = replica_cls.CATCHUP_MAX_BYTES
+        replica_cls.CATCHUP_MAX_BYTES = 1          # forces the cap
+        try:
+            self._gap(2)
+            state = self.replica.poll()
+            self.assertEqual(state, ReplicaState.RESYNC_REQUIRED)
+            catchups = self._events('catchup')
+            self.assertEqual(catchups[-1]['status'], 'limit_bytes')
+            # nothing applied past the base before the named fallback
+            self.assertEqual(int(self.replica.manifest['seq']),
+                             self.base_seq)
+            commit(self.store, self.mapper, next_seed())
+            self.hook.wait_pending(60.0)
+            self.assertTrue(settle(self.replica, self.store.identity,
+                                   30))
+        finally:
+            replica_cls.CATCHUP_MAX_BYTES = saved
 
     def test_barrier_microtest_amplification_removed(self):
         """The review's deterministic micro-test: hold the receiver,

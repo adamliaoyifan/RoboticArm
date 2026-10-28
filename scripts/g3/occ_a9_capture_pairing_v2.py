@@ -119,15 +119,21 @@ def op(handle, kind):
         handle.surface()
 
 
-out = {'kinds': {}}
+SAMPLES = int(sys.argv[4])
+out = {'kinds': {}, 'records': [], 'spans': 0}
 for kind_index, kind in enumerate(('roi', 'distance', 'surface')):
     buckets = {'on': {'full': [], 'direct': []},
                'off': {'full': [], 'direct': []}}
-    for i in range(3 + 60):
-        # capture ON for even samples (odd kinds swap the parity so
-        # ordering bias cannot align with the arm)
-        on = (i %% 2 == 0) == (kind_index %% 2 == 0)
-        set_capture(on)
+    seen = {'on': 0, 'off': 0}
+    for i in range(2 * (3 + SAMPLES)):
+        # bucket label by parity (odd kinds swap parity so ordering
+        # bias cannot align with the arm); capture_enabled is the
+        # RECORDER state -- identical mode forces it off in BOTH
+        # buckets while the buckets themselves stay REAL and separate.
+        bucket_label = 'on' if ((i %% 2 == 0)
+                                == (kind_index %% 2 == 0)) else 'off'
+        capture_enabled = bucket_label == 'on'
+        set_capture(capture_enabled)
         t0 = time.perf_counter_ns()
         handle = facade.acquire_query_snapshot('CURRENT')
         t1 = time.perf_counter_ns()
@@ -135,18 +141,19 @@ for kind_index, kind in enumerate(('roi', 'distance', 'surface')):
         t2 = time.perf_counter_ns()
         ident = list(handle.identity)
         handle.close()
-        # capture cost belongs INSIDE the request window (the recorder
-        # runs as part of the request lifecycle); warmup pairs excluded
-        if on and i >= 3:
-            record({'kind': 'request', 'request_id':
-                    kind + '-' + str(i), 'identity': ident})
+        # capture cost INSIDE the request window; per-bucket warmup
+        # (first 3 samples of EACH bucket) excluded
+        if capture_enabled and seen[bucket_label] >= 3:
+            record({'kind': 'request',
+                    'request_id': '%%s-%%d' %% (kind, i),
+                    'identity': ident})
         t3 = time.perf_counter_ns()
-        bucket = buckets['on' if on else 'off']
-        if i >= 3:                   # warmup pairs excluded
-            bucket['full'].append((t3 - t0) / 1e6)
-            bucket['direct'].append((t2 - t1) / 1e6)
+        if seen[bucket_label] >= 3:
+            buckets[bucket_label]['full'].append((t3 - t0) / 1e6)
+            buckets[bucket_label]['direct'].append((t2 - t1) / 1e6)
+        seen[bucket_label] += 1
     out['kinds'][kind] = buckets
-out['records'] = len(records)
+out['records'] = records
 out['spans'] = len(spans)
 with open(out_path, 'w') as handle:
     json.dump(out, handle)
@@ -183,13 +190,13 @@ def build_world(resolution, boxes):
     return store
 
 
-def run_worker(root, mode):
+def run_worker(root, mode, samples):
     out_path = tempfile.mktemp(prefix='a9v2-%s-' % mode,
                                suffix='.json')
     subprocess.run(
         [sys.executable, '-c',
          WORKER % (_WS_SRC, _WS_SRC, _WS_SRC, REGION),
-         root, out_path, mode],
+         root, out_path, mode, str(samples)],
         check=True, timeout=600)
     with open(out_path) as handle:
         data = json.load(handle)
@@ -223,24 +230,37 @@ def main():
         # both buckets recorder-OFF: patch the worker's set_capture
         # to a no-op via env so ON samples run the identical path
         os.environ['A9V2_IDENTICAL'] = '1'
-    data = run_worker(root, 'slow' if args.mode == 'slow' else 'normal')
-    # normalize both modes out of the interleaved buckets
+    mode_flag = ('slow' if args.mode == 'slow'
+                 else 'identical' if args.mode == 'identical'
+                 else 'normal')
+    data = run_worker(root, mode_flag, args.samples)
+    # BOTH buckets are real measured arrays in every mode (identical:
+    # the recorder was disabled in both -- the two arrays still come
+    # from genuinely different samples and must agree on their own).
     off = {'kinds': {k: {'full_ms': v['off']['full'],
                          'direct_ms': v['off']['direct']}
                      for k, v in data['kinds'].items()}}
-    if args.mode == 'identical':
-        on = off               # recorder forced off in both buckets
-    else:
-        on = {'kinds': {k: {'full_ms': v['on']['full'],
-                            'direct_ms': v['on']['direct']}
-                        for k, v in data['kinds'].items()}}
+    on = {'kinds': {k: {'full_ms': v['on']['full'],
+                        'direct_ms': v['on']['direct']}
+                    for k, v in data['kinds'].items()}}
     hook.close()
     os.close(lock_fd)
 
-    # capture completeness (ON bucket): one join record per request
-    expected = args.samples * len(KINDS)
-    complete = (args.mode == 'identical'
-                or data['records'] == expected)
+    # Capture completeness (ON bucket): PER-REQUEST join -- exactly
+    # one record per counted ON request, unique request_ids, and each
+    # record's identity must equal the identity actually returned by
+    # that request (the worker stamps it from the handle). Missing,
+    # duplicated or wrong-identity records FAIL. identical mode has no
+    # records by construction (recorder off in both buckets).
+    records = data.get('records', [])
+    ids = [r['request_id'] for r in records]
+    complete = True
+    join_detail = {'records': len(records),
+                   'unique_ids': len(set(ids))}
+    if args.mode != 'identical':
+        complete = (len(ids) == len(set(ids))
+                    and all(r.get('identity') for r in records)
+                    and len(records) == args.samples * len(KINDS))
 
     report = {
         'revision': subprocess.check_output(
@@ -251,9 +271,14 @@ def main():
                   'both arms, same isolated backend; full-request P95 '
                   'ratio per kind; completeness = one join record per '
                   'request'),
-        'capture_records_on': data.get('records'),
+        'capture_join': join_detail,
+        'records_on': records[:5],
+        'recorder_boundary': ('in-memory ring/list append only (the '
+                              'production recorders are the replica '
+                              'event deque and the span list; no per-'
+                              'request persistence is claimed)'),
         'spans_on': data.get('spans'),
-        'capture_records_expected': expected,
+        'capture_records_expected': args.samples * len(KINDS),
         'capture_complete': complete,
         'kinds': {},
         'exit': None,

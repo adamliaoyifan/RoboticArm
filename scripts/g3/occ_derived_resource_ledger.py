@@ -94,6 +94,18 @@ def main():
     mapper = CargoVolumeMapper((1.49, 1.97, 1.48), (0, 0, 0.74), 0,
                                args.resolution, max_raycast_points=500)
     store = OccupancyMapStore(mapper, epoch='ledger')
+    placed = 0
+    for i, (z, y, x) in enumerate(
+            (z, y, x) for z in range(4)
+            for y in (-.48, .18) for x in (-.5, 0., .5)):
+        if i >= args.boxes:
+            break
+        assert store.apply_update(MapUpdate(
+            operation_id='b%d' % i, kind=UpdateKind.ADD_BOX_V1,
+            box=((x, y, mapper._hull.floor_z + .11 + .24 * z),
+                 (.35, .53, .22), 0.), box_id='box-%d' % i)).accepted
+        placed += 1
+    assert placed == args.boxes, (placed, args.boxes)
     root = tempfile.mkdtemp(prefix='ledger-')
     hook = wire_store_export(store, root)
     store._snapshot = store._build_snapshot()
@@ -106,13 +118,65 @@ def main():
         peaks['resync_control_bytes'].append(
             tree_bytes(os.path.join(root, 'control')))
 
-    replica = QueryReplica(root)
-    deadline = time.monotonic() + 60
-    while time.monotonic() < deadline:
-        if replica.poll() == ReplicaState.READY:
-            break
-        time.sleep(0.02)
-    sample_peaks()
+    # RECEIVER as a REAL independent process (review_d9a28e4e P1 #3):
+    # it polls until told to stop and reports its own RSS/cache stats;
+    # the parent samples BOTH PIDs on a 0.2s timer DURING activity so
+    # in-flight staging/FULL-decode peaks are captured, not just final
+    # state.
+    import subprocess as sp
+    import threading
+    receiver_out = tempfile.mktemp(prefix='ledger-recv-',
+                                   suffix='.json')
+    RECEIVER = '''
+import json, os, sys, time
+root, out_path = sys.argv[1], sys.argv[2]
+for entry in ("%s/src/luggage_description",
+              "%s/src/luggage_perception", "%s"):
+    sys.path.insert(0, entry)
+from luggage_perception.cargo_query_replica import (
+    QueryReplica, ReplicaState)
+replica = QueryReplica(root)
+rss_log = []
+def rss_mb():
+    with open('/proc/self/status') as handle:
+        for line in handle:
+            if line.startswith('VmRSS'):
+                return int(line.split()[1]) / 1024.0
+stats = {'rss_peak_mb': 0.0, 'rss_final_mb': None, 'samples': 0,
+         'cache_entries': 0, 'state': ''}
+deadline = time.monotonic() + 300
+while time.monotonic() < deadline:
+    replica.poll()
+    value = rss_mb()
+    stats['rss_peak_mb'] = max(stats['rss_peak_mb'], value or 0.0)
+    stats['rss_final_mb'] = value
+    stats['samples'] += 1
+    stats['cache_entries'] = len(replica._object_cache)
+    stats['state'] = str(replica.state)
+    # atomic rewrite EVERY cycle: the parent terminates this process,
+    # so the stats file must always be fresh
+    tmp = out_path + '.tmp'
+    with open(tmp, 'w') as handle:
+        json.dump(stats, handle)
+    os.replace(tmp, out_path)
+    time.sleep(0.2)
+''' % (_WS_SRC, _WS_SRC, _WS_SRC)
+    receiver = sp.Popen(
+        [sys.executable, '-c', RECEIVER, root, receiver_out],
+        stdout=sp.PIPE, stderr=sp.PIPE, text=True)
+
+    def sampler():
+        while sampler_stop[0] is False:
+            peaks['writer_rss'].append(rss_mb())
+            peaks['receiver_rss'].append(rss_mb(receiver.pid))
+            peaks['staging_bytes'].append(
+                tree_bytes(os.path.join(root, 'staging')))
+            peaks['resync_control_bytes'].append(
+                tree_bytes(os.path.join(root, 'control')))
+            time.sleep(0.2)
+    sampler_stop = [False]
+    thread = threading.Thread(target=sampler, daemon=True)
+    thread.start()
 
     for seed in range(args.commits):
         points = np.column_stack([
@@ -132,22 +196,17 @@ def main():
             acquisition_stamp_ns=1_000_000_000 + seed,
             settled=True, schema_version=1))
         hook.wait_pending(60.0)
-        replica.poll()
-        sample_peaks()
+        time.sleep(0.05)               # receiver process polls
 
-    # one forced resync window: corrupt the latest manifest pointer
-    # content-wise (triggers BASE/validation path), then heal via a
-    # further commit -- records the resync-temporary peak.
+    # one forced resync window: break the pointer, let the receiver
+    # process observe it, then heal via a further commit -- the
+    # sampler thread records the in-flight peak.
     pointer = os.path.join(root, 'published.json')
     saved = open(pointer, 'rb').read()
     with open(pointer, 'wb') as handle:
         handle.write(b'{"manifest": "generations/x/9/manifest.json",'
                      b' "manifest_sha256": "0"}')
-    replica.poll()                        # named failure
-    peaks['receiver_rss'].append(rss_mb())
-    sample_peaks()
-    with open(pointer, 'wb') as handle:
-        handle.write(saved)
+    time.sleep(1.0)                       # receiver observes failure
     store.apply_update(MapUpdate(
         operation_id='heal', kind=UpdateKind.INTEGRATE_VIEW,
         expected_snapshot=store.identity,
@@ -163,13 +222,18 @@ def main():
         stamp_key=(999, 0), acquisition_stamp_ns=1_999_999_999,
         settled=True, schema_version=1))
     hook.wait_pending(60.0)
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        if replica.poll() == ReplicaState.READY:
-            break
-        time.sleep(0.02)
-    sample_peaks()
-    peaks['receiver_rss'].append(rss_mb())
+    time.sleep(2.0)                       # receiver recovers
+
+    sampler_stop[0] = True
+    thread.join(timeout=5.0)
+    receiver.terminate()
+    try:
+        receiver.wait(timeout=10.0)
+    except sp.TimeoutExpired:
+        receiver.kill()
+    with open(receiver_out) as handle:
+        receiver_stats = json.load(handle)
+    os.unlink(receiver_out)
 
     objects_dir = os.path.join(root, 'objects')
     generations_dir = os.path.join(root, 'generations')
@@ -201,12 +265,7 @@ def main():
         },
         'writer_registry': dict(
             store._query_registry.resource_summary()),
-        'receiver': {
-            'cache_entries': (replica.cache_hits + replica.cache_misses),
-            'cache_hits': replica.cache_hits,
-            'cache_misses': replica.cache_misses,
-            'state': str(replica.state),
-        },
+        'receiver_process': receiver_stats,
         'peaks': {
             'writer_rss_mb': max(peaks['writer_rss']),
             'receiver_rss_mb': max(peaks['receiver_rss']),
@@ -216,12 +275,18 @@ def main():
             'samples': len(peaks['writer_rss']),
         },
         'budgets': {
+            'note': ('split accounting: writer registry is the '
+                     'LOGICAL retention budget (512MiB); the receiver '
+                     'is accounted by its measured process RSS; disk '
+                     'by unique content-addressed bytes. No unified '
+                     '512MiB pass is claimed across processes.'),
             'derived_virtual_budget_bytes': 512 * 1024 * 1024,
             'writer_registry_within_budget': (
                 store._query_registry.resource_summary()[
                     'conservative_retained_bytes']
                 <= 512 * 1024 * 1024),
         },
+        'boxes_placed': placed,
     }
     hook.close()
     with open(args.out, 'w') as handle:
