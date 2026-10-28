@@ -129,6 +129,13 @@ def encode_snapshot(snapshot, producer_incarnation, seq, *,
         'pending_details': legs.pending_details,
         'last_settle': legs.last_settle,
         'ledger_details': legs.ledger_details,
+        # summary legs (v2): replica summary() reads these; encoded
+        # from the SAME snapshot every generation -- metadata-only
+        # transitions propagate to the same target identity
+        'occupancy_confirmed': bool(legs.occupancy_confirmed),
+        'change_event': str(legs.change_event or ''),
+        'pending_changes': [[str(event), int(token)]
+                            for event, token in legs.pending_changes],
     }))
     if getattr(legs, 'surface_z_container', None) is not None:
         # Surface-contract columns (read_surface consumes them via
@@ -339,7 +346,17 @@ class _HullView:
 class _MapSnapshotView:
     """Provenance legs the query surface reads, as a deep-immutable view."""
 
+    # v2 summary legs: a v2 manifest without them is incomplete --
+    # named rejection, never a default-filled summary
+    SUMMARY_LEGS = ('occupancy_confirmed', 'change_event',
+                    'pending_changes')
+
     def __init__(self, provenance, surface_contract=None):
+        missing = [key for key in self.SUMMARY_LEGS
+                   if key not in provenance]
+        if missing:
+            raise ValueError(
+                'PROVENANCE_MISSING_SUMMARY_LEG:' + ','.join(missing))
         identity = provenance['identity']
         self.identity = _SnapshotIdentity(identity[0], int(identity[1]),
                                           identity[2])
@@ -350,6 +367,14 @@ class _MapSnapshotView:
         self.pending_details = provenance['pending_details']
         self.last_settle = provenance['last_settle']
         self.ledger_details = provenance['ledger_details']
+        # immutable rebuild of the owner types: pending_changes is a
+        # tuple of (event: str, token: int) pairs on the owner side
+        self.occupancy_confirmed = bool(
+            provenance['occupancy_confirmed'])
+        self.change_event = str(provenance['change_event'])
+        self.pending_changes = tuple(
+            (str(event), int(token))
+            for event, token in provenance['pending_changes'])
         if surface_contract is not None:
             # Surface-contract columns (see encode 'surface.contract').
             self.surface_z_container = surface_contract[

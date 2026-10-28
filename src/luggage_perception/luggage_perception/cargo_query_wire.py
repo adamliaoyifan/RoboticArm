@@ -29,7 +29,11 @@ import uuid
 
 import numpy as np
 
-WIRE_SCHEMA_VERSION = 1
+# v2 (2026-10-28, Q-20261028-1): provenance now carries the summary
+# legs occupancy_confirmed / change_event / pending_changes -- v1
+# streams are named-rejected (UNKNOWN_SCHEMA), recovery via a new
+# FULL from a v2 writer; no default-value compatibility shims.
+WIRE_SCHEMA_VERSION = 2
 MAX_OBJECT_BYTES = 4 * 1024 * 1024
 MAX_MANIFEST_BYTES = 8 * 1024 * 1024
 MAX_DIMS = 3
