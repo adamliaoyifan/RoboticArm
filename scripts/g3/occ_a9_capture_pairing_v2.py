@@ -135,10 +135,12 @@ for kind_index, kind in enumerate(('roi', 'distance', 'surface')):
         t2 = time.perf_counter_ns()
         ident = list(handle.identity)
         handle.close()
-        t3 = time.perf_counter_ns()
-        if on:
+        # capture cost belongs INSIDE the request window (the recorder
+        # runs as part of the request lifecycle); warmup pairs excluded
+        if on and i >= 3:
             record({'kind': 'request', 'request_id':
                     kind + '-' + str(i), 'identity': ident})
+        t3 = time.perf_counter_ns()
         bucket = buckets['on' if on else 'off']
         if i >= 3:                   # warmup pairs excluded
             bucket['full'].append((t3 - t0) / 1e6)
