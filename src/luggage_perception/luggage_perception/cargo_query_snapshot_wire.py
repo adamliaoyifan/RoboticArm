@@ -357,6 +357,28 @@ class _MapSnapshotView:
         if missing:
             raise ValueError(
                 'PROVENANCE_MISSING_SUMMARY_LEG:' + ','.join(missing))
+        # STRICT leg typing: an illegal wire type is a NAMED rejection,
+        # never coerced into a legal fact (bool('false') is True,
+        # str(None) is 'None', int(1.9) is 1 -- all forbidden here)
+        confirmed = provenance['occupancy_confirmed']
+        if not isinstance(confirmed, bool):
+            raise ValueError(
+                'PROVENANCE_BAD_SUMMARY_LEG:occupancy_confirmed='
+                + type(confirmed).__name__)
+        event = provenance['change_event']
+        if not isinstance(event, str):
+            raise ValueError(
+                'PROVENANCE_BAD_SUMMARY_LEG:change_event='
+                + type(event).__name__)
+        changes = provenance['pending_changes']
+        if not isinstance(changes, list) or any(
+                not isinstance(item, (list, tuple)) or len(item) != 2
+                or not isinstance(item[0], str)
+                or not isinstance(item[1], int)
+                or isinstance(item[1], bool)
+                for item in changes):
+            raise ValueError(
+                'PROVENANCE_BAD_SUMMARY_LEG:pending_changes')
         identity = provenance['identity']
         self.identity = _SnapshotIdentity(identity[0], int(identity[1]),
                                           identity[2])
@@ -369,12 +391,10 @@ class _MapSnapshotView:
         self.ledger_details = provenance['ledger_details']
         # immutable rebuild of the owner types: pending_changes is a
         # tuple of (event: str, token: int) pairs on the owner side
-        self.occupancy_confirmed = bool(
-            provenance['occupancy_confirmed'])
-        self.change_event = str(provenance['change_event'])
+        self.occupancy_confirmed = confirmed
+        self.change_event = event
         self.pending_changes = tuple(
-            (str(event), int(token))
-            for event, token in provenance['pending_changes'])
+            (event, token) for event, token in changes)
         if surface_contract is not None:
             # Surface-contract columns (see encode 'surface.contract').
             self.surface_z_container = surface_contract[

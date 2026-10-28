@@ -312,3 +312,247 @@ def test_typed_summary_over_replica_facade_matches_owner(tmp_path):
             shutil.rmtree(tmp, ignore_errors=True)
     finally:
         rclpy.shutdown()
+
+
+# --------------------- round-2 review gaps (typed/coercion/matrix) ----
+
+def legged_provenance(**override):
+    base = {'identity': ['e', 1, 'd'],
+            'acquisition_stamp_ns': 1, 'map_source': 'x',
+            'cargo_observed': True, 'change_token': '1',
+            'pending_details': (), 'last_settle': {},
+            'ledger_details': (),
+            'occupancy_confirmed': False,
+            'change_event': '',
+            'pending_changes': []}
+    base.update(override)
+    return base
+
+
+def test_illegal_leg_types_are_rejected_not_coerced():
+    # review P1 probes: "false"->True, None->"None", token 1.9->1 --
+    # every one must be a named rejection, never a coerced legal fact
+    for override, name in (
+            ({'occupancy_confirmed': 'false'}, 'bool-as-str'),
+            ({'occupancy_confirmed': 1}, 'bool-as-int'),
+            ({'occupancy_confirmed': None}, 'bool-as-none'),
+            ({'change_event': None}, 'event-as-none'),
+            ({'change_event': 7}, 'event-as-int'),
+            ({'pending_changes': [['E', 1.9]]}, 'token-float'),
+            ({'pending_changes': [['E', True]]}, 'token-bool'),
+            ({'pending_changes': [['E', '1']]}, 'token-str'),
+            ({'pending_changes': [['E']]}, 'wrong-arity'),
+            ({'pending_changes': 'E:1'}, 'changes-not-list'),
+            ({'pending_changes': None}, 'changes-none')):
+        try:
+            _MapSnapshotView(legged_provenance(**override))
+            raise AssertionError('coerced: %s' % name)
+        except ValueError as error:
+            assert 'PROVENANCE_BAD_SUMMARY_LEG' in str(error), (name, error)
+
+
+def test_missing_leg_isolated_one_at_a_time():
+    # review P2: the base must CONTAIN all three legs so each case
+    # removes exactly one -- not a base already missing all three
+    for remove in ('occupancy_confirmed', 'change_event',
+                   'pending_changes'):
+        provenance = legged_provenance()
+        provenance.pop(remove)
+        assert all(key in provenance
+                   for key in ('occupancy_confirmed', 'change_event',
+                               'pending_changes') if key != remove)
+        try:
+            _MapSnapshotView(provenance)
+            raise AssertionError('default-filled %s' % remove)
+        except ValueError as error:
+            assert 'PROVENANCE_MISSING_SUMMARY_LEG' in str(error)
+            assert remove in str(error)
+
+
+def test_sixteen_case_legs_matrix_roundtrip():
+    # the plan's frozen 8 legs combos x {FULL, DELTA} manifest frames:
+    # codec roundtrip on REAL snapshot legs (dataclasses.replace of a
+    # live snapshot), decoded view fields must equal the owner's
+    import dataclasses
+    import json
+    mapper = CargoVolumeMapper((0.3, 0.3, 0.3), (0, 0, 0.1), 0, 0.1)
+    store = OccupancyMapStore(mapper, epoch='matrix')
+    store.apply_update(MapUpdate(
+        operation_id='b', kind=UpdateKind.ADD_BOX_V1,
+        box=((0, 0, 0.05), (0.08, 0.08, 0.06), 0.), box_id='b'))
+    store._snapshot = store._build_snapshot()
+    live = store._snapshot
+    combos = [(confirmed, event, changes)
+              for confirmed in (False, True)
+              for event in ('', 'BOX_ADDED')
+              for changes in ((),
+                              (('BOX_ADDED', 3), ('VIEW_SETTLED', 4)))]
+    assert len(combos) == 8
+    for kind in ('FULL', 'DELTA'):
+        for confirmed, event, changes in combos:
+            snap = dataclasses.replace(
+                live, occupancy_confirmed=confirmed,
+                change_event=event, pending_changes=changes)
+            provenance = {'identity': [
+                'e', snap.identity.revision, snap.identity.content_digest],
+                'acquisition_stamp_ns': snap.acquisition_stamp_ns,
+                'map_source': snap.map_source,
+                'cargo_observed': snap.cargo_observed,
+                'change_token': str(snap.change_token),
+                'pending_details': snap.pending_details,
+                'last_settle': snap.last_settle,
+                'ledger_details': snap.ledger_details,
+                'occupancy_confirmed': snap.occupancy_confirmed,
+                'change_event': snap.change_event,
+                'pending_changes': [[e, t] for e, t in
+                                    snap.pending_changes]}
+            # canonical-JSON codec roundtrip (the wire's object
+            # encoding is exercised end-to-end by the real-path
+            # tests; here the mapping itself is under test)
+            decoded = json.loads(
+                json.dumps(provenance, sort_keys=True))
+            view = _MapSnapshotView(decoded)
+            assert view.occupancy_confirmed is confirmed
+            assert view.change_event == event
+            assert view.pending_changes == tuple(changes)
+            import uuid as _uuid
+            manifest = {
+                'producer_incarnation': str(_uuid.uuid4()),
+                'map_epoch': 'e', 'seq': 1, 'kind': kind,
+                        'wire_schema_version': 2,
+                        'target_identity': decoded['identity'],
+                        'geometry_hash': 'g', 'grid': {},
+                        'commit_monotonic_ns': 1, 'entries': {}}
+            if kind == 'DELTA':
+                manifest['base_identity'] = decoded['identity']
+                manifest['base_manifest_sha'] = '0' * 64
+            from luggage_perception.cargo_query_wire import (
+                manifest_checksum)
+            manifest['checksum'] = manifest_checksum(manifest)
+            validate_manifest(manifest)   # FULL and DELTA frames both
+                                           # legal v2 carriers
+
+
+def test_typed_real_service_roundtrip_over_replica_facade(tmp_path):
+    """Review P2: a REAL service request (create_service + client over
+    DDS), not a direct callback -- the typed gate's evidence must be
+    an actual service roundtrip."""
+    import rclpy
+    from luggage_msgs.srv import GetCargoMapSummaryV2
+    from luggage_perception.cargo_map_query_service import MapQueryService
+
+    rclpy.init()
+    try:
+        node = rclpy.create_node('swf_typed_srv')
+        tmp = str(tempfile.mkdtemp(dir=str(tmp_path)))
+        try:
+            store, hook, replica, facade, _ = build_pair(tmp, 1)
+            node.create_service(
+                GetCargoMapSummaryV2, '/swf/get_summary_v2',
+                lambda req, resp: facade_typed_summary(
+                    MapQueryService(node, facade, None), req, resp))
+            client = node.create_client(
+                GetCargoMapSummaryV2, '/swf/get_summary_v2')
+            assert client.wait_for_service(timeout_sec=10.0)
+            req = GetCargoMapSummaryV2.Request()
+            req.query.request_id = 'swf-real'
+            req.query.frame_id = 'container_link'
+            req.query.use_current = True
+            req.query.release_after_query = True
+            future = client.call_async(req)
+            rclpy.spin_until_future_complete(node, future, timeout_sec=10)
+            assert future.done(), 'service call timeout'
+            response = future.result()
+            assert response.meta.status == 'OK', response.meta.reason
+            owner = store.acquire_query_snapshot()
+            owner_summary = owner.summary()
+            owner.close()
+            assert response.occupancy_confirmed == \
+                owner_summary.occupancy_confirmed
+            assert response.change_event == owner_summary.change_event
+            assert response.acquisition_stamp_ns == \
+                owner_summary.acquisition_stamp_ns
+            hook.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    finally:
+        rclpy.shutdown()
+
+
+def facade_typed_summary(service, req, resp):
+    return service.summary(req, resp)
+
+
+def test_v1_rejection_observed_before_v2_recovery(tmp_path):
+    """Review P2: the recovery proof must SHOW the named v1 rejection
+    first (state leaves READY with the named reason), THEN recovery."""
+    tmp = str(tempfile.mkdtemp(dir=str(tmp_path)))
+    try:
+        store, hook, replica, facade, root = build_pair(tmp, 0)
+        import glob as _g
+        import json as _json
+        manifest_path = sorted(_g.glob(
+            os.path.join(root, 'generations', '*', '*',
+                         'manifest.json')))[-1]
+        manifest = _json.load(open(manifest_path))
+        v1 = dict(manifest, wire_schema_version=1)
+        v1.pop('checksum', None)
+        with open(manifest_path, 'w') as handle:
+            handle.write(_json.dumps(v1, sort_keys=True))
+        import hashlib as _h
+        with open(os.path.join(root, 'published.json'), 'w') as handle:
+            handle.write(_json.dumps(
+                {'manifest': os.path.relpath(manifest_path, root),
+                 'manifest_sha256': _h.sha256(
+                     open(manifest_path, 'rb').read()).hexdigest()},
+                sort_keys=True))
+        # phase 1: the replica MUST leave READY on the NAMED v1
+        # rejection (UNKNOWN_SCHEMA via the bounded-error path)
+        saw_named_rejection = False
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            replica.poll()
+            if replica.state != ReplicaState.READY:
+                error = str(getattr(replica, 'last_error', ''))
+                raw_events = getattr(replica, 'events', None)
+                if callable(raw_events):
+                    raw_events = raw_events()
+                events = list(raw_events or [])
+                if ('UNKNOWN_SCHEMA' in error
+                        or any('UNKNOWN_SCHEMA' in str(e) or 'schema'
+                               in str(getattr(e, 'reason', '')).upper()
+                               for e in events)):
+                    saw_named_rejection = True
+                    break
+            time.sleep(0.05)
+        assert saw_named_rejection, (
+            'replica left READY without the NAMED v1 rejection: '
+            'state=%s error=%s' % (replica.state,
+                                   getattr(replica, 'last_error', None)))
+        assert replica.state != ReplicaState.READY
+        # phase 2: new v2 generations recover READY, and the rejection
+        # strictly PRECEDED the recovery (poll timestamps in events)
+        for more in range(3):
+            store.apply_update(MapUpdate(
+                operation_id='rec%d' % more,
+                kind=UpdateKind.INTEGRATE_VIEW,
+                expected_snapshot=store.identity,
+                geometry_hash=store._snapshot.geometry_hash,
+                points=np.zeros((0, 3), dtype=float),
+                origin=(0., 0., 1.4), stamp_key=(300 + more, 0),
+                acquisition_stamp_ns=4000 + more, settled=True,
+                schema_version=1))
+            store._snapshot = store._build_snapshot()
+            hook.wait_pending(30.0)
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if replica.poll() == ReplicaState.READY:
+                break
+            time.sleep(0.05)
+        assert replica.state == ReplicaState.READY
+        handle = facade.acquire_query_snapshot('CURRENT')
+        assert handle.summary().status == 'OK'
+        handle.close()
+        hook.close()
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
