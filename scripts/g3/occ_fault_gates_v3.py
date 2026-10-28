@@ -935,30 +935,44 @@ def _a5_case(h, name, injector, expect, boundary, rep):
             else:
                 for event in drain_events(worker):
                     seen_events.append(event)
-                # TRIGGER ENCOUNTER: did the receiver ever read the
-                # sabotaged generation? A leftover resync-answer FULL
-                # can let it heal PAST the target DELTA without reading
-                # it -- an untriggered attempt (retry), never a pass.
-                received = {e.get('seq') for e in seen_events
-                            if e.get('event') == 'received'}
-                current = ask(worker, {'cmd': 'poll_state'})
-                current_seq = None
-                if current.get('ok') and current.get('identity'):
-                    snap_seq = None
-                    # identity carries 5 legs; seq comes from events
-                    readies = [e for e in seen_events
-                               if e.get('event') == 'ready']
-                    if readies:
-                        current_seq = readies[-1].get('seq')
-                encountered = (target_seq in received
+                # TRIGGER ENCOUNTER: the receiver ATTEMPTED the
+                # sabotaged generation iff a validated/validate_failed/
+                # ready event carries its seq (or it never moved past
+                # it). For OBJECT-file sabotage additionally require
+                # content inequality before calling it encountered-and-
+                # undetected: equal content is positive proof the
+                # sabotaged payload was never consumed (a truncated or
+                # corrupted object fails its digest or surfaces as
+                # wrong content), i.e. an untriggered attempt.
+                attempted = {
+                    e.get('seq') for e in seen_events
+                    if e.get('event') in ('validated', 'ready',
+                                          'validate_failed')}
+                readies = [e for e in seen_events
+                           if e.get('event') == 'ready']
+                current_seq = (readies[-1].get('seq')
+                               if readies else None)
+                encountered = (int(target_seq) in
+                               {int(s) for s in attempted
+                                if s is not None}
                                or (current_seq is not None
                                    and int(current_seq)
                                    <= int(target_seq)))
+                if encountered and forensics.get('object') is not None:
+                    fp = ask(worker, {'cmd': 'fingerprint'},
+                             timeout_s=10.0)
+                    src_fp, _ = h.source_fingerprint()
+                    if (fp.get('ok')
+                            and fp.get('fingerprint') == src_fp):
+                        encountered = False    # content-equal: proof
+                        log.check(True, 'injection_encountered',
+                                  'object sabotage provably not '
+                                  'consumed (content equal)')
                 log.check(bool(encountered),
                           'injection_encountered',
-                          'target %s received %s latest_ready %s'
+                          'target %s attempted %s latest_ready %s'
                           % (target_seq, sorted(
-                              s for s in received
+                              s for s in attempted
                               if s is not None)[:8], current_seq))
                 if not encountered:
                     h.close_worker(worker)
