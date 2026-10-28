@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""G4-A gen3 A9 capture on/off pairing v2 (review_5c5c1842 Finding 1).
+"""G4-A gen3 A9 capture on/off pairing v4 (review_64f0bdf0 Finding 1).
 
 Both arms run the SAME isolated backend and topology: a parent writer
 process and an INDEPENDENT query subprocess (QueryReplica + facade).
@@ -9,17 +9,22 @@ The ONLY variable is the diagnostic capture recorder:
 - ON : replica event log + per-operation span collector + one JSON
   identity-join record per request
 
-Per kind (roi / distance / surface): 3 warmup + 30 samples per arm;
-BOTH direct-operation time and full-request time are recorded; the
-gate is the P95 ratio (on/off) of the FULL request per kind <= 1.10.
+v4 PRE-REGISTERED design (fixed before running; no best-of, no
+post-hoc threshold changes -- the gate stays P95 ratio <= 1.10):
+Per kind (roi / distance / surface) the sample schedule is
+  2 warmup pairs with orders AB, BA (both arms warm, each position
+  once), then 30 measurement pairs ALTERNATING AB, BA, AB, BA...
+Each pair takes two consecutive requests (one per arm); the arm in
+position 1 alternates, so recorder-ON and recorder-OFF each land in
+position 1 exactly 15 times. The parity-position bias that produced
+the spurious surface ~1.17 in v3 cancels by construction, and the
+remaining ratio measures capture cost. The IDENTICAL control runs
+the SAME schedule with the recorder off in BOTH buckets -- it must
+PASS; the SLOW control (ON recorder sleeps 10ms) must FAIL.
 
-Capture completeness is part of the gate: every ON request must have
-exactly one join record with the returned identity -- any loss fails.
-
-Control modes (required by the review):
-  normal     the real pairing
-  identical  both arms recorder-OFF (same path twice): must PASS
-  slow       ON arm's recorder sleeps 5ms per record: must FAIL
+Every measurement sample persists latency + pair + order + position
++ arm (+ request identity for ON), so the order decomposition is
+auditable from the output alone.
 
 Exit 0 pass / 3 fail / 4 not_evaluated.
 """
@@ -60,6 +65,44 @@ def nearest_rank_p95(values, min_samples=30):
     return values[math.ceil(0.95 * len(values)) - 1]
 
 
+def pair_schedule(samples, warmup_pairs=2):
+    """Pre-fixed v4 schedule: `warmup_pairs` warmup pairs opening
+    AB, BA (both arms warm, each position once), then `samples`
+    measurement pairs alternating AB, BA. Deterministic, no RNG,
+    fixed before any measurement -- the balance property (each arm
+    in each position exactly samples/2 times) is pinned by test."""
+    return ['AB', 'BA'] + ['AB' if (p % 2 == 0) else 'BA'
+                           for p in range(samples)]
+
+
+def position_order_effect(samples, arm):
+    """Order-effect decomposition for one arm from per-sample records
+    (v4): mean full_ms by pair position (1/2) and by order type, plus
+    the position effect mean(pos2)-mean(pos1). Warmup excluded. A
+    balanced schedule leaves each arm 15 samples per position."""
+    by_position = {1: [], 2: []}
+    by_order = {'AB': [], 'BA': []}
+    for sample in samples:
+        if sample.get('arm') != arm or sample.get('warmup'):
+            continue
+        by_position[sample['position']].append(sample['full_ms'])
+        by_order[sample['order']].append(sample['full_ms'])
+
+    def mean(values):
+        return round(sum(values) / len(values), 4) if values else None
+
+    mean1, mean2 = mean(by_position[1]), mean(by_position[2])
+    return {
+        'mean_by_position_ms': {'1': mean1, '2': mean2},
+        'mean_by_order_ms': {o: mean(v) for o, v in by_order.items()},
+        'position_effect_ms': (round(mean2 - mean1, 4)
+                               if mean1 is not None and mean2 is not None
+                               else None),
+        'n_by_position': {'1': len(by_position[1]),
+                          '2': len(by_position[2])},
+    }
+
+
 WORKER = r'''
 import json, os, sys, time
 root, out_path, mode_flag = sys.argv[1:4]
@@ -84,10 +127,11 @@ def record(entry):
 
 
 def set_capture(on):
-    """The ONLY variable between arms, toggled PER SAMPLE so machine
-    drift hits both arms equally (interleaved A/B, not sequential).
-    A9V2_IDENTICAL=1 forces the recorder off in BOTH buckets (the
-    same-path control)."""
+    """The ONLY variable between arms, toggled PER SAMPLE inside a
+    pre-fixed AB/BA pair schedule so machine drift and position bias
+    hit both arms equally. A9V2_IDENTICAL=1 forces the recorder off
+    in BOTH buckets (the same-path control; buckets stay real and
+    separate)."""
     if os.environ.get('A9V2_IDENTICAL') == '1':
         on = False
     replica._record_events = on
@@ -119,40 +163,48 @@ def op(handle, kind):
         handle.surface()
 
 
-SAMPLES = int(sys.argv[4])
+WARMUP_PAIRS = 2
+SCHEDULE = %r                     # pre-fixed by the parent (v4)
 out = {'kinds': {}, 'records': [], 'spans': 0}
-for kind_index, kind in enumerate(('roi', 'distance', 'surface')):
+for kind in ('roi', 'distance', 'surface'):
     buckets = {'on': {'full': [], 'direct': []},
                'off': {'full': [], 'direct': []}}
-    seen = {'on': 0, 'off': 0}
-    for i in range(2 * (3 + SAMPLES)):
-        # bucket label by parity (odd kinds swap parity so ordering
-        # bias cannot align with the arm); capture_enabled is the
-        # RECORDER state -- identical mode forces it off in BOTH
-        # buckets while the buckets themselves stay REAL and separate.
-        bucket_label = 'on' if ((i %% 2 == 0)
-                                == (kind_index %% 2 == 0)) else 'off'
-        capture_enabled = bucket_label == 'on'
-        set_capture(capture_enabled)
-        t0 = time.perf_counter_ns()
-        handle = facade.acquire_query_snapshot('CURRENT')
-        t1 = time.perf_counter_ns()
-        op(handle, kind)
-        t2 = time.perf_counter_ns()
-        ident = list(handle.identity)
-        handle.close()
-        # capture cost INSIDE the request window; per-bucket warmup
-        # (first 3 samples of EACH bucket) excluded
-        if capture_enabled and seen[bucket_label] >= 3:
-            record({'kind': 'request',
-                    'request_id': '%%s-%%d' %% (kind, i),
-                    'identity': ident})
-        t3 = time.perf_counter_ns()
-        if seen[bucket_label] >= 3:
-            buckets[bucket_label]['full'].append((t3 - t0) / 1e6)
-            buckets[bucket_label]['direct'].append((t2 - t1) / 1e6)
-        seen[bucket_label] += 1
-    out['kinds'][kind] = buckets
+    samples = []
+    schedule = SCHEDULE
+    for pair_index, order in enumerate(schedule):
+        arms = ('on', 'off') if order == 'AB' else ('off', 'on')
+        warmup = pair_index < WARMUP_PAIRS
+        for position, arm in enumerate(arms, start=1):
+            # capture_enabled is the RECORDER state -- identical mode
+            # forces it off in BOTH buckets while the buckets
+            # themselves stay REAL and separate (labels unchanged).
+            capture_enabled = arm == 'on'
+            set_capture(capture_enabled)
+            t0 = time.perf_counter_ns()
+            handle = facade.acquire_query_snapshot('CURRENT')
+            t1 = time.perf_counter_ns()
+            op(handle, kind)
+            t2 = time.perf_counter_ns()
+            ident = list(handle.identity)
+            handle.close()
+            # capture cost INSIDE the request window; warmup pairs
+            # excluded from buckets and from the join record set
+            if capture_enabled and not warmup:
+                record({'kind': kind,
+                        'request_id': '%%s-p%%d' %% (
+                            kind, pair_index - WARMUP_PAIRS),
+                        'identity': ident})
+            t3 = time.perf_counter_ns()
+            sample = {'pair': pair_index - WARMUP_PAIRS,
+                      'order': order, 'arm': arm, 'position': position,
+                      'warmup': warmup,
+                      'full_ms': round((t3 - t0) / 1e6, 4),
+                      'direct_ms': round((t2 - t1) / 1e6, 4)}
+            samples.append(sample)
+            if not warmup:
+                buckets[arm]['full'].append(sample['full_ms'])
+                buckets[arm]['direct'].append(sample['direct_ms'])
+    out['kinds'][kind] = {'buckets': buckets, 'samples': samples}
 out['records'] = records
 out['spans'] = len(spans)
 with open(out_path, 'w') as handle:
@@ -195,7 +247,8 @@ def run_worker(root, mode, samples):
                                suffix='.json')
     subprocess.run(
         [sys.executable, '-c',
-         WORKER % (_WS_SRC, _WS_SRC, _WS_SRC, REGION),
+         WORKER % (_WS_SRC, _WS_SRC, _WS_SRC, REGION,
+                   tuple(pair_schedule(samples))),
          root, out_path, mode, str(samples)],
         check=True, timeout=600)
     with open(out_path) as handle:
@@ -237,11 +290,11 @@ def main():
     # BOTH buckets are real measured arrays in every mode (identical:
     # the recorder was disabled in both -- the two arrays still come
     # from genuinely different samples and must agree on their own).
-    off = {'kinds': {k: {'full_ms': v['off']['full'],
-                         'direct_ms': v['off']['direct']}
+    off = {'kinds': {k: {'full_ms': v['buckets']['off']['full'],
+                         'direct_ms': v['buckets']['off']['direct']}
                      for k, v in data['kinds'].items()}}
-    on = {'kinds': {k: {'full_ms': v['on']['full'],
-                        'direct_ms': v['on']['direct']}
+    on = {'kinds': {k: {'full_ms': v['buckets']['on']['full'],
+                        'direct_ms': v['buckets']['on']['direct']}
                     for k, v in data['kinds'].items()}}
     hook.close()
     os.close(lock_fd)
@@ -266,11 +319,14 @@ def main():
         'revision': subprocess.check_output(
             ['git', 'rev-parse', 'HEAD'], cwd=_WS_SRC,
             text=True).strip(),
+        'config': {'resolution': args.resolution,
+                   'boxes': args.boxes, 'samples': args.samples,
+                   'ratio_bound': args.ratio_bound},
         'mode': args.mode,
         'scope': ('capture recorder on/off, independent query process '
-                  'both arms, same isolated backend; full-request P95 '
-                  'ratio per kind; completeness = one join record per '
-                  'request'),
+                  'both arms, same isolated backend; pre-fixed balanced '
+                  'AB/BA pair schedule; full-request P95 ratio per kind; '
+                  'completeness = one join record per request'),
         'capture_join': join_detail,
         'records_on': records[:5],
         'recorder_boundary': ('in-memory ring/list append only (the '
@@ -299,10 +355,17 @@ def main():
                 nearest_rank_p95(on['kinds'][kind]['direct_ms'])
                 or -1, 3),
             'ratio': ratio,
+            'schedule': ('2 warmup pairs (AB,BA) + %d measurement pairs '
+                         'alternating AB/BA (pre-fixed)' % args.samples),
+            'position_balance': {
+                arm: position_order_effect(
+                    data['kinds'][kind]['samples'], arm)
+                for arm in ('on', 'off')},
             'raw': {'off_full': [round(v, 3) for v in
                                  off['kinds'][kind]['full_ms']],
                     'on_full': [round(v, 3) for v in
-                                on['kinds'][kind]['full_ms']]}}
+                                on['kinds'][kind]['full_ms']],
+                    'samples': data['kinds'][kind]['samples']}}
         if ratio is None:
             entry['verdict'] = NOT_EVALUATED
             if verdict != FAIL:

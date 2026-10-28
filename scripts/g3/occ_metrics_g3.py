@@ -298,6 +298,29 @@ def main(argv=None):
                   'max_bound_ms': args.query_max_ms},
         'visibility': {'p95_bound_ms': args.vis_p95_ms,
                        'max_bound_ms': args.vis_max_ms}})
+    # provenance (review_64f0bdf0 #2): bind the verdict to the raw
+    # events file (path + sha256 + line count), the judge thresholds,
+    # and the judge script's own revision -- recomputation stays
+    # auditable without post-hoc HEAD backfill.
+    import hashlib
+    import os
+    import subprocess
+    raw_bytes = open(args.events_jsonl, 'rb').read()
+    here = os.path.dirname(os.path.abspath(__file__))
+    verdict['provenance'] = {
+        'raw_events': os.path.abspath(args.events_jsonl),
+        'raw_events_sha256': hashlib.sha256(raw_bytes).hexdigest(),
+        'raw_event_count': len(events),
+        'thresholds': {
+            'query_p95_ms': args.query_p95_ms,
+            'query_max_ms': args.query_max_ms,
+            'vis_p95_ms': args.vis_p95_ms,
+            'vis_max_ms': args.vis_max_ms},
+        'judge_revision': subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], cwd=os.path.normpath(
+                os.path.join(here, '..', '..')),
+            capture_output=True, text=True).stdout.strip() or None,
+    }
     text = json.dumps(verdict, indent=1)
     if args.out:
         with open(args.out, 'w') as handle:

@@ -9,11 +9,18 @@ ratio <= 1.10, max <= b33max * 1.20 + 20 ms.
 
 Each subprocess prints one JSON line per timed write; the parent
 aggregates. Both runs hold the perf flock via the parent.
+
+v2 (review_64f0bdf0 Finding 2): the report embeds each tree's git
+revision / commit time / dirty state captured AT RUN TIME and the
+full per-sample arrays with the exact nearest-rank index, so the
+summary is traceable without backfilling from a later HEAD.
 """
 
 import argparse
+import datetime
 import fcntl
 import json
+import math
 import os
 import subprocess
 import sys
@@ -118,9 +125,29 @@ def run_tree(tree, boxes, resolution, samples, candidate, nohook=False,
 
 def p95(values):
     """Nearest-rank P95: ceil(0.95*n)-1 (sorted[28] only when n=30)."""
-    import math
     return sorted(values)[math.ceil(0.95 * len(values)) - 1] \
         if len(values) >= 30 else None
+
+
+def tree_state(tree):
+    """Revision binding captured AT RUN TIME (review_64f0bdf0 #2):
+    HEAD, commit time, and dirty state of a tree, recorded in the
+    report so the summary is self-contained -- no post-hoc HEAD
+    backfill. Failure to read git leaves explicit nulls, not blanks."""
+    def git(*args):
+        return subprocess.run(
+            ['git', '-C', tree] + list(args),
+            capture_output=True, text=True, timeout=30,
+        ).stdout.strip()
+    dirty = git('status', '--porcelain')
+    return {
+        'tree': tree,
+        'revision': git('rev-parse', 'HEAD') or None,
+        'commit_time': git('log', '-1', '--format=%cI') or None,
+        'dirty': bool(dirty),
+        'dirty_files': dirty.splitlines()[:10],
+        'state_time': datetime.datetime.now().astimezone().isoformat(),
+    }
 
 
 def main():
@@ -146,6 +173,8 @@ def main():
     lock_fd = os.open(PERF_LOCK, os.O_CREAT | os.O_RDWR)
     fcntl.flock(lock_fd, fcntl.LOCK_EX)
     try:
+        trees = {'baseline': tree_state(args.baseline_tree),
+                 'candidate': tree_state(args.candidate_tree)}
         baseline = run_tree(args.baseline_tree, args.boxes,
                             args.resolution, args.samples, False,
                             outside, crossing)
@@ -170,7 +199,12 @@ def main():
     report = {
         'baseline_tree': args.baseline_tree,
         'candidate_tree': args.candidate_tree,
+        'trees': trees,
         'boxes': args.boxes, 'resolution': args.resolution,
+        'samples_per_tree': args.samples,
+        'nearest_rank': {'rule': 'ceil(0.95*n)-1 on sorted samples',
+                         'index_at_n': math.ceil(
+                             0.95 * args.samples) - 1},
         'workload': {'points': 30000, 'outside': outside,
                      'crossing': crossing,
                      'generator': 'frozen (compare_occ_crop.workload '
@@ -185,6 +219,11 @@ def main():
         'candidate_max_ms': round(c_max, 3),
         'max_gate_ms': max_gate,
         'gate_pass': passed,
+        'raw_samples_ms': {
+            'warmup_per_tree': 3,
+            'baseline': [round(v, 3) for v in baseline],
+            'nohook': [round(v, 3) for v in nohook],
+            'candidate': [round(v, 3) for v in candidate]},
     }
     with open(args.out, 'w') as handle:
         json.dump(report, handle, indent=1)
