@@ -141,11 +141,14 @@ production packing success or a performance advantage over the existing grid.
 validation, fingerprint, dedup, Z filter, transform, ray preparation, fusion and
 publication spans. `Detailed` additionally times per-ray generation/filtering and
 per-cell tree/block work. Default `Off` has no diagnostic clock calls/counters;
-legacy receipt timing fields remain. These modes are per-call measurement inputs,
-not mutable map settings. No new sensor filtering, ray sampling or clipping is
-introduced. ROS messages and production node retain default-off behavior; this
-first profiling interface is native/offline, not a claim to measure ROS TF lookup
-or middleware costs.
+legacy receipt timing fields remain. Per-key domain, hash-insert, hit-erase, and
+release clocks are not provided: `split_key_timers` is `not_provided` and those
+fields are omitted, not written as zero. Set release still happens before the
+receipt total is closed. These modes are per-call measurement inputs, not mutable
+map settings. No new sensor filtering, ray sampling or clipping is introduced.
+ROS messages and production node retain default-off behavior; this first
+profiling interface is native/offline, not a claim to measure ROS TF lookup or
+middleware costs.
 
 Receipts expose `profile` via `receipt_to_yaml`. `stage_visited` means a span was
 entered, not that an exceptional path completed. Nested spans must not be added
@@ -153,10 +156,17 @@ to their parents. `rays_with_active_keys` is based on visited grid cells, not an
 analytic segment/hull test. `copied_cells` counts entries actually copied from
 old immutable blocks. Array/map object overhead is not a byte-memory measurement.
 
-`Snapshot::surface(&profile)` reports actual cache-hit state, scanned-cell count,
-lock/build/total time. Its statistics belong to that query and do not change the
-snapshot. A surface query after a changed map revision may rebuild; the second
-call on the same snapshot must hit the cache.
+`Snapshot::surface(&profile)` reports actual cache-hit state, block-entry scan
+count, lock/build/total time. `scanned_cells` counts stored block entries visited
+by that rebuild. `domain_init_*` records whether this call executed the one-time
+column active-count walk, how many geometry cells that walk visited, and its
+time. A null profile is Off: domain init is not collected, and serialization
+says `not_collected` instead of emitting zeros. The first surface total includes
+domain initialization when that call performs it. A cache hit reports both scans
+as zero. Statistics belong to that query and do not change the snapshot or any
+older snapshot. A surface query after a changed map revision may rebuild; the
+second call on the same snapshot must hit the cache. Column active counts are
+immutable after publication and are computed once per domain.
 
 Build `observer_profile_cli` with the normal package or the ROS-free CMake build.
 It reads one lossless frame file at a time. Manifest paths are relative to the

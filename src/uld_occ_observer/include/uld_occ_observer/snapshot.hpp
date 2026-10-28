@@ -39,6 +39,7 @@ class Snapshot {
   std::shared_ptr<const std::vector<SurfaceColumn>> surface(SurfaceProfile* profile = nullptr) const;
   std::shared_ptr<const Snapshot> with_identity(SnapshotIdentity identity) const;
   std::size_t block_count() const { return blocks_.size(); }
+  std::uint64_t known_entry_count() const;
   static CellIndex block_index(CellIndex index);
  private:
   const SnapshotIdentity identity_;

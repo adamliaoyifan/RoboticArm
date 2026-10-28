@@ -18,6 +18,13 @@ struct GeometryDescriptor {
   std::optional<Chamfer> chamfer;
 };
 
+// Filled only for the call that actually runs initialization. Waiting callers stay at performed=false.
+struct DomainInitObservation {
+  bool performed{false};
+  std::uint64_t scanned_cells{0};
+  double milliseconds{0};
+};
+
 class UldDomain {
  public:
   UldDomain(GeometryDescriptor descriptor, double resolution);
@@ -31,7 +38,9 @@ class UldDomain {
   double resolution() const { return resolution_; }
   const GeometryDescriptor& descriptor() const { return descriptor_; }
   // Active cell counts per column. The domain does not change, so this is computed once.
-  const std::vector<std::uint32_t>& column_active_counts() const;
+  // measure_time reads a clock only inside the call that executes initialization.
+  const std::vector<std::uint32_t>& column_active_counts(
+      DomainInitObservation* observation = nullptr, bool measure_time = false) const;
  private:
   const GeometryDescriptor descriptor_;
   const double resolution_;

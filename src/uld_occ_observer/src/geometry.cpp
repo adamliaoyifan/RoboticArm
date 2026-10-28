@@ -1,4 +1,5 @@
 #include "uld_occ_observer/geometry.hpp"
+#include <chrono>
 #include <cmath>
 #include <mutex>
 
@@ -43,14 +44,31 @@ bool UldDomain::contains(const Vec3& p) const {
   return true;
 }
 
-const std::vector<std::uint32_t>& UldDomain::column_active_counts() const {
+const std::vector<std::uint32_t>& UldDomain::column_active_counts(
+    DomainInitObservation* observation, bool measure_time) const {
+  // call_once runs this body on one caller. A throw leaves the flag unset, so a later call retries.
+  // The cache vector is published only after the full geometry walk.
   std::call_once(active_once_, [&] {
-    active_counts_.assign(static_cast<std::size_t>(shape_.x) * shape_.y, 0);
+    using Clock = std::chrono::steady_clock;
+    const auto started = measure_time ? Clock::now() : Clock::time_point{};
+    const auto columns = static_cast<std::size_t>(shape_.x) * static_cast<std::size_t>(shape_.y);
+    const auto scanned = static_cast<std::uint64_t>(shape_.x) * static_cast<std::uint64_t>(shape_.y) *
+                         static_cast<std::uint64_t>(shape_.z);
+    std::vector<std::uint32_t> counts(columns, 0);
     for (int y = 0; y < shape_.y; ++y) {
       for (int x = 0; x < shape_.x; ++x) {
         std::uint32_t count = 0;
         for (int z = 0; z < shape_.z; ++z) count += active({x, y, z});
-        active_counts_[static_cast<std::size_t>(y) * shape_.x + x] = count;
+        counts[static_cast<std::size_t>(y) * shape_.x + x] = count;
+      }
+    }
+    active_counts_ = std::move(counts);
+    if (observation != nullptr) {
+      observation->performed = true;
+      observation->scanned_cells = scanned;
+      if (measure_time) {
+        observation->milliseconds =
+            std::chrono::duration<double, std::milli>(Clock::now() - started).count();
       }
     }
   });

@@ -20,12 +20,7 @@ YAML::Node profile_to_yaml(const UpdateProfile& profile) {
   out["free_unique_before_hit_removal"] = profile.free_unique_before_hit_removal;
   out["copied_blocks"] = profile.copied_blocks;
   out["copied_cells"] = profile.copied_cells;
-  out["domain_check_ms"] = profile.domain_check_ms;
-  out["free_insert_ms"] = profile.free_insert_ms;
-  out["occupied_insert_ms"] = profile.occupied_insert_ms;
-  out["hit_erase_ms"] = profile.hit_erase_ms;
-  out["release_free_ms"] = profile.release_free_ms;
-  out["release_occupied_ms"] = profile.release_occupied_ms;
+  out["split_key_timers"] = "not_provided";
   return out;
 }
 YAML::Node surface_profile_to_yaml(const SurfaceProfile& profile) {
@@ -33,6 +28,14 @@ YAML::Node surface_profile_to_yaml(const SurfaceProfile& profile) {
   out["cache_hit"] = profile.cache_hit; out["scanned_cells"] = profile.scanned_cells;
   out["output_columns"] = profile.output_columns; out["lock_wait_ms"] = profile.lock_wait_ms;
   out["build_ms"] = profile.build_ms; out["total_ms"] = profile.total_ms;
+  if (!profile.domain_init_collected) {
+    out["domain_init"] = "not_collected";
+  } else {
+    out["domain_init"] = "collected";
+    out["domain_init_performed"] = profile.domain_init_performed;
+    out["domain_init_scanned_cells"] = profile.domain_init_scanned_cells;
+    out["domain_init_ms"] = profile.domain_init_ms;
+  }
   return out;
 }
 

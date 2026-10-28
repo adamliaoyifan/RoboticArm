@@ -150,10 +150,9 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
       receipt.status = "INTEGRATED";
     }
     receipt.fusion_ms = milliseconds(prepared, Clock::now());
-    { auto release = diagnostic.release_free();
-      scan.free_cells.clear(); }
-    { auto release = diagnostic.release_occupied();
-      scan.occupied_cells.clear(); }
+    // Release stays inside total_ms. Moving it past publish() would drop it from the receipt clock.
+    scan.free_cells.clear();
+    scan.occupied_cells.clear();
   } catch (const Error& error) {
     ++rejected_; receipt.status = error.what();
   }

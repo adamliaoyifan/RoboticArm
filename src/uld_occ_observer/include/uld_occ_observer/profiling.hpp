@@ -19,10 +19,18 @@ inline constexpr std::array<const char*, kProfileStages> kProfileStageNames{
   "tree_update", "block_maintenance"};
 struct SurfaceProfile {
   bool cache_hit{};
+  // Block entries visited by this rebuild. A cache hit visits none.
   std::uint64_t scanned_cells{}, output_columns{};
   double lock_wait_ms{}, build_ms{}, total_ms{};
+  // Domain geometry scan is separate from scanned_cells. Off leaves this false;
+  // zero counts on an uncollected profile are not a measurement.
+  bool domain_init_collected{false};
+  bool domain_init_performed{false};
+  std::uint64_t domain_init_scanned_cells{};
+  double domain_init_ms{};
 };
 // Report snapshot. Callers record through OccupancyDiagnostic, not by writing these fields.
+// Per-key domain, insert, erase, and release clocks are not provided.
 struct UpdateProfile {
   ProfileMode mode{ProfileMode::Off};
   std::array<double, kProfileStages> milliseconds{};
@@ -31,8 +39,6 @@ struct UpdateProfile {
   std::uint64_t rays_attempted{}, ray_keys_generated{}, active_ray_key_visits{},
       inactive_ray_key_visits{}, rays_with_active_keys{}, rays_without_active_keys{},
       free_insert_duplicates{}, free_unique_before_hit_removal{}, copied_blocks{}, copied_cells{};
-  double domain_check_ms{}, free_insert_ms{}, occupied_insert_ms{}, hit_erase_ms{};
-  double release_free_ms{}, release_occupied_ms{};
   bool surface_recorded{};
   SurfaceProfile surface{};
   bool enabled() const { return mode != ProfileMode::Off; }
@@ -46,13 +52,10 @@ struct UpdateProfile {
 };
 
 // One diagnostic session. Off does not read the clock or increment counts.
-// Split timers read the clock only in Detailed.
+// The nine top-level spans and the Detailed nested spans are the only clocks.
 class OccupancyDiagnostic {
  public:
   using Clock = std::chrono::steady_clock;
-  enum class Cost {
-    DomainCheck, FreeInsert, OccupiedInsert, HitErase, ReleaseFree, ReleaseOccupied
-  };
 
   explicit OccupancyDiagnostic(ProfileMode level) { report_.mode = level; }
   bool enabled() const { return report_.enabled(); }
@@ -89,47 +92,8 @@ class OccupancyDiagnostic {
     Clock::time_point start_{};
   };
 
-  class Timer {
-   public:
-    Timer(OccupancyDiagnostic& diagnostic, Cost cost)
-        : diagnostic_(&diagnostic), cost_(cost), enabled_(diagnostic.detailed()) {
-      if (enabled_) start_ = Clock::now();
-    }
-    Timer(Timer&& other) noexcept
-        : diagnostic_(other.diagnostic_), cost_(other.cost_), enabled_(other.enabled_),
-          start_(other.start_) {
-      other.enabled_ = false;
-    }
-    Timer(const Timer&) = delete;
-    Timer& operator=(const Timer&) = delete;
-    ~Timer() {
-      if (!enabled_) return;
-      const double elapsed = std::chrono::duration<double, std::milli>(Clock::now() - start_).count();
-      auto& report = diagnostic_->report_;
-      switch (cost_) {
-        case Cost::DomainCheck: report.domain_check_ms += elapsed; break;
-        case Cost::FreeInsert: report.free_insert_ms += elapsed; break;
-        case Cost::OccupiedInsert: report.occupied_insert_ms += elapsed; break;
-        case Cost::HitErase: report.hit_erase_ms += elapsed; break;
-        case Cost::ReleaseFree: report.release_free_ms += elapsed; break;
-        case Cost::ReleaseOccupied: report.release_occupied_ms += elapsed; break;
-      }
-    }
-   private:
-    OccupancyDiagnostic* diagnostic_;
-    Cost cost_;
-    bool enabled_;
-    Clock::time_point start_{};
-  };
-
   Span span(ProfileStage stage) { return Span(*this, stage, false); }
   Span detail(ProfileStage stage) { return Span(*this, stage, true); }
-  Timer domain_check() { return Timer(*this, Cost::DomainCheck); }
-  Timer free_insert() { return Timer(*this, Cost::FreeInsert); }
-  Timer occupied_insert() { return Timer(*this, Cost::OccupiedInsert); }
-  Timer hit_erase() { return Timer(*this, Cost::HitErase); }
-  Timer release_free() { return Timer(*this, Cost::ReleaseFree); }
-  Timer release_occupied() { return Timer(*this, Cost::ReleaseOccupied); }
 
   void ray_attempted() { if (enabled()) ++report_.rays_attempted; }
   void keys_generated(std::uint64_t count) { if (enabled()) report_.ray_keys_generated += count; }

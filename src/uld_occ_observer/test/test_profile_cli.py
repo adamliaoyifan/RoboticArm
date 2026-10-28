@@ -38,8 +38,29 @@ def test_valid_record_and_cache(tmp_path):
     assert result.returncode==0, result.stderr
     row=list(yaml.safe_load_all((tmp_path/'out').read_text()))[0]
     assert row['receipt']['profile']['rays_attempted']==1
-    assert row['surface_second_call']['profile']['cache_hit'] is True
+    assert row['receipt']['profile']['split_key_timers']=='not_provided'
+    assert 'domain_check_ms' not in row['receipt']['profile']
+    first=row['surface_first_call']['profile']
+    second=row['surface_second_call']['profile']
+    assert first['domain_init']=='collected' and first['domain_init_performed'] is True
+    assert first['domain_init_scanned_cells']>0 and first['scanned_cells']>=0
+    assert second['cache_hit'] is True and second['scanned_cells']==0
+    assert second['domain_init_performed'] is False and second['domain_init_scanned_cells']==0
     assert isinstance(row['receipt']['profile']['stage_ms']['fingerprint'],(int,float))
+
+
+def test_off_omits_uncollected_diagnostics(tmp_path):
+    manifest=setup_fixture(tmp_path)
+    manifest['mode']='off'
+    (tmp_path/'manifest').write_text(yaml.safe_dump(manifest))
+    result=run(tmp_path)
+    assert result.returncode==0, result.stderr
+    row=list(yaml.safe_load_all((tmp_path/'out').read_text()))[0]
+    assert row['receipt']['profile']['split_key_timers']=='not_provided'
+    assert row['receipt']['profile']['rays_attempted']==0
+    assert 'domain_check_ms' not in row['receipt']['profile']
+    assert row['surface_first_call']['profile_enabled'] is False
+    assert 'profile' not in row['surface_first_call']
 
 
 def test_bad_hash_preserves_named_failure(tmp_path):

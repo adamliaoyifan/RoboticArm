@@ -1,6 +1,7 @@
 #include "uld_occ_observer/configuration.hpp"
 #include "uld_occ_observer/occupancy_grid.hpp"
 #include "uld_occ_observer/observer.hpp"
+#include "uld_occ_observer/serialization.hpp"
 #include <octomap/OcTree.h>
 #include <chrono>
 #include <filesystem>
@@ -270,14 +271,40 @@ void check_config_identity() {
   std::filesystem::remove_all(scratch);
 }
 
+void check_profile_schema() {
+  UpdateProfile off;
+  const auto node = profile_to_yaml(off);
+  require(node["split_key_timers"].as<std::string>() == "not_provided", "split timers were not marked absent");
+  require(!node["domain_check_ms"] && !node["free_insert_ms"] && !node["occupied_insert_ms"] &&
+              !node["hit_erase_ms"] && !node["release_free_ms"] && !node["release_occupied_ms"],
+          "a removed split timer was serialized as a measurement");
+  require(node["stage_ms"]["ray_preparation"].IsDefined(), "stage timings were dropped");
+  SurfaceProfile blank;
+  const auto absent = surface_profile_to_yaml(blank);
+  require(absent["domain_init"].as<std::string>() == "not_collected", "uncollected init was presented as measured");
+  require(!absent["domain_init_scanned_cells"] && !absent["domain_init_ms"] && !absent["domain_init_performed"],
+          "uncollected domain init emitted counts");
+  GeometryDescriptor geometry{"schema", "digest", 0.4, 0.4, 0.0, 0.4, {}};
+  auto domain = std::make_shared<const UldDomain>(geometry, 0.1);
+  Snapshot snapshot{{}, domain, {}};
+  SurfaceProfile measured;
+  snapshot.surface(&measured);
+  const auto collected = surface_profile_to_yaml(measured);
+  require(collected["domain_init"].as<std::string>() == "collected", "profiled surface omitted init observation");
+  require(collected["domain_init_performed"].as<bool>(), "first profiled surface missed initialization");
+  const auto shape = domain->shape();
+  const auto product = static_cast<std::uint64_t>(shape.x) * shape.y * shape.z;
+  require(collected["domain_init_scanned_cells"].as<std::uint64_t>() == product, "init scan count mismatch");
+  require(collected["scanned_cells"].as<std::uint64_t>() == 0, "empty snapshot scanned block entries");
+}
+
 void check_profile_diagnostics(const UldDomain& domain, double resolution, const Vec3& origin,
                                const std::vector<Vec3>& points) {
   OccupancyGrid off_grid(resolution);
   OccupancyDiagnostic off(ProfileMode::Off);
   const auto off_scan = collect_of(off_grid, origin, points, domain, {}, &off);
   require(off.report().rays_attempted == 0 && off.report().ray_keys_generated == 0 &&
-              off.report().active_ray_key_visits == 0 && off.report().domain_check_ms == 0 &&
-              off.report().free_insert_ms == 0 && off.report().release_free_ms == 0,
+              off.report().active_ray_key_visits == 0 && off.report().free_insert_duplicates == 0,
           "Off profile collected diagnostics");
   OccupancyGrid stages_grid(resolution);
   OccupancyDiagnostic stages(ProfileMode::Stages);
@@ -292,11 +319,11 @@ void check_profile_diagnostics(const UldDomain& domain, double resolution, const
           "profile mode changed the hit set");
   require(stages.report().rays_attempted == points.size() && stages.report().ray_keys_generated > 0,
           "Stages did not collect diagnostics");
-  require(stages.report().domain_check_ms == 0 && stages.report().free_insert_ms == 0 &&
-              stages.report().hit_erase_ms == 0,
-          "Stages read split clocks");
-  require(detailed.report().domain_check_ms > 0 && detailed.report().free_insert_ms > 0,
-          "Detailed did not time domain checks and inserts");
+  require(stages.report().milliseconds[static_cast<std::size_t>(ProfileStage::RayFilterDedup)] == 0,
+          "Stages timed a detailed nested span");
+  require(detailed.report().milliseconds[static_cast<std::size_t>(ProfileStage::RayFilterDedup)] > 0 &&
+              detailed.report().ray_keys_generated > 0,
+          "Detailed did not time the ray filter span");
   GeometryDescriptor geometry{"fixture_geometry", "fixture_digest", 0.8, 0.8, 0, 1.2, {}};
   ObservationStore a(geometry, resolution, {}, "test_clock", "config");
   ObservationStore b(geometry, resolution, {}, "test_clock", "config");
@@ -343,8 +370,7 @@ void check_scan_reuse(const UldDomain& domain, double resolution) {
   require(scan.rays_attempted == second.size() && scan.endpoints_used == second.size(),
           "reused scan kept the previous ray count");
   require(off.report().ray_keys_generated == 0 && off.report().active_ray_key_visits == 0 &&
-              off.report().inactive_ray_key_visits == 0 && off.report().free_insert_duplicates == 0 &&
-              off.report().domain_check_ms == 0 && off.report().free_insert_ms == 0,
+              off.report().inactive_ray_key_visits == 0 && off.report().free_insert_duplicates == 0,
           "Off reuse collected diagnostics");
   require(detailed.report().active_ray_key_visits == enabled_visits &&
               detailed.report().free_insert_duplicates == enabled_duplicates &&
@@ -596,6 +622,7 @@ int main() {
     check_failed_endpoint_skips_apply(domain, resolution);
     check_sequence_and_restore(domain, resolution);
     check_config_identity();
+    check_profile_schema();
     std::cout << "discretize_checks=ok\n";
     return 0;
   } catch (const std::exception& error) {

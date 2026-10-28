@@ -29,6 +29,9 @@ if(BUILD_TESTING)
   target_link_libraries(observer_keyset_checks PRIVATE uld_occ_observer_io)
   target_compile_definitions(observer_keyset_checks PRIVATE OBSERVER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   add_test(NAME observer_keyset_checks COMMAND observer_keyset_checks)
+  add_test(NAME observer_hot_path_disassembly
+    COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/test/check_hot_path.py
+            ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/uld_occ_observer_core.dir/src/occupancy_grid.cpp.o)
   add_test(NAME observer_config_entry
     COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/test/test_config_entry.py
             $<TARGET_FILE:observer_cli> $<TARGET_FILE:observer_profile_cli>

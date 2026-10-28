@@ -14,6 +14,11 @@ std::shared_ptr<const Snapshot> Snapshot::with_identity(SnapshotIdentity identit
 }
 
 CellIndex Snapshot::block_index(CellIndex i) { return {i.x/8, i.y/8, i.z/8}; }
+std::uint64_t Snapshot::known_entry_count() const {
+  std::uint64_t count = 0;
+  for (const auto& entry : blocks_) count += entry.second->size();
+  return count;
+}
 CellSample Snapshot::cell(CellIndex index) const {
   CellSample result{index, domain_->active(index), false, {}};
   if (!result.active) return result;
@@ -50,7 +55,10 @@ CellPage Snapshot::read_cells(CellIndex begin, CellIndex end, std::size_t cursor
 std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface(SurfaceProfile* profile) const {
   using Clock = std::chrono::steady_clock;
   const auto started = profile ? Clock::now() : Clock::time_point{};
-  if (profile) *profile = SurfaceProfile{};
+  if (profile) {
+    *profile = SurfaceProfile{};
+    profile->domain_init_collected = true;
+  }
   std::lock_guard<std::mutex> lock(surface_cache_->mutex);
   const auto locked = profile ? Clock::now() : Clock::time_point{};
   if (profile) profile->lock_wait_ms = std::chrono::duration<double,std::milli>(locked-started).count();
@@ -63,7 +71,14 @@ std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface(SurfaceProfi
     return surface_cache_->value;
   }
   const auto shape = domain_->shape();
-  const auto& active_counts = domain_->column_active_counts();
+  DomainInitObservation init;
+  const bool observe_init = profile != nullptr;
+  const auto& active_counts = domain_->column_active_counts(observe_init ? &init : nullptr, observe_init);
+  if (profile) {
+    profile->domain_init_performed = init.performed;
+    profile->domain_init_scanned_cells = init.scanned_cells;
+    profile->domain_init_ms = init.milliseconds;
+  }
   auto output = std::make_shared<std::vector<SurfaceColumn>>(active_counts.size());
   std::vector<int> highest_occupied(active_counts.size(), -1);
   for (int y = 0; y < shape.y; ++y) {

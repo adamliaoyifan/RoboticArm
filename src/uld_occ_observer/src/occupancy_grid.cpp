@@ -40,33 +40,25 @@ void OccupancyGrid::castFreeRay(OccupancyScan& scan, OccupancyDiagnostic& diagno
     if (!tree_->computeRayKeys(origin, endpoint_om, ray)) throw Error("RAY_PREPARATION_FAILED");
   }
   auto filter_span = diagnostic.detail(ProfileStage::RayFilterDedup);
-  diagnostic.keys_generated(ray.size());
+  const bool diagnose = diagnostic.enabled();
+  if (diagnose) diagnostic.keys_generated(ray.size());
   bool saw_active = false;
   for (const auto& key : ray) {
     const auto index = cell_index_from_key(key);
-    bool active = false;
-    { auto timer = diagnostic.domain_check();
-      active = domain.active(index); }
-    if (active) {
-      saw_active = true;
-      bool inserted = false;
-      { auto timer = diagnostic.free_insert();
-        inserted = scan.free_cells.insert(key).second; }
-      diagnostic.active_visit(inserted);
-    } else {
+    if (domain.active(index)) {
+      const bool inserted = scan.free_cells.insert(key).second;
+      if (diagnose) {
+        saw_active = true;
+        diagnostic.active_visit(inserted);
+      }
+    } else if (diagnose) {
       diagnostic.inactive_visit();
     }
   }
-  diagnostic.classify_ray(saw_active);
+  if (diagnose) diagnostic.classify_ray(saw_active);
   if (admit_occupied && domain.contains(endpoint_uld)) {
     const auto index = cell_index_from_key(endpoint_key);
-    bool active = false;
-    { auto timer = diagnostic.domain_check();
-      active = domain.active(index); }
-    if (active) {
-      auto timer = diagnostic.occupied_insert();
-      scan.occupied_cells.insert(endpoint_key);
-    }
+    if (domain.active(index)) scan.occupied_cells.insert(endpoint_key);
   }
 }
 
@@ -101,8 +93,7 @@ void OccupancyGrid::collect(OccupancyScan& scan, const Vec3& origin_uld,
                   octomap::point3d(point.x, point.y, point.z), endpoint_key, true);
     }
     diagnostic.free_keys_before_hit_removal(scan.free_cells.size());
-    { auto timer = diagnostic.hit_erase();
-      for (const auto& hit : scan.occupied_cells) scan.free_cells.erase(hit); }
+    for (const auto& hit : scan.occupied_cells) scan.free_cells.erase(hit);
   }
 }
 
@@ -129,13 +120,7 @@ void OccupancyGrid::collectDiscretized(OccupancyScan& scan, const Vec3& origin_u
       endpoints.push_back({endpoint, octomap::point3d(point.x, point.y, point.z), endpoint_key});
       if (domain.contains(endpoint)) {
         const auto index = cell_index_from_key(endpoint_key);
-        bool active = false;
-        { auto timer = diagnostic.domain_check();
-          active = domain.active(index); }
-        if (active) {
-          auto timer = diagnostic.occupied_insert();
-          scan.occupied_cells.insert(endpoint_key);
-        }
+        if (domain.active(index)) scan.occupied_cells.insert(endpoint_key);
       }
     }
     std::vector<Endpoint> rays;
@@ -149,8 +134,7 @@ void OccupancyGrid::collectDiscretized(OccupancyScan& scan, const Vec3& origin_u
       castFreeRay(scan, diagnostic, domain, origin_point, ray, endpoint.uld, endpoint.octomap,
                   endpoint.key, false);
     diagnostic.free_keys_before_hit_removal(scan.free_cells.size());
-    { auto timer = diagnostic.hit_erase();
-      for (const auto& hit : scan.occupied_cells) scan.free_cells.erase(hit); }
+    for (const auto& hit : scan.occupied_cells) scan.free_cells.erase(hit);
   }
 }
 
