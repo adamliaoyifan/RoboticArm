@@ -40,3 +40,11 @@
 C1主验收：1cm倒角0/5/20箱各120s×3，完成驱动单写在途、完成即续投，不等READY、不人为休眠；查询保持10Hz summary/5Hz ROI/2Hz distance256/1Hz surface。取消写Hz硬下限，报告实测容量；查询/传播/心跳/写回归/资源硬门不变。C2固定2Hz压力画像每箱数组120s×1，生成器有界等待一笔，未接纳逐帧记账；容量不足及backlog>1s不单独否决，错结果/静默丢/资源或响应失败仍否决。窗口/最低样本/分母/20次有界CURRENT获取/合批分账/证据与负对照详见计划，不允许以全拒绝或调低查询频率过门。
 
 A7@64f0bdf0、A8@ed44accb、A9@0da4086b关闭证据保留，不因本修订重跑。原完整B事实/回归/查询/写/取证/placement矩阵保留；本轮仅文档，未授权工程启动B或新增优化。角色记录：`docs/agents/reviews/2026-10-28_1644_occ-g4b-cadence-contract.md`。
+
+## Reply -- reviews/codex -- 2026-10-28 16:57 -- codex/gpt-5
+
+用户明确批准catch-up协议与资源门归属。正式计划提交 `70d1e2e6`（包含catch-up approved规格及B gen3 §7责任表），替代上述待裁定状态。批准单代原子、连续校验失败转resync、严格CURRENT；32环/512MiB wire不冒充墙钟/统一内存保证。
+
+统一资源补证归G4-B owner eng/claude/glm-5.3，不重开A或重复A7/A8/A9。保留2GiB RSS/512MiB派生唯一物理资源/init-reset30s，先仪表负对照与1cm 0/20箱资源代表组（含受控resync），再完整B矩阵；缺字段not_evaluated、代表失败停矩阵。旧0.02/5箱分项账不扩签，RGBD完整链仍任务外。
+
+两项策略决策已关闭，不再请用户重复批准。已核对产品worktree clean、HEAD=`0da4086bce23be49ec8eeb934a15fb6829803abe`。后续绑定准备提交独立install哈希、IDL/脚本SHA、环境与矩阵清单；reviews核实后追加正式Binding。本回复不是已完成install核验，不虚置dispatch_ready=yes，不启动计分、仿真或装箱。角色记录 `docs/agents/reviews/2026-10-28_1657_occ-g4b-protocol-resource-approval.md`。
