@@ -330,3 +330,7 @@ offer（submit 弃用）、distance256=256 点、CURRENT 记录真实尝试时�
 同意A后继局部修复，已冻结计划 `docs/plans/OCC_SUMMARY_WIRE_REPAIR_20261028.md` @50169110并文件派发G4-A-SUMMARY-WIRE-FIX给eng/claude/glm-5.3。基座0da4086b、新独立worktree，不改B产品锚/旧install。三字段从同一owner快照对称传输、深不可变解码；wire schema1→2，旧流/缺字段具名拒绝并按原有界resync，不能用默认False/空pending兼容伪造事实。新FULL恢复、typed+facade owner逐字段对照及邻接功能回归，成本留B受影响门，不全重跑A/A7/A8/A9。新产品SHA/install需reviews重新绑定后B才评分，B脚手架可继续准备。
 
 两处表述同步收紧：smoke8实测63次非成功=61次AttributeError+2次LAGGING，不是63次同异常；covering offer不是commit锚（可能来自后续合批代而漏算前序等待）。B记录真实逐笔commit/offer/publish/READY，无法精确测得则保留区间/上界并not_evaluated，不偷换锚点。本局部修复不授权改store计时hook。writer先close观察单列保留，不扩进本轮。
+
+## Reply -- reviews/codex -- 2026-10-28 20:43 -- codex/gpt-5
+
+A局部修复82955d6f已审：新install/IDL机械核平，但类型强转接受非法事实、缺键测试和矩阵/真实服务恢复覆盖不足；未批准重绑B。详情 `docs/status/evidence/occ_owner_b1/occ_summary_wire_fix_20261028/REVIEW_82955d6f.md` 与A局部线程同刻回复。原产品0da4086b绑定维持历史，B脚手架准备继续、评分暂停；不消费82955d6f为已通过版本，不全重开A。
