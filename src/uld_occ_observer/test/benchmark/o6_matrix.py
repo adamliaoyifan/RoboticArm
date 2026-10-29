@@ -184,7 +184,7 @@ def score_latency(rows, cloud, expected):
 
 class O6Campaign:
     def __init__(self, profile_cli, eval_native, fixtures, out, budget_s=8 * 3600,
-                 rehearsal=False, rehearsal_groups=(), lock_path=LOCK_PATH):
+                 rehearsal=False, rehearsal_groups=(), selected_groups=(), lock_path=LOCK_PATH):
         self.profile_cli = Path(profile_cli)
         self.eval_native = Path(eval_native)
         self.fixtures = Path(fixtures)
@@ -192,6 +192,7 @@ class O6Campaign:
         self.budget_s = budget_s
         self.rehearsal = rehearsal
         self.rehearsal_groups = tuple(rehearsal_groups)
+        self.selected_groups = tuple(selected_groups)
         self.lock_path = Path(lock_path)
         self._lock = None
 
@@ -201,14 +202,17 @@ class O6Campaign:
             raise ValueError("fixture manifest hardcodes a product or plan SHA")
         groups = official_matrix(manifest["scenes"])
         if self.rehearsal:
-            if not self.rehearsal_groups:
-                raise ValueError("rehearsal needs an explicit group list")
+            if not self.rehearsal_groups or self.selected_groups:
+                raise ValueError("rehearsal needs an explicit group list and is not a scored subset")
             chosen = [group for group in groups if group["id"] in self.rehearsal_groups]
             if len(chosen) != len(self.rehearsal_groups):
                 raise ValueError("rehearsal group is not in the 144")
             return chosen
-        if self.rehearsal_groups:
-            raise ValueError("a scored run cannot select a subset")
+        if self.selected_groups:
+            chosen = [group for group in groups if group["id"] in self.selected_groups]
+            if len(chosen) != len(set(self.selected_groups)):
+                raise ValueError("selected group is not in the 144")
+            return chosen
         return groups
 
     def _lock_acquire(self):
@@ -247,12 +251,15 @@ class O6Campaign:
                     "groups": results, "elapsed_s": time.monotonic() - started}, indent=2) + "\n")
         finally:
             self._lock_release()
-        verdict = campaign_and(results, expected=len(groups) if self.rehearsal else 144)
+        expected = len(groups) if (self.rehearsal or self.selected_groups) else 144
+        verdict = campaign_and(results, expected=expected)
         if self.rehearsal:
             verdict = {"verdict": "rehearsal", "product_scored": False, "groups": len(results),
                        "pooled_latency": "not_computed"}
+        elif self.selected_groups:
+            verdict["full_matrix"] = False
         report = {
-            "campaign_role": "rehearsal" if self.rehearsal else "scored",
+            "campaign_role": "rehearsal" if self.rehearsal else "scored_subset" if self.selected_groups else "scored",
             "versions": _versions(self.profile_cli, self.eval_native),
             "lock_wait_s": wait_s,
             "measurement_s": time.monotonic() - started,
@@ -417,6 +424,10 @@ class O6Campaign:
                 stdout, stderr = proc.communicate()
         finally:
             stop(signal.SIGKILL)
+        if first is None and samples.exists() and samples.stat().st_size > 0:
+            # The process exited before the poll observed the first flush.
+            # Whole-process time is an upper bound on startup, not a missing sample.
+            first = time.monotonic() - started
         (dest / "stdout.txt").write_text(stdout or "")
         (dest / "stderr.txt").write_text(stderr or "")
         rows = fusion_benchmark.complete_documents(samples.read_text()) if samples.exists() else []

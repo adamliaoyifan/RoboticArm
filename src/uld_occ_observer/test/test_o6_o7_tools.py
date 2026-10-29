@@ -180,3 +180,24 @@ def test_native_self_check_and_flags_change_the_cloud(tmp_path):
     right = json.loads((second / "load_manifest.json").read_text())
     assert left["frames"][0]["point_sha256"] == right["frames"][0]["point_sha256"]
     assert "implementation_revision" not in left
+
+
+def test_fast_process_startup_is_an_upper_bound(tmp_path):
+    cli = tmp_path / "fake_profile"
+    cli.write_text(
+        "#!/bin/bash\n"
+        "out=''\n"
+        "while [ $# -gt 0 ]; do\n"
+        "  if [ \"$1\" = \"--out\" ]; then out=\"$2\"; shift 2; else shift; fi\n"
+        "done\n"
+        "printf '%s\\n' '---' 'process_peak_rss_kib: 10' 'status: OK' > \"$out\"\n"
+    )
+    cli.chmod(0o755)
+    campaign = o6_matrix.O6Campaign(cli, cli, tmp_path, tmp_path / "out")
+    dest = tmp_path / "window"
+    dest.mkdir()
+    result = campaign._run_profile(
+        {"geometry_file": "geometry", "config_file": "config"}, dest, {"frames": []}, 10)
+    assert result["startup_to_first_sample_s"] is not None
+    assert result["startup_to_first_sample_s"] <= 30
+    assert result["status"] == "ok"
