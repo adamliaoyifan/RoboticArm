@@ -117,6 +117,8 @@ void FusionProfileChecks::check_apply_batch() {
                 && apply.written_keys == actual.size()
                 && apply.unchanged_keys + apply.written_keys == apply.keys_considered,
                 "ApplyBatch diagnostic accounting differs");
+          check(apply.visited[1] == !actual.empty() && apply.visited[2] == !actual.empty(),
+                "lazy batch maintenance was deferred or ran on an unchanged batch");
           for (double time : apply.milliseconds)
             check(std::isfinite(time) && time >= 0, "ApplyBatch invalid duration");
         }

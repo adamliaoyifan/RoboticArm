@@ -207,7 +207,7 @@ void OccupancyGrid::applyKey(const octomap::OcTreeKey& key, bool hit,
   const float new_log_odds = value.getLogOdds();
   if (existed && old_log_odds == new_log_odds) return;
 
-  tree_->setNodeValue(key, new_log_odds, false);
+  tree_->setNodeValue(key, new_log_odds, true);
   mutations.push_back({cell_index_from_key(key), hit, existed, old_occupied,
                        tree_->isNodeOccupied(value), old_log_odds, new_log_odds});
 }
@@ -220,6 +220,15 @@ std::vector<OccupancyMutation> OccupancyGrid::apply(const OccupancyScan& scan,
     auto write_span = diagnostic.apply_span(ApplyPhase::WriteLoop);
     for (const auto& key : scan.free_cells) applyKey(key, false, mutations);
     for (const auto& key : scan.occupied_cells) applyKey(key, true, mutations);
+  }
+  // Lazy leaf writes leave ancestors stale. Complete maintenance before Store
+  // can update blocks, publish an identity, take a snapshot or checkpoint.
+  // This is intentionally per changed frame: no deferred pruning/memory debt.
+  if (!mutations.empty()) {
+    { auto inner_span = diagnostic.apply_span(ApplyPhase::InnerUpdate);
+      tree_->updateInnerOccupancy(); }
+    { auto prune_span = diagnostic.apply_span(ApplyPhase::Prune);
+      tree_->prune(); }
   }
   diagnostic.record_apply_counts(scan.free_cells.size() + scan.occupied_cells.size(),
                                  mutations.size());

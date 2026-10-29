@@ -37,6 +37,9 @@ void require_integrated_phases(const UpdateReceipt& receipt, const char* label) 
           std::string(label) + " missed a fusion phase");
   const auto apply = timing.milliseconds[static_cast<std::size_t>(FusionPhase::ApplyBatch)];
   const auto block = timing.milliseconds[static_cast<std::size_t>(FusionPhase::BlockBatch)];
+  const auto& inner = receipt.profile.apply_breakdown;
+  require(inner.collected && inner.milliseconds[0] + inner.milliseconds[1] +
+          inner.milliseconds[2] <= apply + 0.1, "ApplyBatch subphases exceed parent");
   require(std::isfinite(apply) && std::isfinite(block) && apply >= 0 && block >= 0,
           std::string(label) + " phase duration");
   require(apply + block <= stage_ms(receipt.profile, ProfileStage::Fusion) + 0.1,

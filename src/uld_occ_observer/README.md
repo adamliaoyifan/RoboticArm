@@ -292,3 +292,7 @@ work required before BlockBatch can publish the updated snapshot. No per-key
 clock is added. The benchmark CLI separately validates parent probabilities and
 hashes a losslessly pruned copy outside integration/query timing; the raw tree
 SHA remains available, and canonical checks do not repair inconsistent parents.
+
+Leaf writes use lazy evaluation. A changed batch calls `updateInnerOccupancy()`
+and `prune()` once before returning; an unchanged batch skips both. These full
+tree traversals are timed inside ApplyBatch, not moved to a query or later frame.
