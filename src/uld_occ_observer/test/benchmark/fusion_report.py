@@ -326,6 +326,45 @@ def dominant_phase(metrics):
     return medians[0][1]
 
 
+COLD_SAMPLE_COUNT = 30
+
+
+def query_reference(metrics):
+    """Cold first-query gate. Integrate time is not part of this gate."""
+    checks = []
+    limit = REFERENCE_GATES["query"]
+    for name in ("acquire_ms", "roi_ms", "surface_first_ms", "surface_second_ms"):
+        item = metrics.get(name) or {}
+        if item.get("status") != "complete":
+            return {"status": "not_evaluated", "checks": checks, "reason": name,
+                    "integrate_gate": "not_applied"}
+        checks.append({
+            "metric": name,
+            "p95_ms": item["p95"],
+            "max_ms": item["max"],
+            "limit_p95_ms": limit["p95_ms"],
+            "limit_max_ms": limit["max_ms"],
+            "within_reference": item["p95"] <= limit["p95_ms"] and item["max"] <= limit["max_ms"],
+        })
+    passed = all(item["within_reference"] for item in checks)
+    return {"status": "within_reference" if passed else "outside_reference", "checks": checks,
+            "integrate_gate": "not_applied"}
+
+
+def cold_group_summary(case, rows):
+    """Thirty fresh-process samples. Fewer than thirty is incomplete, not a pass."""
+    window = WindowResult(case, 0, "off", list(rows), "ok", True)
+    summary = summarize_window(window, COLD_SAMPLE_COUNT)
+    if len(rows) != COLD_SAMPLE_COUNT:
+        summary["status"] = "incomplete"
+    summary["query_gate"] = query_reference(summary.get("metrics") or {})
+    summary["integrate_gate"] = "not_applied"
+    summary["cold_samples"] = len(rows)
+    summary["note"] = ("fresh process, one frame, no warmup; first and second surface stay separate; "
+                       "integrate is reported and is not the warmed-window gate")
+    return summary
+
+
 def reference_gate(case, metrics):
     integrate = metrics.get("integrate_external_ms", {})
     if "c100000" in case:

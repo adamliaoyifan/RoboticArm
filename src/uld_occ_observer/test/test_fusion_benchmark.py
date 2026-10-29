@@ -549,3 +549,113 @@ def test_reference_replay_is_complete_and_non_gating_but_mismatch_stops(tmp_path
     else:
         assert document["missing_artifacts"] == ["pre_checkpoint", "post_checkpoint"]
         assert replay["replay_possible"] is True
+
+
+def _cold_suite(tmp_path):
+    suite = _memory_suite(tmp_path)
+    baseline = tmp_path / "baseline-cli"
+    _exe(baseline)
+    suite.campaign = "cold"
+    suite.baseline_cli = str(baseline)
+    suite.out = tmp_path / "cold-out"
+    suite.lock_path = tmp_path / "cold.lock"
+    return suite
+
+
+def _cold_row(mode, first_ms, second_ms, content="content"):
+    row = _row(0, warmup=False, mode=mode, content=content)
+    row["surface_first_call"] = {"external_ms": first_ms}
+    row["surface_second_call"] = {"external_ms": second_ms}
+    return row
+
+
+def test_cold_runs_thirty_isolated_one_frame_processes(tmp_path, monkeypatch):
+    suite = _cold_suite(tmp_path)
+    manifests = []
+
+    def process(argv, timeout, dest):
+        manifest = yaml.safe_load(Path(argv[argv.index("--manifest") + 1]).read_text())
+        manifests.append((manifest, Path(argv[0]).name))
+        sample = len(manifests)
+        out = Path(argv[argv.index("--out") + 1])
+        out.write_text("---\n" + yaml.safe_dump(_cold_row(manifest["mode"], 10.0 + (sample % 2), 0.2)))
+        return fusion_benchmark.ProcessResult(0, False, "recorded=1", "", 0.01)
+
+    monkeypatch.setattr(fusion_benchmark, "run_process_group", process)
+    monkeypatch.setattr(fusion_benchmark, "libraries", lambda _: [])
+    report = suite.run()
+    assert report["status"] == "complete"
+    assert report["pairs_planned"] == 120
+    assert len(manifests) == 240
+    assert len({name for _manifest, name in manifests}) == 2
+    assert all(len(manifest["frames"]) == 1 and manifest["frames"][0]["warmup"] is False
+               and manifest["state_digest"] is True and manifest["surface"] is True
+               for manifest, _name in manifests)
+    group = report["groups"][0]["B"]
+    assert group["status"] == "complete"
+    assert group["cold_samples"] == 30
+    assert group["integrate_gate"] == "not_applied"
+    assert group["metrics"]["surface_first_ms"]["p95"] > group["metrics"]["surface_second_ms"]["p95"]
+    assert group["query_gate"]["status"] == "within_reference"
+
+
+def test_cold_twenty_nine_samples_are_not_a_pass():
+    rows = [_cold_row("off", 1.0, 0.1) for _ in range(29)]
+    summary = fusion_report.cold_group_summary("o5_b0_c30000", rows)
+    assert summary["status"] == "incomplete"
+    assert summary["cold_samples"] == 29
+    assert summary["query_gate"]["status"] == "not_evaluated"
+    assert "p95" not in (summary.get("metrics") or {}).get("surface_first_ms", {})
+
+
+def test_cold_missing_digest_stops_later_processes(tmp_path, monkeypatch):
+    suite = _cold_suite(tmp_path)
+    suite.require_content = True
+    calls = []
+
+    def process(argv, timeout, dest):
+        calls.append(argv[0])
+        manifest = yaml.safe_load(Path(argv[argv.index("--manifest") + 1]).read_text())
+        out = Path(argv[argv.index("--out") + 1])
+        out.write_text("---\n" + yaml.safe_dump(_cold_row(manifest["mode"], 1.0, 0.1, content=None)))
+        return fusion_benchmark.ProcessResult(0, False, "", "", 0.01)
+
+    monkeypatch.setattr(fusion_benchmark, "run_process_group", process)
+    monkeypatch.setattr(fusion_benchmark, "libraries", lambda _: [])
+    report = suite.run()
+    assert len(calls) == 2
+    assert report["pairs"][0]["comparison"]["reason"] == "missing_content_digest"
+    assert report["pairs"][1]["status"] == "not_evaluated"
+    assert report["groups"][0]["paired_complete"] is False
+    assert report["status"] == "failed"
+
+
+def test_cold_timeout_is_excluded_from_the_thirty(tmp_path, monkeypatch):
+    suite = _cold_suite(tmp_path)
+    calls = []
+
+    def process(argv, timeout, dest):
+        calls.append(1)
+        if len(calls) == 1:
+            return fusion_benchmark.ProcessResult(None, True, "", "timed out", 0.4)
+        manifest = yaml.safe_load(Path(argv[argv.index("--manifest") + 1]).read_text())
+        out = Path(argv[argv.index("--out") + 1])
+        out.write_text("---\n" + yaml.safe_dump(_cold_row(manifest["mode"], 1.0, 0.1)))
+        return fusion_benchmark.ProcessResult(0, False, "", "", 0.01)
+
+    monkeypatch.setattr(fusion_benchmark, "run_process_group", process)
+    monkeypatch.setattr(fusion_benchmark, "libraries", lambda _: [])
+    report = suite.run()
+    assert len(calls) == 2
+    statuses = {report["pairs"][0]["A"]["status"], report["pairs"][0]["B"]["status"]}
+    assert "timeout" in statuses
+    assert report["groups"][0]["A"]["cold_samples"] == 0
+    assert report["groups"][0]["A"]["status"] == "incomplete"
+    assert report["pairs"][1]["status"] == "not_evaluated"
+
+
+def test_cold_repetition_stays_one():
+    assert fusion_benchmark.repetition_count("cold", None) == 1
+    assert fusion_benchmark.repetition_count("cold", 1) == 1
+    with pytest.raises(ValueError):
+        fusion_benchmark.repetition_count("cold", 30)

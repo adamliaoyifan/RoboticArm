@@ -22,9 +22,11 @@ import yaml
 
 from fusion_report import (
     NOT_COLLECTED,
+    COLD_SAMPLE_COUNT,
     WindowResult,
     budget_allows,
     campaign_status,
+    cold_group_summary,
     compare_frames,
     execution_order,
     pair_status,
@@ -213,12 +215,14 @@ def _safe(label, function):
 
 
 def repetition_count(campaign, override):
+    if isinstance(override, bool) or (override is not None and (not isinstance(override, int) or override < 1)):
+        raise ValueError("repetitions must be a positive integer")
+    if campaign in {"memory", "cold"}:
+        if override not in (None, 1):
+            raise ValueError(f"{campaign} campaign requires exactly one repetition")
+        return 1
     if override is None:
         return 3 if campaign == "stages" else 1
-    if isinstance(override, bool) or not isinstance(override, int) or override < 1:
-        raise ValueError("repetitions must be a positive integer")
-    if campaign == "memory" and override != 1:
-        raise ValueError("memory campaign requires exactly one repetition")
     return override
 
 
@@ -259,11 +263,13 @@ class FusionBenchmarkSuite:
         self._incomplete_failure_capture = False
 
     def validate_inputs(self) -> InputManifest:
-        if self.campaign not in {"rehearsal", "baseline", "stages", "memory"}:
+        if self.campaign not in {"rehearsal", "baseline", "stages", "memory", "cold"}:
             raise ValueError(f"unknown campaign {self.campaign}")
         repetition_count(self.campaign, self.repetitions)
         candidate = _executable(self.candidate_cli)
         baseline = candidate if self.campaign == "memory" else _executable(self.baseline_cli)
+        if self.campaign == "cold" and not self.baseline_cli:
+            raise ValueError("cold campaign requires a baseline CLI")
         if self.campaign == "memory" and self.require_content:
             raise ValueError("memory campaign cannot require content digests")
         if not self.geometry.is_file() or not self.config.is_file():
@@ -378,7 +384,7 @@ class FusionBenchmarkSuite:
 
     def _sides(self):
         required = content_required(self.campaign == "stages", self.require_content)
-        if self.campaign == "baseline":
+        if self.campaign in {"baseline", "cold"}:
             return (
                 {"role": "A", "label": "baseline_off", "binary": self.baseline_cli, "mode": "off",
                  "require_content": required},
@@ -422,6 +428,8 @@ class FusionBenchmarkSuite:
     def _measure(self, manifest, lock):
         if self.campaign == "memory":
             return self._measure_memory(manifest, lock)
+        if self.campaign == "cold":
+            return self._measure_cold(manifest, lock)
         measurement_started = time.monotonic()
         started_any = False
         reps = repetition_count(self.campaign, self.repetitions)
@@ -609,6 +617,119 @@ class FusionBenchmarkSuite:
                 "trigger": trigger,
                 "replay_possible": document["replay_possible"], "budget": document["budget"]["status"]}
 
+    def _measure_cold(self, manifest, lock):
+        """Thirty fresh processes per case, each integrating the manifest's first frame once."""
+        started = time.monotonic()
+        started_any = False
+        pairs = []
+        groups = []
+        sides = {side["role"]: side for side in self._sides()}
+        for case_index, case in enumerate(manifest.cases):
+            first = dict(case["frames"][0])
+            first["warmup"] = False
+            cold_case = {"name": case["name"], "case_id": case["case_id"] + "-cold", "frames": [first]}
+            collected = {"A": [], "B": []}
+            for sample in range(COLD_SAMPLE_COUNT):
+                if self._incomplete_failure_capture or self._evidence_budget_exceeded:
+                    pairs.append({
+                        "case": case["name"], "repetition": sample, "status": "not_evaluated",
+                        "comparison": {"status": "not_comparable", "reason": "stopped_after_failure"},
+                        "A": {}, "B": {},
+                        "error": "stopped after a semantic, timeout, or evidence failure",
+                    })
+                    continue
+                if self._retained_bytes(self.out) >= CAMPAIGN_BYTES_LIMIT:
+                    self._evidence_budget_exceeded = True
+                order = execution_order(case_index, sample)
+                results = {}
+                for role in order:
+                    if self._evidence_budget_exceeded or not budget_allows(
+                            started_any, time.monotonic() - started, self.budget_s):
+                        results[role] = WindowResult(
+                            case["name"], sample, sides[role]["mode"], status="not_evaluated",
+                            error="measurement budget exhausted before this process")
+                        continue
+                    started_any = True
+                    window = self.run_window(sides[role]["binary"], sides[role]["mode"], cold_case, sample)
+                    window.require_content = sides[role]["require_content"]
+                    results[role] = window
+                left, right = results["A"], results["B"]
+                try:
+                    comparison = self.compare_frames(left, right)
+                    left_summary = self.summarize_window(left, 1)
+                    right_summary = self.summarize_window(right, 1)
+                except ValueError as exc:
+                    comparison = {"status": "not_comparable", "reason": str(exc)}
+                    left_summary = {"status": "failed", "error": str(exc), "case": case["name"],
+                                    "repetition": sample, "mode": left.mode}
+                    right_summary = {"status": "failed", "error": str(exc), "case": case["name"],
+                                     "repetition": sample, "mode": right.mode}
+                self._write_window(left, left_summary)
+                self._write_window(right, right_summary)
+                status = pair_status(comparison, left_summary, right_summary)
+                if left.status == "not_evaluated" or right.status == "not_evaluated":
+                    status = "not_evaluated"
+                pair = {
+                    "case": case["name"], "repetition": sample, "order": list(order), "status": status,
+                    "comparison": comparison,
+                    "A": self._public_summary(left, left_summary),
+                    "B": self._public_summary(right, right_summary),
+                    "surface_first_ms": {
+                        "A": (left.rows[0].get("surface_first_call") or {}).get("external_ms") if left.rows else None,
+                        "B": (right.rows[0].get("surface_first_call") or {}).get("external_ms") if right.rows else None,
+                    },
+                    "surface_second_ms": {
+                        "A": (left.rows[0].get("surface_second_call") or {}).get("external_ms") if left.rows else None,
+                        "B": (right.rows[0].get("surface_second_call") or {}).get("external_ms") if right.rows else None,
+                    },
+                }
+                if status not in {"complete", "not_evaluated"}:
+                    pair["failure_replay"] = self._write_failure_replay(
+                        cold_case, sample, {"A": left, "B": right}, comparison, manifest)
+                if status == "complete" and left.rows and right.rows:
+                    collected["A"].append(left.rows[0])
+                    collected["B"].append(right.rows[0])
+                pairs.append(pair)
+            groups.append({
+                "case": case["name"],
+                "A": cold_group_summary(case["name"], collected["A"]),
+                "B": cold_group_summary(case["name"], collected["B"]),
+                "paired_complete": len(collected["A"]) == COLD_SAMPLE_COUNT,
+            })
+        report = {
+            "campaign": "cold",
+            "status": ("failed" if self._evidence_budget_exceeded or self._incomplete_failure_capture
+                       else campaign_status([pair["status"] for pair in pairs if pair["status"] != "not_evaluated"])),
+            "incomplete_failure_capture": self._incomplete_failure_capture,
+            "product_acceptance": "not_evaluated",
+            "performance_sample": True,
+            "cold_samples_per_case": COLD_SAMPLE_COUNT,
+            "pairs_planned": len(manifest.cases) * COLD_SAMPLE_COUNT,
+            "lock": lock,
+            "measurement_wall_s": time.monotonic() - started,
+            "budget_s": self.budget_s,
+            "window_timeout_s": self.timeout_s,
+            "repetitions": 1,
+            "require_content": content_required(False, self.require_content),
+            "files": manifest.files,
+            "machine": _safe("machine", machine_info),
+            "libraries": _safe("libraries", lambda: libraries(self.candidate_cli)),
+            "git": _safe("git", lambda: git_info(self.source_root)),
+            "groups": groups,
+            "pairs": pairs,
+            "attribution": {"status": "not_evaluated", "reason": "cold samples are query pairs, not a stages attribution"},
+            "notes": {
+                "warmup": "none; each process integrates the case manifest's first frame once",
+                "os_cache": "a new process is not an OS-cache-cold claim",
+                "cache_hit": "Off does not record cache_hit; Stages is the separate diagnostic",
+                "integrate_gate": "not_applied",
+                "surfaces": "surface_first_ms and surface_second_ms stay separate",
+            },
+        }
+        (self.out / "campaign_report.json").write_text(json.dumps(report, indent=2, sort_keys=True))
+        (self.out / "REPORT.md").write_text(render_report(report))
+        return report
+
     def _measure_memory(self, manifest, lock):
         started = time.monotonic()
         windows = []
@@ -731,7 +852,7 @@ def main(argv=None):
     parser.add_argument("--geometry", required=True)
     parser.add_argument("--config", required=True)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--campaign", required=True, choices=("rehearsal", "baseline", "stages", "memory"))
+    parser.add_argument("--campaign", required=True, choices=("rehearsal", "baseline", "stages", "memory", "cold"))
     parser.add_argument("--timeout-s", type=float, default=900)
     parser.add_argument("--budget-s", type=float, default=7200)
     parser.add_argument("--source-root", default="")
