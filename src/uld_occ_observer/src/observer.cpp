@@ -1,5 +1,7 @@
 #include "uld_occ_observer/observer.hpp"
+#include "uld_occ_observer/block_storage.hpp"
 #include <openssl/evp.h>
+#include <optional>
 #include <chrono>
 #include <iomanip>
 #include <sstream>
@@ -115,12 +117,12 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
     const auto prepared = Clock::now();
     receipt.preparation_ms = milliseconds(prepared_points, prepared);
     { auto fusion_scope = diagnostic.span(ProfileStage::Fusion);
-      // These objects outlive both coarse intervals and die before fusion_scope,
-      // so their destructors stay inside ProfileStage::Fusion and outside the
-      // two breakdown intervals. receipt.fusion_ms is sampled later and still
-      // includes Finalization; this scope does not redefine that field.
+      // The mutation vector and the batch outlive both coarse intervals. Their
+      // destructors stay inside ProfileStage::Fusion and outside ApplyBatch and
+      // BlockBatch. receipt.fusion_ms is sampled later and still includes
+      // Finalization; this scope does not redefine that field.
       std::vector<OccupancyMutation> mutations;
-      std::map<CellIndex, std::shared_ptr<CellBlock>> modified;
+      std::optional<BlockUpdateBatch> batch;
       {
         auto apply_batch = diagnostic.fusion_span(FusionPhase::ApplyBatch);
         mutations = grid_.apply(scan, diagnostic);
@@ -131,24 +133,17 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
       }
       {
         auto block_batch = diagnostic.fusion_span(FusionPhase::BlockBatch);
+        batch.emplace(BlockLayout(domain_->shape()), blocks_, diagnostic);
         for (const auto& change : mutations) {
           auto block_span = diagnostic.detail(ProfileStage::BlockMaintenance);
           ++receipt.changed_keys;
           if (!change.existed || change.old_occupied != change.occupied)
             ++receipt.occupancy_changed_keys;
           if (!change.existed) ++known_cells_;
-          const auto block_index = Snapshot::block_index(change.index);
-          auto& block = modified[block_index];
-          if (!block) {
-            const auto existing = blocks_.find(block_index);
-            if (existing != blocks_.end()) diagnostic.block_copied(existing->second->size());
-            block = existing == blocks_.end() ? std::make_shared<CellBlock>() :
-                    std::make_shared<CellBlock>(*existing->second);
-          }
-          (*block)[change.index] = {change.new_log_odds, change.occupied};
+          batch->write(change.index, CellValue{change.new_log_odds, change.occupied});
         }
-        for (auto& entry : modified) blocks_[entry.first] = std::move(entry.second);
-        receipt.rebuilt_blocks = modified.size();
+        batch->commit(blocks_);
+        receipt.rebuilt_blocks = batch->touched_blocks();
       }
     }
     { auto final_span = diagnostic.span(ProfileStage::Finalization);

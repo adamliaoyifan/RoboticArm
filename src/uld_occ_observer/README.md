@@ -162,10 +162,15 @@ difference allocation or tree update.
 `collected: false` and null phase times, visited flags, and mutation sizes, so
 an uncollected zero is not a measurement. ApplyBatch starts before `grid.apply`
 and ends when that vector returns: previous-node search, the OctoMap update,
-and mutation creation. BlockBatch starts at the modified-block table and ends
-after the registry writeback: lookup, copy, per-cell maintenance, and writeback.
-Mutation and block-object destruction stays inside `stage_ms.fusion` and outside
-both phases. `fusion_remainder_ms` is Fusion minus those two phases, computed by
+and mutation creation. BlockBatch builds one frame's block directory, copies or
+creates each touched block once, writes cells through that directory, and
+commits those blocks into the persistent registry. Directory initialization,
+the first copy, the cell writes, and commit are inside BlockBatch. The directory
+and temporary block objects are destroyed inside `stage_ms.fusion` and outside
+both phases. The directory is not reused on the next frame, and a block already
+published to a snapshot is copied rather than updated in place.
+
+`fusion_remainder_ms` is Fusion minus those two phases, computed by
 the benchmark from one frame; it is unclassified work plus boundary overhead,
 not a memory-allocation measurement. `mutation_size * mutation_element_bytes`
 is a vector-footprint product, not RSS and not bytes allocated over the frame.

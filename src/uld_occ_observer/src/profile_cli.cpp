@@ -87,6 +87,7 @@ int main(int argc, char** argv) {
         row["tree_nodes"] = diagnostics.tree_nodes;
         row["known_cells"] = diagnostics.known_cells;
         row["block_count"] = diagnostics.blocks;
+        row["cell_block_bytes"] = sizeof(CellBlock);
         row["tree_memory_estimate_bytes"] = diagnostics.estimated_tree_bytes;
         CellPage roi_page;
         std::shared_ptr<const std::vector<SurfaceColumn>> surface_first;

@@ -198,6 +198,7 @@ def extract_frame(row):
         "copied_blocks": _profile_count(row, "copied_blocks"),
         "copied_cells": _profile_count(row, "copied_cells"),
         "process_peak_rss_kib": row["process_peak_rss_kib"],
+        "cell_block_bytes": row.get("cell_block_bytes", NOT_COLLECTED),
         "probability_tree_sha256": row.get("probability_tree_sha256"),
         "roi_surface_content_sha256": row.get("roi_surface_content_sha256"),
     }
@@ -234,6 +235,15 @@ def _share_stats(frames, numerator):
     result["zero_fusion_frames"] = skipped
     result["note"] = "per-frame share of the same frame Fusion; not a sum of percentiles"
     return result
+
+
+def cell_block_bytes(frames):
+    values = [frame.get("cell_block_bytes", NOT_COLLECTED) for frame in frames]
+    if not values or all(value == NOT_COLLECTED for value in values):
+        return NOT_COLLECTED
+    if any(value == NOT_COLLECTED for value in values) or len(set(values)) != 1:
+        return "inconsistent"
+    return values[0]
 
 
 def summarize_window(window, expect_scored=30):
@@ -278,6 +288,7 @@ def summarize_window(window, expect_scored=30):
         "reference_gate": reference_gate(window.case, metrics) if status == "complete" else {
             "status": "not_evaluated", "reference_only": True},
         "dominant_phase": dominant_phase(metrics) if status == "complete" else NOT_COLLECTED,
+        "cell_block_bytes": cell_block_bytes(frames),
         "notes": {
             "fusion_remainder_ms": "Fusion minus ApplyBatch minus BlockBatch; unclassified work and boundary overhead",
             "mutation_bytes": "size or capacity times element size; not RSS and not cumulative allocation",

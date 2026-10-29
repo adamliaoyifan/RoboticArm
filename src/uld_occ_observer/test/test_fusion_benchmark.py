@@ -124,6 +124,22 @@ def test_off_uncollected_phase_is_not_a_zero():
     assert fusion_report.mutation_fields(frame)["mutation_effective_bytes"] == fusion_report.NOT_COLLECTED
 
 
+def test_require_content_rejects_a_missing_query_digest():
+    missing = _window([_row(0, content=None)], require_content=True)
+    present = _window([_row(0)], require_content=False)
+    assert fusion_report.compare_frames(missing, present)["reason"] == "missing_content_digest"
+    assert fusion_report.compare_frames(present, missing)["reason"] == "missing_content_digest"
+    assert fusion_benchmark.repetition_count("baseline", None) == 1
+    assert fusion_benchmark.repetition_count("stages", None) == 3
+    assert fusion_benchmark.repetition_count("rehearsal", None) == 1
+    assert fusion_benchmark.repetition_count("baseline", 3) == 3
+    with pytest.raises(ValueError):
+        fusion_benchmark.repetition_count("baseline", 0)
+    assert fusion_benchmark.content_required(False, False) is False
+    assert fusion_benchmark.content_required(False, True) is True
+    assert fusion_benchmark.content_required(True, False) is True
+
+
 def test_compare_rejects_incomplete_identity_and_detects_digest_mismatch():
     left = _window([_row(0), _row(1)], require_content=True)
     short = _window([_row(0)], require_content=True)

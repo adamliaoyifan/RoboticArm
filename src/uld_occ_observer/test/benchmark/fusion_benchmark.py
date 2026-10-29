@@ -210,6 +210,19 @@ def _safe(label, function):
         return {"error": f"{label}: {exc}"}
 
 
+def repetition_count(campaign, override):
+    if override is None:
+        return 3 if campaign == "stages" else 1
+    if isinstance(override, bool) or not isinstance(override, int) or override < 1:
+        raise ValueError("repetitions must be a positive integer")
+    return override
+
+
+def content_required(default, force):
+    """Omitting the flag keeps the campaign default. Passing it forces content digests."""
+    return True if force else bool(default)
+
+
 def git_info(source_root):
     if not source_root:
         return {}
@@ -222,7 +235,7 @@ def git_info(source_root):
 class FusionBenchmarkSuite:
     def __init__(self, baseline_cli, candidate_cli, fixture_root, geometry, config, out,
                  campaign, timeout_s=900, budget_s=7200, lock_path=LOCK_PATH,
-                 lock_wait_s=None, source_root=""):
+                 lock_wait_s=None, source_root="", repetitions=None, require_content=False):
         self.baseline_cli = str(baseline_cli)
         self.candidate_cli = str(candidate_cli)
         self.fixture_root = Path(fixture_root)
@@ -235,11 +248,14 @@ class FusionBenchmarkSuite:
         self.lock_path = Path(lock_path)
         self.lock_wait_s = lock_wait_s
         self.source_root = source_root
+        self.repetitions = repetitions
+        self.require_content = bool(require_content)
         self._lock_fh = None
 
     def validate_inputs(self) -> InputManifest:
         if self.campaign not in {"rehearsal", "baseline", "stages"}:
             raise ValueError(f"unknown campaign {self.campaign}")
+        repetition_count(self.campaign, self.repetitions)
         baseline = _executable(self.baseline_cli)
         candidate = _executable(self.candidate_cli)
         if not self.geometry.is_file() or not self.config.is_file():
@@ -349,18 +365,19 @@ class FusionBenchmarkSuite:
             self._lock_fh = None
 
     def _sides(self):
+        required = content_required(self.campaign == "stages", self.require_content)
         if self.campaign == "baseline":
             return (
                 {"role": "A", "label": "baseline_off", "binary": self.baseline_cli, "mode": "off",
-                 "require_content": False},
+                 "require_content": required},
                 {"role": "B", "label": "candidate_off", "binary": self.candidate_cli, "mode": "off",
-                 "require_content": False},
+                 "require_content": required},
             )
         return (
             {"role": "A", "label": "candidate_off", "binary": self.candidate_cli, "mode": "off",
-             "require_content": True},
+             "require_content": required},
             {"role": "B", "label": "candidate_stages", "binary": self.candidate_cli, "mode": "stages",
-             "require_content": True},
+             "require_content": required},
         )
 
     def run(self):
@@ -393,7 +410,7 @@ class FusionBenchmarkSuite:
     def _measure(self, manifest, lock):
         measurement_started = time.monotonic()
         started_any = False
-        reps = 3 if self.campaign == "stages" else 1
+        reps = repetition_count(self.campaign, self.repetitions)
         expect_scored = None if self.campaign == "rehearsal" else 30
         sides = {side["role"]: side for side in self._sides()}
         pairs = []
@@ -449,6 +466,8 @@ class FusionBenchmarkSuite:
             "measurement_wall_s": time.monotonic() - measurement_started,
             "budget_s": self.budget_s,
             "window_timeout_s": self.timeout_s,
+            "repetitions": repetition_count(self.campaign, self.repetitions),
+            "require_content": content_required(self.campaign == "stages", self.require_content),
             "files": manifest.files,
             "machine": _safe("machine", machine_info),
             "libraries": _safe("libraries", lambda: libraries(self.candidate_cli)),
@@ -537,11 +556,14 @@ def main(argv=None):
     parser.add_argument("--budget-s", type=float, default=7200)
     parser.add_argument("--source-root", default="")
     parser.add_argument("--lock-path", default=LOCK_PATH)
+    parser.add_argument("--repetitions", type=int, default=None)
+    parser.add_argument("--require-content", action="store_true")
     args = parser.parse_args(argv)
     suite = FusionBenchmarkSuite(
         args.baseline_cli, args.candidate_cli, args.fixture_root, args.geometry, args.config,
         args.out, args.campaign, args.timeout_s, args.budget_s, args.lock_path,
-        source_root=args.source_root)
+        source_root=args.source_root, repetitions=args.repetitions,
+        require_content=args.require_content)
     report = suite.run()
     print(f"campaign={args.campaign} status={report['status']} product_acceptance=not_evaluated")
     if report["status"] in {"complete", "not_a_performance_sample"}:

@@ -9,7 +9,8 @@ find_package(OpenSSL REQUIRED)
 find_package(Threads REQUIRED)
 find_package(yaml-cpp REQUIRED)
 add_library(uld_occ_observer_core
-  src/preprocessing.cpp src/geometry.cpp src/snapshot.cpp src/occupancy_grid.cpp src/observer.cpp
+  src/preprocessing.cpp src/geometry.cpp src/block_storage.cpp src/snapshot.cpp
+  src/occupancy_grid.cpp src/observer.cpp
   src/snapshot_repository.cpp src/observation_worker.cpp)
 target_include_directories(uld_occ_observer_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -22,7 +23,8 @@ add_library(uld_occ_observer_io src/configuration.cpp src/checkpoint_io.cpp src/
 target_link_libraries(uld_occ_observer_io PUBLIC uld_occ_observer_core yaml-cpp)
 include(CTest)
 if(BUILD_TESTING)
-  add_executable(observer_profile_checks test/test_profiling.cpp test/fusion_profile_checks.cpp)
+  add_executable(observer_profile_checks test/test_profiling.cpp test/fusion_profile_checks.cpp
+                 test/block_storage_checks.cpp)
   target_link_libraries(observer_profile_checks PRIVATE uld_occ_observer_io)
   add_test(NAME observer_profile_checks COMMAND observer_profile_checks)
   add_executable(observer_keyset_checks test/test_occupancy_keyset.cpp)

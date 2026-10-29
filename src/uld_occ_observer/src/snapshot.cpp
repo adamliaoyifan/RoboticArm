@@ -1,4 +1,5 @@
 #include "uld_occ_observer/snapshot.hpp"
+#include "uld_occ_observer/block_storage.hpp"
 #include <algorithm>
 
 namespace uld_occ_observer {
@@ -13,7 +14,7 @@ std::shared_ptr<const Snapshot> Snapshot::with_identity(SnapshotIdentity identit
   return std::make_shared<const Snapshot>(std::move(identity), domain_, blocks_, surface_cache_);
 }
 
-CellIndex Snapshot::block_index(CellIndex i) { return {i.x/8, i.y/8, i.z/8}; }
+CellIndex Snapshot::block_index(CellIndex i) { return BlockLayout::block_coordinate(i); }
 std::uint64_t Snapshot::known_entry_count() const {
   std::uint64_t count = 0;
   for (const auto& entry : blocks_) count += entry.second->size();

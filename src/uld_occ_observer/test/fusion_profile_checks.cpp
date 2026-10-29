@@ -309,4 +309,43 @@ void FusionProfileChecks::check_sequence_and_failure() {
     require_same_queries(failed, reference, "recovery");
   }
 }
+
+void FusionProfileChecks::check_directory_readback() {
+  auto store = make_store(0.05);
+  const auto receipt = store.integrate(
+      observation("readback", 1000, {{0.0, 0.0, 0.8}, {0.2, -0.1, 0.9}}), ProfileMode::Stages);
+  require(receipt.status == "INTEGRATED" && receipt.rebuilt_blocks > 0 && receipt.changed_keys > 0,
+          "directory readback frame");
+  require_integrated_phases(receipt, "directory readback");
+  const auto snap = store.snapshot();
+  const auto shape = store.domain()->shape();
+  std::size_t known = 0;
+  std::size_t cursor = 0;
+  const auto total = static_cast<std::size_t>(shape.x) * shape.y * shape.z;
+  while (cursor < total) {
+    const auto page = snap->read_cells({0, 0, 0}, shape, cursor, 4096);
+    for (const auto& cell : page.cells) {
+      if (!cell.known) {
+        require(cell.value.log_odds == 0.f && !cell.value.occupied, "unknown cell kept a value");
+        continue;
+      }
+      require(cell.active, "known cell outside the domain");
+      ++known;
+    }
+    require(page.next_cursor > cursor, "roi page did not advance");
+    cursor = page.next_cursor;
+    if (page.done) break;
+  }
+  require(cursor == total && known == store.diagnostics().known_cells && known > 0,
+          "directory readback lost or invented a known cell");
+  const CellIndex probe{shape.x / 2, shape.y / 2, shape.z / 2};
+  const auto held = snap->cell(probe);
+  require(store.integrate(observation("later", 2000, {{0.3, 0.3, 1.1}})).status == "INTEGRATED",
+          "later directory frame");
+  const auto again = snap->cell(probe);
+  require(again.known == held.known && again.value.log_odds == held.value.log_odds &&
+              again.value.occupied == held.value.occupied &&
+              snap->known_entry_count() == known,
+          "old snapshot changed after a later block commit");
+}
 }  // namespace uld_occ_observer

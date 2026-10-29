@@ -1,5 +1,6 @@
 #include "uld_occ_observer/observer.hpp"
 #include "fusion_profile_checks.hpp"
+#include "block_storage_checks.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -306,10 +307,14 @@ int main() {
     check_surface_matches_cell_scan();
     check_domain_init_once();
     check_retained_snapshot();
+    BlockStorageChecks storage_checks;
+    storage_checks.check_addressing();
+    storage_checks.check_batch_lifecycle();
     FusionProfileChecks fusion_checks;
     fusion_checks.check_phase_lifecycle();
     fusion_checks.check_modes_and_equivalence();
     fusion_checks.check_sequence_and_failure();
+    fusion_checks.check_directory_readback();
     std::cout << "PASS profiling semantic equivalence: " << cases.size() << " cases x3 modes; counters/timings/cache paths\n";
     return 0;
   } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 3; }
