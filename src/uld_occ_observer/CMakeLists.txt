@@ -24,7 +24,7 @@ target_link_libraries(uld_occ_observer_io PUBLIC uld_occ_observer_core yaml-cpp)
 include(CTest)
 if(BUILD_TESTING)
   add_executable(observer_profile_checks test/test_profiling.cpp test/fusion_profile_checks.cpp
-                 test/block_storage_checks.cpp)
+                 test/block_storage_checks.cpp test/apply_batch_checks.cpp test/query_content_digest.cpp)
   target_link_libraries(observer_profile_checks PRIVATE uld_occ_observer_io)
   add_test(NAME observer_profile_checks COMMAND observer_profile_checks)
   add_executable(observer_keyset_checks test/test_occupancy_keyset.cpp)

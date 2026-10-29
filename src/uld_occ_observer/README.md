@@ -275,3 +275,20 @@ OBSERVER_PROFILE_CLI=/tmp/elfin-observer-perf-build/observer_profile_cli python3
 Formal workload matrices, overhead qualification and evidence obligations are in
 `docs/plans/OCC_OCTOMAP_PERF_DIAG_G1_20261026.md`; Cursor Grok executes them after
 receiving the exact implementation revision. No clipping optimization is included.
+
+### ApplyBatch ownership and diagnostics
+
+`OccupancyGrid::apply` alone owns probability writes. It reads each unique key's
+old state once, uses OctoMap's sensor-model operation on a stack node, and writes
+the resulting log-odds through `setNodeValue`. Existing unchanged probabilities
+produce no mutation; an unknown cell is not a known zero-probability cell.
+Borrowed tree nodes are never modified or retained across updates (a search can
+return a coarse, pruned leaf). `apply` is not a transactional rollback interface.
+
+`apply_breakdown` adds frame-level write-loop, inner-update and prune durations,
+and considered/unchanged/written counts. Off emits null values; counters are
+derived once from the unique scan and mutations. ApplyBatch still includes all
+work required before BlockBatch can publish the updated snapshot. No per-key
+clock is added. The benchmark CLI separately validates parent probabilities and
+hashes a losslessly pruned copy outside integration/query timing; the raw tree
+SHA remains available, and canonical checks do not repair inconsistent parents.

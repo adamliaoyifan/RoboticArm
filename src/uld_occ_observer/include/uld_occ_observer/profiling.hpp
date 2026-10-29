@@ -31,7 +31,7 @@ struct SurfaceProfile {
 };
 // Coarse fusion intervals. Count is not a recordable phase.
 enum class FusionPhase { ApplyBatch, BlockBatch, Count };
-// ApplyBatch is search, updateNode, and mutation creation. BlockBatch is block
+// ApplyBatch includes probability reads/writes, tree maintenance, and mutation creation. BlockBatch is block
 // lookup, copy, per-cell maintenance, and registry writeback. Neither interval
 // is only tree time or only allocation. Uncollected durations stay at zero in
 // memory and are serialized as null, not as a measured zero.
@@ -41,6 +41,14 @@ struct FusionBreakdown {
   std::array<double, 2> milliseconds{};
   bool mutation_storage_collected = false;
   std::size_t mutation_size{}, mutation_capacity{}, mutation_element_bytes{};
+};
+// Nested, frame-level intervals; no per-key clock or diagnostic mutation.
+enum class ApplyPhase : std::size_t { WriteLoop, InnerUpdate, Prune, Count };
+struct ApplyBreakdown {
+  bool collected = false;
+  std::array<bool, 3> visited{};
+  std::array<double, 3> milliseconds{};
+  std::size_t keys_considered{}, unchanged_keys{}, written_keys{};
 };
 // Report snapshot. Callers record through OccupancyDiagnostic, not by writing these fields.
 // Per-key domain, insert, erase, and release clocks are not provided.
@@ -55,6 +63,7 @@ struct UpdateProfile {
   bool surface_recorded{};
   SurfaceProfile surface{};
   FusionBreakdown fusion_breakdown;
+  ApplyBreakdown apply_breakdown;
   bool enabled() const { return mode != ProfileMode::Off; }
   bool detailed() const { return mode == ProfileMode::Detailed; }
   void finish(double total_ms) {
@@ -156,6 +165,45 @@ class OccupancyDiagnostic {
     report_.fusion_breakdown.mutation_size = size;
     report_.fusion_breakdown.mutation_capacity = capacity;
     report_.fusion_breakdown.mutation_element_bytes = element_bytes;
+  }
+
+  class ApplySpan {
+   public:
+    ApplySpan(OccupancyDiagnostic& diagnostic, ApplyPhase phase)
+        : diagnostic_(&diagnostic), index_(static_cast<std::size_t>(phase)),
+          enabled_(diagnostic.enabled() && index_ < 3) {
+      if (!enabled_) return;
+      diagnostic_->report_.apply_breakdown.collected = true;
+      diagnostic_->report_.apply_breakdown.visited[index_] = true;
+      start_ = Clock::now();
+    }
+    ApplySpan(const ApplySpan&) = delete;
+    ApplySpan& operator=(const ApplySpan&) = delete;
+    ApplySpan(ApplySpan&& other) noexcept
+        : diagnostic_(other.diagnostic_), index_(other.index_), enabled_(other.enabled_),
+          start_(other.start_) { other.enabled_ = false; }
+    void finish() noexcept {
+      if (!enabled_) return;
+      enabled_ = false;
+      diagnostic_->report_.apply_breakdown.milliseconds[index_] +=
+          std::chrono::duration<double, std::milli>(Clock::now() - start_).count();
+    }
+    ~ApplySpan() { finish(); }
+   private:
+    OccupancyDiagnostic* diagnostic_;
+    std::size_t index_;
+    bool enabled_;
+    Clock::time_point start_{};
+  };
+  ApplySpan apply_span(ApplyPhase phase) { return ApplySpan(*this, phase); }
+  // Derived once from functional results, rather than incremented on every key.
+  void record_apply_counts(std::size_t considered, std::size_t written) {
+    if (!enabled()) return;
+    auto& apply = report_.apply_breakdown;
+    apply.collected = true;
+    apply.keys_considered = considered;
+    apply.written_keys = written;
+    apply.unchanged_keys = considered - written;
   }
 
   void ray_attempted() { if (enabled()) ++report_.rays_attempted; }

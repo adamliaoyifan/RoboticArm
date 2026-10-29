@@ -48,6 +48,24 @@ YAML::Node profile_to_yaml(const UpdateProfile& profile) {
     breakdown["mutation_element_bytes"] = fusion.mutation_element_bytes;
   }
   out["fusion_breakdown"] = breakdown;
+  const auto& apply = profile.apply_breakdown;
+  YAML::Node detail;
+  detail["collected"] = apply.collected;
+  const char* names[] = {"write_loop_ms", "inner_update_ms", "prune_ms"};
+  for (std::size_t i = 0; i < 3; ++i) {
+    // Unvisited maintenance on an otherwise collected batch is a measured no-op.
+    if (apply.collected) detail[names[i]] = apply.milliseconds[i];
+    else detail[names[i]] = YAML::Node(YAML::NodeType::Null);
+  }
+  if (apply.collected) {
+    detail["keys_considered"] = apply.keys_considered;
+    detail["unchanged_keys"] = apply.unchanged_keys;
+    detail["written_keys"] = apply.written_keys;
+  } else {
+    for (const auto* name : {"keys_considered", "unchanged_keys", "written_keys"})
+      detail[name] = YAML::Node(YAML::NodeType::Null);
+  }
+  out["apply_breakdown"] = detail;
   return out;
 }
 YAML::Node surface_profile_to_yaml(const SurfaceProfile& profile) {

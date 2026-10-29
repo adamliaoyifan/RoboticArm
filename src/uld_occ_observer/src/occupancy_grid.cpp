@@ -191,28 +191,38 @@ void OccupancyGrid::collectDiscretized(OccupancyScan& scan, const Vec3& origin_u
   }
 }
 
+void OccupancyGrid::applyKey(const octomap::OcTreeKey& key, bool hit,
+                             std::vector<OccupancyMutation>& mutations) {
+  const auto* before = tree_->search(key);
+  const bool existed = before != nullptr;
+  const float old_log_odds = existed ? before->getLogOdds() : 0.0f;
+  const bool old_occupied = existed && tree_->isNodeOccupied(before);
+
+  // Use the official sensor model and float arithmetic without a second tree
+  // lookup. Never update the borrowed node: it may cover multiple finest cells.
+  octomap::OcTreeNode value;
+  value.setLogOdds(old_log_odds);
+  if (hit) tree_->integrateHit(&value);
+  else tree_->integrateMiss(&value);
+  const float new_log_odds = value.getLogOdds();
+  if (existed && old_log_odds == new_log_odds) return;
+
+  tree_->setNodeValue(key, new_log_odds, false);
+  mutations.push_back({cell_index_from_key(key), hit, existed, old_occupied,
+                       tree_->isNodeOccupied(value), old_log_odds, new_log_odds});
+}
+
 std::vector<OccupancyMutation> OccupancyGrid::apply(const OccupancyScan& scan,
                                                     OccupancyDiagnostic& diagnostic) {
   if (!scan.complete_) throw Error("INCOMPLETE_OCCUPANCY_SCAN");
   std::vector<OccupancyMutation> mutations;
-  auto update = [&](const octomap::OcTreeKey& key, bool hit) {
-    bool existed, old_occupied, occupied;
-    float old_log_odds, new_log_odds;
-    { auto tree_span = diagnostic.detail(ProfileStage::TreeUpdate);
-      const auto* before = tree_->search(key);
-      existed = before != nullptr;
-      old_log_odds = existed ? before->getLogOdds() : 0;
-      old_occupied = existed && tree_->isNodeOccupied(before);
-      auto* after = tree_->updateNode(key, hit, false);
-      occupied = tree_->isNodeOccupied(after);
-      new_log_odds = after->getLogOdds();
-    }
-    if (existed && old_log_odds == new_log_odds) return;
-    mutations.push_back({cell_index_from_key(key), hit, existed, old_occupied, occupied,
-                         old_log_odds, new_log_odds});
-  };
-  for (const auto& key : scan.free_cells) update(key, false);
-  for (const auto& key : scan.occupied_cells) update(key, true);
+  {
+    auto write_span = diagnostic.apply_span(ApplyPhase::WriteLoop);
+    for (const auto& key : scan.free_cells) applyKey(key, false, mutations);
+    for (const auto& key : scan.occupied_cells) applyKey(key, true, mutations);
+  }
+  diagnostic.record_apply_counts(scan.free_cells.size() + scan.occupied_cells.size(),
+                                 mutations.size());
   return mutations;
 }
 

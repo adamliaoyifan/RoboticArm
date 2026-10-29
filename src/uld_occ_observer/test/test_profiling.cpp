@@ -321,6 +321,7 @@ int main() {
     fusion_checks.check_modes_and_equivalence();
     fusion_checks.check_sequence_and_failure();
     fusion_checks.check_directory_readback();
+    fusion_checks.check_apply_batch();
     std::cout << "PASS profiling semantic equivalence: " << cases.size() << " cases x3 modes; counters/timings/cache paths\n";
     return 0;
   } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 3; }

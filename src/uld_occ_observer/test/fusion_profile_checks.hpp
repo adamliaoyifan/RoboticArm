@@ -8,5 +8,6 @@ class FusionProfileChecks {
   void check_phase_lifecycle();
   void check_sequence_and_failure();
   void check_directory_readback();
+  void check_apply_batch();
 };
 }  // namespace uld_occ_observer

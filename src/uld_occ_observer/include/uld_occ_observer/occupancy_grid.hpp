@@ -63,6 +63,9 @@ class OccupancyGrid {
   void beginFrame(const UldDomain& domain);
   Visit visitCell(CellIndex index, const UldDomain& domain);
   void configure();
+  // Copies the old state before any write: a search may return a coarse leaf.
+  void applyKey(const octomap::OcTreeKey& key, bool hit,
+                std::vector<OccupancyMutation>& mutations);
   void castFreeRay(OccupancyScan& scan, OccupancyDiagnostic& diagnostic, const UldDomain& domain,
                    const octomap::point3d& origin, octomap::KeyRay& ray, const Vec3& endpoint_uld,
                    const octomap::point3d& endpoint_om, const octomap::OcTreeKey& endpoint_key,
