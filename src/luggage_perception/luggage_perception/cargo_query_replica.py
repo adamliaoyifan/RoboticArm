@@ -35,6 +35,20 @@ import numpy as np
 MAX_OBJECT_BYTES = 16 * 1024 * 1024
 
 
+def _producer_in_manifest_path(relpath):
+    """Producer incarnation encoded in generations/<producer>/<seq>/manifest.json.
+
+    None when the path is not that layout. Those pointers are still
+    verified on every poll; they are never served from the cache.
+    """
+    parts = relpath.split('/')
+    if (len(parts) == 4 and parts[0] == 'generations'
+            and parts[2].isdigit() and parts[3] == 'manifest.json'
+            and parts[1]):
+        return parts[1]
+    return None
+
+
 class ReplicaState:
     STARTING = 'STARTING'
     SYNCING = 'SYNCING'
@@ -90,6 +104,13 @@ class QueryReplica:
         self.cache_misses = 0
         self.control_age_s = None
         self.control_healthy = False
+        self.head_error = ''
+        # Last manifest whose bytes were hashed against the publish
+        # pointer. Reused only when producer, relative path and
+        # manifest_sha256 are all unchanged. Restart begins empty;
+        # resync clears it. Seq alone is not a key.
+        self._verified_publish = None
+        self.manifest_body_reads = 0
         # G4-A gen3 (plan d87c5731 section 6.1): bounded receive-side
         # event history -- received / validated / ready / resync /
         # unavailable with the target's FULL identity, so measurement
@@ -533,21 +554,82 @@ class QueryReplica:
 
     # -- internals -----------------------------------------------------
 
+    def _observe_head(self):
+        """Re-read the small head file on every poll, including when
+        the large manifest is reused. Heartbeat age and the head error
+        surface stay current; this does not skip a generation check."""
+        head = self.head_state()
+        published = 0
+        error = ''
+        if isinstance(head, dict):
+            try:
+                published = int(head.get('published_monotonic_ns') or 0)
+            except (TypeError, ValueError):
+                published = 0
+            error = str(head.get('error') or '')
+        import time
+        now = time.monotonic_ns()
+        self.control_age_s = ((now - published) / 1e9) if published else None
+        self.head_error = error
+        bound = getattr(self, '_control_lag_bound_s', None)
+        if bound is not None:
+            self.control_healthy = (
+                bool(head) and not error
+                and self.control_age_s is not None
+                and self.control_age_s <= bound)
+
     def _read_published(self):
+        """Return the published manifest.
+
+        The small pointer is read every call. The manifest body is
+        hashed and parsed only when the producer identity, relative
+        path, or pointer digest differs from the last verified body.
+        Restart has no cache. Resync drops it. An unchanged pointer
+        does not re-detect an in-place body replacement; the next
+        pointer change, resync, or new receiver still hashes the body
+        and raises POINTER_MISMATCH when the digest does not match.
+        """
+        self._observe_head()
         pointer = os.path.join(self.root, 'published.json')
         if not os.path.exists(pointer):
+            self._verified_publish = None
             return None
         with open(pointer, 'rb') as handle:
             target = json.loads(handle.read().decode('utf-8'))
-        manifest_path = os.path.join(self.root, target['manifest'])
+        if not isinstance(target, dict):
+            raise WireError('POINTER_MISMATCH', pointer)
+        relpath = target.get('manifest')
+        digest = target.get('manifest_sha256')
+        if not isinstance(relpath, str) or not isinstance(digest, str):
+            raise WireError('POINTER_MISMATCH', pointer)
+        relpath = relpath.replace('\\', '/')
+        producer = _producer_in_manifest_path(relpath)
+        cached = self._verified_publish
+        if (cached is not None and cached[0] == producer
+                and cached[1] == relpath and cached[2] == digest
+                and producer is not None
+                and str(cached[3].get('producer_incarnation')) == producer):
+            return cached[3]
+        manifest_path = os.path.join(self.root, *relpath.split('/'))
         with open(manifest_path, 'rb') as handle:
             body = handle.read(8 * 1024 * 1024 + 1)
+        self.manifest_body_reads += 1
         if len(body) > 8 * 1024 * 1024:
+            self._verified_publish = None
             raise WireError('MANIFEST_TOO_LARGE', manifest_path)
-        if sha256_hex(body) != target['manifest_sha256']:
+        if sha256_hex(body) != digest:
+            self._verified_publish = None
             raise WireError('POINTER_MISMATCH', manifest_path)
         manifest = json.loads(body.decode('utf-8'))
         validate_manifest(manifest)
+        if (producer is not None and str(
+                manifest.get('producer_incarnation')) != producer):
+            self._verified_publish = None
+            raise WireError('POINTER_MISMATCH', manifest_path)
+        if producer is not None:
+            self._verified_publish = (producer, relpath, digest, manifest)
+        else:
+            self._verified_publish = None
         return manifest
 
     def _load_payload(self, digest, name):
@@ -733,6 +815,9 @@ class QueryReplica:
             distance_members)
 
     def _resync(self, reason, detail=''):
+        # The next poll must hash the body again even if the pointer
+        # text is unchanged.
+        self._verified_publish = None
         self._record('resync', reason=str(reason),
                      seq=(self.manifest or {}).get('seq'))
         self.state = ReplicaState.RESYNC_REQUIRED
@@ -778,15 +863,8 @@ class QueryReplica:
         writer must degrade service even if the last head file looks
         recent (staleness is computed against the polling clock, not
         the file's own claim)."""
-        import time
-        head = self.head_state()
-        published = int(head.get('published_monotonic_ns', 0))
-        now = time.monotonic_ns()
-        self.control_age_s = (now - published) / 1e9 if published else None
-        self.control_healthy = (
-            bool(head) and not head.get('error')
-            and self.control_age_s is not None
-            and self.control_age_s <= lag_bound_s)
+        self._control_lag_bound_s = float(lag_bound_s)
+        self._observe_head()
 
     def _ack(self, manifest):
         ack = os.path.join(self.root, 'control', 'ack')

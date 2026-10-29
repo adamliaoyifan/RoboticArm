@@ -110,6 +110,9 @@ class QueryExportPublisher:
         os.chmod(self.root, 0o700)
         self._published = []      # [(seq, manifest_sha, path)] newest last
         self._entries = {}        # name -> sha of the newest generation
+        # name -> (exact payload bytes, sha256). Reused only when the
+        # new payload compares equal. A changed byte is hashed again.
+        self._payload_digest = {}
         self._seq = 0
         self._unpublished_from = None
         # Gen3 lifecycle state (short lock; all IO outside):
@@ -485,10 +488,17 @@ class QueryExportPublisher:
                               set(dirty_blocks or ())),
                 provenance_changed=provenance_changed)
             emitted = {}
+            trusted = {}
             for name, payload in payloads.items():
-                digest = sha256_hex(payload)
+                cached = self._payload_digest.get(name)
+                if cached is not None and cached[0] == payload:
+                    digest = cached[1]
+                else:
+                    digest = sha256_hex(payload)
+                trusted[name] = (payload, digest)
                 entries[name] = digest
                 emitted[name] = (digest, payload)
+            self._payload_digest = trusted
             manifest = {
                 'wire_schema_version': WIRE_SCHEMA_VERSION,
                 'producer_incarnation': self.incarnation,
