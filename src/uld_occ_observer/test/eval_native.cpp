@@ -1,4 +1,5 @@
 #include "independent_oracle.hpp"
+#include "load_model.hpp"
 #include "uld_occ_observer/configuration.hpp"
 #include "uld_occ_observer/snapshot_repository.hpp"
 #include "uld_occ_observer/checkpoint_io.hpp"
@@ -7,8 +8,10 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <map>
 #include <numeric>
@@ -123,48 +126,19 @@ std::vector<observer_oracle::Vec3> generate_optical_cloud(const observer_oracle:
                                                          const RigidTransform& tf,
                                                          std::size_t count, double outside_frac,
                                                          double cross_frac, std::uint32_t seed,
-                                                         bool include_invalid) {
-  std::mt19937_64 rng(seed);
-  std::uniform_real_distribution<double> unit(0.0, 1.0);
-  std::uniform_real_distribution<double> z_valid(0.55, 2.4);
-  std::vector<observer_oracle::Vec3> optical;
-  optical.reserve(count);
-  observer_oracle::Rigid rigid;
-  rigid.rotation = tf.rotation;
-  rigid.translation = {tf.translation.x, tf.translation.y, tf.translation.z};
-  // Inverse: optical = R^T (uld - t)
-  auto to_optical = [&](observer_oracle::Vec3 uld) {
-    const double dx = uld.x - rigid.translation.x;
-    const double dy = uld.y - rigid.translation.y;
-    const double dz = uld.z - rigid.translation.z;
-    const auto& r = rigid.rotation;
-    return observer_oracle::Vec3{r[0] * dx + r[3] * dy + r[6] * dz,
-                                 r[1] * dx + r[4] * dy + r[7] * dz,
-                                 r[2] * dx + r[5] * dy + r[8] * dz};
-  };
-  const std::size_t n_out = static_cast<std::size_t>(count * outside_frac);
-  const std::size_t n_cross = static_cast<std::size_t>(count * cross_frac);
-  for (std::size_t i = 0; i < count; ++i) {
-    observer_oracle::Vec3 uld;
-    if (include_invalid && i == 0) {
-      optical.push_back({0, 0, std::numeric_limits<double>::quiet_NaN()});
-      continue;
-    }
-    if (i < n_out) {
-      uld = {g.length, g.width * (unit(rng) - 0.5), g.floor_z + 0.4 + unit(rng)};
-    } else if (i < n_out + n_cross) {
-      uld = {g.length / 2 + 0.4, 0.0, g.floor_z + 0.6};
-    } else if (!boxes.empty() && unit(rng) < 0.6) {
-      uld = sample_surface(boxes[i % boxes.size()], rng);
-    } else {
-      uld = {(unit(rng) - 0.5) * g.length * 0.8, (unit(rng) - 0.5) * g.width * 0.6,
-             g.floor_z + 0.05 + unit(rng) * 0.9};
-    }
-    auto p = to_optical(uld);
-    if (p.z < 0.05) p.z = 0.55 + 0.2 * unit(rng);
-    optical.push_back(p);
-  }
-  return optical;
+                                                         bool include_invalid, double z_min,
+                                                         double z_max) {
+  const auto pose = occ_load::sensor_pose();
+  if (tf.translation.x != pose.translation.x || tf.translation.y != pose.translation.y ||
+      tf.translation.z != pose.translation.z || tf.rotation != pose.rotation)
+    throw Error("SENSOR_POSE_CHANGED");
+  const std::size_t valid = include_invalid && count > 0 ? count - 1 : count;
+  auto cloud = occ_load::generate_cloud(g, occ_load::make_boxes(static_cast<int>(boxes.size()), g),
+                                       valid, outside_frac, cross_frac, seed, z_min, z_max);
+  if (!include_invalid) return cloud.optical;
+  cloud.optical.insert(cloud.optical.begin(),
+                       {0, 0, std::numeric_limits<double>::quiet_NaN()});
+  return cloud.optical;
 }
 
 struct CompareResult {
@@ -254,7 +228,8 @@ int run_o1(const ObserverConfiguration& cfg, int seeds, int frames, int boxes, s
       auto tf = look_into_container(-1.15, 0.0, 1.20, stamp);
       auto obs = base_observation(cfg, "o1-" + std::to_string(seed) + "-" + std::to_string(f), stamp, tf);
       auto cloud_pts = generate_optical_cloud(geom, box_list, tf, cloud, outside, cross,
-                                              static_cast<uint32_t>(seed * 10007 + f), f == 0);
+                                              static_cast<uint32_t>(seed * 10007 + f), f == 0,
+                                              cfg.depth.min_m, cfg.depth.max_m);
       obs.points_m = to_sut(cloud_pts);
       observer_oracle::Rigid rigid{tf.rotation, {tf.translation.x, tf.translation.y, tf.translation.z}};
       const auto prepared = observer_oracle::prepare(cloud_pts, rigid, depth);
@@ -526,7 +501,8 @@ int run_o2(const ObserverConfiguration& cfg, int seeds, int frames, int boxes, c
       auto tf = look_into_container(-1.15, 0.0, 1.20, stamp);
       auto obs = base_observation(cfg, "o2-" + std::to_string(seed) + "-" + std::to_string(f), stamp, tf);
       auto cloud_pts = generate_optical_cloud(geom, box_list, tf, 48, 0.2, 0.2,
-                                              static_cast<uint32_t>(seed * 10007 + f), f == 0);
+                                              static_cast<uint32_t>(seed * 10007 + f), f == 0,
+                                              cfg.depth.min_m, cfg.depth.max_m);
       obs.points_m = to_sut(cloud_pts);
       observer_oracle::Rigid rigid{tf.rotation, {tf.translation.x, tf.translation.y, tf.translation.z}};
       const auto prepared = observer_oracle::prepare(cloud_pts, rigid, depth);
@@ -740,7 +716,8 @@ int run_o8(const ObserverConfiguration& cfg, int boxes, const std::string& out) 
   const auto box_list = make_boxes(boxes, geom);
   ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, cfg.discretize_endpoints);
   auto tf = look_into_container(-1.15, 0, 1.2, 1'000'000'000);
-  auto cloud = to_sut(generate_optical_cloud(geom, box_list, tf, 128, 0.0, 0.0, 7, false));
+  auto cloud = to_sut(generate_optical_cloud(geom, box_list, tf, 128, 0.0, 0.0, 7, false,
+                                           cfg.depth.min_m, cfg.depth.max_m));
   std::vector<std::size_t> rss_warm, rss_a, rss_b;
   std::size_t changed_after = 0;
   std::size_t occupancy_after = 0;
@@ -796,18 +773,30 @@ double percentile(std::vector<double> values, double q) {
 }
 
 int run_bench(const ObserverConfiguration& cfg, int boxes, std::size_t cloud, int warmup, int repeat,
-              const std::string& out, bool capture) {
+              double outside, double cross, const std::string& out, bool capture) {
   const auto geom = oracle_geometry(cfg);
-  const auto box_list = make_boxes(boxes, geom);
-  std::vector<double> first_surface_ms, first_integrate_ms;
+  const auto layout = occ_load::make_boxes(boxes, geom);
+  const auto expected = occ_load::quotas_for(cloud, outside, cross);
+  std::vector<double> first_surface_ms, first_repeat_ms, first_integrate_ms;
+  auto ms = [](Clock::time_point a, Clock::time_point b) {
+    return std::chrono::duration<double, std::milli>(b - a).count();
+  };
+  auto load = [&](std::uint32_t seed) {
+    auto generated = occ_load::generate_cloud(geom, layout, cloud, outside, cross, seed,
+                                              cfg.depth.min_m, cfg.depth.max_m);
+    if (generated.counts.interior != expected.interior || generated.counts.cross != expected.cross ||
+        generated.counts.miss != expected.miss || generated.counts.invalid != 0)
+      throw Error("CLASS_MISMATCH");
+    return generated;
+  };
+  occ_load::ClassCounts scored_counts;
   for (int i = 0; i < repeat; ++i) {
     ObservationStore cold(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, cfg.discretize_endpoints);
     SnapshotRepository cold_repo(cold);
     const std::int64_t stamp = 1'000'000'000LL * (i + 1);
     auto tf = look_into_container(-1.15, 0, 1.2, stamp);
     auto obs = base_observation(cfg, "first" + std::to_string(i), stamp, tf);
-    obs.points_m = to_sut(generate_optical_cloud(geom, box_list, tf, cloud, 0.5, 0.0,
-                                                static_cast<uint32_t>(i + 9000), false));
+    obs.points_m = to_sut(load(static_cast<std::uint32_t>(i + 9000)).optical);
     const auto t0 = Clock::now();
     const auto receipt = cold.integrate(obs);
     const auto t1 = Clock::now();
@@ -818,23 +807,24 @@ int run_bench(const ObserverConfiguration& cfg, int boxes, std::size_t cloud, in
     const auto t2 = Clock::now();
     (void)snap->surface();
     const auto t3 = Clock::now();
+    (void)snap->surface();
+    const auto t4 = Clock::now();
     cold_repo.release(lease.handle);
-    auto ms = [](Clock::time_point a, Clock::time_point b) {
-      return std::chrono::duration<double, std::milli>(b - a).count();
-    };
     first_integrate_ms.push_back(ms(t0, t1));
     first_surface_ms.push_back(ms(t2, t3));
+    first_repeat_ms.push_back(ms(t3, t4));
     if (capture) (void)cold.diagnostics();
   }
   ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, cfg.discretize_endpoints);
-  std::vector<double> integrate_ms, acquire_ms, roi_ms, surface_ms;
+  std::vector<double> integrate_ms, acquire_ms, roi_ms, surface_ms, repeat_ms;
   SnapshotRepository repo(store);
   auto once = [&](int i, bool score) {
     const std::int64_t stamp = 1'000'000'000LL * (i + 1);
     auto tf = look_into_container(-1.15, 0, 1.2, stamp);
     auto obs = base_observation(cfg, "b" + std::to_string(i), stamp, tf);
-    obs.points_m = to_sut(generate_optical_cloud(geom, box_list, tf, cloud, 0.5, 0.0,
-                                                static_cast<uint32_t>(i + 1), false));
+    auto generated = load(static_cast<std::uint32_t>(i + 1));
+    if (score && integrate_ms.empty()) scored_counts = generated.counts;
+    obs.points_m = to_sut(generated.optical);
     const auto t0 = Clock::now();
     const auto receipt = store.integrate(obs);
     const auto t1 = Clock::now();
@@ -848,36 +838,143 @@ int run_bench(const ObserverConfiguration& cfg, int boxes, std::size_t cloud, in
     const auto t4 = Clock::now();
     (void)snap->surface();
     const auto t5 = Clock::now();
+    (void)snap->surface();
+    const auto t6 = Clock::now();
     repo.release(lease.handle);
     if (!score) return;
-    auto ms = [](Clock::time_point a, Clock::time_point b) {
-      return std::chrono::duration<double, std::milli>(b - a).count();
-    };
     integrate_ms.push_back(ms(t0, t1));
     acquire_ms.push_back(ms(t1, t2));
     roi_ms.push_back(ms(t3, t4));
     surface_ms.push_back(ms(t4, t5));
+    repeat_ms.push_back(ms(t5, t6));
     if (capture) (void)store.diagnostics();
   };
   for (int i = 0; i < warmup; ++i) once(i, false);
   for (int i = 0; i < repeat; ++i) once(warmup + i, true);
-  const bool pass = percentile(integrate_ms, 0.95) <= (cloud >= 100000 ? 2000.0 : 500.0) &&
-                    *std::max_element(integrate_ms.begin(), integrate_ms.end()) <=
-                        (cloud >= 100000 ? 5000.0 : 1000.0) &&
-                    percentile(acquire_ms, 0.95) <= 100.0 &&
-                    percentile(roi_ms, 0.95) <= 100.0 && percentile(surface_ms, 0.95) <= 100.0 &&
-                    percentile(first_surface_ms, 0.95) <= 100.0 &&
-                    *std::max_element(first_surface_ms.begin(), first_surface_ms.end()) <= 250.0;
+  auto under = [](const std::vector<double>& values, double p95, double max_limit) {
+    return !values.empty() && percentile(values, 0.95) <= p95 &&
+           *std::max_element(values.begin(), values.end()) <= max_limit;
+  };
+  const double integrate_p95 = cloud >= 100000 ? 2000.0 : 500.0;
+  const double integrate_max = cloud >= 100000 ? 5000.0 : 1000.0;
+  const bool pass = under(integrate_ms, integrate_p95, integrate_max) && under(acquire_ms, 100.0, 250.0) &&
+                    under(roi_ms, 100.0, 250.0) && under(surface_ms, 100.0, 250.0) &&
+                    under(repeat_ms, 100.0, 250.0) && under(first_surface_ms, 100.0, 250.0) &&
+                    under(first_repeat_ms, 100.0, 250.0);
   return write_report(out, pass, "bench",
                       {{"p95_integrate_ms", std::to_string(percentile(integrate_ms, 0.95))},
                        {"max_integrate_ms", std::to_string(*std::max_element(integrate_ms.begin(), integrate_ms.end()))},
                        {"p95_acquire_ms", std::to_string(percentile(acquire_ms, 0.95))},
+                       {"max_acquire_ms", std::to_string(*std::max_element(acquire_ms.begin(), acquire_ms.end()))},
                        {"p95_roi_ms", std::to_string(percentile(roi_ms, 0.95))},
+                       {"max_roi_ms", std::to_string(*std::max_element(roi_ms.begin(), roi_ms.end()))},
                        {"p95_surface_ms", std::to_string(percentile(surface_ms, 0.95))},
+                       {"max_surface_ms", std::to_string(*std::max_element(surface_ms.begin(), surface_ms.end()))},
+                       {"p95_repeat_surface_ms", std::to_string(percentile(repeat_ms, 0.95))},
+                       {"max_repeat_surface_ms", std::to_string(*std::max_element(repeat_ms.begin(), repeat_ms.end()))},
                        {"p95_first_surface_ms", std::to_string(percentile(first_surface_ms, 0.95))},
                        {"max_first_surface_ms", std::to_string(*std::max_element(first_surface_ms.begin(), first_surface_ms.end()))},
+                       {"p95_first_repeat_surface_ms", std::to_string(percentile(first_repeat_ms, 0.95))},
                        {"p95_first_integrate_ms", std::to_string(percentile(first_integrate_ms, 0.95))},
+                       {"outside", std::to_string(outside)},
+                       {"cross", std::to_string(cross)},
+                       {"class_interior", std::to_string(scored_counts.interior)},
+                       {"class_cross", std::to_string(scored_counts.cross)},
+                       {"class_miss", std::to_string(scored_counts.miss)},
+                       {"class_invalid", std::to_string(scored_counts.invalid)},
+                       {"cold_process_model", "in_process"},
                        {"n", std::to_string(repeat)}});
+}
+
+std::string format_xyz(const observer_oracle::Vec3& point) {
+  char buffer[96];
+  std::snprintf(buffer, sizeof(buffer), "%.17g, %.17g, %.17g", point.x, point.y, point.z);
+  return buffer;
+}
+
+int run_self_check(const ObserverConfiguration& cfg, const std::string& out) {
+  const auto result = occ_load::self_check(oracle_geometry(cfg), cfg.depth.min_m, cfg.depth.max_m);
+  std::ofstream file(out);
+  if (!file) throw Error("OUTPUT_UNAVAILABLE");
+  file << result.json;
+  return result.pass ? 0 : 3;
+}
+
+int run_emit_window(const ObserverConfiguration& cfg, const std::string& group, int boxes,
+                    std::size_t cloud, double outside, double cross, int warmup, int repeat,
+                    const std::string& out_dir) {
+  if (group.empty() || group.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") != std::string::npos)
+    throw Error("INVALID_GROUP_ID");
+  const auto directory = std::filesystem::path(out_dir);
+  if (std::filesystem::exists(directory / "load_manifest.json")) throw Error("OUTPUT_ALREADY_EXISTS");
+  std::filesystem::create_directories(directory / "frames");
+  const auto geom = oracle_geometry(cfg);
+  const auto layout = occ_load::make_boxes(boxes, geom);
+  const auto pose = occ_load::sensor_pose();
+  std::ostringstream manifest;
+  manifest.imbue(std::locale::classic());
+  manifest << std::setprecision(17);
+  manifest << "{\"generator_version\":\"" << occ_load::kGeneratorVersion << "\""
+           << ",\"group_id\":\"" << group << "\""
+           << ",\"boxes\":" << boxes
+           << ",\"valid_count\":" << cloud
+           << ",\"outside_fraction\":" << outside
+           << ",\"cross_fraction\":" << cross
+           << ",\"warmup\":" << warmup
+           << ",\"scored\":" << repeat
+           << ",\"frames\":[";
+  bool first = true;
+  for (int index = 0; index < warmup + repeat; ++index) {
+    const bool is_warmup = index < warmup;
+    const int scored = index - warmup;
+    const int base = is_warmup ? index : scored % 10;
+    const int round = is_warmup ? -1 : scored / 10;
+    const auto seed = occ_load::frame_seed(group, base, round);
+    const auto generated = occ_load::generate_cloud(geom, layout, cloud, outside, cross, seed,
+                                                    cfg.depth.min_m, cfg.depth.max_m);
+    char name_buffer[32];
+    std::snprintf(name_buffer, sizeof(name_buffer), "f%03d.yaml", index);
+    const std::string name = name_buffer;
+    const auto path = directory / "frames" / name;
+    std::ofstream frame(path);
+    if (!frame) throw Error("OUTPUT_UNAVAILABLE");
+    frame.imbue(std::locale::classic());
+    frame.setf(std::ios::fmtflags(0), std::ios::floatfield);
+    frame << std::setprecision(17);
+    const auto stamp = 1000000000LL * (index + 1);
+    frame << "sensor_id: cam0\nobservation_id: " << group << "-" << index
+          << "\noptical_frame: d555_color_optical_frame\nclock_domain: " << cfg.clock_domain
+          << "\ngeometry_hash: " << cfg.geometry.geometry_hash
+          << "\nepoch: 1\nstamp_ns: " << stamp << "\npoints_m:\n";
+    for (const auto& point : generated.optical) frame << "- [" << format_xyz(point) << "]\n";
+    frame << "transform:\n  stamp_ns: " << stamp
+          << "\n  translation: [" << pose.translation.x << ", " << pose.translation.y << ", "
+          << pose.translation.z << "]\n  rotation: [";
+    for (int k = 0; k < 9; ++k) frame << (k ? ", " : "") << pose.rotation[static_cast<std::size_t>(k)];
+    frame << "]\n";
+    frame.close();
+    std::ifstream written(path, std::ios::binary);
+    const std::string bytes{std::istreambuf_iterator<char>(written), std::istreambuf_iterator<char>()};
+    if (!first) manifest << ",";
+    first = false;
+    manifest << "{\"index\":" << index
+             << ",\"warmup\":" << (is_warmup ? "true" : "false")
+             << ",\"base_seed\":" << base
+             << ",\"round\":" << round
+             << ",\"seed\":" << seed
+             << ",\"point_sha256\":\"" << generated.sha256 << "\""
+             << ",\"file\":\"frames/" << name << "\""
+             << ",\"file_sha256\":\"" << sha256(bytes) << "\""
+             << ",\"interior\":" << generated.counts.interior
+             << ",\"cross\":" << generated.counts.cross
+             << ",\"miss\":" << generated.counts.miss
+             << ",\"invalid\":" << generated.counts.invalid << "}";
+  }
+  manifest << "]}\n";
+  std::ofstream summary(directory / "load_manifest.json");
+  if (!summary) throw Error("OUTPUT_UNAVAILABLE");
+  summary << manifest.str();
+  return 0;
 }
 
 }  // namespace
@@ -970,10 +1067,14 @@ int main(int argc, char** argv) {
     if (gate == "o3") return run_o3(cfg, out);
     if (gate == "o4") return run_o4(cfg, out);
     if (gate == "o8") return run_o8(cfg, boxes, out);
+    if (gate == "self-check") return run_self_check(cfg, out);
+    if (gate == "emit-window")
+      return run_emit_window(cfg, opt.count("--group") ? opt["--group"] : "", boxes, cloud, outside,
+                             cross, warmup, repeat, out);
     if (gate == "bench")
-      return run_bench(cfg, boxes, cloud, warmup, repeat, out, false);
+      return run_bench(cfg, boxes, cloud, warmup, repeat, outside, cross, out, false);
     if (gate == "bench-capture")
-      return run_bench(cfg, boxes, cloud, warmup, repeat, out, true);
+      return run_bench(cfg, boxes, cloud, warmup, repeat, outside, cross, out, true);
     throw Error("UNKNOWN_GATE");
   } catch (const std::exception& e) {
     std::cerr << e.what() << '\n';

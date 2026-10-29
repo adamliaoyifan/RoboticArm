@@ -48,19 +48,40 @@ class WindowResult:
 
 def official_stats(values, minimum=0.0):
     """Score exactly 30 finite samples. Fewer samples are incomplete and have no P95."""
-    if len(values) != 30:
-        return {"n": len(values), "status": "incomplete"}
+    return exact_stats(values, 30, minimum)
+
+
+def ranked_stats(values, minimum=0.0):
+    """P95 is the ceil(0.95*n)th ascending sample. Even medians average the two central samples."""
     if any(not isinstance(value, (int, float)) or isinstance(value, bool) or
            not math.isfinite(value) or value < minimum for value in values):
         raise ValueError("invalid metric sample")
     ordered = sorted(float(value) for value in values)
-    return {
-        "n": 30,
-        "status": "complete",
-        "median": 0.5 * (ordered[14] + ordered[15]),
-        "p95": ordered[28],
-        "max": ordered[-1],
-    }
+    count = len(ordered)
+    if count == 0:
+        return {"n": 0, "status": "incomplete"}
+    index = math.ceil(0.95 * count) - 1
+    if count % 2 == 0:
+        median = 0.5 * (ordered[count // 2 - 1] + ordered[count // 2])
+    else:
+        median = ordered[count // 2]
+    return {"n": count, "status": "complete", "median": median, "p95": ordered[index], "max": ordered[-1]}
+
+
+def exact_stats(values, expected_n, minimum=0.0):
+    """A short sample is incomplete. It is not scored and cannot pass a gate."""
+    if len(values) != expected_n:
+        return {"n": len(values), "expected_n": expected_n, "status": "incomplete"}
+    stats = ranked_stats(values, minimum)
+    stats["expected_n"] = expected_n
+    return stats
+
+
+def within_gate(stats, p95_limit, max_limit):
+    """Threshold equality passes. An incomplete sample does not."""
+    if stats.get("status") != "complete":
+        return False
+    return stats["p95"] <= p95_limit and stats["max"] <= max_limit
 
 
 def _profile(row):

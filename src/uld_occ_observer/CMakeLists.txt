@@ -49,7 +49,7 @@ add_executable(observer_cli src/observer_cli.cpp)
 target_link_libraries(observer_cli PRIVATE uld_occ_observer_io)
 set_target_properties(observer_cli PROPERTIES BUILD_RPATH "${OCTOMAP_LIBRARY_DIRS}" INSTALL_RPATH "${OCTOMAP_LIBRARY_DIRS}")
 install(TARGETS observer_cli DESTINATION lib/${PROJECT_NAME})
-add_executable(observer_eval_native test/eval_native.cpp test/independent_oracle.cpp)
+add_executable(observer_eval_native test/eval_native.cpp test/independent_oracle.cpp test/load_model.cpp)
 target_include_directories(observer_eval_native PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test)
 target_link_libraries(observer_eval_native PRIVATE uld_occ_observer_io)
 set_target_properties(observer_eval_native PROPERTIES

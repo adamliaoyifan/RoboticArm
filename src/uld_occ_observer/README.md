@@ -102,7 +102,7 @@ All endpoints are under `/uld_occ_observer`:
 | reset_observation | expected_epoch and nonempty reset_id; resets only on matching epoch. |
 | checkpoint_observation | operation checkpoint/restore, path and expected_epoch; unknown operations return UNSUPPORTED_OPERATION. Existing checkpoint files are not overwritten. |
 | receipts | Each submitted observation's result and stage/queue timing. |
-| health | 2Hz metadata, revisions, queue/resource counts, capabilities; no full map and no freshness refresh. |
+| health | Metadata, revisions, queue/resource counts, and capabilities. The timer period is 500 ms, so the topic is 2 Hz. Older notes that called this 1 Hz are stale. Health carries no full map and does not refresh freshness. |
 
 The worker queue holds at most two waiting observations, one processing. Queue
 pressure returns QUEUE_FULL instead of replacing frames. Transport receipt time,

@@ -128,8 +128,7 @@ def cmd_fixtures(args) -> int:
                 )
     manifest = {
         "schema": "occ_observer_fixture_manifest_v1",
-        "implementation_revision": "9f1547f3d79c235da99b55bd3e51f300745952bf",
-        "plan_revision": "a0121527450cae499bef50efe990127e0e94fe91",
+        "generator_version": "o6-load-v1",
         "seeds": list(range(seeds)),
         "scenes": scenes,
         "raw_input_hash_policy": "optical_xyz_sha256_before_filter",
@@ -262,24 +261,16 @@ def cmd_benchmark(args) -> int:
     profile = args.profile
     rows = []
     overall = True
-    selected = []
-    for scene in manifest["scenes"]:
-        if scene["hull"] != "chamfer":
-            continue
-        if profile == "representative":
-            if scene["resolution"] != 0.01 or scene["boxes"] not in (0, 20):
-                continue
-            clouds = (30000, 100000)
-        else:
-            clouds = (30000, 100000)
-        for cloud in clouds:
-            for outside, cross in ((0.5, 0.0), (0.5, 0.5), (0.9, 0.0), (0.9, 0.5)):
-                if profile == "representative" and (outside, cross) != (0.5, 0.0):
-                    continue
-                selected.append((scene, cloud, outside, cross))
-    if profile == "representative":
-        selected = [s for s in selected if s[0]["resolution"] == 0.01]
-    for scene, cloud, outside, cross in selected:
+    bench_dir = ROOT / "src" / "uld_occ_observer" / "test" / "benchmark"
+    if str(bench_dir) not in sys.path:
+        sys.path.insert(0, str(bench_dir))
+    from o6_matrix import select_benchmark_scenes
+    selected = select_benchmark_scenes(manifest, profile)
+    for item in selected:
+        scene = item["scene"]
+        cloud = item["cloud"]
+        outside = item["outside"]
+        cross = item["cross"]
         report = out / ("%s_c%s_o%s_x%s.json" % (scene["id"], cloud, outside, cross))
         cmd = [
             str(native),
@@ -308,9 +299,20 @@ def cmd_benchmark(args) -> int:
         payload = json.loads(report.read_text()) if report.exists() else {"pass": False}
         ok = r.returncode == 0 and payload.get("pass") is True
         overall = overall and ok
-        rows.append({"scene": scene["id"], "cloud": cloud, "pass": ok, "report": payload})
-    (out / "PERFORMANCE.md").write_text("# Performance\n\n%s\n" % json.dumps(rows, indent=2)[:20000])
-    return PASS if overall and rows else (NOT_EVAL if not rows else FAIL)
+        rows.append({
+            "scene": scene["id"],
+            "hull": scene["hull"],
+            "cloud": cloud,
+            "outside": outside,
+            "cross": cross,
+            "pass": ok,
+            "report": payload,
+        })
+    document = {"pass": bool(overall and rows), "rows": rows}
+    (out / "performance.json").write_text(json.dumps(document, indent=2) + "\n")
+    (out / "PERFORMANCE.md").write_text(
+        "# Performance\n\nThe verdict is performance.json (%d rows). This file is not the gate.\n" % len(rows))
+    return PASS if document["pass"] else (NOT_EVAL if not rows else FAIL)
 
 
 def cmd_capture(args) -> int:
@@ -374,6 +376,36 @@ def cmd_capture(args) -> int:
         + "\n"
     )
     return PASS if ok else FAIL
+
+
+def cmd_o6(args) -> int:
+    bench = ROOT / "src" / "uld_occ_observer" / "test" / "benchmark"
+    if str(bench) not in sys.path:
+        sys.path.insert(0, str(bench))
+    from o6_matrix import O6Campaign
+    groups = [item for item in args.rehearsal_groups.split(",") if item]
+    campaign = O6Campaign(
+        args.profile_cli, args.eval_native, args.fixtures, args.out,
+        budget_s=args.budget_s, rehearsal=args.rehearsal, rehearsal_groups=groups)
+    report = campaign.run()
+    verdict = report["verdict"]["verdict"]
+    if args.rehearsal:
+        return PASS if report["groups"] else FAIL
+    if verdict == "pass":
+        return PASS
+    if verdict == "fail":
+        return FAIL
+    return NOT_EVAL
+
+
+def cmd_o7(args) -> int:
+    if not args.node or not args.setup or not args.eval_native or not args.fixtures:
+        return _die(NOT_EVAL, "O7 needs --node --setup --eval-native --fixtures")
+    bench = ROOT / "src" / "uld_occ_observer" / "test" / "benchmark"
+    if str(bench) not in sys.path:
+        sys.path.insert(0, str(bench))
+    from sustained_run import run_campaign
+    return run_campaign(args)
 
 
 def cmd_concurrency(args) -> int:
@@ -627,7 +659,25 @@ def build_parser() -> argparse.ArgumentParser:
     bm.add_argument("--install", required=True)
     bm.add_argument("--fixtures", default="")
     bm.add_argument("--out", required=True)
-    for name in ("concurrency", "stability", "simulate"):
+    for name in ("concurrency", "o7"):
+        s = sub.add_parser(name)
+        s.add_argument("--install", default="")
+        s.add_argument("--out", required=True)
+        s.add_argument("--fixtures", default="")
+        s.add_argument("--node", default="")
+        s.add_argument("--setup", default="")
+        s.add_argument("--eval-native", default="")
+        s.add_argument("--rehearsal", action="store_true")
+        s.add_argument("--domain-id", type=int, default=17)
+    o6 = sub.add_parser("o6")
+    o6.add_argument("--out", required=True)
+    o6.add_argument("--fixtures", required=True)
+    o6.add_argument("--profile-cli", required=True)
+    o6.add_argument("--eval-native", required=True)
+    o6.add_argument("--budget-s", type=float, default=8 * 3600)
+    o6.add_argument("--rehearsal", action="store_true")
+    o6.add_argument("--rehearsal-groups", default="")
+    for name in ("stability", "simulate"):
         s = sub.add_parser(name)
         s.add_argument("--install", required=True)
         s.add_argument("--out", required=True)
@@ -680,8 +730,10 @@ def main() -> int:
             return cmd_benchmark(args)
         if args.cmd == "capture-overhead":
             return cmd_capture(args)
-        if args.cmd == "concurrency":
-            return cmd_concurrency(args)
+        if args.cmd in ("concurrency", "o7"):
+            return cmd_o7(args)
+        if args.cmd == "o6":
+            return cmd_o6(args)
         if args.cmd == "stability":
             return cmd_stability(args)
         if args.cmd == "simulate":
