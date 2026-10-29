@@ -49,6 +49,9 @@ class OccupancyGrid {
   // apply() rejects an incomplete scan. Scratch is reset even after a failed frame.
   void collect(OccupancyScan& out, const Vec3& origin_uld, const std::vector<Vec3>& endpoints_uld,
                const UldDomain& domain, OccupancyScanOptions options, OccupancyDiagnostic& diagnostic);
+  // Complete scan required. Successful return includes parent maintenance.
+  // Not transactional: after a write/allocation exception, discard/reset/restore
+  // the owning store before reuse; tree, blocks and identity may disagree.
   std::vector<OccupancyMutation> apply(const OccupancyScan& scan, OccupancyDiagnostic& diagnostic);
   void reset();
   std::string serialize() const;

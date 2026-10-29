@@ -66,6 +66,7 @@ void FusionProfileChecks::check_apply_batch() {
       reference.setNodeValue(zero_key, 0.f);
       grid = OccupancyGrid::fromCheckpointBytes(bytes(reference), resolution);
       bool saw_unchanged = false, saw_probability_only = false, saw_coarse_leaf = false;
+      bool saw_new_free = false, saw_new_hit = false;
       for (int frame = 0; frame < 36; ++frame) {
         OccupancyDiagnostic diagnostic(mode);
         OccupancyScan scan;
@@ -80,14 +81,20 @@ void FusionProfileChecks::check_apply_batch() {
           if (hit) scan.occupied_cells.insert(key);
           else scan.free_cells.push_back(key);
         }
-        if (frame == 0) scan.free_cells.push_back(zero_key);
+        if (frame == 0) {
+          scan.free_cells.push_back(zero_key);
+          scan.free_cells.push_back(key_from_cell_index({3, 2, 2})); // previously unknown miss
+        }
         if (frame == 35) { scan.free_cells.clear(); scan.occupied_cells.clear(); }
         const auto expected = original_apply(reference, scan);
         const auto actual = grid.apply(scan, diagnostic);
         same_mutations(actual, expected);
         saw_unchanged |= !scan.occupied_cells.empty() && actual.empty();
-        for (const auto& mutation : actual)
+        for (const auto& mutation : actual) {
           saw_probability_only |= mutation.existed && mutation.old_occupied == mutation.occupied;
+          saw_new_free |= !mutation.hit && !mutation.existed;
+          saw_new_hit |= mutation.hit && !mutation.existed;
+        }
         const auto candidate = grid.serialize();
         check(canonical_probability_digest(candidate) == canonical_probability_digest(bytes(reference)),
               "ApplyBatch full probability/unknown state mismatch");
@@ -128,8 +135,8 @@ void FusionProfileChecks::check_apply_batch() {
         }
         if (frame == 15) grid = std::move(restored); // restore then continue the same sequence
       }
-      check(saw_unchanged && saw_probability_only && saw_coarse_leaf,
-            "ApplyBatch fixture missed saturation/probability/pruning path");
+      check(saw_unchanged && saw_probability_only && saw_coarse_leaf && saw_new_free && saw_new_hit,
+            "ApplyBatch fixture missed saturation/probability/pruning/new-free/new-hit path");
     }
   }
   // Batch span ownership: finish and move must not double-record; Off is inert.

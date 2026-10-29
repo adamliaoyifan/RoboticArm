@@ -75,7 +75,7 @@ struct UpdateProfile {
 };
 
 // One diagnostic session. Off does not read the clock or increment counts.
-// The nine top-level spans and the Detailed nested spans are the only clocks.
+// Clocks are top-level spans, Detailed spans, and frame-level Fusion/Apply spans.
 class OccupancyDiagnostic {
  public:
   using Clock = std::chrono::steady_clock;

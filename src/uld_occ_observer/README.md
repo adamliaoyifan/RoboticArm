@@ -296,3 +296,11 @@ SHA remains available, and canonical checks do not repair inconsistent parents.
 Leaf writes use lazy evaluation. A changed batch calls `updateInnerOccupancy()`
 and `prune()` once before returning; an unchanged batch skips both. These full
 tree traversals are timed inside ApplyBatch, not moved to a query or later frame.
+
+If probability writing or mutation allocation throws, the batch has no rollback:
+tree, blocks and identity may disagree and lazy parents may be unfinished. The
+owning store must be discarded/reset or restored from a consistent checkpoint
+before reuse. Allocation-failure recovery is not claimed by this optimization.
+Incomplete scans and invalid endpoints are separately rejected before apply.
+The former per-key Detailed `tree_update` span is no longer collected; use the
+frame-level `apply_breakdown`, whose write loop includes queries and mutations.
