@@ -34,6 +34,8 @@ from fusion_report import (
 
 OFFICIAL_CASES = ("o5_b0_c30000", "o5_b0_c100000", "o5_b20_c30000", "o5_b20_c100000")
 LOCK_PATH = "/tmp/elfin-occ-backend-perf.lock"
+FAILURE_BYTES_LIMIT = 512 * 1024 * 1024
+CAMPAIGN_BYTES_LIMIT = 8 * 1024 * 1024 * 1024
 
 
 @dataclass
@@ -215,6 +217,8 @@ def repetition_count(campaign, override):
         return 3 if campaign == "stages" else 1
     if isinstance(override, bool) or not isinstance(override, int) or override < 1:
         raise ValueError("repetitions must be a positive integer")
+    if campaign == "memory" and override != 1:
+        raise ValueError("memory campaign requires exactly one repetition")
     return override
 
 
@@ -251,13 +255,17 @@ class FusionBenchmarkSuite:
         self.repetitions = repetitions
         self.require_content = bool(require_content)
         self._lock_fh = None
+        self._evidence_budget_exceeded = False
+        self._incomplete_failure_capture = False
 
     def validate_inputs(self) -> InputManifest:
-        if self.campaign not in {"rehearsal", "baseline", "stages"}:
+        if self.campaign not in {"rehearsal", "baseline", "stages", "memory"}:
             raise ValueError(f"unknown campaign {self.campaign}")
         repetition_count(self.campaign, self.repetitions)
-        baseline = _executable(self.baseline_cli)
         candidate = _executable(self.candidate_cli)
+        baseline = candidate if self.campaign == "memory" else _executable(self.baseline_cli)
+        if self.campaign == "memory" and self.require_content:
+            raise ValueError("memory campaign cannot require content digests")
         if not self.geometry.is_file() or not self.config.is_file():
             raise ValueError("geometry or config path is missing")
         if not self.fixture_root.is_dir():
@@ -272,6 +280,10 @@ class FusionBenchmarkSuite:
         else:
             names = list(OFFICIAL_CASES)
         cases = [_load_case(self.fixture_root, name, self.campaign == "rehearsal") for name in names]
+        if self.campaign == "memory" and any(
+                [frame["warmup"] for frame in case["frames"]] != [True] * 3 + [False] * 30
+                for case in cases):
+            raise ValueError("memory requires three leading warmups followed by thirty scored frames")
         return InputManifest(
             self.campaign, cases, baseline, candidate, str(self.geometry.resolve()),
             str(self.config.resolve()), {
@@ -297,7 +309,7 @@ class FusionBenchmarkSuite:
             "case_id": case["case_id"],
             "mode": mode,
             "surface": True,
-            "state_digest": True,
+            "state_digest": self.campaign != "memory",
             "frames": frames,
         }
         path = dest / "manifest.yaml"
@@ -408,6 +420,8 @@ class FusionBenchmarkSuite:
             self._release_lock()
 
     def _measure(self, manifest, lock):
+        if self.campaign == "memory":
+            return self._measure_memory(manifest, lock)
         measurement_started = time.monotonic()
         started_any = False
         reps = repetition_count(self.campaign, self.repetitions)
@@ -419,7 +433,9 @@ class FusionBenchmarkSuite:
                 order = execution_order(case_index, repetition)
                 results = {}
                 for role in order:
-                    if not budget_allows(started_any, time.monotonic() - measurement_started, self.budget_s):
+                    if self._retained_bytes(self.out) >= CAMPAIGN_BYTES_LIMIT:
+                        self._evidence_budget_exceeded = True
+                    if self._evidence_budget_exceeded or not budget_allows(started_any, time.monotonic() - measurement_started, self.budget_s):
                         results[role] = WindowResult(
                             case["name"], repetition, sides[role]["mode"], status="not_evaluated",
                             error="measurement budget exhausted before this window")
@@ -456,10 +472,26 @@ class FusionBenchmarkSuite:
                 }
                 if self.campaign == "stages":
                     pair["perturbation"] = perturbation(left_summary, right_summary)
+                if status not in {"complete", "not_a_performance_sample", "not_evaluated"}:
+                    pair["failure_replay"] = self._write_failure_replay(
+                        case, repetition, {"A": left, "B": right}, comparison, manifest)
+                elif status == "complete" and any(
+                        check.get("within_reference") is False
+                        for summary in (left_summary, right_summary)
+                        for check in summary.get("reference_gate", {}).get("checks", [])):
+                    pair["failure_replay"] = self._write_failure_replay(
+                        case, repetition, {"A": left, "B": right}, comparison, manifest,
+                        trigger="latency_reference", summaries={"A": left_summary, "B": right_summary})
                 pairs.append(pair)
+                if self._evidence_budget_exceeded or self._incomplete_failure_capture:
+                    break
+            if self._evidence_budget_exceeded or self._incomplete_failure_capture:
+                break
         report = {
             "campaign": self.campaign,
-            "status": campaign_status([pair["status"] for pair in pairs]),
+            "status": ("failed" if self._evidence_budget_exceeded or self._incomplete_failure_capture
+                       else campaign_status([pair["status"] for pair in pairs])),
+            "incomplete_failure_capture": self._incomplete_failure_capture,
             "product_acceptance": "not_evaluated",
             "performance_sample": self.campaign != "rehearsal",
             "lock": lock,
@@ -478,6 +510,150 @@ class FusionBenchmarkSuite:
                 "pooled_mean": "not_computed",
                 "reference_gates": "listed per window and do not decide this campaign",
             },
+        }
+        (self.out / "campaign_report.json").write_text(json.dumps(report, indent=2, sort_keys=True))
+        (self.out / "REPORT.md").write_text(render_report(report))
+        return report
+
+    @staticmethod
+    def _retained_bytes(folder):
+        return sum(path.stat().st_size for path in Path(folder).rglob("*") if path.is_file())
+
+    def _write_failure_replay(self, case, repetition, windows, comparison, manifest,
+                              trigger="semantic_or_execution_failure", summaries=None):
+        """Reference immutable inputs; replay starts from an empty store, not a checkpoint."""
+        indices = []
+        if isinstance(comparison.get("frame"), int):
+            indices.append(comparison["frame"])
+        for window in windows.values():
+            indices.extend(row.get("index", index) for index, row in enumerate(window.rows)
+                           if row.get("status") != "OK")
+            if window.status != "ok" and len(window.rows) < len(case["frames"]):
+                indices.append(len(window.rows))
+        first = min(indices) if indices else None
+        prefix = case["frames"][:first + 1] if first is not None else case["frames"]
+        timing = {}
+        if trigger == "latency_reference":
+            # Percentile failures require all 30 samples, not only the first slow frame.
+            prefix = case["frames"]
+            for role, summary in (summaries or {}).items():
+                timing[role] = {"reference_gate": summary.get("reference_gate"),
+                                "frames": summary.get("frames_extracted", [])}
+            slow_indices = [frame["index"] for evidence in timing.values()
+                            for check in evidence["reference_gate"].get("checks", [])
+                            if check.get("within_reference") is False
+                            for frame in evidence["frames"] if not frame["warmup"] and
+                            (frame[check["metric"]] > check["limit_max_ms"] or
+                             (check["p95_ms"] > check["limit_p95_ms"] and
+                              frame[check["metric"]] > check["limit_p95_ms"]))]
+            first = min(slow_indices) if slow_indices else None
+        artifacts = {}
+        failure_bytes = 0
+        for role, window in windows.items():
+            paths = []
+            if window.sample_path:
+                folder = Path(window.sample_path).parent
+                paths = sorted(path for path in folder.rglob("*") if path.is_file())
+            failure_bytes += sum(path.stat().st_size for path in paths)
+            artifacts[role] = {
+                "binary": window.binary, "argv": window.argv,
+                "status": window.status, "last_complete_index": window.last_complete_index,
+                "replay_manifest": {"case_id": case["case_id"], "mode": window.mode,
+                                    "surface": True, "state_digest": self.campaign != "memory",
+                                    "frames": [{"path": item["abs_path"], "sha256": item["sha256"],
+                                                "warmup": item["warmup"], "expect_status": item["expect_status"]}
+                                               for item in prefix]},
+                "outputs": [{"path": str(path.resolve()), "bytes": path.stat().st_size,
+                             "sha256": sha256_file(path)} for path in paths],
+            }
+        document = {
+            "case": case["name"], "repetition": repetition, "comparison": comparison,
+            "trigger": trigger, "timing_evidence": timing,
+            "first_failing_index": first, "prefix_includes_failure": first is not None,
+            "replay_method": "fresh store; replay ordered prefix with recorded binary/config/geometry",
+            "frames": [{"index": index, "path": item["abs_path"], "sha256": item["sha256"],
+                        "warmup": item["warmup"], "expect_status": item["expect_status"]}
+                       for index, item in enumerate(prefix)],
+            "geometry": manifest.geometry, "config": manifest.config, "hashes": manifest.files,
+            "windows": artifacts, "capture_complete": False,
+            "missing_artifacts": ["pre_checkpoint", "post_checkpoint"],
+            "replay_possible": all(Path(item["abs_path"]).is_file() and
+                                   sha256_file(item["abs_path"]) == item["sha256"] for item in prefix),
+            "budget": {"failure_limit_bytes": FAILURE_BYTES_LIMIT,
+                       "campaign_limit_bytes": CAMPAIGN_BYTES_LIMIT,
+                       "failure_output_bytes": failure_bytes,
+                       "campaign_retained_bytes_before_manifest": self._retained_bytes(self.out),
+                       "external_inputs": "referenced with SHA256; not copied or charged as new retained bytes"},
+        }
+        if trigger == "latency_reference":
+            timing_complete = set(timing) == set(windows) and all(
+                len(evidence["frames"]) == len(case["frames"]) and
+                sum(not frame["warmup"] for frame in evidence["frames"]) == 30
+                for evidence in timing.values())
+            document["capture_complete"] = document["replay_possible"] and timing_complete
+            document["missing_artifacts"] = ([] if document["capture_complete"] else
+                                             ["full_inputs_or_timing"])
+        self._incomplete_failure_capture |= not document["capture_complete"]
+        dest = self.out / "failures"
+        dest.mkdir(exist_ok=True)
+        path = dest / f"{case['name']}_r{repetition}.json"
+        # Include the manifest itself in both limits; never truncate replay evidence.
+        encoded = json.dumps(document, indent=2, sort_keys=True)
+        exceeded = (failure_bytes + len(encoded.encode()) + 1024 > FAILURE_BYTES_LIMIT or
+                    self._retained_bytes(self.out) + len(encoded.encode()) + 1024 > CAMPAIGN_BYTES_LIMIT)
+        document["budget"]["status"] = "exceeded" if exceeded else "within_limits"
+        self._evidence_budget_exceeded |= exceeded
+        with path.open("x") as sink:
+            json.dump(document, sink, indent=2, sort_keys=True)
+        return {"path": str(path.resolve()), "capture_complete": document["capture_complete"],
+                "trigger": trigger,
+                "replay_possible": document["replay_possible"], "budget": document["budget"]["status"]}
+
+    def _measure_memory(self, manifest, lock):
+        started = time.monotonic()
+        windows = []
+        for case in manifest.cases:
+            if self._retained_bytes(self.out) >= CAMPAIGN_BYTES_LIMIT:
+                self._evidence_budget_exceeded = True
+            if self._evidence_budget_exceeded or not budget_allows(bool(windows), time.monotonic() - started, self.budget_s):
+                window = WindowResult(case["name"], 0, "off", status="not_evaluated",
+                                      error="measurement or evidence budget exhausted")
+            else:
+                window = self.run_window(self.candidate_cli, "off", case, 0)
+                if window.status == "ok" and any(row.get("status") != "OK" for row in window.rows):
+                    window.status = "failed"
+                    window.error = "memory window contains a failed frame"
+            try:
+                summary = self.summarize_window(window, 30)
+            except ValueError as exc:
+                summary = {"status": "failed", "error": str(exc)}
+            self._write_window(window, summary)
+            saved = self._public_summary(window, summary)
+            saved["case"] = case["name"]
+            saved["semantic_equivalence"] = "not_evaluated"
+            saved["process_peak_rss_kib"] = max(
+                (row["process_peak_rss_kib"] for row in window.rows if "process_peak_rss_kib" in row),
+                default=NOT_COLLECTED)
+            if summary["status"] not in {"complete", "not_evaluated"}:
+                saved["failure_replay"] = self._write_failure_replay(
+                    case, 0, {"candidate": window}, {"status": "not_evaluated",
+                    "reason": "memory campaign performs no semantic comparison"}, manifest)
+            windows.append(saved)
+        if self._retained_bytes(self.out) >= CAMPAIGN_BYTES_LIMIT:
+            self._evidence_budget_exceeded = True
+        report = {
+            "campaign": "memory", "status": ("failed" if self._evidence_budget_exceeded else
+                                               campaign_status([item["status"] for item in windows])),
+            "evidence_budget": "exceeded" if self._evidence_budget_exceeded else "within_limits",
+            "product_acceptance": "not_evaluated", "semantic_equivalence": "not_evaluated",
+            "performance_sample": True, "lock": lock, "measurement_wall_s": time.monotonic() - started,
+            "budget_s": self.budget_s, "window_timeout_s": self.timeout_s, "repetitions": 1,
+            "require_content": False, "state_digest": False, "files": manifest.files,
+            "machine": _safe("machine", machine_info),
+            "libraries": _safe("libraries", lambda: libraries(self.candidate_cli)),
+            "git": _safe("git", lambda: git_info(self.source_root)),
+            "pairs": [], "windows": windows, "attribution": {"status": "not_evaluated"},
+            "notes": {"memory": "candidate Off process peak RSS without state/content digest allocations"},
         }
         (self.out / "campaign_report.json").write_text(json.dumps(report, indent=2, sort_keys=True))
         (self.out / "REPORT.md").write_text(render_report(report))
@@ -534,6 +710,10 @@ def render_report(report):
         "| case | rep | status | content_compared | perturbation | dominant |",
         "|---|---:|---|---|---|---|",
     ]
+    if report["campaign"] == "memory":
+        lines.extend(["Semantic equivalence: not_evaluated (no paired comparison).", ""])
+        for window in report["windows"]:
+            lines.append(f"- {window['case']}: {window['status']}; samples: {window['sample_path']}")
     for pair in report["pairs"]:
         compared = pair["comparison"].get("content_compared")
         perturb = (pair.get("perturbation") or {}).get("status", "")
@@ -545,13 +725,13 @@ def render_report(report):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Run one fusion breakdown campaign.")
-    parser.add_argument("--baseline-cli", required=True)
+    parser.add_argument("--baseline-cli", default="", help="required for paired campaigns")
     parser.add_argument("--candidate-cli", required=True)
     parser.add_argument("--fixture-root", required=True)
     parser.add_argument("--geometry", required=True)
     parser.add_argument("--config", required=True)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--campaign", required=True, choices=("rehearsal", "baseline", "stages"))
+    parser.add_argument("--campaign", required=True, choices=("rehearsal", "baseline", "stages", "memory"))
     parser.add_argument("--timeout-s", type=float, default=900)
     parser.add_argument("--budget-s", type=float, default=7200)
     parser.add_argument("--source-root", default="")

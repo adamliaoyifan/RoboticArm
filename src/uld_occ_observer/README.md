@@ -281,7 +281,7 @@ receiving the exact implementation revision. No clipping optimization is include
 `OccupancyGrid::apply` alone owns probability writes. It reads each unique key's
 old state once, uses OctoMap's sensor-model operation on a stack node, and writes
 the resulting log-odds through `setNodeValue`. Existing unchanged probabilities
-produce no mutation; an unknown cell is not a known zero-probability cell.
+produce no mutation; an unknown cell is not a known zero-log-odds cell.
 Borrowed tree nodes are never modified or retained across updates (a search can
 return a coarse, pruned leaf). `apply` is not a transactional rollback interface.
 

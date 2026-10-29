@@ -368,3 +368,184 @@ def test_rehearsal_records_frames_and_is_not_a_performance_sample(tmp_path):
     assert off_fusion["mutation_size"] is None
     assert "roi_surface_content_sha256" in document
     assert document["content_digest_ms"] >= 0
+
+
+@pytest.mark.parametrize("campaign", ["memory", "baseline", "stages", "rehearsal"])
+def test_memory_alone_disables_manifest_state_digest(tmp_path, campaign):
+    geometry, config, fixtures = _fixture(tmp_path)
+    suite = fusion_benchmark.FusionBenchmarkSuite(
+        "unused", "unused", fixtures, geometry, config, tmp_path / "out", campaign)
+    case = fusion_benchmark._load_case(fixtures, "tiny", True)
+    path = suite._write_manifest(case, "off", tmp_path / "window")
+    manifest = yaml.safe_load(path.read_text())
+    assert manifest["state_digest"] is (campaign != "memory")
+    assert manifest["surface"] is True
+    assert len(manifest["frames"]) == 2
+
+
+@pytest.mark.parametrize("repetitions", [0, 2, 3, True])
+def test_memory_rejects_wrong_repetitions(repetitions):
+    with pytest.raises(ValueError):
+        fusion_benchmark.repetition_count("memory", repetitions)
+    assert fusion_benchmark.repetition_count("memory", None) == 1
+    assert fusion_benchmark.repetition_count("memory", 1) == 1
+
+
+def _memory_suite(tmp_path):
+    geometry, config, fixtures = _fixture(tmp_path)
+    source = yaml.safe_load((fixtures / "tiny" / "manifest.yaml").read_text())["frames"][0]
+    for name in fusion_benchmark.OFFICIAL_CASES:
+        folder = fixtures / name
+        folder.mkdir()
+        frames = [dict(source, path="../tiny/frame_0.yaml", warmup=index < 3) for index in range(33)]
+        (folder / "manifest.yaml").write_text(yaml.safe_dump(dict(case_id=name, frames=frames)))
+    binary = tmp_path / "cli"
+    _exe(binary)
+    return fusion_benchmark.FusionBenchmarkSuite(
+        "unused-baseline", binary, fixtures, geometry, config, tmp_path / "out", "memory",
+        lock_path=tmp_path / "lock")
+
+
+def test_memory_runs_four_off_windows_without_semantic_comparison(tmp_path, monkeypatch):
+    suite = _memory_suite(tmp_path)
+    calls = []
+    def process(argv, timeout, dest):
+        manifest = yaml.safe_load(Path(argv[argv.index("--manifest") + 1]).read_text())
+        assert manifest["state_digest"] is False
+        assert manifest["surface"] is True
+        assert manifest["mode"] == "off"
+        assert [item["warmup"] for item in manifest["frames"]] == [True] * 3 + [False] * 30
+        rows = [_row(index, warmup=index < 3, mode="off", content=None) for index in range(33)]
+        for row in rows:
+            del row["probability_tree_sha256"]
+        Path(argv[argv.index("--out") + 1]).write_text(yaml.safe_dump_all(rows, explicit_start=True))
+        (dest / "stdout.txt").write_text("")
+        (dest / "stderr.txt").write_text("")
+        calls.append(argv)
+        return fusion_benchmark.ProcessResult(0, False, "", "", 0.01)
+    monkeypatch.setattr(fusion_benchmark, "run_process_group", process)
+    monkeypatch.setattr(suite, "compare_frames", lambda *args: pytest.fail("memory must not compare"))
+    monkeypatch.setattr(fusion_benchmark, "libraries", lambda _: [])
+    report = suite.run()
+    assert len(calls) == 4
+    assert report["status"] == "complete"
+    assert report["pairs"] == []
+    assert report["semantic_equivalence"] == "not_evaluated"
+    assert report["product_acceptance"] == "not_evaluated"
+    for window in report["windows"]:
+        assert window["scored"] == 30
+        assert window["process_peak_rss_kib"] == 1032
+        assert window["semantic_equivalence"] == "not_evaluated"
+        assert len(Path(window["sample_path"]).with_name("frames.jsonl").read_text().splitlines()) == 33
+    assert suite.run()["status"] == "validation_failed"  # never overwrite
+
+
+def test_memory_rejects_content_requirement_and_honors_budget(tmp_path, monkeypatch):
+    suite = _memory_suite(tmp_path)
+    suite.require_content = True
+    assert suite.run()["status"] == "validation_failed"
+    suite.require_content = False
+    suite.budget_s = 0
+    calls = []
+    def run(binary, mode, case, repetition):
+        calls.append(case["name"])
+        return fusion_report.WindowResult(case["name"], repetition, mode,
+                                         [_row(i, warmup=i < 3, mode="off") for i in range(33)])
+    monkeypatch.setattr(suite, "run_window", run)
+    monkeypatch.setattr(fusion_benchmark, "libraries", lambda _: [])
+    report = suite.run()
+    assert len(calls) == 1  # finish first window, refuse subsequent windows
+    assert report["status"] == "not_evaluated"
+
+
+def test_failure_replay_preserves_prefix_outputs_and_missing_checkpoints(tmp_path, monkeypatch):
+    suite = _memory_suite(tmp_path)
+    manifest = suite.validate_inputs()
+    suite.out.mkdir()
+    case = manifest.cases[0]
+    dest = suite.out / "window"
+    dest.mkdir()
+    samples = dest / "samples.yaml"
+    samples.write_text("preserved partial output")
+    window = fusion_report.WindowResult(case["name"], 0, "off", [_row(0), _row(1)],
+                                        sample_path=str(samples), binary=suite.candidate_cli)
+    result = suite._write_failure_replay(case, 0, {"A": window},
+                                         {"status": "mismatch", "frame": 1}, manifest)
+    document = json.loads(Path(result["path"]).read_text())
+    assert document["first_failing_index"] == 1
+    assert [item["index"] for item in document["frames"]] == [0, 1]
+    assert document["frames"][0]["sha256"] == case["frames"][0]["sha256"]
+    assert document["windows"]["A"]["outputs"][0]["sha256"] == fusion_benchmark.sha256_file(samples)
+    assert len(document["windows"]["A"]["replay_manifest"]["frames"]) == 2
+    assert document["replay_possible"] is True
+    assert document["capture_complete"] is False
+    assert document["missing_artifacts"] == ["pre_checkpoint", "post_checkpoint"]
+    assert document["budget"]["status"] == "within_limits"
+    with pytest.raises(FileExistsError):
+        suite._write_failure_replay(case, 0, {"A": window}, {}, manifest)
+    monkeypatch.setattr(fusion_benchmark, "FAILURE_BYTES_LIMIT", 1)
+    exceeded = suite._write_failure_replay(case, 1, {"A": window}, {}, manifest)
+    assert exceeded["budget"] == "exceeded"
+    assert suite._evidence_budget_exceeded
+    assert samples.read_text() == "preserved partial output"
+
+
+def test_failed_pairs_write_replay_and_stop_on_campaign_budget(tmp_path, monkeypatch):
+    suite = _memory_suite(tmp_path)
+    suite.campaign = "baseline"
+    suite.baseline_cli = suite.candidate_cli
+    calls = []
+    def run(binary, mode, case, repetition):
+        calls.append(case["name"])
+        rows = [_row(i, warmup=i < 3, mode=mode) for i in range(33)]
+        rows[0]["probability_tree_sha256"] = str(len(calls))
+        return fusion_report.WindowResult(case["name"], repetition, mode, rows)
+    monkeypatch.setattr(suite, "run_window", run)
+    monkeypatch.setattr(fusion_benchmark, "libraries", lambda _: [])
+    # Allow the input manifest and two windows, but not a replay manifest.
+    original = suite._write_failure_replay
+    def replay(*args):
+        monkeypatch.setattr(fusion_benchmark, "CAMPAIGN_BYTES_LIMIT", 1)
+        return original(*args)
+    monkeypatch.setattr(suite, "_write_failure_replay", replay)
+    report = suite.run()
+    assert len(calls) == 2
+    assert report["status"] == "failed"
+    assert report["pairs"][0]["failure_replay"]["budget"] == "exceeded"
+    assert report["pairs"][0]["comparison"]["status"] == "mismatch"
+
+
+@pytest.mark.parametrize("latency", [True, False])
+def test_reference_replay_is_complete_and_non_gating_but_mismatch_stops(tmp_path, monkeypatch, latency):
+    suite = _memory_suite(tmp_path)
+    suite.campaign = "baseline"
+    suite.baseline_cli = suite.candidate_cli
+    calls = []
+    def run(binary, mode, case, repetition):
+        calls.append(case["name"])
+        rows = [_row(i, warmup=i < 3, mode=mode) for i in range(33)]
+        if latency:
+            for row in rows:
+                row["roi_ms"] = 300.0
+        else:
+            rows[0]["probability_tree_sha256"] = str(len(calls))
+        return fusion_report.WindowResult(case["name"], repetition, mode, rows)
+    monkeypatch.setattr(suite, "run_window", run)
+    monkeypatch.setattr(fusion_benchmark, "libraries", lambda _: [])
+    report = suite.run()
+    assert len(calls) == (8 if latency else 2)
+    assert report["status"] == ("complete" if latency else "failed")
+    assert report["product_acceptance"] == "not_evaluated"
+    replay = report["pairs"][0]["failure_replay"]
+    document = json.loads(Path(replay["path"]).read_text())
+    assert replay["capture_complete"] is latency
+    assert report["incomplete_failure_capture"] is (not latency)
+    if latency:
+        assert replay["trigger"] == "latency_reference"
+        assert len(document["frames"]) == 33
+        assert len(document["timing_evidence"]["A"]["frames"]) == 33
+        assert document["first_failing_index"] == 3
+        assert document["missing_artifacts"] == []
+    else:
+        assert document["missing_artifacts"] == ["pre_checkpoint", "post_checkpoint"]
+        assert replay["replay_possible"] is True
