@@ -364,6 +364,11 @@ def _ros_session(points, spec, kind, out, env):
                        ledger, queries, "score", PointCloud2, GetSnapshot, ReadCells, ReadSurface, ReleaseSnapshot)
             _drain(ledger, queries, DRAIN_S)
             score_end = score_start + spec["duration_s"]
+            # Health is published every 500 ms. Wait for one sample at or after
+            # the scoring endpoint so the final gap is observed, not assumed.
+            cover_deadline = time.monotonic() + 1.2
+            while time.monotonic() < cover_deadline and (not health_times or health_times[-1] < score_end):
+                time.sleep(0.05)
             verdict = judge_normal(ledger, queries, health_times, score_start, score_end)
             if spec.get("rehearsal"):
                 verdict = {"status": "rehearsal", "product_scored": False, "queries": len(queries),

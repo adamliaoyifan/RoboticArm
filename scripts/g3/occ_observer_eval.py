@@ -385,6 +385,9 @@ def cmd_o6(args) -> int:
     from o6_matrix import O6Campaign
     groups = [item for item in args.rehearsal_groups.split(",") if item]
     selected = [item for item in args.groups.split(",") if item]
+    if args.groups_file:
+        payload = json.loads(Path(args.groups_file).read_text())
+        selected = list(payload["measure"]) if isinstance(payload, dict) else list(payload)
     campaign = O6Campaign(
         args.profile_cli, args.eval_native, args.fixtures, args.out,
         budget_s=args.budget_s, rehearsal=args.rehearsal, rehearsal_groups=groups,
@@ -680,6 +683,7 @@ def build_parser() -> argparse.ArgumentParser:
     o6.add_argument("--rehearsal", action="store_true")
     o6.add_argument("--rehearsal-groups", default="")
     o6.add_argument("--groups", default="")
+    o6.add_argument("--groups-file", default="")
     for name in ("stability", "simulate"):
         s = sub.add_parser(name)
         s.add_argument("--install", required=True)
