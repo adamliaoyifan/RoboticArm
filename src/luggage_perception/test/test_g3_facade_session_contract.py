@@ -24,7 +24,8 @@ def make_store(epoch='g3-facade'):
 
 class ReplicaStub:
     """Controllable replica surface: exactly the attributes the facade
-    reads (snapshot, manifest, state, control_healthy, head_state)."""
+    reads (applied bundle, control_healthy, head_state). Single
+    threaded, so the bundle is rebuilt from the plain fields."""
 
     def __init__(self, snapshot, now_ns=None):
         self.snapshot = snapshot
@@ -36,6 +37,14 @@ class ReplicaStub:
                       'published_monotonic_ns': self._now_ns,
                       'commit_monotonic_ns': self._now_ns,
                       'error': ''}
+
+    @property
+    def applied(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(
+            state=self.state, snapshot=self.snapshot,
+            manifest=self.manifest,
+            last_error=getattr(self, 'last_error', ''))
 
     def advance(self, store):
         """Publish a new accepted generation into this stub."""

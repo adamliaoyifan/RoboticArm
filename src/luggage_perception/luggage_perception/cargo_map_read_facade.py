@@ -50,9 +50,12 @@ class QueryMapReadFacade:
         """Returns (head, committed_identity). Raises a named
         QueryError when any new query must fail closed."""
         replica = self._replica
-        if replica.snapshot is None or replica.manifest is None:
+        # ONE bundle read: a self-consistent (state, snapshot, manifest)
+        # triple even while the single poller swaps generations
+        applied = replica.applied
+        if applied.snapshot is None or applied.manifest is None:
             raise QueryError('QUERY_INDEX_UNAVAILABLE')
-        state = str(getattr(replica, 'state', '') or '')
+        state = str(applied.state or '')
         if state in ('UNAVAILABLE', 'RESYNC_REQUIRED'):
             raise QueryError('REPLICA_' + state)
         head = replica.head_state()
@@ -87,8 +90,9 @@ class QueryMapReadFacade:
         registry. Called with the registry's short lock NOT held; the
         registry keeps the previous same-epoch generation (two
         retained) and retires sessions of evicted generations."""
-        snapshot = self._replica.snapshot
-        if snapshot is None or self._replica.manifest is None:
+        applied = self._replica.applied
+        snapshot = applied.snapshot
+        if snapshot is None or applied.manifest is None:
             return
         identity = tuple(snapshot.identity)
         if identity == self._published_identity:
@@ -107,8 +111,9 @@ class QueryMapReadFacade:
             head = head()
         if not isinstance(head, dict):
             head = {}
-        local = (list(self._replica.manifest['target_identity'])
-                 if self._replica.manifest is not None else None)
+        applied = replica.applied
+        local = (list(applied.manifest['target_identity'])
+                 if applied.manifest is not None else None)
         heartbeat_ns = int(head.get('published_monotonic_ns', 0) or 0)
         commit_ns = int(head.get('commit_monotonic_ns', 0) or 0)
         return MappingProxyType(dict(
@@ -172,7 +177,7 @@ class QueryMapReadFacade:
     def _registry_identity(self):
         # The registry was just synced to the replica's manifest
         # identity; reuse it (the registry exposes no identity list).
-        return tuple(self._replica.manifest['target_identity'])
+        return tuple(self._replica.applied.manifest['target_identity'])
 
     # The facade is read-only: the store's write services are not
     # present on this node by construction.

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 
 from luggage_perception.cargo_query_snapshot_wire import (
     decode_array_object, decode_json_object, rebuild_snapshot)
@@ -42,15 +43,172 @@ class ReplicaState:
     UNAVAILABLE = 'UNAVAILABLE'
 
 
+# Reader/serving split (B representative finding, 2026-10-29): the four
+# applied-state fields are published as ONE immutable bundle -- a reader
+# that grabs `replica.applied` once sees a self-consistent
+# (state, snapshot, manifest, last_error) pair even while the single
+# updater swaps generations concurrently. Field properties remain
+# read/write for compatibility; each single-field write swaps the whole
+# bundle atomically (readers holding the previous bundle stay on it).
+class _Applied:
+    __slots__ = ('state', 'snapshot', 'manifest', 'last_error')
+
+    def __init__(self, state, snapshot, manifest, last_error):
+        self.state = state
+        self.snapshot = snapshot
+        self.manifest = manifest
+        self.last_error = last_error
+
+
 class QueryReplica:
     """Receiver side. Polls the export root; holds the rebuilt registry."""
 
     def __init__(self, root, resync_requester=None, record_events=True):
         self.root = os.path.abspath(root)
-        self.state = ReplicaState.STARTING
-        self.snapshot = None
-        self.manifest = None
+        self._applied = _Applied(ReplicaState.STARTING, None, None, '')
+        # single-updater guard: when the background poller owns polling,
+        # poll() from any OTHER thread is a named protocol violation --
+        # the invariant is enforced, never assumed
+        self._poll_owner = None
+        self._poll_stop = None
+        self._poll_thread = None
         # A9 capture pairing (review_5c5c1842): the receive-event
+        # recorder is the diagnostic whose cost the gate measures;
+        # production keeps the default (always on).
+        self._record_events = bool(record_events)
+        self._resync_requester = resync_requester
+        self._resync_attempts = 0
+        self._resync_deadline_ns = None
+        # C2 receive-side: decoded-object cache keyed by content address
+        # (bounded by the two-generation lifecycle: entries for objects
+        # not referenced by the current or previous manifest are dropped
+        # at apply time). Unchanged blocks reuse decoded objects instead
+        # of re-decoding -- DELTA generations never call the full
+        # rebuild_snapshot.
+        self._object_cache = {}
+        self.cache_hits = 0
+        self.cache_misses = 0
+        self.control_age_s = None
+        self.control_healthy = False
+        # G4-A gen3 (plan d87c5731 section 6.1): bounded receive-side
+        # event history -- received / validated / ready / resync /
+        # unavailable with the target's FULL identity, so measurement
+        # can prove commit-to-READY delivery instead of guessing it
+        # from the latest observed state.
+        import collections as _collections
+        self.event_log = _collections.deque(maxlen=8192)
+
+    @property
+    def applied(self):
+        """The self-consistent applied-state bundle (atomic under the
+        GIL: one reference assignment)."""
+        return self._applied
+
+    @property
+    def state(self):
+        return self._applied.state
+
+    @state.setter
+    def state(self, value):
+        self._applied = _Applied(value, self._applied.snapshot,
+                                 self._applied.manifest,
+                                 self._applied.last_error)
+
+    @property
+    def snapshot(self):
+        return self._applied.snapshot
+
+    @snapshot.setter
+    def snapshot(self, value):
+        self._applied = _Applied(self._applied.state, value,
+                                 self._applied.manifest,
+                                 self._applied.last_error)
+
+    @property
+    def manifest(self):
+        return self._applied.manifest
+
+    @manifest.setter
+    def manifest(self, value):
+        self._applied = _Applied(self._applied.state,
+                                 self._applied.snapshot, value,
+                                 self._applied.last_error)
+
+    @property
+    def last_error(self):
+        return self._applied.last_error
+
+    @last_error.setter
+    def last_error(self, value):
+        self._applied = _Applied(self._applied.state,
+                                 self._applied.snapshot,
+                                 self._applied.manifest, value)
+
+    def _swap(self, **fields):
+        """Compound atomic swap: fields not given keep their value;
+        the whole (state, snapshot, manifest, last_error) bundle is
+        replaced by ONE reference assignment. Multi-field mutations
+        MUST go through here -- per-field setters between two calls
+        expose a semantically mixed bundle to a concurrent reader."""
+        current = self._applied
+        self._applied = _Applied(
+            fields.get('state', current.state),
+            fields.get('snapshot', current.snapshot),
+            fields.get('manifest', current.manifest),
+            fields.get('last_error', current.last_error))
+
+    def start_polling(self, interval_s=0.05, on_poll=None):
+        """Reader/serving split (minimal concurrency, 2026-10-29).
+
+        Spawns the SINGLE poller thread. While it runs, poll() from
+        any other thread raises RuntimeError('POLL_SINGLE_WRITER') --
+        the single-updater invariant is enforced, not assumed. on_poll,
+        when given, is called after each poll with
+        (state, applied_seq, wall_s, cpu_s) for instrumentation.
+        """
+        if self._poll_thread is not None:
+            raise RuntimeError('polling already started')
+        import time as _time
+
+        def loop():
+            owner = threading.current_thread()
+            self._poll_owner = owner
+            while not self._poll_stop.is_set():
+                cpu0 = _time.thread_time()
+                t0 = _time.monotonic()
+                try:
+                    state = self.poll()
+                except Exception:               # noqa: BLE001
+                    state = self.state
+                wall = _time.monotonic() - t0
+                cpu = _time.thread_time() - cpu0
+                if on_poll is not None:
+                    applied = self._applied
+                    seq = (applied.manifest.get('seq')
+                           if isinstance(applied.manifest, dict) else None)
+                    try:
+                        on_poll(state, seq, wall, cpu)
+                    except Exception:           # noqa: BLE001
+                        pass
+                self._poll_stop.wait(interval_s)
+            self._poll_owner = None
+
+        self._poll_stop = threading.Event()
+        self._poll_thread = threading.Thread(
+            target=loop, name='replica-poller', daemon=True)
+        self._poll_thread.start()
+
+    def stop_polling(self, timeout_s=10.0):
+        """Stop the single poller thread and join it."""
+        if self._poll_thread is None:
+            return
+        self._poll_stop.set()
+        self._poll_thread.join(timeout_s)
+        stopped = not self._poll_thread.is_alive()
+        self._poll_thread = None
+        self._poll_owner = None
+        return stopped
+
         # recorder is the diagnostic whose cost the gate measures;
         # production keeps the default (always on).
         self._record_events = bool(record_events)
@@ -127,7 +285,14 @@ class QueryReplica:
         return int(manifest['seq']) <= head_seq + self.HEAD_SEQ_SLACK
 
     def poll(self):
-        """One non-blocking poll cycle. Returns the state after it."""
+        """One non-blocking poll cycle. Returns the state after it.
+
+        Single-updater guard: while the background poller owns
+        polling, a call from any OTHER thread is a named violation."""
+        owner = self._poll_owner
+        if (owner is not None
+                and threading.current_thread() is not owner):
+            raise RuntimeError('POLL_SINGLE_WRITER')
         try:
             manifest = self._read_published()
         except (WireError, OSError, ValueError) as error:
@@ -349,14 +514,16 @@ class QueryReplica:
             if record_ready:
                 return self._resync(error.reason, error.detail)
             return ReplicaState.RESYNC_REQUIRED
-        # Atomic swap: registry state changes only after full validation.
+        # Atomic swap: registry state changes only after full
+        # validation, and the WHOLE applied bundle (state + snapshot +
+        # manifest + error) is replaced by ONE reference assignment --
+        # a concurrent reader can never observe a new snapshot under
+        # the old manifest or a READY state over the old pair.
         self._record('validated', seq=manifest['seq'],
                      target_identity=list(manifest['target_identity']))
-        self.snapshot = snapshot
-        self.manifest = manifest
+        self._swap(snapshot=snapshot, manifest=manifest,
+                   state=ReplicaState.READY, last_error='')
         self._ack(manifest)
-        self.state = ReplicaState.READY
-        self.last_error = ''
         self._resync_attempts = 0
         if record_ready:
             self._record('ready', seq=manifest['seq'],
