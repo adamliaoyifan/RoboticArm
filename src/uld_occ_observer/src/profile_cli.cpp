@@ -126,8 +126,12 @@ int main(int argc, char** argv) {
         }
         if (manifest["state_digest"].as<bool>(false)) {
           const auto begin = Clock::now();
-          row["probability_tree_sha256"] = sha256(store.checkpoint().tree_bytes);
+          const auto tree_bytes = store.checkpoint().tree_bytes;
+          row["probability_tree_sha256"] = sha256(tree_bytes);
           row["checkpoint_digest_ms"] = ms(begin,Clock::now());
+          const auto canonical_begin = Clock::now();
+          row["canonical_probability_sha256"] = canonical_probability_digest(tree_bytes);
+          row["canonical_probability_digest_ms"] = ms(canonical_begin, Clock::now());
           if (queried) {
             const auto content_begin = Clock::now();
             row["roi_cell_count"] = roi_page.cells.size();

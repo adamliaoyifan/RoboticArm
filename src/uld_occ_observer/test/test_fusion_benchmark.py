@@ -159,6 +159,59 @@ def test_compare_rejects_incomplete_identity_and_detects_digest_mismatch():
     assert compared["content_compared"] is False
 
 
+@pytest.mark.parametrize("canonical", [False, True])
+def test_structural_differences_require_two_canonical_digests(canonical):
+    left, right = _row(tree="raw-left"), _row(tree="raw-right")
+    right["tree_nodes"] = 10
+    if canonical:
+        left["canonical_probability_sha256"] = right["canonical_probability_sha256"] = "same"
+    result = fusion_report.compare_frames(_window([left]), _window([right]))
+    assert result["status"] == ("comparable" if canonical else "mismatch")
+    if canonical:
+        assert {item["field"] for item in result["structural_differences"]} == {
+            "tree_nodes", "probability_tree_sha256"}
+        assert result["canonical_frames"] == 1
+
+
+@pytest.mark.parametrize("missing_left", [False, True])
+def test_one_canonical_digest_is_not_comparable(missing_left):
+    left, right = _row(), _row()
+    (right if missing_left else left)["canonical_probability_sha256"] = "canonical"
+    result = fusion_report.compare_frames(_window([left]), _window([right]))
+    assert result["status"] == "not_comparable"
+    assert result["reason"] == "missing_canonical_digest"
+
+
+def test_canonical_comparison_preserves_probability_and_content_requirements():
+    left, right = _row(), _row()
+    left["canonical_probability_sha256"] = "left"
+    right["canonical_probability_sha256"] = "right"
+    assert fusion_report.compare_frames(_window([left]), _window([right]))["field"] == "canonical_probability_sha256"
+    right["canonical_probability_sha256"] = "left"
+    del right["roi_surface_content_sha256"]
+    assert fusion_report.compare_frames(_window([left], require_content=True), _window([right]))["reason"] == "missing_content_digest"
+    right["roi_surface_content_sha256"] = "different"
+    assert fusion_report.compare_frames(_window([left]), _window([right]))["field"] == "roi_surface_content_sha256"
+    right["roi_surface_content_sha256"] = left["roi_surface_content_sha256"]
+    right["known_cells"] += 1
+    assert fusion_report.compare_frames(_window([left]), _window([right]))["field"] == "known_cells"
+
+
+def test_apply_breakdown_extraction_and_summary():
+    rows = [_row(index) for index in range(30)]
+    for row in rows:
+        row["receipt"]["profile"]["apply_breakdown"] = dict(
+            collected=True, write_loop_ms=0.2, inner_update_ms=0.1, prune_ms=0.05,
+            keys_considered=10, unchanged_keys=4, written_keys=6)
+    summary = fusion_report.summarize_window(_window(rows), expect_scored=30)
+    for key in fusion_report.APPLY_FIELDS:
+        expected = rows[0]["receipt"]["profile"]["apply_breakdown"][key]
+        assert summary["metrics"][key]["median"] == expected
+        assert summary["frames_extracted"][0][key] == expected
+        assert fusion_report.metric_value(_row(mode="off"), key) == "not_collected"
+        assert fusion_report.metric_value(_row(), key) == "not_collected"
+
+
 def test_failed_window_is_not_averaged_away():
     assert fusion_report.campaign_status(["complete", "failed"]) == "failed"
     assert fusion_report.campaign_status(["complete", "complete"]) == "complete"

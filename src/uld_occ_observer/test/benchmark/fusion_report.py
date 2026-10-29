@@ -10,6 +10,8 @@ import math
 from dataclasses import dataclass, field
 
 NOT_COLLECTED = "not_collected"
+APPLY_FIELDS = ("write_loop_ms", "inner_update_ms", "prune_ms",
+                "keys_considered", "unchanged_keys", "written_keys")
 REFERENCE_GATES = {
     "integrate_30k": {"p95_ms": 500.0, "max_ms": 1000.0},
     "integrate_100k": {"p95_ms": 2000.0, "max_ms": 5000.0},
@@ -108,6 +110,15 @@ def fusion_remainder(row):
 
 def metric_value(row, name):
     receipt = row["receipt"]
+    if name in APPLY_FIELDS:
+        breakdown = _profile(row).get("apply_breakdown") or {}
+        value = breakdown.get(name)
+        if not _profile(row).get("enabled") or breakdown.get("collected") is False or value is None:
+            return NOT_COLLECTED
+        value = _number(value)
+        if value < 0:
+            raise ValueError("invalid metric sample")
+        return value
     if name == "integrate_external_ms":
         return _number(row["integrate_external_ms"])
     if name == "receipt_total_ms":
@@ -146,7 +157,7 @@ METRIC_NAMES = (
     "apply_batch_ms", "block_batch_ms", "fusion_remainder_ms", "finalization_ms",
     "legacy_receipt_fusion_ms", "residual_ms", "acquire_ms", "roi_ms",
     "surface_first_ms", "surface_second_ms",
-)
+) + APPLY_FIELDS
 
 
 def _profile_count(row, key):
@@ -200,6 +211,7 @@ def extract_frame(row):
         "process_peak_rss_kib": row["process_peak_rss_kib"],
         "cell_block_bytes": row.get("cell_block_bytes", NOT_COLLECTED),
         "probability_tree_sha256": row.get("probability_tree_sha256"),
+        "canonical_probability_sha256": row.get("canonical_probability_sha256"),
         "roi_surface_content_sha256": row.get("roi_surface_content_sha256"),
     }
     frame.update(mutation_fields(row))
@@ -365,6 +377,8 @@ def compare_frames(left, right):
         return {"status": "not_comparable", "reason": "fewer_frames",
                 "left_frames": len(left.rows), "right_frames": len(right.rows)}
     content_compared = False
+    structural_differences = []
+    canonical_frames = 0
     for index, (lhs, rhs) in enumerate(zip(left.rows, right.rows)):
         if lhs.get("status") != "OK" or rhs.get("status") != "OK":
             return {"status": "not_comparable", "reason": "frame_status", "frame": index}
@@ -381,15 +395,30 @@ def compare_frames(left, right):
         if mismatch:
             mismatch["frame"] = index
             return mismatch
-        for key in ("tree_nodes", "known_cells", "block_count"):
+        left_canonical = lhs.get("canonical_probability_sha256")
+        right_canonical = rhs.get("canonical_probability_sha256")
+        if (left_canonical is None) != (right_canonical is None):
+            return {"status": "not_comparable", "reason": "missing_canonical_digest", "frame": index}
+        canonical = left_canonical is not None and right_canonical is not None
+        if canonical:
+            canonical_frames += 1
+            for key in ("tree_nodes", "probability_tree_sha256"):
+                if lhs.get(key) != rhs.get(key):
+                    structural_differences.append({"frame": index, "field": key,
+                                                   "left": lhs.get(key), "right": rhs.get(key)})
+        for key in (("known_cells", "block_count") if canonical else
+                    ("tree_nodes", "known_cells", "block_count")):
             if lhs.get(key) != rhs.get(key):
                 return {"status": "mismatch", "field": key, "frame": index,
-                        "left": lhs.get(key), "right": rhs.get(key)}
-        if "probability_tree_sha256" not in lhs or "probability_tree_sha256" not in rhs:
+                        "left": lhs.get(key), "right": rhs.get(key),
+                        "structural_differences": structural_differences}
+        digest_key = "canonical_probability_sha256" if canonical else "probability_tree_sha256"
+        if lhs.get(digest_key) is None or rhs.get(digest_key) is None:
             return {"status": "not_comparable", "reason": "missing_tree_digest", "frame": index}
-        if lhs["probability_tree_sha256"] != rhs["probability_tree_sha256"]:
-            return {"status": "mismatch", "field": "probability_tree_sha256", "frame": index,
-                    "left": lhs["probability_tree_sha256"], "right": rhs["probability_tree_sha256"]}
+        if lhs[digest_key] != rhs[digest_key]:
+            return {"status": "mismatch", "field": digest_key, "frame": index,
+                    "left": lhs[digest_key], "right": rhs[digest_key],
+                    "structural_differences": structural_differences}
         left_content = lhs.get("roi_surface_content_sha256")
         right_content = rhs.get("roi_surface_content_sha256")
         if left_content is None or right_content is None:
@@ -400,8 +429,10 @@ def compare_frames(left, right):
             if left_content != right_content:
                 return {"status": "mismatch", "field": "roi_surface_content_sha256", "frame": index,
                         "left": left_content, "right": right_content,
-                        "note": "cell or column identity is reported by FusionProfileChecks"}
-    return {"status": "comparable", "frames": len(left.rows), "content_compared": content_compared}
+                        "note": "cell or column identity is reported by FusionProfileChecks",
+                        "structural_differences": structural_differences}
+    return {"status": "comparable", "frames": len(left.rows), "content_compared": content_compared,
+            "canonical_frames": canonical_frames, "structural_differences": structural_differences}
 
 
 def perturbation(off_summary, stages_summary):
