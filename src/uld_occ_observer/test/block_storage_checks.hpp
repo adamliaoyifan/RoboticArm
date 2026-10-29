@@ -7,5 +7,6 @@ class BlockStorageChecks {
  public:
   void check_addressing();
   void check_batch_lifecycle();
+  void check_representation();
 };
 }  // namespace uld_occ_observer

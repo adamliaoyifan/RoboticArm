@@ -1,6 +1,7 @@
 #include "uld_occ_observer/observer.hpp"
 #include "fusion_profile_checks.hpp"
 #include "block_storage_checks.hpp"
+#include "uld_occ_observer/block_storage.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -9,6 +10,10 @@
 
 using namespace uld_occ_observer;
 void require(bool value, const char* message) { if (!value) throw Error(message); }
+void store_cell(const UldDomain& domain, CellBlock& block, CellIndex index, CellValue value) {
+  BlockLayout layout(domain.shape());
+  block.write(layout.locate(index).local_offset, value);
+}
 OpticalObservation observation(std::string id, std::int64_t stamp) {
   OpticalObservation out;
   out.identity = {"test",std::move(id),"optical","test_clock","fixture_geometry",1,stamp};
@@ -52,8 +57,8 @@ void check_surface_matches_cell_scan() {
   const CellIndex low{2,2,1};
   const CellIndex high{2,2,4};
   auto both = std::make_shared<CellBlock>();
-  (*both)[low] = CellValue{0.8f, true};
-  (*both)[high] = CellValue{0.8f, true};
+  store_cell(*domain, *both, low, CellValue{0.8f, true});
+  store_cell(*domain, *both, high, CellValue{0.8f, true});
   BlockRegistry blocks;
   blocks[Snapshot::block_index(low)] = both;
   Snapshot populated{{}, domain, blocks};
@@ -96,7 +101,7 @@ void check_surface_matches_cell_scan() {
   }
   // A constructed snapshot omits a stored cell. This checks column lowering, not a production remove API.
   auto lower = std::make_shared<CellBlock>();
-  (*lower)[low] = CellValue{0.8f, true};
+  store_cell(*domain, *lower, low, CellValue{0.8f, true});
   BlockRegistry only_low;
   only_low[Snapshot::block_index(low)] = lower;
   Snapshot removed{{}, domain, only_low};
@@ -122,7 +127,7 @@ void check_surface_matches_cell_scan() {
   }
   auto known_free = std::make_shared<CellBlock>();
   const CellIndex free_index{1, 1, 2};
-  (*known_free)[free_index] = CellValue{-0.4f, false};
+  store_cell(*domain, *known_free, free_index, CellValue{-0.4f, false});
   BlockRegistry free_blocks;
   free_blocks[Snapshot::block_index(free_index)] = known_free;
   Snapshot free_only{{}, domain, free_blocks};
@@ -133,8 +138,8 @@ void check_surface_matches_cell_scan() {
           "known free cell became occupied");
   require((*free_columns)[0].known_count==0 && !(*free_columns)[0].has_occupied, "empty column invented occupancy");
   auto lowered = std::make_shared<CellBlock>();
-  (*lowered)[low] = CellValue{0.8f, true};
-  (*lowered)[high] = CellValue{0.2f, false};
+  store_cell(*domain, *lowered, low, CellValue{0.8f, true});
+  store_cell(*domain, *lowered, high, CellValue{0.2f, false});
   BlockRegistry lowered_blocks;
   lowered_blocks[Snapshot::block_index(low)] = lowered;
   Snapshot became_free{{}, domain, lowered_blocks};
@@ -151,7 +156,7 @@ void check_surface_matches_cell_scan() {
   const double raw_top = capped_domain->origin().z+(top_cell.z+1)*capped_domain->resolution();
   require(raw_top>capped.ceiling_z, "ceiling fixture does not truncate");
   auto top_block = std::make_shared<CellBlock>();
-  (*top_block)[top_cell] = CellValue{0.8f, true};
+  store_cell(*capped_domain, *top_block, top_cell, CellValue{0.8f, true});
   BlockRegistry top_blocks;
   top_blocks[Snapshot::block_index(top_cell)] = top_block;
   Snapshot capped_snapshot{{}, capped_domain, top_blocks};
@@ -310,6 +315,7 @@ int main() {
     BlockStorageChecks storage_checks;
     storage_checks.check_addressing();
     storage_checks.check_batch_lifecycle();
+    storage_checks.check_representation();
     FusionProfileChecks fusion_checks;
     fusion_checks.check_phase_lifecycle();
     fusion_checks.check_modes_and_equivalence();

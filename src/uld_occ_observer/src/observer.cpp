@@ -215,16 +215,15 @@ std::uint64_t ObservationStore::restore(const Checkpoint& checkpoint, std::uint6
   // Read, expand, and validate on a temporary grid. A bad leaf must not replace live state.
   auto candidate = OccupancyGrid::fromCheckpointBytes(checkpoint.tree_bytes, domain_->resolution());
   candidate.validateLeaves(*domain_);
-  std::map<CellIndex, std::shared_ptr<CellBlock>> rebuilt;
+  BlockRegistry published;
+  OccupancyDiagnostic rebuild(ProfileMode::Off);
+  BlockUpdateBatch batch(BlockLayout(domain_->shape()), published, rebuild);
   std::size_t known = 0;
   candidate.forEachLeaf([&](CellIndex index, float log_odds) {
-    auto& block = rebuilt[Snapshot::block_index(index)];
-    if (!block) block = std::make_shared<CellBlock>();
-    (*block)[index] = {log_odds, log_odds >= 0};
+    batch.write(index, CellValue{log_odds, log_odds >= 0.f});
     ++known;
   });
-  BlockRegistry published;
-  for (auto& entry : rebuilt) published.emplace(entry.first, std::move(entry.second));
+  batch.commit(published);
   grid_ = std::move(candidate);
   blocks_ = std::move(published);
   known_cells_ = known;

@@ -17,16 +17,41 @@ std::shared_ptr<const Snapshot> Snapshot::with_identity(SnapshotIdentity identit
 CellIndex Snapshot::block_index(CellIndex i) { return BlockLayout::block_coordinate(i); }
 std::uint64_t Snapshot::known_entry_count() const {
   std::uint64_t count = 0;
-  for (const auto& entry : blocks_) count += entry.second->size();
+  for (const auto& entry : blocks_) count += entry.second->known_count();
   return count;
+}
+bool CellBlock::read(std::uint16_t offset, CellValue& value) const {
+  if (offset >= kBlockCells) throw Error("INVALID_BLOCK_OFFSET");
+  const auto word = static_cast<std::size_t>(offset) / 64u;
+  const auto bit = offset % 64u;
+  if ((known_[word] & (std::uint64_t{1} << bit)) == 0) {
+    value = {};
+    return false;
+  }
+  value = values_[offset];
+  return true;
+}
+bool CellBlock::write(std::uint16_t offset, CellValue value) {
+  if (offset >= kBlockCells) throw Error("INVALID_BLOCK_OFFSET");
+  const auto word = static_cast<std::size_t>(offset) / 64u;
+  const auto bit = offset % 64u;
+  const auto mask = std::uint64_t{1} << bit;
+  const bool first = (known_[word] & mask) == 0;
+  if (first) {
+    known_[word] |= mask;
+    ++known_count_;
+  }
+  values_[offset] = value;
+  return first;
 }
 CellSample Snapshot::cell(CellIndex index) const {
   CellSample result{index, domain_->active(index), false, {}};
   if (!result.active) return result;
-  const auto block = blocks_.find(block_index(index));
+  const BlockLayout layout(domain_->shape());
+  const auto address = layout.locate(index);
+  const auto block = blocks_.find(address.block_index);
   if (block == blocks_.end()) return result;
-  const auto item = block->second->find(index);
-  if (item != block->second->end()) { result.known = true; result.value = item->second; }
+  result.known = block->second->read(address.local_offset, result.value);
   return result;
 }
 
@@ -95,21 +120,22 @@ std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface(SurfaceProfi
   const double ceiling = domain_->descriptor().ceiling_z;
   const double origin_z = domain_->origin().z;
   const double resolution = domain_->resolution();
+  const BlockLayout layout(shape);
   for (const auto& entry : blocks_) {
-    for (const auto& item : *entry.second) {
+    entry.second->for_each_known([&](std::uint16_t offset, const CellValue& value) {
       ++scanned;
-      const auto& index = item.first;
-      if (!domain_->active(index)) continue;
+      const auto index = layout.cell_index(entry.first, offset);
+      if (!domain_->active(index)) return;
       const auto column_index = static_cast<std::size_t>(index.y) * shape.x + index.x;
-      if (column_index >= output->size()) continue;
+      if (column_index >= output->size()) return;
       auto& column = (*output)[column_index];
       ++column.known_count;
-      if (item.second.occupied && index.z > highest_occupied[column_index]) {
+      if (value.occupied && index.z > highest_occupied[column_index]) {
         highest_occupied[column_index] = index.z;
         column.has_occupied = true;
         column.top_z = std::min(ceiling, origin_z + (index.z + 1) * resolution);
       }
-    }
+    });
   }
   surface_cache_->value = output;
   if (profile) {

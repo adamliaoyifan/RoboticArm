@@ -5,11 +5,6 @@
 #include <vector>
 
 namespace uld_occ_observer {
-// Fixed block edge. Block coordinates, directory slots, and local offsets share
-// these values. There is no second edge length in Snapshot::block_index.
-inline constexpr int kBlockEdge = 8;
-inline constexpr int kBlockCells = kBlockEdge * kBlockEdge * kBlockEdge;
-
 struct BlockAddress {
   CellIndex block_index;
   std::size_t directory_index{};

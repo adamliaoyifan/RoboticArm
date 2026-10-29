@@ -99,7 +99,7 @@ void BlockUpdateBatch::write(CellIndex index, CellValue value) {
     if (existing == registry_->end()) {
       created = std::make_shared<CellBlock>();
     } else {
-      diagnostic_->block_copied(existing->second->size());
+      diagnostic_->block_copied(existing->second->known_count());
       created = std::make_shared<CellBlock>(*existing->second);
     }
     touched_.push_back(std::move(created));
@@ -107,7 +107,7 @@ void BlockUpdateBatch::write(CellIndex index, CellValue value) {
     slot = touched_.back().get();
     directory_[address.directory_index] = slot;
   }
-  (*slot)[index] = value;
+  slot->write(address.local_offset, value);
 }
 
 void BlockUpdateBatch::commit(BlockRegistry& registry) {

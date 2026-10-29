@@ -168,7 +168,11 @@ commits those blocks into the persistent registry. Directory initialization,
 the first copy, the cell writes, and commit are inside BlockBatch. The directory
 and temporary block objects are destroyed inside `stage_ms.fusion` and outside
 both phases. The directory is not reused on the next frame, and a block already
-published to a snapshot is copied rather than updated in place.
+published to a snapshot is copied rather than updated in place. Each block stores
+512 fixed slots, a known-bit bitmap, and a known count. Unknown is the clear
+bit, so a zero log-odds value remains a known free cell. `copied_cells` and
+`scanned_cells` count known slots, not the fixed capacity. `cell_block_bytes`
+is `sizeof(CellBlock)`, including any padding.
 
 `fusion_remainder_ms` is Fusion minus those two phases, computed by
 the benchmark from one frame; it is unclassified work plus boundary overhead,
