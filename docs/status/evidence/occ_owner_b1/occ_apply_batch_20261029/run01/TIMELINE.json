@@ -1,0 +1,26 @@
+{
+  "baseline_to_a": {
+    "input_manifest_written_utc": "2026-10-29T09:19:51.335192+00:00",
+    "report_written_utc": "2026-10-29T09:37:28.155219+00:00",
+    "measured_monotonic_wall_s": 1056.7956530670635,
+    "source": "artifact modification timestamps, not separately sampled wall-clock phase boundaries"
+  },
+  "a_to_b": {
+    "input_manifest_written_utc": "2026-10-29T09:38:29.505562+00:00",
+    "report_written_utc": "2026-10-29T09:58:01.251848+00:00",
+    "measured_monotonic_wall_s": 1171.7233915007673,
+    "source": "artifact modification timestamps, not separately sampled wall-clock phase boundaries"
+  },
+  "b_stages": {
+    "input_manifest_written_utc": "2026-10-29T09:58:48.481803+00:00",
+    "report_written_utc": "2026-10-29T10:04:57.446240+00:00",
+    "measured_monotonic_wall_s": 368.94536031084135,
+    "source": "artifact modification timestamps, not separately sampled wall-clock phase boundaries"
+  },
+  "memory": {
+    "input_manifest_written_utc": "2026-10-29T10:04:57.800247+00:00",
+    "report_written_utc": "2026-10-29T10:07:21.818143+00:00",
+    "measured_monotonic_wall_s": 144.00057787820697,
+    "source": "artifact modification timestamps, not separately sampled wall-clock phase boundaries"
+  }
+}

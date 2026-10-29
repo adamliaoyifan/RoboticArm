@@ -1,0 +1,30 @@
+{
+  "baseline": {
+    "commit": "57a893f524107baaa4422f6ab5d2e72e06ffaab6",
+    "binary": "/tmp/occ-apply-baseline-build/observer_profile_cli",
+    "binary_sha256": "45f56ea254137f04606107a69d358f9e62039ff6d39c2b6374e1d41c21f30faf",
+    "flags": "Release -O3 -DNDEBUG C++17",
+    "octomap": "1.9.8 /opt/ros/humble",
+    "core_commit": "7007b352c09608df210291273d2b80b468ec7ddd",
+    "adapter_only_commit": "57a893f5"
+  },
+  "A": {
+    "commit": "c4407bc01f3efa3d17071241e919fb623679d71f",
+    "binary": "/tmp/occ-apply-a-frozen-build/observer_profile_cli",
+    "binary_sha256": "0a1e98890043d34dcce2bd4cd0b42275a4a13eef9d4719548b3f340ff851261e",
+    "flags": "Release -O3 -DNDEBUG C++17",
+    "octomap": "1.9.8 /opt/ros/humble"
+  },
+  "B": {
+    "commit": "186cdf15e36300b674b9c5b28dab537d14214a45",
+    "binary": "/tmp/occ-apply-b-frozen-build/observer_profile_cli",
+    "binary_sha256": "e05bde858017f2d7b358498ba42388a2893042b0eeb1974ed019d03a69311f60",
+    "flags": "Release -O3 -DNDEBUG C++17",
+    "octomap": "1.9.8 /opt/ros/humble"
+  },
+  "default_yaml_sha256": "d195b615a2185eae4130dc20eec86a9f25425b9040b68a3cb768aa41a105fc1d",
+  "harness_commit": "3cb404474f9e44781b2246a11da471ff10e67c44",
+  "core_dirty_at_scoring": false,
+  "closeout_commit": "4c8f1862ec357cb01616f4b04be636227461cf44",
+  "closeout_scope": "test-only unknown miss coverage and comments/documentation; measured runtime core remains B186cdf15"
+}

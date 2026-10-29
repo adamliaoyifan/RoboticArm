@@ -1,0 +1,28 @@
+{
+  "campaign": "rehearsal",
+  "cases": [
+    {
+      "case_id": "o5_b0_c30000",
+      "frames": 1,
+      "manifest_sha256": "11996f15cb57e79cfde611980d7f18e2f3b3448bdff730c59db447a4ba9e6639",
+      "name": "o5_b0_c30000"
+    },
+    {
+      "case_id": "o5_b20_c30000",
+      "frames": 1,
+      "manifest_sha256": "0e7e4b3e237c858a13b3ffec5e19aaa3bde50b2099f227441b293008c28b157c",
+      "name": "o5_b20_c30000"
+    }
+  ],
+  "config": "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/config/config.yaml",
+  "files": {
+    "baseline_sha256": "45f56ea254137f04606107a69d358f9e62039ff6d39c2b6374e1d41c21f30faf",
+    "candidate_sha256": "e05bde858017f2d7b358498ba42388a2893042b0eeb1974ed019d03a69311f60",
+    "config_sha256": "8cb50b78a220e3c490824a87dad718c3a06ebd901ec84822e6d51d27db8ec785",
+    "geometry_sha256": "c2912984be7de04c10ba1ec26a29cfb2d509d9fab2e4f7d27ba13183f99f5972",
+    "report_sha256": "9c0c46c5bc169a51653b13bd5669a0ab0a51b4b2445cbe3ca834fdf4732bbc50",
+    "runner_sha256": "71e2ad776b5751fc03c2330bd015f98dfc5da7c577603c8ce9e59ce2dc170cf0"
+  },
+  "geometry": "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/config/geometry.yaml",
+  "performance_sample": false
+}

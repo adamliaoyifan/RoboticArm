@@ -1,0 +1,5181 @@
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 0
+warmup: true
+mode: stages
+monotonic_start_ns: 3880659909258211
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_0.yaml
+input_sha256: be0f8b9ea16806123071c51110405892c8fc931f1c0d0117640ca55fad745e65
+input_load_parse_ms: 587.94654700000001
+integrate_external_ms: 574.13427000000001
+integrate_process_cpu_ms: 574.55899999999997
+receipt:
+  epoch: 1
+  map_revision: 1
+  observed_revision: 1
+  last_integrated_stamp_ns: 1000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b0
+  input_stamp_ns: 1000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00012999999999999999
+      validation: 0.00065099999999999999
+      fingerprint: 44.328873999999999
+      dedup: 0.00023000000000000001
+      depth_filter: 0.156276
+      transform: 0.18027199999999999
+      ray_preparation: 226.08877200000001
+      fusion: 300.08389199999999
+      finalization: 0.0029150000000000001
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.2650359999998955
+    rays_attempted: 100000
+    ray_keys_generated: 26637003
+    active_ray_key_visits: 15646677
+    inactive_ray_key_visits: 10990326
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15646677
+    free_insert_duplicates: 14310121
+    free_unique_before_hit_removal: 1336556
+    copied_blocks: 0
+    copied_cells: 0
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 228.468165
+      block_batch_visited: true
+      block_batch_ms: 70.544415000000001
+      mutation_storage: collected
+      mutation_size: 1344589
+      mutation_capacity: 2097152
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 173.837412
+      inner_update_ms: 20.024259000000001
+      prune_ms: 34.605683999999997
+      keys_considered: 1344589
+      unchanged_keys: 0
+      written_keys: 1344589
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1302898
+  hit_keys: 41691
+  changed_keys: 1344589
+  occupancy_changed_keys: 1344589
+  rebuilt_blocks: 3789
+  preprocessing_ms: 44.667206
+  preparation_ms: 226.089675
+  fusion_ms: 300.08745900000002
+  total_ms: 574.10704799999996
+tree_nodes: 600064
+known_cells: 1344589
+block_count: 3789
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 16561600
+acquire_ms: 0.42412499999999997
+get_handle_ms: 8.2424330000000001
+roi_ms: 0.090330999999999995
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 1
+  observed_revision: 1
+  last_integrated_stamp_ns: 1000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 27.520405
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1344589
+    output_columns: 29353
+    lock_wait_ms: 0.00012999999999999999
+    build_ms: 27.519383000000001
+    total_ms: 27.519513
+    domain_init: collected
+    domain_init_performed: true
+    domain_init_scanned_cells: 4344244
+    domain_init_ms: 15.843609000000001
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00016000000000000001
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 3.0000000000000001e-05
+    build_ms: 0
+    total_ms: 5.0000000000000002e-05
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 98f0675d1d388ede9b6e79b22aef32fdcfd42418a3092166cd2b91afdb792d06
+checkpoint_digest_ms: 28.490696
+canonical_probability_sha256: 98f0675d1d388ede9b6e79b22aef32fdcfd42418a3092166cd2b91afdb792d06
+canonical_probability_digest_ms: 139.78043
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 1b575542ef2a4cac6c061236d316474e678028874130457bbe16c9c3c6657e7f
+content_digest_ms: 23.180824999999999
+process_peak_rss_kib: 345748
+sample_compute_ms: 1504.5264340000001
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 1
+warmup: true
+mode: stages
+monotonic_start_ns: 3880661416097381
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_1.yaml
+input_sha256: a549bac9b348f3e237753c9ed42ada64e9656f72189e4dd02f4785cd7731452a
+input_load_parse_ms: 606.68198099999995
+integrate_external_ms: 605.36413100000004
+integrate_process_cpu_ms: 605.35400000000004
+receipt:
+  epoch: 1
+  map_revision: 2
+  observed_revision: 2
+  last_integrated_stamp_ns: 2000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b1
+  input_stamp_ns: 2000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.000231
+      validation: 0.000852
+      fingerprint: 41.153641999999998
+      dedup: 0.001042
+      depth_filter: 0.14168800000000001
+      transform: 0.17898
+      ray_preparation: 220.69618500000001
+      fusion: 339.25322199999999
+      finalization: 0.72226000000000001
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.1951900000000251
+    rays_attempted: 100000
+    ray_keys_generated: 26616718
+    active_ray_key_visits: 15632143
+    inactive_ray_key_visits: 10984575
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15632143
+    free_insert_duplicates: 14294638
+    free_unique_before_hit_removal: 1337505
+    copied_blocks: 3756
+    copied_cells: 1344449
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 295.08619399999998
+      block_batch_visited: true
+      block_batch_ms: 43.241843000000003
+      mutation_storage: collected
+      mutation_size: 1345532
+      mutation_capacity: 2097152
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 244.30060399999999
+      inner_update_ms: 19.887498999999998
+      prune_ms: 30.897441000000001
+      keys_considered: 1345532
+      unchanged_keys: 0
+      written_keys: 1345532
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1303798
+  hit_keys: 41734
+  changed_keys: 1345532
+  occupancy_changed_keys: 139127
+  rebuilt_blocks: 3789
+  preprocessing_ms: 41.477547000000001
+  preparation_ms: 220.69711699999999
+  fusion_ms: 339.975752
+  total_ms: 605.34329200000002
+tree_nodes: 871026
+known_cells: 1459403
+block_count: 3822
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 22617696
+acquire_ms: 0.372195
+get_handle_ms: 10.901216
+roi_ms: 0.096293000000000004
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 2
+  observed_revision: 2
+  last_integrated_stamp_ns: 2000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 12.592632999999999
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1459403
+    output_columns: 29353
+    lock_wait_ms: 0.00012
+    build_ms: 12.591962000000001
+    total_ms: 12.592082
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00017000000000000001
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 2.0000000000000002e-05
+    build_ms: 0
+    total_ms: 4.0000000000000003e-05
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 1ffacd11149842a3b18ea5a24adaddb922b209557cd3150c069dda88a73ac917
+checkpoint_digest_ms: 37.751089
+canonical_probability_sha256: 1ffacd11149842a3b18ea5a24adaddb922b209557cd3150c069dda88a73ac917
+canonical_probability_digest_ms: 107.897149
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 1f9e7a1092b2e4475fe54962bf05888a38caa4805e9b62f33c3f5b4121f73f1e
+content_digest_ms: 13.632486
+process_peak_rss_kib: 381400
+sample_compute_ms: 1575.5756670000001
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 2
+warmup: true
+mode: stages
+monotonic_start_ns: 3880662997448932
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_2.yaml
+input_sha256: ffb0d55e4c5ab8cbb14ebb12ae8dcb886fb6ec67eea92ebc0b32af0b67e88d75
+input_load_parse_ms: 628.46790999999996
+integrate_external_ms: 623.45212700000002
+integrate_process_cpu_ms: 623.41200000000003
+receipt:
+  epoch: 1
+  map_revision: 3
+  observed_revision: 3
+  last_integrated_stamp_ns: 3000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b2
+  input_stamp_ns: 3000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00014100000000000001
+      validation: 0.00068099999999999996
+      fingerprint: 41.247169999999997
+      dedup: 0.001232
+      depth_filter: 0.14648800000000001
+      transform: 0.181815
+      ray_preparation: 222.90243000000001
+      fusion: 355.00169099999999
+      finalization: 0.79811399999999999
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.1499430000000075
+    rays_attempted: 100000
+    ray_keys_generated: 26632355
+    active_ray_key_visits: 15638251
+    inactive_ray_key_visits: 10994104
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15638251
+    free_insert_duplicates: 14300326
+    free_unique_before_hit_removal: 1337925
+    copied_blocks: 3783
+    copied_cells: 1459187
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 312.85515500000002
+      block_batch_visited: true
+      block_batch_ms: 41.332151000000003
+      mutation_storage: collected
+      mutation_size: 1345990
+      mutation_capacity: 2097152
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 258.72886899999997
+      inner_update_ms: 21.96527
+      prune_ms: 32.160406000000002
+      keys_considered: 1345990
+      unchanged_keys: 0
+      written_keys: 1345990
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1304249
+  hit_keys: 41741
+  changed_keys: 1345990
+  occupancy_changed_keys: 77332
+  rebuilt_blocks: 3794
+  preprocessing_ms: 41.578479000000002
+  preparation_ms: 222.90327099999999
+  fusion_ms: 355.800095
+  total_ms: 623.42970500000001
+tree_nodes: 1022765
+known_cells: 1515404
+block_count: 3833
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 26016720
+acquire_ms: 0.40033000000000002
+get_handle_ms: 12.791399999999999
+roi_ms: 0.096222000000000002
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 3
+  observed_revision: 3
+  last_integrated_stamp_ns: 3000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.195486000000001
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1515404
+    output_columns: 29353
+    lock_wait_ms: 0.00021000000000000001
+    build_ms: 13.194725
+    total_ms: 13.194934999999999
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.000241
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.00011
+    build_ms: 0
+    total_ms: 0.00012999999999999999
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 54929ac6fe05f9c06ad47ecc57b007b95ed9018a94bff8b242f267cc5d3d8290
+checkpoint_digest_ms: 44.660443000000001
+canonical_probability_sha256: 54929ac6fe05f9c06ad47ecc57b007b95ed9018a94bff8b242f267cc5d3d8290
+canonical_probability_digest_ms: 120.873531
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 439b68a8c32234d7d17fb5e5524b5aa759a67ac36db7848bf6bf5b7f8c918e38
+content_digest_ms: 13.513029
+process_peak_rss_kib: 405952
+sample_compute_ms: 1685.098068
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 3
+warmup: false
+mode: stages
+monotonic_start_ns: 3880664687090417
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_3.yaml
+input_sha256: 92c60dbfbd93102686f6a95426d6c23d0cc8fb23e3656365f440ac4e127ef90c
+input_load_parse_ms: 639.70930999999996
+integrate_external_ms: 618.30286100000001
+integrate_process_cpu_ms: 618.25900000000001
+receipt:
+  epoch: 1
+  map_revision: 4
+  observed_revision: 4
+  last_integrated_stamp_ns: 4000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b3
+  input_stamp_ns: 4000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00013100000000000001
+      validation: 0.00070100000000000002
+      fingerprint: 41.863107999999997
+      dedup: 0.0012520000000000001
+      depth_filter: 0.14547599999999999
+      transform: 0.18299699999999999
+      ray_preparation: 223.280676
+      fusion: 348.82379300000002
+      finalization: 0.80207200000000001
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.1805830000000697
+    rays_attempted: 100000
+    ray_keys_generated: 26646943
+    active_ray_key_visits: 15652111
+    inactive_ray_key_visits: 10994832
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15652111
+    free_insert_duplicates: 14313188
+    free_unique_before_hit_removal: 1338923
+    copied_blocks: 3786
+    copied_cells: 1515131
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 310.29125199999999
+      block_batch_visited: true
+      block_batch_ms: 37.675566000000003
+      mutation_storage: collected
+      mutation_size: 1346997
+      mutation_capacity: 2097152
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 255.439279
+      inner_update_ms: 22.751791999999998
+      prune_ms: 32.099570999999997
+      keys_considered: 1346997
+      unchanged_keys: 0
+      written_keys: 1346997
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1305351
+  hit_keys: 41646
+  changed_keys: 1346997
+  occupancy_changed_keys: 81168
+  rebuilt_blocks: 3788
+  preprocessing_ms: 42.194716999999997
+  preparation_ms: 223.281519
+  fusion_ms: 349.62614500000001
+  total_ms: 618.28078900000003
+tree_nodes: 1125479
+known_cells: 1548772
+block_count: 3835
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 28327024
+acquire_ms: 0.41719200000000001
+get_handle_ms: 14.312455
+roi_ms: 0.10168199999999999
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 4
+  observed_revision: 4
+  last_integrated_stamp_ns: 4000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.251272
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1548772
+    output_columns: 29353
+    lock_wait_ms: 0.00012999999999999999
+    build_ms: 13.250461
+    total_ms: 13.250591
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.000111
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 3.0000000000000001e-05
+    build_ms: 0
+    total_ms: 8.0000000000000007e-05
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: c467c3432909dac56cb6893bc6698fe6cbe144856d725ce78a1902115423c862
+checkpoint_digest_ms: 49.069085000000001
+canonical_probability_sha256: c467c3432909dac56cb6893bc6698fe6cbe144856d725ce78a1902115423c862
+canonical_probability_digest_ms: 123.738134
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: ce8a1f0639679a12fe73d0509e28659be9bf16072f43ab84af79db3c127675ac
+content_digest_ms: 13.72949
+process_peak_rss_kib: 418240
+sample_compute_ms: 1720.273962
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 4
+warmup: false
+mode: stages
+monotonic_start_ns: 3880666412332241
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_4.yaml
+input_sha256: 8a51170ac1b5224d3d2535e4cbd96710a94f41b9331a86be8dbaa91338b4afb6
+input_load_parse_ms: 652.99527899999998
+integrate_external_ms: 619.634455
+integrate_process_cpu_ms: 619.58399999999995
+receipt:
+  epoch: 1
+  map_revision: 5
+  observed_revision: 5
+  last_integrated_stamp_ns: 5000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b4
+  input_stamp_ns: 5000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00014999999999999999
+      validation: 0.000602
+      fingerprint: 41.764330000000001
+      dedup: 0.0012019999999999999
+      depth_filter: 0.145035
+      transform: 0.17988100000000001
+      ray_preparation: 224.35019500000001
+      fusion: 349.09575899999999
+      finalization: 0.74883999999999995
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.3286640000000034
+    rays_attempted: 100000
+    ray_keys_generated: 26608174
+    active_ray_key_visits: 15628732
+    inactive_ray_key_visits: 10979442
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15628732
+    free_insert_duplicates: 14291232
+    free_unique_before_hit_removal: 1337500
+    copied_blocks: 3789
+    copied_cells: 1548448
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 314.60679599999997
+      block_batch_visited: true
+      block_batch_ms: 33.624381999999997
+      mutation_storage: collected
+      mutation_size: 1345564
+      mutation_capacity: 2097152
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 259.67167599999999
+      inner_update_ms: 22.876859
+      prune_ms: 32.057270000000003
+      keys_considered: 1345564
+      unchanged_keys: 0
+      written_keys: 1345564
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1303661
+  hit_keys: 41903
+  changed_keys: 1345564
+  occupancy_changed_keys: 37902
+  rebuilt_blocks: 3796
+  preprocessing_ms: 42.092011999999997
+  preparation_ms: 224.35111699999999
+  fusion_ms: 349.84487000000001
+  total_ms: 619.61465799999996
+tree_nodes: 1205657
+known_cells: 1571832
+block_count: 3842
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 30144656
+acquire_ms: 0.42954500000000001
+get_handle_ms: 15.129894999999999
+roi_ms: 0.099979999999999999
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 5
+  observed_revision: 5
+  last_integrated_stamp_ns: 5000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.356331000000001
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1571832
+    output_columns: 29353
+    lock_wait_ms: 0.00045100000000000001
+    build_ms: 13.355309
+    total_ms: 13.35576
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00017000000000000001
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 3.0000000000000001e-05
+    build_ms: 0
+    total_ms: 5.0000000000000002e-05
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 80d6b2c1ff2d5debb893a498fabb6bd64a1f1283bfa3665f444383890a98fc53
+checkpoint_digest_ms: 52.172141000000003
+canonical_probability_sha256: 80d6b2c1ff2d5debb893a498fabb6bd64a1f1283bfa3665f444383890a98fc53
+canonical_probability_digest_ms: 131.352745
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 6161d1cff4081c5ee2bb97993c77f9ae317a3016853dbda349494ed42f2f3a9c
+content_digest_ms: 14.561127000000001
+process_peak_rss_kib: 418256
+sample_compute_ms: 1763.2138219999999
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 5
+warmup: false
+mode: stages
+monotonic_start_ns: 3880668180945654
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_5.yaml
+input_sha256: c61b45ebf29875bc021eb79d9cb9c553e1713fc9287098ef3b6f5a85fb4c4fc5
+input_load_parse_ms: 661.73666700000001
+integrate_external_ms: 488.758264
+integrate_process_cpu_ms: 488.71699999999998
+receipt:
+  epoch: 1
+  map_revision: 6
+  observed_revision: 6
+  last_integrated_stamp_ns: 6000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b5
+  input_stamp_ns: 6000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00013999999999999999
+      validation: 0.00049100000000000001
+      fingerprint: 41.740836000000002
+      dedup: 0.0010820000000000001
+      depth_filter: 0.14574599999999999
+      transform: 0.18199499999999999
+      ray_preparation: 228.52022400000001
+      fusion: 214.450219
+      finalization: 0.66368899999999997
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.0333240000000501
+    rays_attempted: 100000
+    ray_keys_generated: 26631111
+    active_ray_key_visits: 15631449
+    inactive_ray_key_visits: 10999662
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15631449
+    free_insert_duplicates: 14292825
+    free_unique_before_hit_removal: 1338624
+    copied_blocks: 3630
+    copied_cells: 1498505
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 202.157715
+      block_batch_visited: true
+      block_batch_ms: 12.286213
+      mutation_storage: collected
+      mutation_size: 360840
+      mutation_capacity: 524288
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 163.901287
+      inner_update_ms: 18.946193000000001
+      prune_ms: 19.309121999999999
+      keys_considered: 1346639
+      unchanged_keys: 985799
+      written_keys: 360840
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1304851
+  hit_keys: 41788
+  changed_keys: 360840
+  occupancy_changed_keys: 28142
+  rebuilt_blocks: 3631
+  preprocessing_ms: 42.071063000000002
+  preparation_ms: 228.52143599999999
+  fusion_ms: 215.11418800000001
+  total_ms: 488.73774600000002
+tree_nodes: 1199955
+known_cells: 1588714
+block_count: 3843
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 29930544
+acquire_ms: 0.458179
+get_handle_ms: 15.747547000000001
+roi_ms: 0.10399700000000001
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 6
+  observed_revision: 6
+  last_integrated_stamp_ns: 6000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.453495999999999
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1588714
+    output_columns: 29353
+    lock_wait_ms: 0.00012
+    build_ms: 13.452935
+    total_ms: 13.453055000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00064099999999999997
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 2.0000000000000002e-05
+    build_ms: 0
+    total_ms: 0.00017000000000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: adf0f0c141cd3f31bdd9e62428d0263625e9fd1c5588c70c1b023c34fd2ecb90
+checkpoint_digest_ms: 55.872058000000003
+canonical_probability_sha256: adf0f0c141cd3f31bdd9e62428d0263625e9fd1c5588c70c1b023c34fd2ecb90
+canonical_probability_digest_ms: 113.441684
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 9aca3ddf8a32c0cfe4afe048fea5bc645154848b3b7fad5b94cf1e3c5d9687f0
+content_digest_ms: 10.248818
+process_peak_rss_kib: 418256
+sample_compute_ms: 1630.9934800000001
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 6
+warmup: false
+mode: stages
+monotonic_start_ns: 3880669816593371
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_6.yaml
+input_sha256: 5a04fdaf183a4cbb2369e077f3f98e6d4e58bde05a633ddb8bed1064b20a4a43
+input_load_parse_ms: 692.769094
+integrate_external_ms: 478.07225699999998
+integrate_process_cpu_ms: 478.01900000000001
+receipt:
+  epoch: 1
+  map_revision: 7
+  observed_revision: 7
+  last_integrated_stamp_ns: 7000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b6
+  input_stamp_ns: 7000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00012
+      validation: 0.00035
+      fingerprint: 41.766204000000002
+      dedup: 0.0018129999999999999
+      depth_filter: 0.149955
+      transform: 0.18140400000000001
+      ray_preparation: 224.259694
+      fusion: 207.98494600000001
+      finalization: 0.687114
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.017312000000004
+    rays_attempted: 100000
+    ray_keys_generated: 26618195
+    active_ray_key_visits: 15623738
+    inactive_ray_key_visits: 10994457
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15623738
+    free_insert_duplicates: 14284137
+    free_unique_before_hit_removal: 1339601
+    copied_blocks: 3403
+    copied_cells: 1421205
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 198.24813900000001
+      block_batch_visited: true
+      block_batch_ms: 9.7314670000000003
+      mutation_storage: collected
+      mutation_size: 301321
+      mutation_capacity: 524288
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 160.527288
+      inner_update_ms: 19.221585999999999
+      prune_ms: 18.498314000000001
+      keys_considered: 1347561
+      unchanged_keys: 1046240
+      written_keys: 301321
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1305897
+  hit_keys: 41664
+  changed_keys: 301321
+  occupancy_changed_keys: 25869
+  rebuilt_blocks: 3404
+  preprocessing_ms: 42.100557999999999
+  preparation_ms: 224.26083600000001
+  fusion_ms: 208.67222000000001
+  total_ms: 478.04891199999997
+tree_nodes: 1214514
+known_cells: 1601371
+block_count: 3844
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 30217568
+acquire_ms: 0.46011200000000002
+get_handle_ms: 16.794032000000001
+roi_ms: 0.099337999999999996
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 7
+  observed_revision: 7
+  last_integrated_stamp_ns: 7000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.607227999999999
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1601371
+    output_columns: 29353
+    lock_wait_ms: 0.00012
+    build_ms: 13.606597000000001
+    total_ms: 13.606717
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.000231
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 2.0000000000000002e-05
+    build_ms: 0
+    total_ms: 0.00019000000000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 0db613ee11993ee080c7046bbe9a1048f7105726f0c39a5e9f64119f0caff544
+checkpoint_digest_ms: 60.574606000000003
+canonical_probability_sha256: 0db613ee11993ee080c7046bbe9a1048f7105726f0c39a5e9f64119f0caff544
+canonical_probability_digest_ms: 108.582228
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: d2d5f0e9d8b297034d41d01db507f6daf36c7809cd1142061ab994d1f274828f
+content_digest_ms: 10.507008000000001
+process_peak_rss_kib: 418256
+sample_compute_ms: 1642.7902340000001
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 7
+warmup: false
+mode: stages
+monotonic_start_ns: 3880671464467447
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_7.yaml
+input_sha256: 191267b75805f3eb3a41bd63ba80c85fabf40deb216baeb55bfd2cddf1fc42ed
+input_load_parse_ms: 710.31925000000001
+integrate_external_ms: 481.830174
+integrate_process_cpu_ms: 481.79599999999999
+receipt:
+  epoch: 1
+  map_revision: 8
+  observed_revision: 8
+  last_integrated_stamp_ns: 8000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b7
+  input_stamp_ns: 8000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00051099999999999995
+      validation: 0.00027099999999999997
+      fingerprint: 41.966012999999997
+      dedup: 0.0011820000000000001
+      depth_filter: 0.14799100000000001
+      transform: 0.18356800000000001
+      ray_preparation: 223.695123
+      fusion: 212.133836
+      finalization: 0.660833
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.0182629999999335
+    rays_attempted: 100000
+    ray_keys_generated: 26617140
+    active_ray_key_visits: 15634513
+    inactive_ray_key_visits: 10982627
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15634513
+    free_insert_duplicates: 14292560
+    free_unique_before_hit_removal: 1341953
+    copied_blocks: 3386
+    copied_cells: 1423855
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 203.23625000000001
+      block_batch_visited: true
+      block_batch_ms: 8.8917850000000005
+      mutation_storage: collected
+      mutation_size: 277772
+      mutation_capacity: 524288
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 164.26404500000001
+      inner_update_ms: 20.373681000000001
+      prune_ms: 18.597391999999999
+      keys_considered: 1350013
+      unchanged_keys: 1072241
+      written_keys: 277772
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1308239
+  hit_keys: 41774
+  changed_keys: 277772
+  occupancy_changed_keys: 19926
+  rebuilt_blocks: 3386
+  preprocessing_ms: 42.300257000000002
+  preparation_ms: 223.69597400000001
+  fusion_ms: 212.794949
+  total_ms: 481.807591
+tree_nodes: 1237215
+known_cells: 1611931
+block_count: 3844
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 30712688
+acquire_ms: 0.44505400000000001
+get_handle_ms: 17.246981000000002
+roi_ms: 0.103476
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 8
+  observed_revision: 8
+  last_integrated_stamp_ns: 8000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.706125
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1611931
+    output_columns: 29353
+    lock_wait_ms: 0.00012
+    build_ms: 13.705564000000001
+    total_ms: 13.705684
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00016100000000000001
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 3.0000000000000001e-05
+    build_ms: 0
+    total_ms: 5.0000000000000002e-05
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 3599ab6e076a5fe8df292ac34a8acf877e7071922e9d6f6ae044447b7313f229
+checkpoint_digest_ms: 64.135059999999996
+canonical_probability_sha256: 3599ab6e076a5fe8df292ac34a8acf877e7071922e9d6f6ae044447b7313f229
+canonical_probability_digest_ms: 108.727413
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: f8905b0df05aafa4ce5cb474891cd0d8f9cd8c8103d1eecf70b9b5e4494e7b33
+content_digest_ms: 10.208622
+process_peak_rss_kib: 418256
+sample_compute_ms: 1714.369281
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 8
+warmup: false
+mode: stages
+monotonic_start_ns: 3880673183774022
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_8.yaml
+input_sha256: 76b8b23b65f5fe077ccc7bf01dfb0ca4e84a390766cae75642fc39cc1fffd2bb
+input_load_parse_ms: 721.38477599999999
+integrate_external_ms: 513.99590000000001
+integrate_process_cpu_ms: 513.97000000000003
+receipt:
+  epoch: 1
+  map_revision: 9
+  observed_revision: 9
+  last_integrated_stamp_ns: 9000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b8
+  input_stamp_ns: 9000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00012999999999999999
+      validation: 0.00031100000000000002
+      fingerprint: 41.651747
+      dedup: 0.001403
+      depth_filter: 0.15029500000000001
+      transform: 0.188307
+      ray_preparation: 227.57580300000001
+      fusion: 240.53162499999999
+      finalization: 0.69360500000000003
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.1832480000001055
+    rays_attempted: 100000
+    ray_keys_generated: 26637392
+    active_ray_key_visits: 15645570
+    inactive_ray_key_visits: 10991822
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15645570
+    free_insert_duplicates: 14306743
+    free_unique_before_hit_removal: 1338827
+    copied_blocks: 3352
+    copied_cells: 1431583
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 213.37391700000001
+      block_batch_visited: true
+      block_batch_ms: 27.151444999999999
+      mutation_storage: collected
+      mutation_size: 261134
+      mutation_capacity: 262144
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 164.727645
+      inner_update_ms: 20.259695000000001
+      prune_ms: 28.385406
+      keys_considered: 1346845
+      unchanged_keys: 1085711
+      written_keys: 261134
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1305184
+  hit_keys: 41661
+  changed_keys: 261134
+  occupancy_changed_keys: 15696
+  rebuilt_blocks: 3353
+  preprocessing_ms: 41.992814000000003
+  preparation_ms: 227.57674499999999
+  fusion_ms: 241.22552099999999
+  total_ms: 513.97647400000005
+tree_nodes: 1025501
+known_cells: 1620048
+block_count: 3845
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 25594896
+acquire_ms: 0.43625700000000001
+get_handle_ms: 13.927345000000001
+roi_ms: 0.108926
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 9
+  observed_revision: 9
+  last_integrated_stamp_ns: 9000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.678262
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1620048
+    output_columns: 29353
+    lock_wait_ms: 0.00012
+    build_ms: 13.677481
+    total_ms: 13.677600999999999
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00012
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 3.0000000000000001e-05
+    build_ms: 0
+    total_ms: 6.9999999999999994e-05
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 63be829e3abfc8a90a849211116d6d22ff3affb99550dcccdf8ceb9b4508981a
+checkpoint_digest_ms: 55.344467000000002
+canonical_probability_sha256: 63be829e3abfc8a90a849211116d6d22ff3affb99550dcccdf8ceb9b4508981a
+canonical_probability_digest_ms: 139.378918
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 24281b488eb0aa852159aac10d1cf49711f68052122e0042de5f163b46b1569c
+content_digest_ms: 16.365659999999998
+process_peak_rss_kib: 418256
+sample_compute_ms: 1779.580651
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 9
+warmup: false
+mode: stages
+monotonic_start_ns: 3880674968323738
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_9.yaml
+input_sha256: 2338c21eab1efb1b6d19d2459c468eed2445ecc8694d34d16ed6acdfd1832675
+input_load_parse_ms: 725.07520499999998
+integrate_external_ms: 471.07104800000002
+integrate_process_cpu_ms: 471.029
+receipt:
+  epoch: 1
+  map_revision: 10
+  observed_revision: 10
+  last_integrated_stamp_ns: 10000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b9
+  input_stamp_ns: 10000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00011
+      validation: 0.00029100000000000003
+      fingerprint: 42.106639999999999
+      dedup: 0.0014829999999999999
+      depth_filter: 0.14745
+      transform: 0.18027199999999999
+      ray_preparation: 226.28930299999999
+      fusion: 198.563388
+      finalization: 0.65890000000000004
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.1033629999999448
+    rays_attempted: 100000
+    ray_keys_generated: 26653208
+    active_ray_key_visits: 15661894
+    inactive_ray_key_visits: 10991314
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15661894
+    free_insert_duplicates: 14323628
+    free_unique_before_hit_removal: 1338266
+    copied_blocks: 3319
+    copied_cells: 1427306
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 185.79036199999999
+      block_batch_visited: true
+      block_batch_ms: 12.767325
+      mutation_storage: collected
+      mutation_size: 197090
+      mutation_capacity: 262144
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 146.96936299999999
+      inner_update_ms: 17.5947
+      prune_ms: 21.225677000000001
+      keys_considered: 1346306
+      unchanged_keys: 1149216
+      written_keys: 197090
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1304620
+  hit_keys: 41686
+  changed_keys: 197090
+  occupancy_changed_keys: 15065
+  rebuilt_blocks: 3320
+  preprocessing_ms: 42.436855999999999
+  preparation_ms: 226.29035400000001
+  fusion_ms: 199.222568
+  total_ms: 471.05119999999999
+tree_nodes: 1011362
+known_cells: 1626815
+block_count: 3846
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 25224608
+acquire_ms: 0.42310300000000001
+get_handle_ms: 14.261958999999999
+roi_ms: 0.10007000000000001
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 10
+  observed_revision: 10
+  last_integrated_stamp_ns: 10000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.748996999999999
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1626815
+    output_columns: 29353
+    lock_wait_ms: 0.00012999999999999999
+    build_ms: 13.748205
+    total_ms: 13.748335000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00018000000000000001
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.0001
+    build_ms: 0
+    total_ms: 0.00012999999999999999
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: c76f9ae6759c0e886e1c689795a78cd11c3bfc4d594ca7c3f9cc302ed71c0269
+checkpoint_digest_ms: 56.744020999999996
+canonical_probability_sha256: c76f9ae6759c0e886e1c689795a78cd11c3bfc4d594ca7c3f9cc302ed71c0269
+canonical_probability_digest_ms: 108.080206
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: dd6ff8ef6c8f71336a3fc9ce6e2ad3e897ffd19444b027de4cf85a642b96f170
+content_digest_ms: 12.560873000000001
+process_peak_rss_kib: 418256
+sample_compute_ms: 1715.7286280000001
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 10
+warmup: false
+mode: stages
+monotonic_start_ns: 3880676689101261
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_10.yaml
+input_sha256: d333133dcc6bc8de1a6245d82e660bf69b48fd4ceeed122543fb6960ef1495f3
+input_load_parse_ms: 740.73680899999999
+integrate_external_ms: 466.85047300000002
+integrate_process_cpu_ms: 466.82100000000003
+receipt:
+  epoch: 1
+  map_revision: 11
+  observed_revision: 11
+  last_integrated_stamp_ns: 11000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b10
+  input_stamp_ns: 11000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.000121
+      validation: 0.00036099999999999999
+      fingerprint: 42.115727
+      dedup: 0.00093199999999999999
+      depth_filter: 0.15709799999999999
+      transform: 0.17971100000000001
+      ray_preparation: 225.91594499999999
+      fusion: 194.26120800000001
+      finalization: 0.64003399999999999
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.5584059999999909
+    rays_attempted: 100000
+    ray_keys_generated: 26642170
+    active_ray_key_visits: 15650493
+    inactive_ray_key_visits: 10991677
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15650493
+    free_insert_duplicates: 14312849
+    free_unique_before_hit_removal: 1337644
+    copied_blocks: 3286
+    copied_cells: 1425960
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 181.527627
+      block_batch_visited: true
+      block_batch_ms: 12.728410999999999
+      mutation_storage: collected
+      mutation_size: 183763
+      mutation_capacity: 262144
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 143.036755
+      inner_update_ms: 17.350356999999999
+      prune_ms: 21.139873999999999
+      keys_considered: 1345667
+      unchanged_keys: 1161904
+      written_keys: 183763
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1304003
+  hit_keys: 41664
+  changed_keys: 183763
+  occupancy_changed_keys: 12204
+  rebuilt_blocks: 3286
+  preprocessing_ms: 42.454740000000001
+  preparation_ms: 225.91718700000001
+  fusion_ms: 194.901522
+  total_ms: 466.829543
+tree_nodes: 1002803
+known_cells: 1632320
+block_count: 3846
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 24993520
+acquire_ms: 0.42146
+get_handle_ms: 14.078571
+roi_ms: 0.099919999999999995
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 11
+  observed_revision: 11
+  last_integrated_stamp_ns: 11000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.814461
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1632320
+    output_columns: 29353
+    lock_wait_ms: 0.00011
+    build_ms: 13.813929999999999
+    total_ms: 13.81404
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00012
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 3.0000000000000001e-05
+    build_ms: 0
+    total_ms: 8.0000000000000007e-05
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 89453758e58a2d743a4dc60917b7a19959377ce4e468d23cf13364bb97cb6879
+checkpoint_digest_ms: 56.384289000000003
+canonical_probability_sha256: 89453758e58a2d743a4dc60917b7a19959377ce4e468d23cf13364bb97cb6879
+canonical_probability_digest_ms: 112.44836100000001
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 7854c29a39da3aa7d93fc8255bf4cb3c4cfce3a059b14fc9af71009c3a72e841
+content_digest_ms: 13.080498
+process_peak_rss_kib: 418256
+sample_compute_ms: 1737.8421679999999
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 11
+warmup: false
+mode: stages
+monotonic_start_ns: 3880678431583760
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_11.yaml
+input_sha256: 4f2110374e433c7f6d78f7b647bbcba7b4957206bef264b28b05fdb041a97d5c
+input_load_parse_ms: 746.50151200000005
+integrate_external_ms: 466.80516699999998
+integrate_process_cpu_ms: 466.75
+receipt:
+  epoch: 1
+  map_revision: 12
+  observed_revision: 12
+  last_integrated_stamp_ns: 12000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b11
+  input_stamp_ns: 12000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.000121
+      validation: 0.00044099999999999999
+      fingerprint: 42.455742000000001
+      dedup: 0.001513
+      depth_filter: 0.14841099999999999
+      transform: 0.18174499999999999
+      ray_preparation: 225.367053
+      fusion: 194.810078
+      finalization: 0.61281200000000002
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.2055899999999724
+    rays_attempted: 100000
+    ray_keys_generated: 26634302
+    active_ray_key_visits: 15643940
+    inactive_ray_key_visits: 10990362
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15643940
+    free_insert_duplicates: 14307825
+    free_unique_before_hit_removal: 1336115
+    copied_blocks: 3268
+    copied_cells: 1425338
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 180.96929800000001
+      block_batch_visited: true
+      block_batch_ms: 13.835461
+      mutation_storage: collected
+      mutation_size: 172557
+      mutation_capacity: 262144
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 141.28892999999999
+      inner_update_ms: 17.387647999999999
+      prune_ms: 22.291658999999999
+      keys_considered: 1344168
+      unchanged_keys: 1171611
+      written_keys: 172557
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1302458
+  hit_keys: 41710
+  changed_keys: 172557
+  occupancy_changed_keys: 10345
+  rebuilt_blocks: 3268
+  preprocessing_ms: 42.788874
+  preparation_ms: 225.367895
+  fusion_ms: 195.42329100000001
+  total_ms: 466.78350599999999
+tree_nodes: 970843
+known_cells: 1636975
+block_count: 3846
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 24202288
+acquire_ms: 0.39809499999999998
+get_handle_ms: 13.426385
+roi_ms: 0.104198
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 12
+  observed_revision: 12
+  last_integrated_stamp_ns: 12000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.808178
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1636975
+    output_columns: 29353
+    lock_wait_ms: 0.00012
+    build_ms: 13.806996
+    total_ms: 13.807116000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00017100000000000001
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.0001
+    build_ms: 0
+    total_ms: 0.000121
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 9147cde7511f6cf3bcdd7eafcff3e504e243c54704f6fed0e3c060c0a10f4d29
+checkpoint_digest_ms: 57.032068000000002
+canonical_probability_sha256: 9147cde7511f6cf3bcdd7eafcff3e504e243c54704f6fed0e3c060c0a10f4d29
+canonical_probability_digest_ms: 110.118291
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 2dec220b7ff934642de35443d8cea4dd8a45f43080c39cf9546779d263361bf3
+content_digest_ms: 13.892438
+process_peak_rss_kib: 418256
+sample_compute_ms: 1718.575366
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 12
+warmup: false
+mode: stages
+monotonic_start_ns: 3880680155089347
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_12.yaml
+input_sha256: 6226339809a627e8ceab27b9a9af26af85a5bc38d5d07d765d07038771a4013b
+input_load_parse_ms: 741.66326500000002
+integrate_external_ms: 463.066957
+integrate_process_cpu_ms: 463.05500000000001
+receipt:
+  epoch: 1
+  map_revision: 13
+  observed_revision: 13
+  last_integrated_stamp_ns: 13000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b12
+  input_stamp_ns: 13000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00027999999999999998
+      validation: 0.00029999999999999997
+      fingerprint: 42.155403
+      dedup: 0.0015629999999999999
+      depth_filter: 0.149313
+      transform: 0.181284
+      ray_preparation: 224.93919199999999
+      fusion: 191.83126799999999
+      finalization: 0.607823
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.179631000000029
+    rays_attempted: 100000
+    ray_keys_generated: 26648267
+    active_ray_key_visits: 15653535
+    inactive_ray_key_visits: 10994732
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15653535
+    free_insert_duplicates: 14315626
+    free_unique_before_hit_removal: 1337909
+    copied_blocks: 3254
+    copied_cells: 1425929
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 179.06693899999999
+      block_batch_visited: true
+      block_batch_ms: 12.757035
+      mutation_storage: collected
+      mutation_size: 161585
+      mutation_capacity: 262144
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 141.227633
+      inner_update_ms: 17.055727999999998
+      prune_ms: 20.782446
+      keys_considered: 1346020
+      unchanged_keys: 1184435
+      written_keys: 161585
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1304231
+  hit_keys: 41789
+  changed_keys: 161585
+  occupancy_changed_keys: 10888
+  rebuilt_blocks: 3254
+  preprocessing_ms: 42.488793999999999
+  preparation_ms: 224.939863
+  fusion_ms: 192.439322
+  total_ms: 463.04605700000002
+tree_nodes: 962385
+known_cells: 1641497
+block_count: 3846
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 23978128
+acquire_ms: 0.384108
+get_handle_ms: 13.518129
+roi_ms: 0.101883
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 13
+  observed_revision: 13
+  last_integrated_stamp_ns: 13000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.867512
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1641497
+    output_columns: 29353
+    lock_wait_ms: 0.00021000000000000001
+    build_ms: 13.866498999999999
+    total_ms: 13.866709
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.000241
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.00011
+    build_ms: 0
+    total_ms: 0.00013100000000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 243292c537efa7041774e2192c26165ee8e6f85e03f55702995529a5a5e6e28b
+checkpoint_digest_ms: 57.182682999999997
+canonical_probability_sha256: 243292c537efa7041774e2192c26165ee8e6f85e03f55702995529a5a5e6e28b
+canonical_probability_digest_ms: 112.22318300000001
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 062bbc1bf94dc4b3d634dec6017b90e2eed0bc0e26363f899c5ff278e86eb0d9
+content_digest_ms: 13.976588
+process_peak_rss_kib: 418256
+sample_compute_ms: 1718.399983
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 13
+warmup: false
+mode: stages
+monotonic_start_ns: 3880681878427816
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_13.yaml
+input_sha256: 2afa07ef130afdee85096716b4648f3c6bae7a4759c96a8fdfb63358c0f56e9b
+input_load_parse_ms: 760.19593499999996
+integrate_external_ms: 461.51736699999998
+integrate_process_cpu_ms: 461.48899999999998
+receipt:
+  epoch: 1
+  map_revision: 14
+  observed_revision: 14
+  last_integrated_stamp_ns: 14000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b13
+  input_stamp_ns: 14000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00012
+      validation: 0.00062200000000000005
+      fingerprint: 42.052897000000002
+      dedup: 0.0012620000000000001
+      depth_filter: 0.14718999999999999
+      transform: 0.186002
+      ray_preparation: 223.59404000000001
+      fusion: 191.771636
+      finalization: 0.66156499999999996
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.0807839999999942
+    rays_attempted: 100000
+    ray_keys_generated: 26625924
+    active_ray_key_visits: 15639636
+    inactive_ray_key_visits: 10986288
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15639636
+    free_insert_duplicates: 14300199
+    free_unique_before_hit_removal: 1339437
+    copied_blocks: 3230
+    copied_cells: 1425954
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 179.45535699999999
+      block_batch_visited: true
+      block_batch_ms: 12.310207999999999
+      mutation_storage: collected
+      mutation_size: 155664
+      mutation_capacity: 262144
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 141.52700100000001
+      inner_update_ms: 17.098628999999999
+      prune_ms: 20.828954
+      keys_considered: 1347484
+      unchanged_keys: 1191820
+      written_keys: 155664
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1305756
+  hit_keys: 41728
+  changed_keys: 155664
+  occupancy_changed_keys: 8999
+  rebuilt_blocks: 3230
+  preprocessing_ms: 42.388874999999999
+  preparation_ms: 223.594953
+  fusion_ms: 192.43345099999999
+  total_ms: 461.49611800000002
+tree_nodes: 957387
+known_cells: 1645052
+block_count: 3846
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 23839536
+acquire_ms: 0.41919499999999998
+get_handle_ms: 13.50826
+roi_ms: 0.100851
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 14
+  observed_revision: 14
+  last_integrated_stamp_ns: 14000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.862802
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1645052
+    output_columns: 29353
+    lock_wait_ms: 0.000121
+    build_ms: 13.86159
+    total_ms: 13.861711
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00032000000000000003
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 9.0000000000000006e-05
+    build_ms: 0
+    total_ms: 0.00021000000000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 5a21344db54ea43807ff577a31ac274d8b58ea64297ec5cee55b9081de03078e
+checkpoint_digest_ms: 57.069839000000002
+canonical_probability_sha256: 5a21344db54ea43807ff577a31ac274d8b58ea64297ec5cee55b9081de03078e
+canonical_probability_digest_ms: 104.880718
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 115cd227b0dde9b13478330f1956fc62e78886a325ed230561cc3a9973157bac
+content_digest_ms: 13.25
+process_peak_rss_kib: 418256
+sample_compute_ms: 1707.1897610000001
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 14
+warmup: false
+mode: stages
+monotonic_start_ns: 3880683590834382
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_14.yaml
+input_sha256: 1c39542520f87b274d7337b2f4d1c02aba7b731d0ba725b61e5d6ebbf6a1e56f
+input_load_parse_ms: 752.60643900000002
+integrate_external_ms: 468.02777600000002
+integrate_process_cpu_ms: 467.99299999999999
+receipt:
+  epoch: 1
+  map_revision: 15
+  observed_revision: 15
+  last_integrated_stamp_ns: 15000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b14
+  input_stamp_ns: 15000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00014100000000000001
+      validation: 0.00066100000000000002
+      fingerprint: 41.770833000000003
+      dedup: 0.001523
+      depth_filter: 0.15212899999999999
+      transform: 0.18205499999999999
+      ray_preparation: 225.96070900000001
+      fusion: 196.21704700000001
+      finalization: 0.66162500000000002
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.0535299999999097
+    rays_attempted: 100000
+    ray_keys_generated: 26630682
+    active_ray_key_visits: 15639921
+    inactive_ray_key_visits: 10990761
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15639921
+    free_insert_duplicates: 14299776
+    free_unique_before_hit_removal: 1340145
+    copied_blocks: 3220
+    copied_cells: 1424022
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 183.101812
+      block_batch_visited: true
+      block_batch_ms: 13.109814
+      mutation_storage: collected
+      mutation_size: 151006
+      mutation_capacity: 262144
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 142.84043299999999
+      inner_update_ms: 18.899415000000001
+      prune_ms: 21.360913
+      keys_considered: 1348194
+      unchanged_keys: 1197188
+      written_keys: 151006
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1306364
+  hit_keys: 41830
+  changed_keys: 151006
+  occupancy_changed_keys: 8035
+  rebuilt_blocks: 3220
+  preprocessing_ms: 42.108322999999999
+  preparation_ms: 225.96146999999999
+  fusion_ms: 196.87884299999999
+  total_ms: 468.00025299999999
+tree_nodes: 949125
+known_cells: 1648337
+block_count: 3846
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 23626000
+acquire_ms: 0.39830599999999999
+get_handle_ms: 13.605464
+roi_ms: 0.10031
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 15
+  observed_revision: 15
+  last_integrated_stamp_ns: 15000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.879293000000001
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1648337
+    output_columns: 29353
+    lock_wait_ms: 0.00012999999999999999
+    build_ms: 13.878572999999999
+    total_ms: 13.878703
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00024000000000000001
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.00011
+    build_ms: 0
+    total_ms: 0.00012999999999999999
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: a54757821602a4b8e11fa806c560ade1e84d551c3dff178f3066392c243209e3
+checkpoint_digest_ms: 57.234271
+canonical_probability_sha256: a54757821602a4b8e11fa806c560ade1e84d551c3dff178f3066392c243209e3
+canonical_probability_digest_ms: 110.06985899999999
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 35ca7c011ea4265f9310cabc82e4f08697b51261b2c0a2fbfe3a22a3e7c7e355
+content_digest_ms: 14.217345
+process_peak_rss_kib: 418256
+sample_compute_ms: 1738.6665190000001
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 15
+warmup: false
+mode: stages
+monotonic_start_ns: 3880685333782792
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_15.yaml
+input_sha256: 6d43b0512183aa79dfa3d0ab0a553910f5f063d1f9342cf647e69db2623cd114
+input_load_parse_ms: 743.76260600000001
+integrate_external_ms: 463.22151000000002
+integrate_process_cpu_ms: 463.20800000000003
+receipt:
+  epoch: 1
+  map_revision: 16
+  observed_revision: 16
+  last_integrated_stamp_ns: 16000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b15
+  input_stamp_ns: 16000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.000121
+      validation: 0.00062100000000000002
+      fingerprint: 41.504407999999998
+      dedup: 0.0013730000000000001
+      depth_filter: 0.144785
+      transform: 0.17999100000000001
+      ray_preparation: 227.060405
+      fusion: 190.624751
+      finalization: 0.56657400000000002
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.1170999999999935
+    rays_attempted: 100000
+    ray_keys_generated: 26639711
+    active_ray_key_visits: 15646069
+    inactive_ray_key_visits: 10993642
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15646069
+    free_insert_duplicates: 14308694
+    free_unique_before_hit_removal: 1337375
+    copied_blocks: 3196
+    copied_cells: 1420204
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 178.909762
+      block_batch_visited: true
+      block_batch_ms: 11.709688999999999
+      mutation_storage: collected
+      mutation_size: 144252
+      mutation_capacity: 262144
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 140.049069
+      inner_update_ms: 17.217174
+      prune_ms: 21.642858
+      keys_considered: 1345371
+      unchanged_keys: 1201119
+      written_keys: 144252
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1303645
+  hit_keys: 41726
+  changed_keys: 144252
+  occupancy_changed_keys: 8168
+  rebuilt_blocks: 3197
+  preprocessing_ms: 41.832089000000003
+  preparation_ms: 227.061216
+  fusion_ms: 191.191485
+  total_ms: 463.200129
+tree_nodes: 943980
+known_cells: 1651312
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 23489920
+acquire_ms: 0.392013
+get_handle_ms: 13.41329
+roi_ms: 0.10539
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 16
+  observed_revision: 16
+  last_integrated_stamp_ns: 16000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.875515999999999
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1651312
+    output_columns: 29353
+    lock_wait_ms: 0.00012
+    build_ms: 13.874494
+    total_ms: 13.874613999999999
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00039100000000000002
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.00016100000000000001
+    build_ms: 0
+    total_ms: 0.00027099999999999997
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: c1102d3ee7fa4abb775d54b3433ef56bc1e8b2d0ae07a5f7febcf285fecfe6d7
+checkpoint_digest_ms: 57.489274999999999
+canonical_probability_sha256: c1102d3ee7fa4abb775d54b3433ef56bc1e8b2d0ae07a5f7febcf285fecfe6d7
+canonical_probability_digest_ms: 104.422939
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 0cd310123043d33ae142f37692ed547e62301e8fe90eddbaa5517eb454d42270
+content_digest_ms: 13.202769999999999
+process_peak_rss_kib: 418256
+sample_compute_ms: 1744.5908850000001
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 16
+warmup: false
+mode: stages
+monotonic_start_ns: 3880687083527582
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_16.yaml
+input_sha256: 1ba484f9c18f27f940a4adee88c0b70f45cdc430895b767064e82cb6c44575c6
+input_load_parse_ms: 753.19293100000004
+integrate_external_ms: 463.08839699999999
+integrate_process_cpu_ms: 463.00599999999997
+receipt:
+  epoch: 1
+  map_revision: 17
+  observed_revision: 17
+  last_integrated_stamp_ns: 17000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b16
+  input_stamp_ns: 17000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00012
+      validation: 0.00062200000000000005
+      fingerprint: 41.646265999999997
+      dedup: 0.001343
+      depth_filter: 0.14742
+      transform: 0.17996100000000001
+      ray_preparation: 225.267414
+      fusion: 191.994067
+      finalization: 0.57567199999999996
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.2569369999999935
+    rays_attempted: 100000
+    ray_keys_generated: 26626247
+    active_ray_key_visits: 15629817
+    inactive_ray_key_visits: 10996430
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15629817
+    free_insert_duplicates: 14295576
+    free_unique_before_hit_removal: 1334241
+    copied_blocks: 3190
+    copied_cells: 1422636
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 180.11319399999999
+      block_batch_visited: true
+      block_batch_ms: 11.875743999999999
+      mutation_storage: collected
+      mutation_size: 138023
+      mutation_capacity: 262144
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 140.959204
+      inner_update_ms: 17.356007999999999
+      prune_ms: 21.796959999999999
+      keys_considered: 1342237
+      unchanged_keys: 1204214
+      written_keys: 138023
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1300596
+  hit_keys: 41641
+  changed_keys: 138023
+  occupancy_changed_keys: 6655
+  rebuilt_blocks: 3190
+  preprocessing_ms: 41.976652999999999
+  preparation_ms: 225.268787
+  fusion_ms: 192.570009
+  total_ms: 463.06982199999999
+tree_nodes: 938612
+known_cells: 1653716
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 23348352
+acquire_ms: 0.419045
+get_handle_ms: 13.461691
+roi_ms: 0.103797
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 17
+  observed_revision: 17
+  last_integrated_stamp_ns: 17000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.954395999999999
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1653716
+    output_columns: 29353
+    lock_wait_ms: 0.00012
+    build_ms: 13.953785
+    total_ms: 13.953905000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00017000000000000001
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.0001
+    build_ms: 0
+    total_ms: 0.00012
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: c26a628949e8151cf8f819c9adfccf62ffcd32013bb5f9b446f31f8717a1653e
+checkpoint_digest_ms: 57.857554
+canonical_probability_sha256: c26a628949e8151cf8f819c9adfccf62ffcd32013bb5f9b446f31f8717a1653e
+canonical_probability_digest_ms: 104.833969
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 5a4491a1b1eef669f0c7575dcf8cb36584417fbb7c691ab5ff01a8fb256d32af
+content_digest_ms: 13.842283999999999
+process_peak_rss_kib: 418256
+sample_compute_ms: 1749.0467149999999
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 17
+warmup: false
+mode: stages
+monotonic_start_ns: 3880688837677926
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_17.yaml
+input_sha256: 5e4c811227d4596a36affd0362d4b70a97ccfea18e68fd3c21080a21775a2db2
+input_load_parse_ms: 743.25773900000002
+integrate_external_ms: 463.41205000000002
+integrate_process_cpu_ms: 463.39400000000001
+receipt:
+  epoch: 1
+  map_revision: 18
+  observed_revision: 18
+  last_integrated_stamp_ns: 18000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b17
+  input_stamp_ns: 18000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00013100000000000001
+      validation: 0.00064099999999999997
+      fingerprint: 42.032159
+      dedup: 0.0016130000000000001
+      depth_filter: 0.15149799999999999
+      transform: 0.180392
+      ray_preparation: 225.32654600000001
+      fusion: 192.04812899999999
+      finalization: 0.58238400000000001
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.0657550000000811
+    rays_attempted: 100000
+    ray_keys_generated: 26643717
+    active_ray_key_visits: 15647041
+    inactive_ray_key_visits: 10996676
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15647041
+    free_insert_duplicates: 14311508
+    free_unique_before_hit_removal: 1335533
+    copied_blocks: 3180
+    copied_cells: 1420076
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 180.22782100000001
+      block_batch_visited: true
+      block_batch_ms: 11.815118999999999
+      mutation_storage: collected
+      mutation_size: 136696
+      mutation_capacity: 262144
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 140.938875
+      inner_update_ms: 17.513987
+      prune_ms: 21.774217
+      keys_considered: 1343514
+      unchanged_keys: 1206818
+      written_keys: 136696
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1301924
+  hit_keys: 41590
+  changed_keys: 136696
+  occupancy_changed_keys: 6396
+  rebuilt_blocks: 3180
+  preprocessing_ms: 42.367525000000001
+  preparation_ms: 225.32721699999999
+  fusion_ms: 192.630785
+  total_ms: 463.38924800000001
+tree_nodes: 933797
+known_cells: 1656182
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 23221520
+acquire_ms: 0.41490700000000003
+get_handle_ms: 12.023975
+roi_ms: 0.099348000000000006
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 18
+  observed_revision: 18
+  last_integrated_stamp_ns: 18000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.938005
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1656182
+    output_columns: 29353
+    lock_wait_ms: 0.000121
+    build_ms: 13.937233000000001
+    total_ms: 13.937353999999999
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00039100000000000002
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.00016000000000000001
+    build_ms: 0
+    total_ms: 0.00027099999999999997
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 172213cd64da959a12bca262a675b18330fcebd742aa17c56d628a6612830d1c
+checkpoint_digest_ms: 57.777571999999999
+canonical_probability_sha256: 172213cd64da959a12bca262a675b18330fcebd742aa17c56d628a6612830d1c
+canonical_probability_digest_ms: 105.676236
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 558db43bceb7ff7b63391cf6a07f64dccf228a46bdbadaa8bb625a24279b9104
+content_digest_ms: 12.649532000000001
+process_peak_rss_kib: 418256
+sample_compute_ms: 1744.3657069999999
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 18
+warmup: false
+mode: stages
+monotonic_start_ns: 3880690587223918
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_18.yaml
+input_sha256: 3e26df1d952998193145afc871bf0cae28a9c3c1b93d55a72d7b47513a9dd73d
+input_load_parse_ms: 754.86194699999999
+integrate_external_ms: 465.930747
+integrate_process_cpu_ms: 465.911
+receipt:
+  epoch: 1
+  map_revision: 19
+  observed_revision: 19
+  last_integrated_stamp_ns: 19000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b18
+  input_stamp_ns: 19000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00012
+      validation: 0.00031100000000000002
+      fingerprint: 41.742659000000003
+      dedup: 0.0020439999999999998
+      depth_filter: 0.14608699999999999
+      transform: 0.18201500000000001
+      ray_preparation: 227.46444099999999
+      fusion: 192.55560199999999
+      finalization: 0.60864399999999996
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.2072440000000597
+    rays_attempted: 100000
+    ray_keys_generated: 26624930
+    active_ray_key_visits: 15642613
+    inactive_ray_key_visits: 10982317
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15642613
+    free_insert_duplicates: 14303548
+    free_unique_before_hit_removal: 1339065
+    copied_blocks: 3145
+    copied_cells: 1416128
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 180.39452800000001
+      block_batch_visited: true
+      block_batch_ms: 12.155484
+      mutation_storage: collected
+      mutation_size: 134655
+      mutation_capacity: 262144
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 141.65127699999999
+      inner_update_ms: 17.174734000000001
+      prune_ms: 21.567865999999999
+      keys_considered: 1347078
+      unchanged_keys: 1212423
+      written_keys: 134655
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1305299
+  hit_keys: 41779
+  changed_keys: 134655
+  occupancy_changed_keys: 6667
+  rebuilt_blocks: 3145
+  preprocessing_ms: 42.073898
+  preparation_ms: 227.46558300000001
+  fusion_ms: 193.164537
+  total_ms: 465.90916700000002
+tree_nodes: 932130
+known_cells: 1658454
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 23172128
+acquire_ms: 0.43140800000000001
+get_handle_ms: 13.639709
+roi_ms: 0.104849
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 19
+  observed_revision: 19
+  last_integrated_stamp_ns: 19000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 14.056118
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1658454
+    output_columns: 29353
+    lock_wait_ms: 0.00012
+    build_ms: 14.055538
+    total_ms: 14.055657999999999
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00023000000000000001
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.0001
+    build_ms: 0
+    total_ms: 0.00012
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: c9cc1e29df21c3864bed56697703b53d542ef8a80c6a0193247afda5b1f65bfb
+checkpoint_digest_ms: 58.351851000000003
+canonical_probability_sha256: c9cc1e29df21c3864bed56697703b53d542ef8a80c6a0193247afda5b1f65bfb
+canonical_probability_digest_ms: 108.72871600000001
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: db53fb8a4759391c2045b118a89dc537c459f0e3fe62a33c0b47be89fcf15765
+content_digest_ms: 14.255177
+process_peak_rss_kib: 418256
+sample_compute_ms: 1766.8107660000001
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 19
+warmup: false
+mode: stages
+monotonic_start_ns: 3880692358785835
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_19.yaml
+input_sha256: 94429966f859e992728cf2878b5f9a26b89ec7c411ee29de5a87194e6ac74516
+input_load_parse_ms: 754.99438799999996
+integrate_external_ms: 459.54543699999999
+integrate_process_cpu_ms: 459.50400000000002
+receipt:
+  epoch: 1
+  map_revision: 20
+  observed_revision: 20
+  last_integrated_stamp_ns: 20000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b19
+  input_stamp_ns: 20000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00023000000000000001
+      validation: 0.00029
+      fingerprint: 41.072477999999997
+      dedup: 0.001854
+      depth_filter: 0.150565
+      transform: 0.180342
+      ray_preparation: 223.75413399999999
+      fusion: 190.594593
+      finalization: 0.59085100000000002
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.1793799999999806
+    rays_attempted: 100000
+    ray_keys_generated: 26625373
+    active_ray_key_visits: 15642753
+    inactive_ray_key_visits: 10982620
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15642753
+    free_insert_duplicates: 14306320
+    free_unique_before_hit_removal: 1336433
+    copied_blocks: 3136
+    copied_cells: 1415593
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 179.27188799999999
+      block_batch_visited: true
+      block_batch_ms: 11.317214999999999
+      mutation_storage: collected
+      mutation_size: 131462
+      mutation_capacity: 262144
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 140.31375
+      inner_update_ms: 17.257200000000001
+      prune_ms: 21.700306999999999
+      keys_considered: 1344373
+      unchanged_keys: 1212911
+      written_keys: 131462
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1302647
+  hit_keys: 41726
+  changed_keys: 131462
+  occupancy_changed_keys: 5705
+  rebuilt_blocks: 3136
+  preprocessing_ms: 41.406540999999997
+  preparation_ms: 223.75500600000001
+  fusion_ms: 191.185734
+  total_ms: 459.52471700000001
+tree_nodes: 931027
+known_cells: 1660339
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 23135728
+acquire_ms: 0.43629800000000002
+get_handle_ms: 13.717717
+roi_ms: 0.101272
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 20
+  observed_revision: 20
+  last_integrated_stamp_ns: 20000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.974254
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1660339
+    output_columns: 29353
+    lock_wait_ms: 0.000261
+    build_ms: 13.973482000000001
+    total_ms: 13.973743000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00047100000000000001
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.00016100000000000001
+    build_ms: 0
+    total_ms: 0.00027099999999999997
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: ade2c2d030b2d5c2de20a8786ac854c2b7d68445e0f048e9475cc9644707bf8d
+checkpoint_digest_ms: 58.294170999999999
+canonical_probability_sha256: ade2c2d030b2d5c2de20a8786ac854c2b7d68445e0f048e9475cc9644707bf8d
+canonical_probability_digest_ms: 107.166172
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: ff341f975616565dce3d2bee2e9e6283e32b2839210238355421f48efe784ff1
+content_digest_ms: 14.907895
+process_peak_rss_kib: 418256
+sample_compute_ms: 1749.674074
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 20
+warmup: false
+mode: stages
+monotonic_start_ns: 3880694113675210
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_20.yaml
+input_sha256: 92ca24b3a78da9da43ffd0d476f0f8b182162dc1acce4c82e4534b51a69bee8b
+input_load_parse_ms: 768.04207399999996
+integrate_external_ms: 461.74579999999997
+integrate_process_cpu_ms: 461.70600000000002
+receipt:
+  epoch: 1
+  map_revision: 21
+  observed_revision: 21
+  last_integrated_stamp_ns: 21000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b20
+  input_stamp_ns: 21000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00017100000000000001
+      validation: 0.00058100000000000003
+      fingerprint: 41.532891999999997
+      dedup: 0.002104
+      depth_filter: 0.150005
+      transform: 0.18043200000000001
+      ray_preparation: 225.08718200000001
+      fusion: 191.09486200000001
+      finalization: 0.64430200000000004
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.0329100000000153
+    rays_attempted: 100000
+    ray_keys_generated: 26649143
+    active_ray_key_visits: 15647850
+    inactive_ray_key_visits: 11001293
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15647850
+    free_insert_duplicates: 14310851
+    free_unique_before_hit_removal: 1336999
+    copied_blocks: 3142
+    copied_cells: 1418759
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 178.65097
+      block_batch_visited: true
+      block_batch_ms: 12.438791999999999
+      mutation_storage: collected
+      mutation_size: 130050
+      mutation_capacity: 131072
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 139.305037
+      inner_update_ms: 17.007757000000002
+      prune_ms: 22.336694000000001
+      keys_considered: 1344963
+      unchanged_keys: 1214913
+      written_keys: 130050
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1303377
+  hit_keys: 41586
+  changed_keys: 130050
+  occupancy_changed_keys: 5402
+  rebuilt_blocks: 3142
+  preprocessing_ms: 41.866844999999998
+  preparation_ms: 225.08856399999999
+  fusion_ms: 191.739304
+  total_ms: 461.72544099999999
+tree_nodes: 927871
+known_cells: 1662207
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 23051312
+acquire_ms: 0.41616900000000001
+get_handle_ms: 13.489575
+roi_ms: 0.102544
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 21
+  observed_revision: 21
+  last_integrated_stamp_ns: 21000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.96697
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1662207
+    output_columns: 29353
+    lock_wait_ms: 0.00012
+    build_ms: 13.966309000000001
+    total_ms: 13.966429
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00041100000000000002
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.00018000000000000001
+    build_ms: 0
+    total_ms: 0.00029999999999999997
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 2bdd86f4824a5fac277471137fc85f8d4a7d08d36c14f4de2e2259fbfe294b44
+checkpoint_digest_ms: 58.730728999999997
+canonical_probability_sha256: 2bdd86f4824a5fac277471137fc85f8d4a7d08d36c14f4de2e2259fbfe294b44
+canonical_probability_digest_ms: 105.215112
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: f92fc77b6616bcf8c4398a062ebe8c78809ae2ff25aeb4d25e00719c2fdca18f
+content_digest_ms: 13.287782
+process_peak_rss_kib: 418256
+sample_compute_ms: 1756.145176
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 21
+warmup: false
+mode: stages
+monotonic_start_ns: 3880695874792707
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_21.yaml
+input_sha256: edc39e9288a2c8e33c57002d83131ac9e850136ec48fc76f079e158f57067184
+input_load_parse_ms: 762.08011599999998
+integrate_external_ms: 464.29568599999999
+integrate_process_cpu_ms: 464.255
+receipt:
+  epoch: 1
+  map_revision: 22
+  observed_revision: 22
+  last_integrated_stamp_ns: 22000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b21
+  input_stamp_ns: 22000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00029999999999999997
+      validation: 0.00027999999999999998
+      fingerprint: 41.528914
+      dedup: 0.0018730000000000001
+      depth_filter: 0.145757
+      transform: 0.18000099999999999
+      ray_preparation: 225.643327
+      fusion: 192.88175100000001
+      finalization: 0.58061099999999999
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.312293000000011
+    rays_attempted: 100000
+    ray_keys_generated: 26632035
+    active_ray_key_visits: 15640251
+    inactive_ray_key_visits: 10991784
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15640251
+    free_insert_duplicates: 14301628
+    free_unique_before_hit_removal: 1338623
+    copied_blocks: 3137
+    copied_cells: 1418477
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 180.762866
+      block_batch_visited: true
+      block_batch_ms: 12.113305
+      mutation_storage: collected
+      mutation_size: 128214
+      mutation_capacity: 131072
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 141.36047600000001
+      inner_update_ms: 17.082709000000001
+      prune_ms: 22.319040000000001
+      keys_considered: 1346681
+      unchanged_keys: 1218467
+      written_keys: 128214
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1304929
+  hit_keys: 41752
+  changed_keys: 128214
+  occupancy_changed_keys: 5186
+  rebuilt_blocks: 3137
+  preprocessing_ms: 41.857728000000002
+  preparation_ms: 225.64418800000001
+  fusion_ms: 193.46253200000001
+  total_ms: 464.27510699999999
+tree_nodes: 922953
+known_cells: 1663765
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 22925520
+acquire_ms: 0.41326400000000002
+get_handle_ms: 13.723777999999999
+roi_ms: 0.100401
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 22
+  observed_revision: 22
+  last_integrated_stamp_ns: 22000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 13.979544000000001
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1663765
+    output_columns: 29353
+    lock_wait_ms: 0.00012
+    build_ms: 13.978792
+    total_ms: 13.978911999999999
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00017100000000000001
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 3.0000000000000001e-05
+    build_ms: 0
+    total_ms: 5.0000000000000002e-05
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 5776b450aecd888f6394adff59266512b6c7bb0799369f8422b4c83c7012c607
+checkpoint_digest_ms: 58.326771999999998
+canonical_probability_sha256: 5776b450aecd888f6394adff59266512b6c7bb0799369f8422b4c83c7012c607
+canonical_probability_digest_ms: 101.485598
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 2a417da8b17a6ef66b6583d46b66f193071a0b17794999f40dd68772711ec8ef
+content_digest_ms: 13.183334
+process_peak_rss_kib: 418256
+sample_compute_ms: 1772.9544659999999
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 22
+warmup: false
+mode: stages
+monotonic_start_ns: 3880697654253142
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_22.yaml
+input_sha256: 3deb0554cd6b50824820ad7a223fcc55bf986ebfde3e5b1193410f62cd7ddbf9
+input_load_parse_ms: 758.45640300000002
+integrate_external_ms: 464.28659900000002
+integrate_process_cpu_ms: 464.26299999999998
+receipt:
+  epoch: 1
+  map_revision: 23
+  observed_revision: 23
+  last_integrated_stamp_ns: 23000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b22
+  input_stamp_ns: 23000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00013999999999999999
+      validation: 0.00050100000000000003
+      fingerprint: 41.210639999999998
+      dedup: 0.0020739999999999999
+      depth_filter: 0.14679800000000001
+      transform: 0.178649
+      ray_preparation: 225.96288200000001
+      fusion: 193.01567399999999
+      finalization: 0.57224600000000003
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.1763149999999882
+    rays_attempted: 100000
+    ray_keys_generated: 26634082
+    active_ray_key_visits: 15643766
+    inactive_ray_key_visits: 10990316
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15643766
+    free_insert_duplicates: 14303993
+    free_unique_before_hit_removal: 1339773
+    copied_blocks: 3118
+    copied_cells: 1417369
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 180.91440299999999
+      block_batch_visited: true
+      block_batch_ms: 12.096021
+      mutation_storage: collected
+      mutation_size: 126195
+      mutation_capacity: 131072
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 141.34273099999999
+      inner_update_ms: 17.205582
+      prune_ms: 22.365378
+      keys_considered: 1347799
+      unchanged_keys: 1221604
+      written_keys: 126195
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1306149
+  hit_keys: 41650
+  changed_keys: 126195
+  occupancy_changed_keys: 4944
+  rebuilt_blocks: 3118
+  preprocessing_ms: 41.539783999999997
+  preparation_ms: 225.96371400000001
+  fusion_ms: 193.58816100000001
+  total_ms: 464.265919
+tree_nodes: 919505
+known_cells: 1665388
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 22834768
+acquire_ms: 0.41336400000000001
+get_handle_ms: 13.763643999999999
+roi_ms: 0.103156
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 23
+  observed_revision: 23
+  last_integrated_stamp_ns: 23000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 14.010994
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1665388
+    output_columns: 29353
+    lock_wait_ms: 0.00012
+    build_ms: 14.010351999999999
+    total_ms: 14.010472
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00065200000000000002
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 8.0000000000000007e-05
+    build_ms: 0
+    total_ms: 0.00019100000000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: b22f26ca14c56803f036715d90e34f7c6e92d233fd8623e0c1426e10b7d4123c
+checkpoint_digest_ms: 58.420811
+canonical_probability_sha256: b22f26ca14c56803f036715d90e34f7c6e92d233fd8623e0c1426e10b7d4123c
+canonical_probability_digest_ms: 107.19734099999999
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: bc159e55f3eda769ce7e1a9461287ba6b005ff763badd28e200f036f03a83eff
+content_digest_ms: 14.003057999999999
+process_peak_rss_kib: 418256
+sample_compute_ms: 1772.194274
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 23
+warmup: false
+mode: stages
+monotonic_start_ns: 3880699431571886
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_23.yaml
+input_sha256: 33b58fe2bbb970405252251b14c8faa3bd9faa7314e665316e5050e478b0dd06
+input_load_parse_ms: 760.998604
+integrate_external_ms: 466.42515400000002
+integrate_process_cpu_ms: 466.41199999999998
+receipt:
+  epoch: 1
+  map_revision: 24
+  observed_revision: 24
+  last_integrated_stamp_ns: 24000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b23
+  input_stamp_ns: 24000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00012
+      validation: 0.000281
+      fingerprint: 41.679008000000003
+      dedup: 0.0020240000000000002
+      depth_filter: 0.14810100000000001
+      transform: 0.180252
+      ray_preparation: 225.57131899999999
+      fusion: 195.158839
+      finalization: 0.57201500000000005
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.092946999999981
+    rays_attempted: 100000
+    ray_keys_generated: 26625419
+    active_ray_key_visits: 15637399
+    inactive_ray_key_visits: 10988020
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15637399
+    free_insert_duplicates: 14302003
+    free_unique_before_hit_removal: 1335396
+    copied_blocks: 3097
+    copied_cells: 1413946
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 182.818895
+      block_batch_visited: true
+      block_batch_ms: 12.334744000000001
+      mutation_storage: collected
+      mutation_size: 124140
+      mutation_capacity: 131072
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 142.72761800000001
+      inner_update_ms: 17.470164
+      prune_ms: 22.620322000000002
+      keys_considered: 1343305
+      unchanged_keys: 1219165
+      written_keys: 124140
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1301588
+  hit_keys: 41717
+  changed_keys: 124140
+  occupancy_changed_keys: 4250
+  rebuilt_blocks: 3097
+  preprocessing_ms: 42.010728
+  preparation_ms: 225.572202
+  fusion_ms: 195.73112399999999
+  total_ms: 466.40490599999998
+tree_nodes: 918063
+known_cells: 1666663
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 22791920
+acquire_ms: 0.42993500000000001
+get_handle_ms: 13.857322
+roi_ms: 0.103466
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 24
+  observed_revision: 24
+  last_integrated_stamp_ns: 24000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 14.030189999999999
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1666663
+    output_columns: 29353
+    lock_wait_ms: 0.00014100000000000001
+    build_ms: 14.029368
+    total_ms: 14.029508999999999
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00018000000000000001
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 4.0000000000000003e-05
+    build_ms: 0
+    total_ms: 6.0000000000000002e-05
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: a1e62ce15bfe726bc3e0e767fb34d30a35d610282bea9bc42c171aee551155db
+checkpoint_digest_ms: 58.640898999999997
+canonical_probability_sha256: a1e62ce15bfe726bc3e0e767fb34d30a35d610282bea9bc42c171aee551155db
+canonical_probability_digest_ms: 104.625083
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: f5dc247b789a6bbc24eaac53318621044b13ca9073ea0eb06940b27660f4f523
+content_digest_ms: 13.998359000000001
+process_peak_rss_kib: 418256
+sample_compute_ms: 1759.237509
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 24
+warmup: false
+mode: stages
+monotonic_start_ns: 3880701196186203
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_24.yaml
+input_sha256: 10dd31139c7f1f69e96e4d057e34c861bb9db85e76c02921ab7d25cde3146de0
+input_load_parse_ms: 763.01137100000005
+integrate_external_ms: 465.184932
+integrate_process_cpu_ms: 465.16899999999998
+receipt:
+  epoch: 1
+  map_revision: 25
+  observed_revision: 25
+  last_integrated_stamp_ns: 25000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b24
+  input_stamp_ns: 25000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00012
+      validation: 0.00072099999999999996
+      fingerprint: 41.852798
+      dedup: 0.0021940000000000002
+      depth_filter: 0.14993400000000001
+      transform: 0.179922
+      ray_preparation: 225.47664
+      fusion: 193.82140200000001
+      finalization: 0.59001899999999996
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.0881190000000061
+    rays_attempted: 100000
+    ray_keys_generated: 26616433
+    active_ray_key_visits: 15626960
+    inactive_ray_key_visits: 10989473
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15626960
+    free_insert_duplicates: 14289780
+    free_unique_before_hit_removal: 1337180
+    copied_blocks: 3117
+    copied_cells: 1417744
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 181.11182700000001
+      block_batch_visited: true
+      block_batch_ms: 12.703643
+      mutation_storage: collected
+      mutation_size: 123031
+      mutation_capacity: 131072
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 141.93955299999999
+      inner_update_ms: 17.011203999999999
+      prune_ms: 22.160219000000001
+      keys_considered: 1345123
+      unchanged_keys: 1222092
+      written_keys: 123031
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1303513
+  hit_keys: 41610
+  changed_keys: 123031
+  occupancy_changed_keys: 4372
+  rebuilt_blocks: 3117
+  preprocessing_ms: 42.186672000000002
+  preparation_ms: 225.47740099999999
+  fusion_ms: 194.41170199999999
+  total_ms: 465.16186900000002
+tree_nodes: 916478
+known_cells: 1667907
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 22747232
+acquire_ms: 0.42482599999999998
+get_handle_ms: 13.627586000000001
+roi_ms: 0.103807
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 25
+  observed_revision: 25
+  last_integrated_stamp_ns: 25000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 14.044817999999999
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1667907
+    output_columns: 29353
+    lock_wait_ms: 0.00012999999999999999
+    build_ms: 14.044256000000001
+    total_ms: 14.044385999999999
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00029
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 3.0000000000000001e-05
+    build_ms: 0
+    total_ms: 0.00018000000000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 356e88f8e44d0074b6f64f92ec00490b7d23b0e17b3336ee8f9445d00142dafb
+checkpoint_digest_ms: 58.849004000000001
+canonical_probability_sha256: 356e88f8e44d0074b6f64f92ec00490b7d23b0e17b3336ee8f9445d00142dafb
+canonical_probability_digest_ms: 105.017246
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 6312ccac5088667cca2c305c6dd88a3330eda08442a1f6b6cb967db5e83e5def
+content_digest_ms: 13.554879
+process_peak_rss_kib: 418256
+sample_compute_ms: 1756.610627
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 25
+warmup: false
+mode: stages
+monotonic_start_ns: 3880702959780685
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_25.yaml
+input_sha256: 4ad8ed90141866dddb10e0be2789aec0055f790668471be442c5b6ebc8f05ed5
+input_load_parse_ms: 759.98885900000005
+integrate_external_ms: 461.92900700000001
+integrate_process_cpu_ms: 461.89699999999999
+receipt:
+  epoch: 1
+  map_revision: 26
+  observed_revision: 26
+  last_integrated_stamp_ns: 26000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b25
+  input_stamp_ns: 26000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00011
+      validation: 0.00027999999999999998
+      fingerprint: 42.158458000000003
+      dedup: 0.002104
+      depth_filter: 0.14602699999999999
+      transform: 0.18008099999999999
+      ray_preparation: 225.51709700000001
+      fusion: 190.22159500000001
+      finalization: 0.583897
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.1004019999999741
+    rays_attempted: 100000
+    ray_keys_generated: 26630066
+    active_ray_key_visits: 15635544
+    inactive_ray_key_visits: 10994522
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15635544
+    free_insert_duplicates: 14298368
+    free_unique_before_hit_removal: 1337176
+    copied_blocks: 3113
+    copied_cells: 1418016
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 179.376957
+      block_batch_visited: true
+      block_batch_ms: 10.839589
+      mutation_storage: collected
+      mutation_size: 121953
+      mutation_capacity: 131072
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 139.57654099999999
+      inner_update_ms: 17.365745
+      prune_ms: 22.434017999999998
+      keys_considered: 1345154
+      unchanged_keys: 1223201
+      written_keys: 121953
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1303419
+  hit_keys: 41735
+  changed_keys: 121953
+  occupancy_changed_keys: 4072
+  rebuilt_blocks: 3113
+  preprocessing_ms: 42.487682
+  preparation_ms: 225.51812899999999
+  fusion_ms: 190.805723
+  total_ms: 461.91005100000001
+tree_nodes: 915283
+known_cells: 1669094
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 22712304
+acquire_ms: 0.39860600000000002
+get_handle_ms: 13.481729
+roi_ms: 0.103447
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 26
+  observed_revision: 26
+  last_integrated_stamp_ns: 26000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 14.065446
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1669094
+    output_columns: 29353
+    lock_wait_ms: 0.00052099999999999998
+    build_ms: 14.064044000000001
+    total_ms: 14.064565
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00014999999999999999
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 2.0000000000000002e-05
+    build_ms: 0
+    total_ms: 4.0000000000000003e-05
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: aa29042691bce0603be5bb844c3dd23df54e748102e48339a3744b0cdaa2fdc7
+checkpoint_digest_ms: 58.969692999999999
+canonical_probability_sha256: aa29042691bce0603be5bb844c3dd23df54e748102e48339a3744b0cdaa2fdc7
+canonical_probability_digest_ms: 98.856561999999997
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 5386538e4390f7e148a61a9acbf20e3e9fd119c00bd09d6f9bb0331843b86ba5
+content_digest_ms: 13.840861
+process_peak_rss_kib: 418256
+sample_compute_ms: 1762.2203959999999
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 26
+warmup: false
+mode: stages
+monotonic_start_ns: 3880704729072543
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_26.yaml
+input_sha256: d1d29b452b3e7d93f146b212af34a97f876edfa51ee6ead85a4d63597b500054
+input_load_parse_ms: 764.99986200000001
+integrate_external_ms: 467.36370399999998
+integrate_process_cpu_ms: 467.52800000000002
+receipt:
+  epoch: 1
+  map_revision: 27
+  observed_revision: 27
+  last_integrated_stamp_ns: 27000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b26
+  input_stamp_ns: 27000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00038099999999999999
+      validation: 0.00031100000000000002
+      fingerprint: 41.921959000000001
+      dedup: 0.002124
+      depth_filter: 0.154673
+      transform: 0.18062300000000001
+      ray_preparation: 225.53770599999999
+      fusion: 195.693704
+      finalization: 0.56894900000000004
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.2814119999999889
+    rays_attempted: 100000
+    ray_keys_generated: 26639587
+    active_ray_key_visits: 15649026
+    inactive_ray_key_visits: 10990561
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15649026
+    free_insert_duplicates: 14313285
+    free_unique_before_hit_removal: 1335741
+    copied_blocks: 3103
+    copied_cells: 1419550
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 183.60474600000001
+      block_batch_visited: true
+      block_batch_ms: 12.083627999999999
+      mutation_storage: collected
+      mutation_size: 121064
+      mutation_capacity: 131072
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 143.45313300000001
+      inner_update_ms: 17.411372
+      prune_ms: 22.739498999999999
+      keys_considered: 1343654
+      unchanged_keys: 1222590
+      written_keys: 121064
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1302190
+  hit_keys: 41464
+  changed_keys: 121064
+  occupancy_changed_keys: 3675
+  rebuilt_blocks: 3103
+  preprocessing_ms: 42.261253000000004
+  preparation_ms: 225.538477
+  fusion_ms: 196.262923
+  total_ms: 467.34184199999999
+tree_nodes: 912194
+known_cells: 1670146
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 22632608
+acquire_ms: 0.408665
+get_handle_ms: 13.880706
+roi_ms: 0.102765
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 27
+  observed_revision: 27
+  last_integrated_stamp_ns: 27000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 14.054957
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1670146
+    output_columns: 29353
+    lock_wait_ms: 0.00011
+    build_ms: 14.054264999999999
+    total_ms: 14.054375
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00018000000000000001
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 3.0000000000000001e-05
+    build_ms: 0
+    total_ms: 5.0000000000000002e-05
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 499e3770b57b54dee9a0d9697b0402b67ccdff01f415cc324e40eaf7f3237160
+checkpoint_digest_ms: 59.173738999999998
+canonical_probability_sha256: 499e3770b57b54dee9a0d9697b0402b67ccdff01f415cc324e40eaf7f3237160
+canonical_probability_digest_ms: 107.18876400000001
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 824653833d424aa257e431fa48baf60d3ae1052f0f2cdd4d1386cab699a3ed06
+content_digest_ms: 14.691974999999999
+process_peak_rss_kib: 418256
+sample_compute_ms: 1792.169447
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 27
+warmup: false
+mode: stages
+monotonic_start_ns: 3880706528248228
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_27.yaml
+input_sha256: 1333d23210edd6ad6e9ada37aa2e895e12ba77cdf76f6392d8140665b53b38cd
+input_load_parse_ms: 777.90273300000001
+integrate_external_ms: 464.24393700000002
+integrate_process_cpu_ms: 464.21800000000002
+receipt:
+  epoch: 1
+  map_revision: 28
+  observed_revision: 28
+  last_integrated_stamp_ns: 28000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b27
+  input_stamp_ns: 28000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00012999999999999999
+      validation: 0.000281
+      fingerprint: 41.818693000000003
+      dedup: 0.0023540000000000002
+      depth_filter: 0.15449299999999999
+      transform: 0.18149499999999999
+      ray_preparation: 226.21487999999999
+      fusion: 192.11670000000001
+      finalization: 0.55615499999999995
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.178258000000028
+    rays_attempted: 100000
+    ray_keys_generated: 26640230
+    active_ray_key_visits: 15644947
+    inactive_ray_key_visits: 10995283
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15644947
+    free_insert_duplicates: 14305678
+    free_unique_before_hit_removal: 1339269
+    copied_blocks: 3089
+    copied_cells: 1416504
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 181.37010699999999
+      block_batch_visited: true
+      block_batch_ms: 10.741482
+      mutation_storage: collected
+      mutation_size: 120244
+      mutation_capacity: 131072
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 141.46490299999999
+      inner_update_ms: 17.400130999999998
+      prune_ms: 22.504432000000001
+      keys_considered: 1347185
+      unchanged_keys: 1226941
+      written_keys: 120244
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1305463
+  hit_keys: 41722
+  changed_keys: 120244
+  occupancy_changed_keys: 3956
+  rebuilt_blocks: 3089
+  preprocessing_ms: 42.158087999999999
+  preparation_ms: 226.21596199999999
+  fusion_ms: 192.673135
+  total_ms: 464.22343899999998
+tree_nodes: 913219
+known_cells: 1671248
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 22652144
+acquire_ms: 0.41388599999999998
+get_handle_ms: 13.721514000000001
+roi_ms: 0.106382
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 28
+  observed_revision: 28
+  last_integrated_stamp_ns: 28000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 14.079233
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1671248
+    output_columns: 29353
+    lock_wait_ms: 0.00011
+    build_ms: 14.078381
+    total_ms: 14.078491
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00040099999999999999
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.00017000000000000001
+    build_ms: 0
+    total_ms: 0.00027999999999999998
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 3f0850e2c27292781efd2c58b7a40526ee507c2314757cf5d42de7dd98058ec3
+checkpoint_digest_ms: 59.499836999999999
+canonical_probability_sha256: 3f0850e2c27292781efd2c58b7a40526ee507c2314757cf5d42de7dd98058ec3
+canonical_probability_digest_ms: 104.501017
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 2ff08ffa5f7acd57d16b8d3484d0cb62126b3f5c5e218a32c77334a5040d04a6
+content_digest_ms: 14.031202
+process_peak_rss_kib: 418256
+sample_compute_ms: 1798.0746449999999
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 28
+warmup: false
+mode: stages
+monotonic_start_ns: 3880708333522438
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_28.yaml
+input_sha256: 36814ccf6bb41fa91ed268e2377289ccfd3a27b257386a3d668763be9b76da77
+input_load_parse_ms: 778.46122300000002
+integrate_external_ms: 468.52274199999999
+integrate_process_cpu_ms: 468.48899999999998
+receipt:
+  epoch: 1
+  map_revision: 29
+  observed_revision: 29
+  last_integrated_stamp_ns: 29000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b28
+  input_stamp_ns: 29000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00012
+      validation: 0.00068099999999999996
+      fingerprint: 42.251404000000001
+      dedup: 0.0023649999999999999
+      depth_filter: 0.146227
+      transform: 0.18115400000000001
+      ray_preparation: 224.085722
+      fusion: 198.12235999999999
+      finalization: 0.65276800000000001
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.0576780000000099
+    rays_attempted: 100000
+    ray_keys_generated: 26640689
+    active_ray_key_visits: 15647974
+    inactive_ray_key_visits: 10992715
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15647974
+    free_insert_duplicates: 14306963
+    free_unique_before_hit_removal: 1341011
+    copied_blocks: 3108
+    copied_cells: 1421677
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 185.95557299999999
+      block_batch_visited: true
+      block_batch_ms: 12.161265
+      mutation_storage: collected
+      mutation_size: 120475
+      mutation_capacity: 131072
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 145.50362200000001
+      inner_update_ms: 17.513235000000002
+      prune_ms: 22.937923999999999
+      keys_considered: 1348986
+      unchanged_keys: 1228511
+      written_keys: 120475
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1307210
+  hit_keys: 41776
+  changed_keys: 120475
+  occupancy_changed_keys: 3814
+  rebuilt_blocks: 3108
+  preprocessing_ms: 42.582681999999998
+  preparation_ms: 224.08694399999999
+  fusion_ms: 198.77538799999999
+  total_ms: 468.50047899999998
+tree_nodes: 912152
+known_cells: 1672295
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 22621632
+acquire_ms: 0.41017799999999999
+get_handle_ms: 14.005252
+roi_ms: 0.10237400000000001
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 29
+  observed_revision: 29
+  last_integrated_stamp_ns: 29000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 14.026441999999999
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1672295
+    output_columns: 29353
+    lock_wait_ms: 0.00012
+    build_ms: 14.025480999999999
+    total_ms: 14.025601
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.000321
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.0001
+    build_ms: 0
+    total_ms: 0.00021100000000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: b8ea770b4b0d986852400e0fa97774b652da6f25bbb53608bef04cd71491979e
+checkpoint_digest_ms: 59.526147999999999
+canonical_probability_sha256: b8ea770b4b0d986852400e0fa97774b652da6f25bbb53608bef04cd71491979e
+canonical_probability_digest_ms: 105.70549099999999
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: e7760b4dd5dc4e3ad57cae1c721960f7cff747292a7ef8edcc428e566a8cc874
+content_digest_ms: 14.427152
+process_peak_rss_kib: 418256
+sample_compute_ms: 1789.1491779999999
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 29
+warmup: false
+mode: stages
+monotonic_start_ns: 3880710130088513
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_29.yaml
+input_sha256: 9f0e7b4df50fd9f095f24e29aa87d600aafe5bc36b54b087a43bbc15b6628406
+input_load_parse_ms: 777.97026100000005
+integrate_external_ms: 462.86465099999998
+integrate_process_cpu_ms: 462.82799999999997
+receipt:
+  epoch: 1
+  map_revision: 30
+  observed_revision: 30
+  last_integrated_stamp_ns: 30000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b29
+  input_stamp_ns: 30000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00012
+      validation: 0.00035100000000000002
+      fingerprint: 41.883856999999999
+      dedup: 0.0019740000000000001
+      depth_filter: 0.15160799999999999
+      transform: 0.180011
+      ray_preparation: 223.073061
+      fusion: 193.67256
+      finalization: 0.54235900000000004
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.3365380000000755
+    rays_attempted: 100000
+    ray_keys_generated: 26627019
+    active_ray_key_visits: 15636611
+    inactive_ray_key_visits: 10990408
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15636611
+    free_insert_duplicates: 14296764
+    free_unique_before_hit_removal: 1339847
+    copied_blocks: 3082
+    copied_cells: 1419444
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 182.290312
+      block_batch_visited: true
+      block_batch_ms: 11.376526
+      mutation_storage: collected
+      mutation_size: 119068
+      mutation_capacity: 131072
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 142.11982499999999
+      inner_update_ms: 17.821100000000001
+      prune_ms: 22.348727
+      keys_considered: 1347823
+      unchanged_keys: 1228755
+      written_keys: 119068
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1306061
+  hit_keys: 41762
+  changed_keys: 119068
+  occupancy_changed_keys: 3281
+  rebuilt_blocks: 3082
+  preprocessing_ms: 42.218651999999999
+  preparation_ms: 223.07403400000001
+  fusion_ms: 194.215169
+  total_ms: 462.84243900000001
+tree_nodes: 912065
+known_cells: 1673187
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 22614928
+acquire_ms: 0.40241300000000002
+get_handle_ms: 13.986738000000001
+roi_ms: 0.102103
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 30
+  observed_revision: 30
+  last_integrated_stamp_ns: 30000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 14.103519
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1673187
+    output_columns: 29353
+    lock_wait_ms: 0.00051099999999999995
+    build_ms: 14.102436000000001
+    total_ms: 14.102947
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00032000000000000003
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.0001
+    build_ms: 0
+    total_ms: 0.00021000000000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: b33cae402fcc2905b412c8aa51d346706c964890bb5acac0175152cb3b64cb60
+checkpoint_digest_ms: 60.039330999999997
+canonical_probability_sha256: b33cae402fcc2905b412c8aa51d346706c964890bb5acac0175152cb3b64cb60
+canonical_probability_digest_ms: 104.530613
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: d8291c78f1568e07032dcd8e32256f8f5a8fc1e068ff2deecb6120cce526fbcb
+content_digest_ms: 13.674215
+process_peak_rss_kib: 418256
+sample_compute_ms: 1797.094065
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 30
+warmup: false
+mode: stages
+monotonic_start_ns: 3880711934596950
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_30.yaml
+input_sha256: 8246024aa13f8015422896b87759ed6fd236b7a8f6eadc64074dca6d24c40c2a
+input_load_parse_ms: 782.31654400000002
+integrate_external_ms: 468.49354599999998
+integrate_process_cpu_ms: 468.48000000000002
+receipt:
+  epoch: 1
+  map_revision: 31
+  observed_revision: 31
+  last_integrated_stamp_ns: 31000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b30
+  input_stamp_ns: 31000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00011
+      validation: 0.00033
+      fingerprint: 44.234034999999999
+      dedup: 0.001913
+      depth_filter: 0.143652
+      transform: 0.17890900000000001
+      ray_preparation: 224.78774300000001
+      fusion: 195.20280199999999
+      finalization: 0.57283700000000004
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.3499649999999974
+    rays_attempted: 100000
+    ray_keys_generated: 26650588
+    active_ray_key_visits: 15652991
+    inactive_ray_key_visits: 10997597
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15652991
+    free_insert_duplicates: 14311924
+    free_unique_before_hit_removal: 1341067
+    copied_blocks: 3100
+    copied_cells: 1421075
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 183.25569300000001
+      block_batch_visited: true
+      block_batch_ms: 11.941798
+      mutation_storage: collected
+      mutation_size: 118887
+      mutation_capacity: 131072
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 143.27962500000001
+      inner_update_ms: 17.281005
+      prune_ms: 22.694002000000001
+      keys_considered: 1349109
+      unchanged_keys: 1230222
+      written_keys: 118887
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1307411
+  hit_keys: 41698
+  changed_keys: 118887
+  occupancy_changed_keys: 3426
+  rebuilt_blocks: 3100
+  preprocessing_ms: 44.559531
+  preparation_ms: 224.78894600000001
+  fusion_ms: 195.775779
+  total_ms: 468.47229599999997
+tree_nodes: 909957
+known_cells: 1674040
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 22560144
+acquire_ms: 0.42086800000000002
+get_handle_ms: 13.805472999999999
+roi_ms: 0.104619
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 31
+  observed_revision: 31
+  last_integrated_stamp_ns: 31000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 14.084391999999999
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1674040
+    output_columns: 29353
+    lock_wait_ms: 0.00012999999999999999
+    build_ms: 14.083531000000001
+    total_ms: 14.083660999999999
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00017000000000000001
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.0001
+    build_ms: 0
+    total_ms: 0.00012
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 3eeaff9490527365f4367e78a89742fa7a64b4686ef1889debac8c41b6df280f
+checkpoint_digest_ms: 59.324635000000001
+canonical_probability_sha256: 3eeaff9490527365f4367e78a89742fa7a64b4686ef1889debac8c41b6df280f
+canonical_probability_digest_ms: 102.642201
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 541619f7d51bd6b23f821564a950df1947113f0aa1d4723ab24534e64c41c20e
+content_digest_ms: 14.392587000000001
+process_peak_rss_kib: 418256
+sample_compute_ms: 1804.140459
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 31
+warmup: false
+mode: stages
+monotonic_start_ns: 3880713746186216
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_31.yaml
+input_sha256: 0abf64a36dc95ee1aedbc52f072fdeb7a931fd3de1267fc84c44b951ea957721
+input_load_parse_ms: 792.08292700000004
+integrate_external_ms: 467.97178700000001
+integrate_process_cpu_ms: 467.94799999999998
+receipt:
+  epoch: 1
+  map_revision: 32
+  observed_revision: 32
+  last_integrated_stamp_ns: 32000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b31
+  input_stamp_ns: 32000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00022000000000000001
+      validation: 0.00031
+      fingerprint: 42.082614
+      dedup: 0.0015629999999999999
+      depth_filter: 0.14766000000000001
+      transform: 0.181504
+      ray_preparation: 226.11577199999999
+      fusion: 195.648177
+      finalization: 0.58587100000000003
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.1894300000000158
+    rays_attempted: 100000
+    ray_keys_generated: 26648405
+    active_ray_key_visits: 15657945
+    inactive_ray_key_visits: 10990460
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15657945
+    free_insert_duplicates: 14318174
+    free_unique_before_hit_removal: 1339771
+    copied_blocks: 3093
+    copied_cells: 1422523
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 183.43946199999999
+      block_batch_visited: true
+      block_batch_ms: 12.202904
+      mutation_storage: collected
+      mutation_size: 118040
+      mutation_capacity: 131072
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 143.35539900000001
+      inner_update_ms: 17.619557
+      prune_ms: 22.463835
+      keys_considered: 1347705
+      unchanged_keys: 1229665
+      written_keys: 118040
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1305916
+  hit_keys: 41789
+  changed_keys: 118040
+  occupancy_changed_keys: 3202
+  rebuilt_blocks: 3093
+  preprocessing_ms: 42.414693999999997
+  preparation_ms: 226.11663300000001
+  fusion_ms: 196.23429899999999
+  total_ms: 467.95312100000001
+tree_nodes: 909868
+known_cells: 1674888
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 22553408
+acquire_ms: 0.41216199999999997
+get_handle_ms: 13.833316999999999
+roi_ms: 0.104117
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 32
+  observed_revision: 32
+  last_integrated_stamp_ns: 32000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 14.099781
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1674888
+    output_columns: 29353
+    lock_wait_ms: 0.00012
+    build_ms: 14.099211
+    total_ms: 14.099330999999999
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.00033100000000000002
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 0.0001
+    build_ms: 0
+    total_ms: 0.00020000000000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: 41e9530cc6634ff89b6edd9edaab1ccbe1c62da71381f9da42447b6fa2b75bdc
+checkpoint_digest_ms: 59.873026000000003
+canonical_probability_sha256: 41e9530cc6634ff89b6edd9edaab1ccbe1c62da71381f9da42447b6fa2b75bdc
+canonical_probability_digest_ms: 104.257555
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: b075837fc2ada0f57a4ee1c2276685be02d03dffed4ff5da73a28462ac79e257
+content_digest_ms: 14.142192
+process_peak_rss_kib: 418256
+sample_compute_ms: 1814.849158
+---
+schema: observer_profile_v1
+case_id: o5_b20_c100000
+manifest_sha256: 7dd98fafef8c93202e4611f16092dba2976ccf5ea24b8f7d1c4d8f8d2e8ec0fc
+index: 32
+warmup: false
+mode: stages
+monotonic_start_ns: 3880715568472570
+status: OK
+input_path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/b_stages/windows/o5_b20_c100000_r0_stages_b57250b5/../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c100000/frame_32.yaml
+input_sha256: 9ee1717beb06ade147e1010802c5307066bfefa0a92ea2ae9b9557fad68ffe57
+input_load_parse_ms: 770.83518800000002
+integrate_external_ms: 468.757026
+integrate_process_cpu_ms: 468.733
+receipt:
+  epoch: 1
+  map_revision: 33
+  observed_revision: 33
+  last_integrated_stamp_ns: 33000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: b32
+  input_stamp_ns: 33000000000
+  profile:
+    enabled: true
+    mode: stages
+    stage_ms:
+      lock_wait: 0.00045100000000000001
+      validation: 0.00034099999999999999
+      fingerprint: 41.794637999999999
+      dedup: 0.001743
+      depth_filter: 0.14580599999999999
+      transform: 0.17807700000000001
+      ray_preparation: 226.88000099999999
+      fusion: 195.90405200000001
+      finalization: 0.58356699999999995
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: true
+      validation: true
+      fingerprint: true
+      dedup: true
+      depth_filter: true
+      transform: true
+      ray_preparation: true
+      fusion: true
+      finalization: true
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 3.2473499999999262
+    rays_attempted: 100000
+    ray_keys_generated: 26636853
+    active_ray_key_visits: 15645585
+    inactive_ray_key_visits: 10991268
+    rays_with_active_keys: 100000
+    rays_without_active_keys: 0
+    free_insert_attempts: 15645585
+    free_insert_duplicates: 14307791
+    free_unique_before_hit_removal: 1337794
+    copied_blocks: 3070
+    copied_cells: 1417241
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: true
+      apply_batch_visited: true
+      apply_batch_ms: 183.44892999999999
+      block_batch_visited: true
+      block_batch_ms: 12.449051000000001
+      mutation_storage: collected
+      mutation_size: 117398
+      mutation_capacity: 131072
+      mutation_element_bytes: 24
+    apply_breakdown:
+      collected: true
+      write_loop_ms: 143.303259
+      inner_update_ms: 17.50506
+      prune_ms: 22.639879000000001
+      keys_considered: 1345819
+      unchanged_keys: 1228421
+      written_keys: 117398
+  status: INTEGRATED
+  raw_points: 100000
+  accepted_points: 100000
+  free_keys: 1304078
+  hit_keys: 41741
+  changed_keys: 117398
+  occupancy_changed_keys: 3000
+  rebuilt_blocks: 3070
+  preprocessing_ms: 42.121777999999999
+  preparation_ms: 226.88107299999999
+  fusion_ms: 196.48788999999999
+  total_ms: 468.73602599999998
+tree_nodes: 908201
+known_cells: 1675713
+block_count: 3847
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 22509712
+acquire_ms: 0.40608
+get_handle_ms: 13.783873
+roi_ms: 0.108566
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 33
+  observed_revision: 33
+  last_integrated_stamp_ns: 33000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 16f4cb3cd4007306af9bf0b227b82793dbdba3d401e25c7f0550b00cfea004d2
+  clock_domain: ros
+surface_first_call:
+  external_ms: 14.059225
+  profile_enabled: true
+  profile:
+    cache_hit: false
+    scanned_cells: 1675713
+    output_columns: 29353
+    lock_wait_ms: 0.00014100000000000001
+    build_ms: 14.057611
+    total_ms: 14.057752000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+surface_second_call:
+  external_ms: 0.000321
+  profile_enabled: true
+  profile:
+    cache_hit: true
+    scanned_cells: 0
+    output_columns: 29353
+    lock_wait_ms: 8.0000000000000007e-05
+    build_ms: 0
+    total_ms: 0.00020100000000000001
+    domain_init: collected
+    domain_init_performed: false
+    domain_init_scanned_cells: 0
+    domain_init_ms: 0
+  columns: 29353
+probability_tree_sha256: c40dc7cacfb59923eac83284cb436a7af97b83dd3d1bbaf9562eccbb1fc50591
+checkpoint_digest_ms: 60.492781000000001
+canonical_probability_sha256: c40dc7cacfb59923eac83284cb436a7af97b83dd3d1bbaf9562eccbb1fc50591
+canonical_probability_digest_ms: 104.331486
+roi_cell_count: 4096
+surface_column_count: 29353
+surface_second_column_count: 29353
+roi_surface_content_sha256: 5ca3dc4386809ea62cd5be747a052508c790538fc7fc5d71d1736d9ef2b66efd
+content_digest_ms: 13.771008
+process_peak_rss_kib: 418256
+sample_compute_ms: 1794.8467310000001

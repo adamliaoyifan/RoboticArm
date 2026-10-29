@@ -1,0 +1,278 @@
+{
+  "attribution": {
+    "reason": "stages matrix not run",
+    "status": "not_evaluated"
+  },
+  "budget_s": 1800.0,
+  "campaign": "rehearsal",
+  "files": {
+    "baseline_sha256": "45f56ea254137f04606107a69d358f9e62039ff6d39c2b6374e1d41c21f30faf",
+    "candidate_sha256": "e05bde858017f2d7b358498ba42388a2893042b0eeb1974ed019d03a69311f60",
+    "config_sha256": "8cb50b78a220e3c490824a87dad718c3a06ebd901ec84822e6d51d27db8ec785",
+    "geometry_sha256": "c2912984be7de04c10ba1ec26a29cfb2d509d9fab2e4f7d27ba13183f99f5972",
+    "report_sha256": "9c0c46c5bc169a51653b13bd5669a0ab0a51b4b2445cbe3ca834fdf4732bbc50",
+    "runner_sha256": "71e2ad776b5751fc03c2330bd015f98dfc5da7c577603c8ce9e59ce2dc170cf0"
+  },
+  "git": {},
+  "libraries": [
+    {
+      "name": "liboctomap.so.1.9",
+      "path": "/opt/ros/humble/lib/x86_64-linux-gnu/liboctomap.so.1.9",
+      "sha256": "f59768c1b7c8bb9448c495eb1bdcf4d6d8fb1e0d8f6a529543e9da3fac7e1564"
+    },
+    {
+      "name": "liboctomath.so.1.9",
+      "path": "/opt/ros/humble/lib/x86_64-linux-gnu/liboctomath.so.1.9",
+      "sha256": "11a4485942f897e33b620f289817b525d9bc6ff7c15c5fe69b7a8e1bc23aaeca"
+    },
+    {
+      "name": "libcrypto.so.3",
+      "path": "/lib/x86_64-linux-gnu/libcrypto.so.3",
+      "sha256": "7cc817ff1841b59516d684f357bc0c3fc2cc52c3fa9b4ffb8ce8bdc215f02915"
+    },
+    {
+      "name": "libyaml-cpp.so.0.7",
+      "path": "/lib/x86_64-linux-gnu/libyaml-cpp.so.0.7",
+      "sha256": "0ff4f6210a56b6c232c1497514a86424279f2250fe8d25ee26f600b3dab0a2b5"
+    },
+    {
+      "name": "libstdc++.so.6",
+      "path": "/lib/x86_64-linux-gnu/libstdc++.so.6",
+      "sha256": "ff0825e113603c3866680d5d52216bc6d8eedf3a59f52a0aef67ff01994db128"
+    },
+    {
+      "name": "libm.so.6",
+      "path": "/lib/x86_64-linux-gnu/libm.so.6",
+      "sha256": "3dd5511ae94785c9f921429b0f2b2f7aabb461b6f0e6de6dfdbef15f24bdfee6"
+    },
+    {
+      "name": "libgcc_s.so.1",
+      "path": "/lib/x86_64-linux-gnu/libgcc_s.so.1",
+      "sha256": "fc9d43b2f6c20e53b009238f767c5b949d202389e20de9e202ea684b4ba3729a"
+    },
+    {
+      "name": "libc.so.6",
+      "path": "/lib/x86_64-linux-gnu/libc.so.6",
+      "sha256": "b2cf6c33b74d2f22543b7a469a75b538911e690f769d0b238843a49465b83793"
+    }
+  ],
+  "lock": {
+    "acquired": true,
+    "state": "acquired",
+    "wait_s": 0.0
+  },
+  "machine": {
+    "cpu": "AMD Ryzen 9 9950X3D 16-Core Processor",
+    "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+    "python": "3.10.12"
+  },
+  "measurement_wall_s": 3.130182597320527,
+  "notes": {
+    "pooled_mean": "not_computed",
+    "reference_gates": "listed per window and do not decide this campaign"
+  },
+  "pairs": [
+    {
+      "A": {
+        "argv": [
+          "/tmp/occ-apply-b-frozen-build/observer_profile_cli",
+          "--geometry",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/config/geometry.yaml",
+          "--config",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/config/config.yaml",
+          "--manifest",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/preflight/windows/o5_b0_c30000_r0_off_b57250b5/manifest.yaml",
+          "--out",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/preflight/windows/o5_b0_c30000_r0_off_b57250b5/samples.yaml"
+        ],
+        "case": "o5_b0_c30000",
+        "cell_block_bytes": 4168,
+        "dominant_phase": "not_collected",
+        "early_late": {
+          "3": null,
+          "31": null,
+          "32": null,
+          "4": null
+        },
+        "frames": 1,
+        "last_complete_index": 0,
+        "metrics": {},
+        "mode": "off",
+        "notes": {
+          "fusion_remainder_ms": "Fusion minus ApplyBatch minus BlockBatch; unclassified work and boundary overhead",
+          "mutation_bytes": "size or capacity times element size; not RSS and not cumulative allocation",
+          "percentiles": "stage percentiles are not additive",
+          "process_peak_rss_kib": "process peak, not current RSS"
+        },
+        "reference_gate": {
+          "reference_only": true,
+          "status": "not_evaluated"
+        },
+        "repetition": 0,
+        "returncode": 0,
+        "sample_path": "docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/preflight/windows/o5_b0_c30000_r0_off_b57250b5/samples.yaml",
+        "scored": 1,
+        "status": "not_a_performance_sample"
+      },
+      "B": {
+        "argv": [
+          "/tmp/occ-apply-b-frozen-build/observer_profile_cli",
+          "--geometry",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/config/geometry.yaml",
+          "--config",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/config/config.yaml",
+          "--manifest",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/preflight/windows/o5_b0_c30000_r0_stages_b57250b5/manifest.yaml",
+          "--out",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/preflight/windows/o5_b0_c30000_r0_stages_b57250b5/samples.yaml"
+        ],
+        "case": "o5_b0_c30000",
+        "cell_block_bytes": 4168,
+        "dominant_phase": "not_collected",
+        "early_late": {
+          "3": null,
+          "31": null,
+          "32": null,
+          "4": null
+        },
+        "frames": 1,
+        "last_complete_index": 0,
+        "metrics": {},
+        "mode": "stages",
+        "notes": {
+          "fusion_remainder_ms": "Fusion minus ApplyBatch minus BlockBatch; unclassified work and boundary overhead",
+          "mutation_bytes": "size or capacity times element size; not RSS and not cumulative allocation",
+          "percentiles": "stage percentiles are not additive",
+          "process_peak_rss_kib": "process peak, not current RSS"
+        },
+        "reference_gate": {
+          "reference_only": true,
+          "status": "not_evaluated"
+        },
+        "repetition": 0,
+        "returncode": 0,
+        "sample_path": "docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/preflight/windows/o5_b0_c30000_r0_stages_b57250b5/samples.yaml",
+        "scored": 1,
+        "status": "not_a_performance_sample"
+      },
+      "case": "o5_b0_c30000",
+      "comparison": {
+        "canonical_frames": 1,
+        "content_compared": true,
+        "frames": 1,
+        "status": "comparable",
+        "structural_differences": []
+      },
+      "order": [
+        "A",
+        "B"
+      ],
+      "repetition": 0,
+      "status": "not_a_performance_sample"
+    },
+    {
+      "A": {
+        "argv": [
+          "/tmp/occ-apply-b-frozen-build/observer_profile_cli",
+          "--geometry",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/config/geometry.yaml",
+          "--config",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/config/config.yaml",
+          "--manifest",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/preflight/windows/o5_b20_c30000_r0_off_b57250b5/manifest.yaml",
+          "--out",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/preflight/windows/o5_b20_c30000_r0_off_b57250b5/samples.yaml"
+        ],
+        "case": "o5_b20_c30000",
+        "cell_block_bytes": 4168,
+        "dominant_phase": "not_collected",
+        "early_late": {
+          "3": null,
+          "31": null,
+          "32": null,
+          "4": null
+        },
+        "frames": 1,
+        "last_complete_index": 0,
+        "metrics": {},
+        "mode": "off",
+        "notes": {
+          "fusion_remainder_ms": "Fusion minus ApplyBatch minus BlockBatch; unclassified work and boundary overhead",
+          "mutation_bytes": "size or capacity times element size; not RSS and not cumulative allocation",
+          "percentiles": "stage percentiles are not additive",
+          "process_peak_rss_kib": "process peak, not current RSS"
+        },
+        "reference_gate": {
+          "reference_only": true,
+          "status": "not_evaluated"
+        },
+        "repetition": 0,
+        "returncode": 0,
+        "sample_path": "docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/preflight/windows/o5_b20_c30000_r0_off_b57250b5/samples.yaml",
+        "scored": 1,
+        "status": "not_a_performance_sample"
+      },
+      "B": {
+        "argv": [
+          "/tmp/occ-apply-b-frozen-build/observer_profile_cli",
+          "--geometry",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/config/geometry.yaml",
+          "--config",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/config/config.yaml",
+          "--manifest",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/preflight/windows/o5_b20_c30000_r0_stages_b57250b5/manifest.yaml",
+          "--out",
+          "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/preflight/windows/o5_b20_c30000_r0_stages_b57250b5/samples.yaml"
+        ],
+        "case": "o5_b20_c30000",
+        "cell_block_bytes": 4168,
+        "dominant_phase": "not_collected",
+        "early_late": {
+          "3": null,
+          "31": null,
+          "32": null,
+          "4": null
+        },
+        "frames": 1,
+        "last_complete_index": 0,
+        "metrics": {},
+        "mode": "stages",
+        "notes": {
+          "fusion_remainder_ms": "Fusion minus ApplyBatch minus BlockBatch; unclassified work and boundary overhead",
+          "mutation_bytes": "size or capacity times element size; not RSS and not cumulative allocation",
+          "percentiles": "stage percentiles are not additive",
+          "process_peak_rss_kib": "process peak, not current RSS"
+        },
+        "reference_gate": {
+          "reference_only": true,
+          "status": "not_evaluated"
+        },
+        "repetition": 0,
+        "returncode": 0,
+        "sample_path": "docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/preflight/windows/o5_b20_c30000_r0_stages_b57250b5/samples.yaml",
+        "scored": 1,
+        "status": "not_a_performance_sample"
+      },
+      "case": "o5_b20_c30000",
+      "comparison": {
+        "canonical_frames": 1,
+        "content_compared": true,
+        "frames": 1,
+        "status": "comparable",
+        "structural_differences": []
+      },
+      "order": [
+        "B",
+        "A"
+      ],
+      "repetition": 0,
+      "status": "not_a_performance_sample"
+    }
+  ],
+  "performance_sample": false,
+  "product_acceptance": "not_evaluated",
+  "repetitions": 1,
+  "require_content": true,
+  "status": "not_a_performance_sample",
+  "window_timeout_s": 120.0
+}

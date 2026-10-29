@@ -1,0 +1,14 @@
+Internal ctest changing into directory: /tmp/occ-apply-baseline-build
+Test project /tmp/occ-apply-baseline-build
+    Start 1: observer_profile_checks
+1/4 Test #1: observer_profile_checks ..........   Passed    0.31 sec
+    Start 2: observer_keyset_checks
+2/4 Test #2: observer_keyset_checks ...........   Passed    0.08 sec
+    Start 3: observer_hot_path_disassembly
+3/4 Test #3: observer_hot_path_disassembly ....   Passed    0.03 sec
+    Start 4: observer_config_entry
+4/4 Test #4: observer_config_entry ............   Passed    0.05 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Total Test time (real) =   0.47 sec
