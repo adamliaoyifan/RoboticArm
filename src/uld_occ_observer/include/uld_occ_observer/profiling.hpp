@@ -29,6 +29,19 @@ struct SurfaceProfile {
   std::uint64_t domain_init_scanned_cells{};
   double domain_init_ms{};
 };
+// Coarse fusion intervals. Count is not a recordable phase.
+enum class FusionPhase { ApplyBatch, BlockBatch, Count };
+// ApplyBatch is search, updateNode, and mutation creation. BlockBatch is block
+// lookup, copy, per-cell maintenance, and registry writeback. Neither interval
+// is only tree time or only allocation. Uncollected durations stay at zero in
+// memory and are serialized as null, not as a measured zero.
+struct FusionBreakdown {
+  bool collected = false;
+  std::array<bool, 2> visited{};
+  std::array<double, 2> milliseconds{};
+  bool mutation_storage_collected = false;
+  std::size_t mutation_size{}, mutation_capacity{}, mutation_element_bytes{};
+};
 // Report snapshot. Callers record through OccupancyDiagnostic, not by writing these fields.
 // Per-key domain, insert, erase, and release clocks are not provided.
 struct UpdateProfile {
@@ -41,6 +54,7 @@ struct UpdateProfile {
       free_insert_duplicates{}, free_unique_before_hit_removal{}, copied_blocks{}, copied_cells{};
   bool surface_recorded{};
   SurfaceProfile surface{};
+  FusionBreakdown fusion_breakdown;
   bool enabled() const { return mode != ProfileMode::Off; }
   bool detailed() const { return mode == ProfileMode::Detailed; }
   void finish(double total_ms) {
@@ -57,7 +71,10 @@ class OccupancyDiagnostic {
  public:
   using Clock = std::chrono::steady_clock;
 
-  explicit OccupancyDiagnostic(ProfileMode level) { report_.mode = level; }
+  explicit OccupancyDiagnostic(ProfileMode level) {
+    report_.mode = level;
+    if (report_.enabled()) report_.fusion_breakdown.collected = true;
+  }
   bool enabled() const { return report_.enabled(); }
   bool detailed() const { return report_.detailed(); }
   const UpdateProfile& report() const { return report_; }
@@ -94,6 +111,52 @@ class OccupancyDiagnostic {
 
   Span span(ProfileStage stage) { return Span(*this, stage, false); }
   Span detail(ProfileStage stage) { return Span(*this, stage, true); }
+
+  // One frame uses two of these, around apply and around block writeback.
+  // finish() records at most once. The destructor finishes if the caller did not.
+  // A moved-from span does not record. Off does not read the clock or write counts.
+  class FusionSpan {
+   public:
+    FusionSpan(OccupancyDiagnostic& diagnostic, FusionPhase phase)
+        : diagnostic_(&diagnostic), index_(static_cast<std::size_t>(phase)),
+          enabled_(diagnostic.enabled() && index_ < 2) {
+      if (!enabled_) return;
+      diagnostic_->report_.fusion_breakdown.visited[index_] = true;
+      start_ = Clock::now();
+    }
+    FusionSpan(FusionSpan&& other) noexcept
+        : diagnostic_(other.diagnostic_), index_(other.index_), enabled_(other.enabled_),
+          start_(other.start_) {
+      other.enabled_ = false;
+      other.diagnostic_ = nullptr;
+    }
+    FusionSpan(const FusionSpan&) = delete;
+    FusionSpan& operator=(const FusionSpan&) = delete;
+    FusionSpan& operator=(FusionSpan&&) = delete;
+    void finish() noexcept {
+      if (!enabled_) return;
+      enabled_ = false;
+      diagnostic_->report_.fusion_breakdown.milliseconds[index_] +=
+          std::chrono::duration<double, std::milli>(Clock::now() - start_).count();
+    }
+    ~FusionSpan() { finish(); }
+
+   private:
+    OccupancyDiagnostic* diagnostic_;
+    std::size_t index_;
+    bool enabled_;
+    Clock::time_point start_{};
+  };
+
+  FusionSpan fusion_span(FusionPhase phase) { return FusionSpan(*this, phase); }
+  void record_mutation_storage(std::size_t size, std::size_t capacity,
+                               std::size_t element_bytes) {
+    if (!enabled()) return;
+    report_.fusion_breakdown.mutation_storage_collected = true;
+    report_.fusion_breakdown.mutation_size = size;
+    report_.fusion_breakdown.mutation_capacity = capacity;
+    report_.fusion_breakdown.mutation_element_bytes = element_bytes;
+  }
 
   void ray_attempted() { if (enabled()) ++report_.rays_attempted; }
   void keys_generated(std::uint64_t count) { if (enabled()) report_.ray_keys_generated += count; }

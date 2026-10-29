@@ -1,6 +1,7 @@
 #include "uld_occ_observer/configuration.hpp"
 #include "uld_occ_observer/checkpoint_io.hpp"
 #include "uld_occ_observer/serialization.hpp"
+#include "query_content_digest.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -23,7 +24,9 @@ int main(int argc, char** argv) {
   if (argc == 2 && std::string(argv[1]) == "--help") {
     std::cout << "observer_profile_cli --geometry FILE --config FILE --manifest FILE --out FILE\n"
       << "Manifest: mode(off/stages/detailed), case_id, frames[{path,sha256,warmup}],\n"
-      << "optional surface(true), state_digest(false). Outputs append-flushed YAML documents.\n"
+      << "optional surface(true), state_digest(false). state_digest also hashes the\n"
+      << "already queried ROI and surface outside integrate and query clocks.\n"
+      << "Outputs append-flushed YAML documents.\n"
       << "Input frames use observer_cli integrate schema; no implicit IDs or TF.\n"
       << "Exit0=recording completed,3=error/status mismatch; performance is not scored here.\n";
     return 0;
@@ -85,6 +88,10 @@ int main(int argc, char** argv) {
         row["known_cells"] = diagnostics.known_cells;
         row["block_count"] = diagnostics.blocks;
         row["tree_memory_estimate_bytes"] = diagnostics.estimated_tree_bytes;
+        CellPage roi_page;
+        std::shared_ptr<const std::vector<SurfaceColumn>> surface_first;
+        std::shared_ptr<const std::vector<SurfaceColumn>> surface_second;
+        bool queried = false;
         if (diagnostics.identity.last_integrated_stamp_ns) {
           const auto acquire_start = Clock::now();
           const auto lease = repo.acquire(diagnostics.identity.last_integrated_stamp_ns,0);
@@ -92,10 +99,10 @@ int main(int argc, char** argv) {
           const auto snap = repo.get(lease.handle);
           const auto got = Clock::now();
           const auto shape = store.domain()->shape();
-          const auto page = snap->read_cells({0,0,0},{std::min(16,shape.x),std::min(16,shape.y),std::min(16,shape.z)},0,4096);
+          roi_page = snap->read_cells({0,0,0},{std::min(16,shape.x),std::min(16,shape.y),std::min(16,shape.z)},0,4096);
           const auto read = Clock::now();
           row["acquire_ms"] = ms(acquire_start,acquired); row["get_handle_ms"] = ms(acquired,got);
-          row["roi_ms"] = ms(got,read); row["roi_cells"] = page.cells.size();
+          row["roi_ms"] = ms(got,read); row["roi_cells"] = roi_page.cells.size();
           row["snapshot_identity"] = identity_to_yaml(snap->identity());
           if (manifest["surface"].as<bool>(true)) {
             for (int call=0;call<2;++call) {
@@ -103,6 +110,8 @@ int main(int argc, char** argv) {
               const auto begin = Clock::now();
               const auto surface = snap->surface(mode==ProfileMode::Off ? nullptr : &profile);
               const auto end = Clock::now();
+              if (call == 0) surface_first = surface;
+              else surface_second = surface;
               YAML::Node sample;
               sample["external_ms"] = ms(begin,end);
               sample["profile_enabled"] = mode!=ProfileMode::Off;
@@ -112,11 +121,21 @@ int main(int argc, char** argv) {
             }
           }
           repo.release(lease.handle);
+          queried = true;
         }
         if (manifest["state_digest"].as<bool>(false)) {
           const auto begin = Clock::now();
           row["probability_tree_sha256"] = sha256(store.checkpoint().tree_bytes);
           row["checkpoint_digest_ms"] = ms(begin,Clock::now());
+          if (queried) {
+            const auto content_begin = Clock::now();
+            row["roi_cell_count"] = roi_page.cells.size();
+            row["surface_column_count"] = surface_first ? surface_first->size() : 0;
+            row["surface_second_column_count"] = surface_second ? surface_second->size() : 0;
+            row["roi_surface_content_sha256"] = query_content_sha256(
+                roi_page, surface_first.get(), surface_second.get());
+            row["content_digest_ms"] = ms(content_begin, Clock::now());
+          }
         }
       } catch (const std::exception& error) { row["status"] = error.what(); failed = true; }
       struct rusage usage{}; getrusage(RUSAGE_SELF,&usage);

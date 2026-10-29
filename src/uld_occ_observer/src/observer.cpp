@@ -114,27 +114,42 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
     receipt.hit_keys = scan.occupied_cells.size();
     const auto prepared = Clock::now();
     receipt.preparation_ms = milliseconds(prepared_points, prepared);
-    { auto fusion_span = diagnostic.span(ProfileStage::Fusion);
-      const auto mutations = grid_.apply(scan, diagnostic);
+    { auto fusion_scope = diagnostic.span(ProfileStage::Fusion);
+      // These objects outlive both coarse intervals and die before fusion_scope,
+      // so their destructors stay inside ProfileStage::Fusion and outside the
+      // two breakdown intervals. receipt.fusion_ms is sampled later and still
+      // includes Finalization; this scope does not redefine that field.
+      std::vector<OccupancyMutation> mutations;
       std::map<CellIndex, std::shared_ptr<CellBlock>> modified;
-      for (const auto& change : mutations) {
-        auto block_span = diagnostic.detail(ProfileStage::BlockMaintenance);
-        ++receipt.changed_keys;
-        if (!change.existed || change.old_occupied != change.occupied)
-          ++receipt.occupancy_changed_keys;
-        if (!change.existed) ++known_cells_;
-        const auto block_index = Snapshot::block_index(change.index);
-        auto& block = modified[block_index];
-        if (!block) {
-          const auto existing = blocks_.find(block_index);
-          if (existing != blocks_.end()) diagnostic.block_copied(existing->second->size());
-          block = existing == blocks_.end() ? std::make_shared<CellBlock>() :
-                  std::make_shared<CellBlock>(*existing->second);
-        }
-        (*block)[change.index] = {change.new_log_odds, change.occupied};
+      {
+        auto apply_batch = diagnostic.fusion_span(FusionPhase::ApplyBatch);
+        mutations = grid_.apply(scan, diagnostic);
       }
-      for (auto& entry : modified) blocks_[entry.first] = std::move(entry.second);
-      receipt.rebuilt_blocks = modified.size();
+      if (diagnostic.enabled()) {
+        diagnostic.record_mutation_storage(mutations.size(), mutations.capacity(),
+                                           sizeof(OccupancyMutation));
+      }
+      {
+        auto block_batch = diagnostic.fusion_span(FusionPhase::BlockBatch);
+        for (const auto& change : mutations) {
+          auto block_span = diagnostic.detail(ProfileStage::BlockMaintenance);
+          ++receipt.changed_keys;
+          if (!change.existed || change.old_occupied != change.occupied)
+            ++receipt.occupancy_changed_keys;
+          if (!change.existed) ++known_cells_;
+          const auto block_index = Snapshot::block_index(change.index);
+          auto& block = modified[block_index];
+          if (!block) {
+            const auto existing = blocks_.find(block_index);
+            if (existing != blocks_.end()) diagnostic.block_copied(existing->second->size());
+            block = existing == blocks_.end() ? std::make_shared<CellBlock>() :
+                    std::make_shared<CellBlock>(*existing->second);
+          }
+          (*block)[change.index] = {change.new_log_odds, change.occupied};
+        }
+        for (auto& entry : modified) blocks_[entry.first] = std::move(entry.second);
+        receipt.rebuilt_blocks = modified.size();
+      }
     }
     { auto final_span = diagnostic.span(ProfileStage::Finalization);
       if (receipt.changed_keys) ++map_revision_;

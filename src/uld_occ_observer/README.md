@@ -152,7 +152,25 @@ middleware costs.
 
 Receipts expose `profile` via `receipt_to_yaml`. `stage_visited` means a span was
 entered, not that an exceptional path completed. Nested spans must not be added
-to their parents. `rays_with_active_keys` is based on visited grid cells, not an
+to their parents. `profile.fusion_breakdown` is an additive field. Older readers
+ignore it. It does not change ROS messages, the configuration digest, default
+YAML, or business DTO meaning. `receipt.fusion_ms` still ends after finalization;
+`stage_ms.fusion` does not. Do not subtract those two clocks and call the
+difference allocation or tree update.
+
+`fusion_breakdown.collected` is true for Stages and Detailed. Off serializes
+`collected: false` and null phase times, visited flags, and mutation sizes, so
+an uncollected zero is not a measurement. ApplyBatch starts before `grid.apply`
+and ends when that vector returns: previous-node search, the OctoMap update,
+and mutation creation. BlockBatch starts at the modified-block table and ends
+after the registry writeback: lookup, copy, per-cell maintenance, and writeback.
+Mutation and block-object destruction stays inside `stage_ms.fusion` and outside
+both phases. `fusion_remainder_ms` is Fusion minus those two phases, computed by
+the benchmark from one frame; it is unclassified work plus boundary overhead,
+not a memory-allocation measurement. `mutation_size * mutation_element_bytes`
+is a vector-footprint product, not RSS and not bytes allocated over the frame.
+Off does not read these clocks or write these counts. The existing Detailed
+per-cell tree and block timers are not the attribution for this breakdown. `rays_with_active_keys` is based on visited grid cells, not an
 analytic segment/hull test. `copied_cells` counts entries actually copied from
 old immutable blocks. Array/map object overhead is not a byte-memory measurement.
 
@@ -176,7 +194,7 @@ manifest file; frame schema is the same as observer_cli integration input:
 case_id: unique-case-window-id
 mode: detailed  # off / stages / detailed; frozen for this process
 surface: true
-state_digest: false  # explicit checkpoint hash; only for semantic diagnostics
+state_digest: false  # tree hash; also hashes the ROI and surfaces already queried
 frames:
   - path: frame_000.yaml
     sha256: actual-sha256-of-exact-frame-file-bytes
@@ -192,8 +210,18 @@ python3 scripts/g3/occ_observer_profile_report.py --samples window_samples.yaml 
 The runner appends/flushed YAML documents and refuses to overwrite existing
 output. Rows contain numeric timings/counts, original input SHA, output identity,
 mode, status, process CPU and peak RSS (not current RSS). Load/parse, checkpoint
-hash and external query timings are separate; JSON/YAML serialization and file
-IO are outside the integrate stopwatch. Invalid inputs are preserved as named
+hash, ROI/surface content hash, and external query timings are separate;
+JSON/YAML serialization and file IO are outside the integrate stopwatch.
+The content hash is SHA-256 of the ROI page and surface columns already
+returned. It does not query the map again.
+
+`test/benchmark/fusion_benchmark.py` is the reusable fusion attribution runner.
+It calls this CLI. `rehearsal` is a small functional pass and is not a
+performance sample. `baseline` and `stages` keep every warmup and scored frame.
+A window with fewer than 30 scored frames is incomplete. P95 is the 29th of 30
+sorted samples, and the median is the mean of the 15th and 16th. One failed
+window stays failed; windows are not averaged into a pass. Reference latency
+gates are reported and are not a new product gate. Invalid inputs are preserved as named
 failure rows and exit3. Exit0 means collection completed, not product acceptance.
 The report writes raw_samples.jsonl, WORKLOAD_COUNTS.csv, STAGE_TIMINGS.csv and
 summary.json; it returns4 for <30 scored rows per window and3 for invalid records.
@@ -232,7 +260,7 @@ Profiling implementation checks:
 
 ```bash
 ctest --test-dir /tmp/elfin-observer-perf-build --output-on-failure
-OBSERVER_PROFILE_CLI=/tmp/elfin-observer-perf-build/observer_profile_cli python3 -m pytest -q src/uld_occ_observer/test/test_profile_cli.py src/uld_occ_observer/test/test_profile_report.py
+OBSERVER_PROFILE_CLI=/tmp/elfin-observer-perf-build/observer_profile_cli python3 -m pytest -q src/uld_occ_observer/test/test_profile_cli.py src/uld_occ_observer/test/test_profile_report.py src/uld_occ_observer/test/test_fusion_benchmark.py
 ```
 
 Formal workload matrices, overhead qualification and evidence obligations are in

@@ -21,6 +21,33 @@ YAML::Node profile_to_yaml(const UpdateProfile& profile) {
   out["copied_blocks"] = profile.copied_blocks;
   out["copied_cells"] = profile.copied_cells;
   out["split_key_timers"] = "not_provided";
+  const auto& fusion = profile.fusion_breakdown;
+  YAML::Node breakdown;
+  breakdown["collected"] = fusion.collected;
+  auto write_phase = [&](const char* visited_key, const char* ms_key, std::size_t index) {
+    if (!fusion.collected) {
+      breakdown[visited_key] = YAML::Node(YAML::NodeType::Null);
+      breakdown[ms_key] = YAML::Node(YAML::NodeType::Null);
+      return;
+    }
+    breakdown[visited_key] = fusion.visited[index];
+    if (fusion.visited[index]) breakdown[ms_key] = fusion.milliseconds[index];
+    else breakdown[ms_key] = YAML::Node(YAML::NodeType::Null);
+  };
+  write_phase("apply_batch_visited", "apply_batch_ms", static_cast<std::size_t>(FusionPhase::ApplyBatch));
+  write_phase("block_batch_visited", "block_batch_ms", static_cast<std::size_t>(FusionPhase::BlockBatch));
+  if (!fusion.collected || !fusion.mutation_storage_collected) {
+    breakdown["mutation_storage"] = "not_collected";
+    breakdown["mutation_size"] = YAML::Node(YAML::NodeType::Null);
+    breakdown["mutation_capacity"] = YAML::Node(YAML::NodeType::Null);
+    breakdown["mutation_element_bytes"] = YAML::Node(YAML::NodeType::Null);
+  } else {
+    breakdown["mutation_storage"] = "collected";
+    breakdown["mutation_size"] = fusion.mutation_size;
+    breakdown["mutation_capacity"] = fusion.mutation_capacity;
+    breakdown["mutation_element_bytes"] = fusion.mutation_element_bytes;
+  }
+  out["fusion_breakdown"] = breakdown;
   return out;
 }
 YAML::Node surface_profile_to_yaml(const SurfaceProfile& profile) {
