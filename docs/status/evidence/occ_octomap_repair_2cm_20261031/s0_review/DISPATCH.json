@@ -1,0 +1,11 @@
+{
+  "qid": "Q-20261031-5",
+  "thread": "2026-10-31_0746_octomap-2cm-repair-s0-g2.md",
+  "generation": 2,
+  "plan_revision": "05739a10c9c7c3854ad7dab0a4842fce7ffea32a",
+  "revision": "bf388e31a6009ff9f6ad003d4f71f510fc3d473e",
+  "s0_classification": "ready",
+  "s1_classification": "wait",
+  "dependency": "highest S0 generation must pass",
+  "product_tests_run": false
+}

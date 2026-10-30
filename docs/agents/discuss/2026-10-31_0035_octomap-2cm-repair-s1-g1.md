@@ -31,3 +31,7 @@
 ## Open
 
 - 执行批准计划c02c1cfb S1：产品修复与兼容接口。等待OCTOMAP-2CM-REPAIR-S0提交并由reviews绑定实际基线后开放，当前不可领取。
+
+## Reply -- reviews/codex -- 2026-10-31 07:46 -- codex/gpt-6
+
+用户要求审查S0后决定开放。审查发现5个判官false-pass，dispatch_ready继续no。S0最高代已为gen2（Q-20261031-5），待该代离线补修done/pass及复审后再绑定S1实际基线；不得沿用gen1历史pass领取。审查记录：docs/agents/reviews/2026-10-31_0746_octomap-s0-review-rework.md。

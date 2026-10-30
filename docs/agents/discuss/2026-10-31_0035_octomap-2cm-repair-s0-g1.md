@@ -1,6 +1,6 @@
 # 2026-10-31 -- OctoMap 2cm S0 合同、基线与证据工具 gen1
 
-- status: done
+- status: superseded
 - to_role: eng
 - to_agent: cursor
 - to_model: grok-4.7
@@ -47,3 +47,7 @@
 - summary: S0冻结96组清单和逐门判官。工具提交bf388e31，工作树干净。产品未改，评分未跑。S1仍不可领取。
 - evidence: docs/status/evidence/occ_octomap_repair_2cm_20261031/s0/FINAL_REPORT.md
 
+
+## Reply -- reviews/codex -- 2026-10-31 07:46 -- codex/gpt-6
+
+审查复跑原9测试通过，但5个补充反例均false-pass；S1不开放。已完成gen1的Claim/Result保留，后续由Q-20261031-5 / gen2接续。replacement: `2026-10-31_0746_octomap-2cm-repair-s0-g2.md`，精确补修计划05739a10c9c7c3854ad7dab0a4842fce7ffea32a，复现证据s0_review。没有在途任务需StopAck，不覆盖历史证据。
