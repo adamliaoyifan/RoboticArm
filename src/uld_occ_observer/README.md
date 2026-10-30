@@ -135,6 +135,15 @@ failure capture and sensor simulation are delegated for independent validation.
 Neither the source code nor a successful replay establishes D555 accuracy,
 production packing success or a performance advantage over the existing grid.
 
+## 2 cm repair acceptance tools
+
+`test/benchmark/repair_s0.py` freezes the 2 cm / 5 cm case manifest and the
+offline judges for O5 through O9. It does not change observation, snapshot, or
+ROS behavior. P95 is the ceil(0.95 n)th ascending sample. O6 is the 96-group
+2 cm and 5 cm matrix. A missing read-view or cache attribution cannot pass the
+resource gate. A synthetic fault that the judge names is not a live capture
+certificate, and it is not a product score.
+
 ## Opt-in update profiling (performance diagnosis)
 
 `ObservationStore::integrate(frame, ProfileMode::Stages)` records disjoint lock,

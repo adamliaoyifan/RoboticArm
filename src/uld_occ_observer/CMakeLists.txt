@@ -39,6 +39,8 @@ if(BUILD_TESTING)
             $<TARGET_FILE:observer_cli> $<TARGET_FILE:observer_profile_cli>
             $<TARGET_FILE:observer_eval_native>
             ${CMAKE_CURRENT_SOURCE_DIR}/config/observer.yaml)
+  add_test(NAME repair_s0_judge
+    COMMAND python3 -m pytest -q --tb=line ${CMAKE_CURRENT_SOURCE_DIR}/test/test_repair_s0.py)
 endif()
 add_executable(observer_profile_cli src/profile_cli.cpp test/query_content_digest.cpp)
 target_include_directories(observer_profile_cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test)
