@@ -281,6 +281,7 @@ def _arm_session(points, mode, out, env, pid, deadline):
 def main(argv):
     import argparse
     import fcntl
+    import sys
     parser = argparse.ArgumentParser(description="Not-scored D0/D1 surface diagnostic")
     parser.add_argument("--out", required=True)
     parser.add_argument("--node", required=True)
@@ -289,7 +290,18 @@ def main(argv):
     parser.add_argument("--points-b00", required=True)
     parser.add_argument("--points-b20", required=True)
     parser.add_argument("--domain-id", type=int, default=19)
+    parser.add_argument("--single-arm", action="store_true")
+    parser.add_argument("--boxes", type=int, default=0)
+    parser.add_argument("--mode", choices=("D0", "D1"))
+    parser.add_argument("--points")
     args = parser.parse_args(argv)
+    if args.single_arm:
+        scene = sustained_run._scene(args.fixtures, args.boxes)
+        points = json.loads(Path(args.points).read_text())
+        outcome = run_arm(args.node, args.setup, scene["geometry_file"], scene["config_file"],
+                          points, args.mode, args.out, args.domain_id)
+        print(args.mode, outcome.get("status"))
+        return 0 if outcome.get("status") == "complete" else 1
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "SURFACE_PATHS.md").write_text(SURFACE_PATHS)
@@ -303,17 +315,19 @@ def main(argv):
     order = [("b00", "D0", args.points_b00, 0), ("b00", "D1", args.points_b00, 0),
              ("b20", "D1", args.points_b20, 20), ("b20", "D0", args.points_b20, 20)]
     runs = []
+    script = str(Path(__file__).resolve())
     try:
         for name, mode, points_path, boxes in order:
             if time.monotonic() - started > budget:
                 runs.append({"name": name, "mode": mode, "status": "not_run", "reason": "90 minute budget"})
                 continue
-            scene = sustained_run._scene(args.fixtures, boxes)
-            points = json.loads(Path(points_path).read_text())
             folder = out / ("%s_%s" % (name, mode))
-            outcome = run_arm(args.node, args.setup, scene["geometry_file"], scene["config_file"],
-                              points, mode, folder, args.domain_id)
-            runs.append({"name": name, "mode": mode, "status": outcome.get("status"), "not_scored": True})
+            command = [sys.executable, script, "--single-arm", "--out", str(folder), "--node", args.node,
+                       "--setup", args.setup, "--fixtures", args.fixtures, "--points", points_path,
+                       "--boxes", str(boxes), "--mode", mode, "--domain-id", str(args.domain_id),
+                       "--points-b00", args.points_b00, "--points-b20", args.points_b20]
+            completed = subprocess.run(command, check=False, timeout=600)
+            runs.append({"name": name, "mode": mode, "returncode": completed.returncode, "not_scored": True})
     finally:
         fcntl.flock(lock, fcntl.LOCK_UN)
         lock.close()
