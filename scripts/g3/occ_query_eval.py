@@ -24,6 +24,25 @@ SOURCE_PATHS = ('src/luggage_perception', 'src/luggage_description', 'src/luggag
                 'src/luggage_packing', 'src/luggage_planning', 'st09_contracts', 'scripts/g3')
 FIXTURE = Path('src/luggage_perception/test/occ_query_oracle_fixture.py')
 EVIDENCE = ROOT/'docs/status/evidence/occ_owner_b1/occ_query_index_g2_20261025'
+EVIDENCE_DEFAULT = EVIDENCE
+
+
+def apply_evidence_root(root):
+    """Repoint this runner at a different frozen evidence root.
+
+    Campaigns receive this module as ``common`` and read ``common.EVIDENCE``
+    for containment and budget checks, so one assignment keeps every worker,
+    judge, and failure artifact on the same root. The G2 default stays
+    untouched unless an explicit absolute override is given.
+    """
+    resolved = Path(root).expanduser()
+    if not resolved.is_absolute():
+        raise RuntimeError('evidence root must be an absolute path')
+    global EVIDENCE
+    EVIDENCE = resolved.resolve()
+    return EVIDENCE
+
+
 RUN_BYTES = 8*1024**3
 TOTAL_BYTES = 32*1024**3
 
@@ -279,6 +298,7 @@ def main():
     p.add_argument('--reuse-baseline-run')
     p.add_argument('--rehearsal', action='store_true')
     p.add_argument('--out', required=True)
+    p.add_argument('--evidence-root', help='absolute override for the frozen evidence root')
     p.set_defaults(run=oracle)
     p = commands.add_parser('benchmark', help='installed no-motion query timing/resource matrix')
     p.add_argument('--install', default=os.environ.get('OCC_G2_INSTALL','/tmp/occ-query-g2-install'))
@@ -298,6 +318,7 @@ def main():
     p.add_argument('--outside-ratios', type=csv_choices(float, (.5,.9)), default=[.5,.9])
     p.add_argument('--crossing-ratios', type=csv_choices(float, (0.,.5)), default=[0.,.5])
     p.add_argument('--out', required=True)
+    p.add_argument('--evidence-root', help='absolute override for the frozen evidence root')
     def run_benchmark(args):
         if args.mode == 'all':
             out = Path(args.out).resolve()
@@ -331,6 +352,7 @@ def main():
     p.add_argument('--baseline-revision',default=BASELINE)
     p.add_argument('--rehearsal',action='store_true')
     p.add_argument('--out',required=True)
+    p.add_argument('--evidence-root', help='absolute override for the frozen evidence root')
     def run_planning(args):
         from occ_query_placement_campaign import planning
         return planning(args,sys.modules[__name__])
@@ -345,6 +367,7 @@ def main():
     p.add_argument('--baseline-revision',default=BASELINE)
     p.add_argument('--rehearsal',action='store_true')
     p.add_argument('--out',required=True)
+    p.add_argument('--evidence-root', help='absolute override for the frozen evidence root')
     def run_concurrency(args):
         from occ_query_concurrency_campaign import concurrency
         return concurrency(args,sys.modules[__name__])
@@ -354,6 +377,8 @@ def main():
     p.add_argument('--out')
     p.set_defaults(run=replay)
     args = parser.parse_args()
+    if getattr(args, 'evidence_root', None):
+        apply_evidence_root(args.evidence_root)
     if args.command == 'oracle' and (args.seed_start < 0 or args.seeds < 1
             or args.transactions < 1 or args.distance_points < 0):
         parser.error('invalid sample counts')
