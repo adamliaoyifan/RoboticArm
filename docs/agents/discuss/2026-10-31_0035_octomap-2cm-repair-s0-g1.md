@@ -1,6 +1,6 @@
 # 2026-10-31 -- OctoMap 2cm S0 合同、基线与证据工具 gen1
 
-- status: open
+- status: done
 - to_role: eng
 - to_agent: cursor
 - to_model: grok-4.7
@@ -31,3 +31,19 @@
 ## Open
 
 - 执行批准计划c02c1cfb S0：合同、基线与证据工具。独立工作树，可领取。
+## Claim -- eng/cursor -- 2026-10-31 07:15 -- cursor/grok-4.7
+
+- started_at: 2026-10-31T07:15:26+08:00
+- claimed_generation: 1
+- claimed_plan_revision: c02c1cfbd9ba16a1c4a6c6169695f1daf8eb6a76
+- claimed_dependencies: none
+
+## Result -- eng/cursor -- 2026-10-31 07:32 -- cursor/grok-4.7
+
+- outcome: pass
+- completed_at: 2026-10-31T07:32:34+08:00
+- revision: bf388e31a6009ff9f6ad003d4f71f510fc3d473e
+- tests: pytest test_repair_s0.py: 9 passed
+- summary: S0冻结96组清单和逐门判官。工具提交bf388e31，工作树干净。产品未改，评分未跑。S1仍不可领取。
+- evidence: docs/status/evidence/occ_octomap_repair_2cm_20261031/s0/FINAL_REPORT.md
+
