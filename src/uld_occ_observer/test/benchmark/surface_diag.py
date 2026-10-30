@@ -311,6 +311,7 @@ def main(argv):
     fcntl.flock(lock, fcntl.LOCK_EX)
     lock_wait = time.monotonic() - wait_started
     started = time.monotonic()
+    child_env = sustained_run._ros_env(args.setup, args.domain_id)
     budget = 90 * 60
     order = [("b00", "D0", args.points_b00, 0), ("b00", "D1", args.points_b00, 0),
              ("b20", "D1", args.points_b20, 20), ("b20", "D0", args.points_b20, 20)]
@@ -326,7 +327,7 @@ def main(argv):
                        "--setup", args.setup, "--fixtures", args.fixtures, "--points", points_path,
                        "--boxes", str(boxes), "--mode", mode, "--domain-id", str(args.domain_id),
                        "--points-b00", args.points_b00, "--points-b20", args.points_b20]
-            completed = subprocess.run(command, check=False, timeout=600)
+            completed = subprocess.run(command, check=False, timeout=600, env=child_env)
             runs.append({"name": name, "mode": mode, "returncode": completed.returncode, "not_scored": True})
     finally:
         fcntl.flock(lock, fcntl.LOCK_UN)
