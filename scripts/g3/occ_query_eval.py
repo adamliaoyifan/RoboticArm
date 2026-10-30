@@ -43,6 +43,28 @@ def apply_evidence_root(root):
     return EVIDENCE
 
 
+#: Matrix eras: which resolution sets a formal (non-rehearsal) run may use.
+#: g6_full keeps the original 1/2/5cm contract; g7_2cm is the user-confirmed
+#: 2cm representative target with the retained 2/5cm matrix (plan 9b7d465b).
+FORMAL_RESOLUTION_SETS = {'g6_full': {.01, .02, .05}, 'g7_2cm': {.02, .05}}
+FORMAL_REPRESENTATIVE_RESOLUTION = {'g6_full': .01, 'g7_2cm': .02}
+
+
+def formal_resolution_set(era):
+    try:
+        return set(FORMAL_RESOLUTION_SETS[era])
+    except KeyError:
+        raise RuntimeError('unknown matrix era: '+str(era)
+                           +' (choose from '+str(sorted(FORMAL_RESOLUTION_SETS))+')')
+
+
+def formal_representative_resolution(era):
+    try:
+        return FORMAL_REPRESENTATIVE_RESOLUTION[era]
+    except KeyError:
+        raise RuntimeError('unknown matrix era: '+str(era))
+
+
 RUN_BYTES = 8*1024**3
 TOTAL_BYTES = 32*1024**3
 
@@ -105,6 +127,15 @@ def worker_command(fixture, source, out, args, candidate):
     return command
 
 
+def oracle_formal(args):
+    """Formal (scored) oracle workload gate; era selects the resolution set."""
+    return (not args.rehearsal and args.seed_start == 0 and args.seeds == 20
+        and args.transactions == 500 and args.distance_points >= 1000
+        and set(args.resolutions) == formal_resolution_set(args.matrix_era)
+        and set(args.boxes) == {0, 5, 20}
+        and set(args.shapes) == {'cuboid', 'chamfer'})
+
+
 def oracle(args):
     revision = git('rev-parse', 'HEAD')
     baseline = git('rev-parse', args.baseline_revision)
@@ -113,10 +144,7 @@ def oracle(args):
     dirty = git('status', '--porcelain')
     if dirty:
         raise RuntimeError('commit implementation and runner before freezing a campaign')
-    formal = (not args.rehearsal and args.seed_start == 0 and args.seeds == 20
-        and args.transactions == 500 and args.distance_points >= 1000
-        and set(args.resolutions) == {.01, .02, .05} and set(args.boxes) == {0, 5, 20}
-        and set(args.shapes) == {'cuboid', 'chamfer'})
+    formal = oracle_formal(args)
     if not formal and not args.rehearsal:
         raise RuntimeError('partial workload requires explicit --rehearsal')
     out = Path(args.out).resolve()
@@ -299,6 +327,8 @@ def main():
     p.add_argument('--rehearsal', action='store_true')
     p.add_argument('--out', required=True)
     p.add_argument('--evidence-root', help='absolute override for the frozen evidence root')
+    p.add_argument('--matrix-era', choices=('g6_full', 'g7_2cm'), default='g6_full',
+                   help='resolution contract a formal run must match')
     p.set_defaults(run=oracle)
     p = commands.add_parser('benchmark', help='installed no-motion query timing/resource matrix')
     p.add_argument('--install', default=os.environ.get('OCC_G2_INSTALL','/tmp/occ-query-g2-install'))
@@ -319,6 +349,8 @@ def main():
     p.add_argument('--crossing-ratios', type=csv_choices(float, (0.,.5)), default=[0.,.5])
     p.add_argument('--out', required=True)
     p.add_argument('--evidence-root', help='absolute override for the frozen evidence root')
+    p.add_argument('--matrix-era', choices=('g6_full', 'g7_2cm'), default='g6_full',
+                   help='resolution contract a formal run must match')
     def run_benchmark(args):
         if args.mode == 'all':
             out = Path(args.out).resolve()
@@ -353,6 +385,8 @@ def main():
     p.add_argument('--rehearsal',action='store_true')
     p.add_argument('--out',required=True)
     p.add_argument('--evidence-root', help='absolute override for the frozen evidence root')
+    p.add_argument('--matrix-era', choices=('g6_full', 'g7_2cm'), default='g6_full',
+                   help='resolution contract a formal run must match')
     def run_planning(args):
         from occ_query_placement_campaign import planning
         return planning(args,sys.modules[__name__])
@@ -361,6 +395,8 @@ def main():
     p.add_argument('--install',default='/tmp/occ-query-g2-install')
     p.add_argument('--baseline-install',default='/tmp/occ-query-g2-baseline-install')
     p.add_argument('--domain',type=int,default=186)
+    p.add_argument('--resolution',type=float,choices=(.01,.02,.05),required=True,
+                   help='explicit stress resolution; no implicit 1cm default')
     p.add_argument('--duration-wall',type=float,default=120.)
     p.add_argument('--repeat',type=int,default=3)
     p.add_argument('--boxes',type=csv_choices(int,(0,5,20)),default=[0,5,20])
@@ -368,6 +404,8 @@ def main():
     p.add_argument('--rehearsal',action='store_true')
     p.add_argument('--out',required=True)
     p.add_argument('--evidence-root', help='absolute override for the frozen evidence root')
+    p.add_argument('--matrix-era', choices=('g6_full', 'g7_2cm'), default='g6_full',
+                   help='resolution contract a formal run must match')
     def run_concurrency(args):
         from occ_query_concurrency_campaign import concurrency
         return concurrency(args,sys.modules[__name__])

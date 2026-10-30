@@ -18,7 +18,8 @@ def planning(args,common):
     if common.git('rev-parse',args.baseline_revision)!=common.BASELINE:
         raise RuntimeError('unregistered baseline revision')
     formal=(not args.rehearsal and args.samples==30 and args.warmup==3
-        and set(args.resolutions)=={.01,.02,.05} and set(args.boxes)=={0,5,20}
+        and set(args.resolutions)==common.formal_resolution_set(getattr(args,'matrix_era','g6_full'))
+        and set(args.boxes)=={0,5,20}
         and set(args.paths)=={'hit','fallback'})
     if not formal and not args.rehearsal:
         raise RuntimeError('partial matrix requires --rehearsal')

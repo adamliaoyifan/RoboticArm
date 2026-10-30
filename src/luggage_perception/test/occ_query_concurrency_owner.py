@@ -23,6 +23,7 @@ def main():
     for key in ('out','source','install'):parser.add_argument('--'+key,required=True)
     parser.add_argument('--domain',type=int,required=True)
     parser.add_argument('--boxes',type=int,choices=(0,5,20),required=True)
+    parser.add_argument('--resolution',type=float,choices=(.01,.02,.05),required=True)
     args=parser.parse_args()
     os.environ.update(ROS_DOMAIN_ID=str(args.domain),ROS_LOCALHOST_ONLY='1')
     from ament_index_python.packages import get_package_prefix
@@ -161,12 +162,13 @@ def main():
     signal.signal(signal.SIGUSR2,stop)
     manifest=dict(started_ns=time.time_ns(),identity=identity,peers=peers,production_main=True,
         executor_override=False,heartbeat_period_s=.25,lease_s=2.,loaded_node=str(node_path),
-        node_sha256=hashlib.sha256(node_path.read_bytes()).hexdigest(),fixture_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
+        node_sha256=hashlib.sha256(node_path.read_bytes()).hexdigest(),fixture_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        resolution=args.resolution)
     save(out/'manifest.json',manifest)
     # A JSON identity must be a ROS STRING, not parsed as a YAML mapping by
     # the -p argument parser. Let YAML quote the measured string explicitly.
     parameters={'cargo_volume_mapper':{'ros__parameters':dict(scene_tf_config=str(scene),
-        resolution=.01,frame_scene_revision=identity['scene_revision'],frame_runtime=True,
+        resolution=args.resolution,frame_scene_revision=identity['scene_revision'],frame_runtime=True,
         frame_identity_json=json.dumps(identity),frame_peers=','.join(peers))}}
     parameter_path=out/'parameters.yaml'
     parameter_path.write_text(yaml.safe_dump(parameters,sort_keys=False))

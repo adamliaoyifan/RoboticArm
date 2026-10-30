@@ -20,7 +20,8 @@ def write_benchmark(args, common):
     if common.git('rev-parse', args.baseline_revision) != common.BASELINE:
         raise RuntimeError('unregistered baseline')
     formal = (not args.rehearsal and args.samples == 30 and args.warmup == 3
-        and set(args.resolutions) == {.01, .02, .05} and set(args.boxes) == {0, 5, 20}
+        and set(args.resolutions) == common.formal_resolution_set(
+            getattr(args, 'matrix_era', 'g6_full')) and set(args.boxes) == {0, 5, 20}
         and set(args.write_points) == {30000, 100000} and set(args.outside_ratios) == {.5, .9}
         and set(args.crossing_ratios) == {0., .5})
     if not formal and not args.rehearsal:

@@ -15,7 +15,10 @@ def concurrency(args,common):
     revision=common.git('rev-parse','HEAD')
     if common.git('status','--porcelain'):raise RuntimeError('commit campaign code before freezing')
     if common.git('rev-parse',args.baseline_revision)!=common.BASELINE:raise RuntimeError('unregistered baseline revision')
-    formal=not args.rehearsal and args.duration_wall==120 and args.repeat==3 and set(args.boxes)=={0,5,20}
+    formal=(not args.rehearsal and args.duration_wall==120 and args.repeat==3
+        and set(args.boxes)=={0,5,20}
+        and args.resolution==common.formal_representative_resolution(
+            getattr(args,'matrix_era','g6_full')))
     if not formal and not args.rehearsal:raise RuntimeError('partial matrix requires --rehearsal')
     out=Path(args.out).resolve()
     if not out.is_relative_to(common.EVIDENCE):raise RuntimeError('evidence outside task root')
@@ -28,7 +31,8 @@ def concurrency(args,common):
     manifest=dict(kind='concurrency',revision=revision,baseline_revision=common.BASELINE,
         dirty='',formal_matrix=formal,started_ns=time.time_ns(),groups=[],overall_g2='not_evaluated',
         rates={'integrate':2,'summary':10,'roi':5,'distance256':2,'surface':1},
-        heartbeat_period_s=.25,lease_s=2.,points=30000,resolution=.01)
+        heartbeat_period_s=.25,lease_s=2.,points=30000,resolution=args.resolution,
+        matrix_era=getattr(args,'matrix_era','g6_full'))
     install={'candidate':args.install,'baseline':args.baseline_install}
     environments={k:installed_environment(v) for k,v in install.items()}
     owner_script=sources['candidate']/'src/luggage_perception/test/occ_query_concurrency_owner.py'
@@ -41,6 +45,7 @@ def concurrency(args,common):
             run=group/label;run.mkdir()
             command=[sys.executable,str(owner_script),'--out',str(run/'owner'),
                 '--source',str(sources[label]),'--install',install[label],'--domain',str(args.domain),
+                '--resolution',str(args.resolution),
                 '--boxes',str(boxes)]
             record=dict(owner_command=command,phase='startup',started_ns=time.time_ns())
             entry['runs'][label]=record;common.write_json(out/'manifest.json',manifest)

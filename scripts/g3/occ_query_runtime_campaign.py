@@ -102,7 +102,8 @@ def benchmark(args, common):
     if common.git('rev-parse', args.baseline_revision) != common.BASELINE:
         raise RuntimeError('unregistered baseline revision')
     formal = (not args.rehearsal and not args.profile_distance and not args.observe_gc and args.samples == 30 and args.warmup == 3
-        and set(args.resolutions) == {.01, .02, .05} and set(args.boxes) == {0, 5, 20}
+        and set(args.resolutions) == common.formal_resolution_set(
+            getattr(args, 'matrix_era', 'g6_full')) and set(args.boxes) == {0, 5, 20}
         and set(args.shapes) == {'cuboid', 'chamfer'})
     if not formal and not args.rehearsal:
         raise RuntimeError('partial matrix requires --rehearsal')
