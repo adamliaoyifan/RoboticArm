@@ -1,6 +1,6 @@
 # 2026-10-30 -- OCC全链路评测与双后端矩阵 gen4
 
-- status: open
+- status: superseded
 - to_role: eng
 - to_agent: cursor
 - to_model: grok-4.7
@@ -28,3 +28,7 @@
 用户最新指令暂停本代准备及评分，先处理OctoMap验收收口Q-20261030-3。历史批准合同不改；dispatch_ready=no，未经用户恢复不进入公平比较。若已启动，保存证据并停止发起新组，回报停止确认。原下列Open请求暂不执行。
 
 - 用户已批准：Cursor/Grok4.7领取gen4，准备工具并冻结后执行OCC到真实选位及双后端矩阵；16小时测量预算，业务/压力分判，不启动运动。
+
+## Supersede -- reviews/codex -- 2026-10-30 14:26 -- codex/gpt-6
+
+用户另授权自研OCC独立完整验收，交Q-20261030-4 / G4-B gen5，计划6ac2a1ad998a9af4f6ed9d5e72d9946bb3b12daa；本代不再启动。仅恢复自研，不恢复双后端对比。Cursor先完成Q-20261030-3收口再跑gen5计时，非重负载准备可先行。新代沿本代16小时剩余额度，先登记消耗量，不能双重累计。旧指令/证据保留。
