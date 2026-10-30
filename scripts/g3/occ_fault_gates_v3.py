@@ -567,7 +567,13 @@ class Harness:
         the latest generation whose digest is NEW (a digest already
         present in an earlier manifest is either cache-hit for DELTA
         receivers or rewritten by any FULL re-publish -- a no-op
-        injection v2 could not distinguish from detection)."""
+        injection v2 could not distinguish from detection). Returns
+        (path, digest, seq, name, new_digest); new_digest=False marks
+        the legacy silent fallback to a known object, which for a
+        caught-up DELTA receiver is provably never on the transport
+        path (gen7: truncated_object/delta/1 exhausted 5 identical
+        attempts this way) -- callers treat it as an untriggered
+        attempt instead of arming a no-op."""
         _, _, manifest = self.latest_manifest()
         previous_digests = set()
         gens = os.path.join(self.root, 'generations',
@@ -589,6 +595,7 @@ class Harness:
             name for name in sorted(manifest['entries'])
             if manifest['entries'][name].get('type') == 'object'
             and manifest['entries'][name]['sha256'] not in previous_digests]
+        new_digest = bool(candidates)
         if not candidates:
             candidates = sorted(
                 name for name, entry in manifest['entries'].items()
@@ -597,7 +604,7 @@ class Harness:
         name = candidates[0]
         digest = manifest['entries'][name]['sha256']
         return (os.path.join(self.root, 'objects', digest), digest,
-                manifest['seq'], name)
+                manifest['seq'], name, new_digest)
 
     def recover(self, seed):
         assert self.commit(seed).accepted
@@ -636,32 +643,34 @@ def injection_cases(h):
     (target seq / object digest) for the case log."""
 
     def lost_object():
-        path, digest, seq, name = h.object_of_latest()
+        path, digest, seq, name, new_digest = h.object_of_latest()
 
         def restore():
             os.rename(path + '.hidden', path)
         os.rename(path, path + '.hidden')
         return restore, {'target_seq': seq, 'object': digest,
-                         'entry': name}
+                         'entry': name, 'target_new_digest': new_digest}
 
     def truncated_object():
-        path, digest, seq, name = h.object_of_latest()
+        path, digest, seq, name, new_digest = h.object_of_latest()
         raw = open(path, 'rb').read()
         open(path, 'wb').write(raw[:len(raw) * 2 // 5])
 
         def restore():
             open(path, 'wb').write(raw)
-        return restore, {'target_seq': seq, 'object': digest}
+        return restore, {'target_seq': seq, 'object': digest,
+                         'target_new_digest': new_digest}
 
     def corrupt_object():
-        path, digest, seq, name = h.object_of_latest()
+        path, digest, seq, name, new_digest = h.object_of_latest()
         raw = bytearray(open(path, 'rb').read())
         raw[len(raw) // 2] ^= 0xFF
         open(path, 'wb').write(bytes(raw))
 
         def restore():
             pass
-        return restore, {'target_seq': seq, 'object': digest}
+        return restore, {'target_seq': seq, 'object': digest,
+                         'target_new_digest': new_digest}
 
     def duplicate_pointer():
         target, path, manifest = h.latest_manifest()
@@ -853,7 +862,9 @@ def run_a5(h, results):
                 while attempts < 5 and not triggered:
                     attempts += 1
                     case_log, triggered, case_ok = _a5_case(
-                        h, name, injector, expect, boundary, rep)
+                        h, name, injector, expect, boundary, rep, attempts)
+                if not triggered and case_log is not None:
+                    case_log['attempts'] = attempts
                 cases.append(case_log)
                 if not triggered:
                     cases[-1]['result'] = 'not_evaluated'
@@ -865,8 +876,13 @@ def run_a5(h, results):
         'pass': bool(cases) and all(c['pass'] for c in cases)}
 
 
-def _a5_case(h, name, injector, expect, boundary, rep):
-    """One A5 attempt. Returns (case_record, triggered, case_ok)."""
+def _a5_case(h, name, injector, expect, boundary, rep, attempt=1):
+    """One A5 attempt. Returns (case_record, triggered, case_ok).
+
+    The arming commit seed varies per ATTEMPT (first attempt keeps the
+    historical rep+30 so every previously-passing case runs identically);
+    retries commit fresh content so the target generation genuinely
+    contains a new-digest object for the object-file injectors."""
     log = CaseLog()
     fault_id = '%s/%s/%d' % (name, boundary, rep)
     # Harness-ordering hygiene: a LEFTOVER resync request from an
@@ -889,10 +905,25 @@ def _a5_case(h, name, injector, expect, boundary, rep):
     ask(worker, {'cmd': 'hold'})
     baseline = {e['t_ns'] for e in drain_events(worker)}
     t_inject = time.monotonic_ns()
-    assert h.commit(rep + 30).accepted
+    assert h.commit(rep + 30 + 100 * (attempt - 1)).accepted
     _, _, committed_manifest = h.latest_manifest()
     target_seq = int(committed_manifest['seq'])
     restore, forensics = injector()
+    if not forensics.get('target_new_digest', True):
+        # Fallback target (a digest already present in an earlier
+        # manifest): for a caught-up DELTA receiver this object never
+        # transits, so the sabotage is provably off the transport path.
+        # Fast-fail as an untriggered attempt instead of arming a no-op
+        # and burning the 10 s detection window.
+        restore()
+        ask(worker, {'cmd': 'resume'})
+        log.check(False, 'injection_target_noop_fallback',
+                  json.dumps(forensics, sort_keys=True)[:200])
+        h.close_worker(worker)
+        return ({'fault_id': '%s/%s/%d' % (name, boundary, rep),
+                 'boundary': boundary, 'rep': rep, 'expectation': expect,
+                 'checks': list(log), 'pass': False,
+                 'result': 'untriggered'}, False, None)
     target_seq = int(forensics.get('forged_seq', target_seq))
     ask(worker, {'cmd': 'resume'})
     log.check(True, 'injection_recorded', json.dumps(
