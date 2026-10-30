@@ -281,9 +281,17 @@ def read_nearest(handle, data, points, radius, unknown_policy, budget):
     candidate_blocks = {state: np.flatnonzero(counts[:, state] > 0) for state in (0, 2)}
     origin = np.asarray(data.grid.origin)
     upper = origin+np.asarray(data.grid.shape)*data.grid.resolution
+    # Block lower bounds for every point in one broadcast: identical
+    # element arithmetic to the former per-point (n_blocks, 3) pass, so
+    # admission masks and heap keys are bit-for-bit unchanged.
+    delta = np.maximum(np.maximum(data.distance_index.lower[None, :, :]
+                                  - points[:, None, :],
+                                  points[:, None, :]
+                                  - data.distance_index.upper[None, :, :]), 0.)
+    lower_squared_all = np.einsum('ijk,ijk->ij', delta, delta)
     results = []
     volumes = {}
-    for point in points:
+    for index, point in enumerate(points):
         status = ''
         if np.any(point < origin) or np.any(point >= upper):
             status = 'OUTSIDE_MAP'
@@ -294,9 +302,7 @@ def read_nearest(handle, data, points, radius, unknown_policy, budget):
             results.append(DistancePoint(tuple(float(v) for v in point), status, match,
                                          match if unknown_policy == 'separate' else None))
             continue
-        delta = np.maximum(np.maximum(data.distance_index.lower-point,
-                                      point-data.distance_index.upper), 0.)
-        lower_squared = np.einsum('ij,ij->i', delta, delta)
+        lower_squared = lower_squared_all[index]
         occupied = _nearest(handle, data, point, 2, radius, work, candidate_blocks, lower_squared, volumes)
         unknown = (_nearest(handle, data, point, 0, radius, work, candidate_blocks, lower_squared, volumes)
                    if unknown_policy == 'separate' else None)
