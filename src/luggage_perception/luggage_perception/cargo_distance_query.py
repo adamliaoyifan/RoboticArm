@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import heapq
 import itertools
 import math
+import os
 import time
 from types import MappingProxyType
 
@@ -18,6 +19,29 @@ from luggage_perception.cargo_map_query import (
     BLOCK_EDGE, DistanceBatch, DistanceMatch, DistancePoint, QueryError,
 )
 from luggage_perception.cargo_voxel_delta import immutable_array
+
+try:
+    from luggage_perception.distance_kernels_jit import (
+        HAS_NUMBA, kernel_nearest,
+        STATUS_BUDGET, STATUS_MATCH, STATUS_RADIUS_CLEAR)
+except ImportError:  # pragma: no cover - kernel module is optional
+    HAS_NUMBA = False
+_USE_JIT = HAS_NUMBA and os.environ.get('DISTANCE_JIT', '1') != '0'
+import weakref
+#: id-keyed generation cache. The pinned batch object defines __eq__
+#: without __hash__ (unhashable), so WeakKeyDictionary cannot key it;
+#: id keys with a weakref death-callback are safe instead: the entry
+#: keeps the object alive, and ids cannot be reused while it lives.
+_JIT_TABLES_CACHE = {}
+
+
+def _jit_tables_for_data(data):
+    entry = _JIT_TABLES_CACHE.get(id(data))
+    if entry is None:
+        cleanup = lambda _ref, key=id(data): _JIT_TABLES_CACHE.pop(key, None)
+        entry = _JIT_TABLES_CACHE[id(data)] = (
+            {}, weakref.ref(data, cleanup))
+    return entry[0]
 
 
 MAX_EXAMINED_CELLS = 2_000_000
@@ -155,10 +179,116 @@ def _zero_match(handle, data, point, state, work):
     return None
 
 
+def _jit_tables(data, state, cand_ids, volumes, origin, r):
+    """Flattened traversal tables for one state, cached PER GENERATION
+    (snapshot data is immutable), so the eager decode of every
+    candidate block's frozen membership amortizes across all queries on
+    that snapshot; a request-scoped volumes lookup alone would re-decode
+    per request and cost more than the lazy per-block path it replaces
+    (measured: +8 ms/request before this cache). scratch rows are
+    per-block cursors, re-initialized lazily on each traversal's first
+    pop, so sharing them across points and requests is safe."""
+    key = ('__jit_tables', state)
+    tables = volumes.get(key)
+    if tables is not None:
+        return tables
+    try:
+        per_state = _jit_tables_for_data(data)
+    except TypeError:      # unweakrefable pinned-batch type: request scope
+        per_state = {}
+    tables = per_state.get(state)
+    if tables is not None:
+        volumes[key] = tables
+        return tables
+    leaf_lows, leaf_highs, leaf_gstarts, leaf_gends = [], [], [], []
+    mem_lows, mem_highs, mem_flats, mem_offsets = [], [], [], []
+    leaf_base = [0]
+    member_base = 0
+    for block_id in cand_ids:
+        block = data.blocks[block_id]
+        members = block.distance_members[state]
+        offsets = np.frombuffer(members.offsets, dtype='<u2')
+        starts = np.frombuffer(members.starts, dtype='<u2')
+        ends = np.frombuffer(members.ends, dtype='<u2')
+        leaf_ids = np.frombuffer(members.leaf_ids, dtype='u1')
+        low = origin+(np.asarray(block.start)+block.distance_layout.lower[leaf_ids])*r
+        high = origin+(np.asarray(block.start)+block.distance_layout.upper[leaf_ids])*r
+        leaf_lows.append(low)
+        leaf_highs.append(high)
+        leaf_gstarts.append(member_base+starts.astype(np.int64))
+        leaf_gends.append(member_base+ends.astype(np.int64))
+        xyz = block.distance_layout.cell_coordinates[offsets]+np.asarray(block.start)
+        mem_lows.append(origin+xyz*r)
+        mem_highs.append(origin+(xyz+1)*r)
+        mem_flats.append(np.asarray(block.flat_indices, dtype=np.int64)[offsets])
+        mem_offsets.append(offsets.astype(np.int64))
+        member_base += len(offsets)
+        leaf_base.append(leaf_base[-1]+len(low))
+    max_leaves = max((len(x) for x in leaf_lows), default=1) or 1
+    n_blocks = len(cand_ids)
+    tables = dict(
+        block_ids=np.asarray(cand_ids, dtype=np.int64),
+        blk_leaf_base=np.asarray(leaf_base, dtype=np.int64),
+        leaf_low=np.concatenate(leaf_lows) if leaf_lows else np.empty((0, 3)),
+        leaf_high=np.concatenate(leaf_highs) if leaf_highs else np.empty((0, 3)),
+        leaf_gstart=np.concatenate(leaf_gstarts) if leaf_gstarts else np.empty(0, np.int64),
+        leaf_gend=np.concatenate(leaf_gends) if leaf_gends else np.empty(0, np.int64),
+        mem_low=np.concatenate(mem_lows) if mem_lows else np.empty((0, 3)),
+        mem_high=np.concatenate(mem_highs) if mem_highs else np.empty((0, 3)),
+        mem_flat=np.concatenate(mem_flats) if mem_flats else np.empty(0, np.int64),
+        mem_offset=np.concatenate(mem_offsets) if mem_offsets else np.empty(0, np.int64),
+        scratch_bounds=np.zeros((n_blocks, max_leaves)),
+        scratch_order=np.zeros((n_blocks, max_leaves+2), dtype=np.int64))
+    per_state[state] = tables
+    volumes[key] = tables
+    return tables
+
+
+def _nearest_jit(handle, data, point, state, radius, work, candidate_blocks,
+                 lower_squared, volumes):
+    """JIT twin of _nearest: identical traversal semantics (see
+    distance_kernels_jit); count-based budget admission per pop, with
+    the clock half enforced by the caller between points."""
+    cand_ids = candidate_blocks[state]
+    tables = _jit_tables(data, state, cand_ids, volumes,
+                         np.asarray(data.grid.origin), data.grid.resolution)
+    row = lower_squared[tables['block_ids']]
+    admitted = np.flatnonzero(row <= radius*radius).astype(np.int64)
+    # An empty radius-admitted set is RADIUS_CLEAR (empty heap, best
+    # stays None) exactly as the reference traversal produces; the
+    # NO_MATCH status belongs to the caller's empty-state-candidates
+    # check and is already handled before dispatch.
+    cells = np.array([work.cells], dtype=np.int64)
+    blocks = np.array([work.blocks], dtype=np.int64)
+    status, best_sq, bound_sq, best_flat, best_member, best_bpos = kernel_nearest(
+        point, float(radius*radius), admitted, row[admitted],
+        tables['blk_leaf_base'], tables['leaf_low'], tables['leaf_high'],
+        tables['leaf_gstart'], tables['leaf_gend'],
+        tables['mem_low'], tables['mem_high'], tables['mem_flat'],
+        work.budget.max_examined_cells, work.budget.max_examined_blocks,
+        cells, blocks, tables['scratch_bounds'], tables['scratch_order'])
+    work.cells, work.blocks = int(cells[0]), int(blocks[0])
+    if status == STATUS_BUDGET:
+        return DistanceMatch('QUERY_BUDGET_EXHAUSTED', False,
+                             lower_bound_m=math.sqrt(bound_sq))
+    if status == STATUS_RADIUS_CLEAR:
+        return DistanceMatch('RADIUS_CLEAR', False, lower_bound_m=radius)
+    block_id = int(tables['block_ids'][best_bpos])
+    offset = int(tables['mem_offset'][best_member])
+    return DistanceMatch('MATCH', True, math.sqrt(best_sq), math.sqrt(best_sq),
+                         handle._cell_record(data.blocks[block_id], offset))
+
+
 def _nearest(handle, data, point, state, radius, work, candidate_blocks, lower_squared, volumes):
     candidates = candidate_blocks[state]
     if not len(candidates):
         return DistanceMatch('NO_MATCH', True)
+    if _USE_JIT:
+        zero = _zero_match(handle, data, point, state, work)
+        if zero is not None:
+            return zero
+        return _nearest_jit(handle, data, point, state, radius, work,
+                            candidate_blocks, lower_squared, volumes)
     zero = _zero_match(handle, data, point, state, work)
     if zero is not None:
         return zero
@@ -300,6 +430,15 @@ def read_nearest(handle, data, points, radius, unknown_policy, budget):
         if status:
             match = DistanceMatch(status, False)
             results.append(DistancePoint(tuple(float(v) for v in point), status, match,
+                                         match if unknown_policy == 'separate' else None))
+            continue
+        if _USE_JIT and time.perf_counter_ns() >= work.deadline:
+            # JIT path enforces the clock half of the budget between
+            # points (the count half stays per-pop inside the kernel);
+            # every later probe would fail admits on the clock first.
+            match = DistanceMatch('QUERY_BUDGET_EXHAUSTED', False)
+            results.append(DistancePoint(tuple(float(v) for v in point),
+                                         'QUERY_BUDGET_EXHAUSTED', match,
                                          match if unknown_policy == 'separate' else None))
             continue
         lower_squared = lower_squared_all[index]
