@@ -36,9 +36,15 @@ def main():
     for node, verdict in data['disposition'].items():
         if verdict['action'] != 'rerun_from_frozen_install':
             continue
-        test = node.split('::')[0]
-        name = node.split('::', 1)[1]
-        lines.append(f"{to_path(worktree, test)}::{name}")
+        classname, name = node.split('::', 1)
+        parts = classname.split('.')
+        # Junit classnames are either module paths or module.TestClass; keep
+        # the pytest class scope so every node id matches exactly one test.
+        if parts[-1][:1].isupper():
+            module, test_class = '.'.join(parts[:-1]), parts[-1]
+            lines.append(f"{to_path(worktree, module)}::{test_class}::{name}")
+        else:
+            lines.append(f"{to_path(worktree, classname)}::{name}")
     if not lines:
         raise RuntimeError('no rerun nodes selected')
     Path(args.out).write_text('\n'.join(sorted(lines))+'\n')
