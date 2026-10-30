@@ -416,6 +416,7 @@ class Harness:
         self.store._snapshot = self.store._build_snapshot()
         self.hook.wait_pending(60.0)
         self._stamp = 0
+        self._fresh_boxes = 0
 
     def commit(self, seed):
         self._stamp += 1
@@ -609,6 +610,24 @@ class Harness:
     def recover(self, seed):
         assert self.commit(seed).accepted
         return self.store.identity
+
+    def add_fresh_box(self):
+        """Deterministically fresh geometry: a new box always creates
+        genuinely new block digests, unlike a re-seeded cloud over a
+        converged (saturated) map whose commits can be content no-ops."""
+        spots = [(x, y, z) for z in range(6)
+                 for y in (-.48, .18) for x in (-.5, 0., .5)]
+        x, y, z = spots[self._fresh_boxes % len(spots)]
+        self._fresh_boxes += 1
+        result = self.store.apply_update(MapUpdate(
+            operation_id='fresh-box-%d' % self._fresh_boxes,
+            kind=UpdateKind.ADD_BOX_V1,
+            box=((x, y, self.mapper._hull.floor_z + .05 + .22*z),
+                 (.18, .18, .18), 0.),
+            box_id='fresh-box-%d' % self._fresh_boxes))
+        self.hook.wait_pending(60.0)
+        assert result.accepted
+        return result
 
 
 def drain_events(proc):
@@ -905,16 +924,22 @@ def _a5_case(h, name, injector, expect, boundary, rep, attempt=1):
     ask(worker, {'cmd': 'hold'})
     baseline = {e['t_ns'] for e in drain_events(worker)}
     t_inject = time.monotonic_ns()
-    assert h.commit(rep + 30 + 100 * (attempt - 1)).accepted
+    if attempt > 1:
+        # A re-seeded cloud over a converged map can be a content no-op
+        # (saturated cells, unchanged digests); fresh geometry is not.
+        h.add_fresh_box()
+    assert h.commit(rep + 30).accepted
     _, _, committed_manifest = h.latest_manifest()
     target_seq = int(committed_manifest['seq'])
     restore, forensics = injector()
-    if not forensics.get('target_new_digest', True):
+    if boundary == 'delta' and not forensics.get('target_new_digest', True):
         # Fallback target (a digest already present in an earlier
-        # manifest): for a caught-up DELTA receiver this object never
-        # transits, so the sabotage is provably off the transport path.
-        # Fast-fail as an untriggered attempt instead of arming a no-op
-        # and burning the 10 s detection window.
+        # manifest): a caught-up DELTA receiver already holds it cached,
+        # so the sabotage is provably off the transport path. Fast-fail
+        # as untriggered instead of arming a no-op and burning the 10 s
+        # window. (initial_full keeps the legacy path: a fresh worker's
+        # FULL sync reads every object from publisher disk, so even a
+        # known object is on its read path -- gen7 passed those cases.)
         restore()
         ask(worker, {'cmd': 'resume'})
         log.check(False, 'injection_target_noop_fallback',
