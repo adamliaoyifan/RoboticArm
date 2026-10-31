@@ -47,6 +47,21 @@ def main():
         help='diagnostic rehearsal only: gc.disable() before serving -- '
              'the GC attribution experiment for the round-trip slow mode. '
              'Memory grows unbounded; never use in formal scoring.')
+    p.add_argument('--gc-mode', choices=('off', 'collect', 'freeze', 'both'),
+        default='off',
+        help='diagnostic rehearsal only, GC mitigation arms: collect = '
+             'gc.collect(2) in the service thread right after each response '
+             '(the only true inter-request gap a service has; duration '
+             'logged as gc_manual and STILL COUNTED against later arriving '
+             'requests); freeze = one gc.freeze() after the scene is built '
+             '(freezes EVERYTHING GC-tracked at that moment, not just the '
+             'store; RESET re-release must be measured, not assumed); '
+             'both = freeze + post-response collect.')
+    p.add_argument('--reset-after-seconds', type=float, default=0.0,
+        help='diagnostic rehearsal only: apply RESET and re-apply the same '
+             'scene once after this many seconds of serving; RSS and '
+             'gc-tracked object counts are logged around it (lifecycle arm '
+             'for the freeze experiment).')
     a = p.parse_args()
     if not 100 <= a.domain <= 232:
         p.error('dedicated ROS domain required')
@@ -142,6 +157,24 @@ def main():
             finally:
                 profiler.dump_stats(str(out/'distance.cprofile'))
         distance_module.read_nearest = profile_distance
+    if a.gc_mode in ('collect', 'both'):
+        # Mitigation arm: the pause is MOVED to the in-service-thread gap
+        # right after the response is built. Requests arriving during the
+        # collection still queue behind it -- the experiment measures
+        # exactly that (round-trip, not intra-callback, is the metric).
+        import gc as _gc_module
+        original_execute = MapQueryService._execute
+
+        def collecting_execute(self, request, response, operation):
+            try:
+                return original_execute(self, request, response, operation)
+            finally:
+                begin = time.perf_counter_ns()
+                _gc_module.collect(2)
+                events.append(dict(stage='gc_manual',
+                    monotonic_ns=time.perf_counter_ns(),
+                    wall_ms=(time.perf_counter_ns()-begin)/1e6))
+        MapQueryService._execute = collecting_execute
     if a.trace or a.observe_spans:
         original_open = MapQueryService._open
 
@@ -311,6 +344,69 @@ def main():
     if a.gc_disable:
         import gc
         gc.disable()
+    if a.gc_mode in ('freeze', 'both'):
+        # Applied once, right after initialize() finished building the
+        # scene: everything GC-tracked at this instant becomes permanent
+        # generation (excluded from future collections but NEVER
+        # collected -- RESET release behavior is what the lifecycle arm
+        # measures).
+        import gc
+
+        def freeze_after_ready():
+            while not owner or not (Path(a.out)/'ready.json').exists():
+                time.sleep(0.05)
+            before = len(gc.get_objects())
+            rss_before = int(Path('/proc/self/statm').read_text().split()[1])*4096//1024
+            gc.freeze()
+            manifest['gc_freeze'] = dict(objects_before=before,
+                objects_after=len(gc.get_objects()),
+                rss_before_kib=rss_before,
+                rss_after_kib=int(Path('/proc/self/statm').read_text().split()[1])*4096//1024)
+        import threading
+        threading.Thread(target=freeze_after_ready, daemon=True,
+                         name='diag-gc-freeze').start()
+    if a.reset_after_seconds > 0:
+        import threading
+
+        def reset_lifecycle(node_holder=owner, delay=float(a.reset_after_seconds)):
+            import gc
+            time.sleep(delay)
+            if not node_holder:
+                events.append(dict(stage='lifecycle_reset', error='no_node'))
+                return
+            node = node_holder[0]
+            s, m = node._store, node._mapper
+            rss = lambda: int(Path('/proc/self/statm').read_text().split()[1])*4096//1024
+            events.append(dict(stage='lifecycle_reset', phase='before',
+                               rss_kib=rss(), gc_objects=len(gc.get_objects()),
+                               monotonic_ns=time.perf_counter_ns()))
+            result = s.apply_update(MapUpdate(operation_id='diag-reset',
+                kind=UpdateKind.RESET))
+            boxes = [((x, y, m._hull.floor_z+.11+.24*z), (.35, .53, .22), 0.)
+                for z in range(4) for y in (-.48, .18) for x in (-.50, 0., .50)]
+            for i, box in enumerate(boxes[:a.boxes]):
+                s.apply_update(MapUpdate(operation_id='diag-box-'+str(i),
+                    kind=UpdateKind.ADD_BOX_V1, box=box,
+                    box_id='runtime-box-'+str(i)))
+            import numpy as _np
+            step = max(2, int(round(.08/a.resolution)))
+            xyz = _np.asarray([(x, y, z) for z in range(1, m.nz-1, step)
+                for y in range(1, m.ny-1, step) for x in range(1, m.nx-1, step)])
+            points = _np.asarray([-m.inner_l/2, -m.inner_w/2, m._hull.floor_z]) \
+                + (xyz+.5)*a.resolution
+            s.apply_update(MapUpdate(operation_id='diag-hits',
+                kind=UpdateKind.INTEGRATE_VIEW, geometry_hash=m.geometry_hash,
+                points=points, origin=None, stamp_key=(3000, 0),
+                acquisition_stamp_ns=3_000_000_000, schema_version=1,
+                settled=True))
+            import gc as _gc
+            _gc.collect()
+            events.append(dict(stage='lifecycle_reset', phase='after',
+                               reset_accepted=bool(result.accepted),
+                               rss_kib=rss(), gc_objects=len(_gc.get_objects()),
+                               monotonic_ns=time.perf_counter_ns()))
+        threading.Thread(target=reset_lifecycle, daemon=True,
+                         name='diag-lifecycle').start()
     stop_requested = []
     def stop_spin(_signum, _frame):
         # SIGINT also shuts rclpy's context, while production main performs

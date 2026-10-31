@@ -44,6 +44,10 @@ def schedstat_ns(pid):
     return int(Path('/proc/%d/schedstat' % pid).read_text().split()[0])
 
 
+def rss_kib(pid):
+    return int(Path('/proc/%d/statm' % pid).read_text().split()[1])*4
+
+
 def load_replay_requests(replay_dir, cases, verify=True):
     """Byte-verified request reconstruction for the failing trace_off arms."""
     import rclpy.serialization
@@ -68,7 +72,8 @@ def load_replay_requests(replay_dir, cases, verify=True):
     return out
 
 
-def run_arm(owner_proc, node, client, template, case, count, tag, results):
+def run_arm(owner_proc, node, client, template, case, count, tag, results,
+            no_gap=False):
     import rclpy
     import rclpy.serialization
     srv = type(template)
@@ -86,6 +91,7 @@ def run_arm(owner_proc, node, client, template, case, count, tag, results):
                 rclpy.serialization.serialize_message(template), srv)
             request.query.request_id = 'probe-%s-%s-%03d' % (tag, case, i)
             cpu0 = schedstat_ns(owner_proc.pid)
+            rss0 = rss_kib(owner_proc.pid)
             del gc_events[:]
             t0 = time.perf_counter_ns()
             future = client.call_async(request)
@@ -111,7 +117,9 @@ def run_arm(owner_proc, node, client, template, case, count, tag, results):
                 tag=tag, case=case, i=i,
                 elapsed_ms=(t1-t0)/1e6,
                 owner_cpu_delta_ms=(cpu1-cpu0)/1e6,
+                owner_rss_kib=rss_kib(owner_proc.pid),
                 response_bytes=len(body),
+                response_sha256=hashlib.sha256(body).hexdigest()[:16],
                 returned_count=response.meta.returned_count,
                 complete=response.meta.complete,
                 status=response.meta.status,
@@ -119,7 +127,8 @@ def run_arm(owner_proc, node, client, template, case, count, tag, results):
                 identity_fallback=fallback,
                 client_gc=[(t-t0, phase, gen)
                            for t, phase, gen in gc_events if t0 <= t <= t1]))
-            time.sleep(0.05)
+            if not no_gap:
+                time.sleep(0.05)
     finally:
         gc.callbacks.remove(gc_cb)
 
@@ -215,6 +224,17 @@ def main():
     ap.add_argument('--gc-disable-arm', action='store_true',
                     help='add arm G: same boot with gc.disable() (GC '
                          'attribution experiment for the slow mode)')
+    ap.add_argument('--gc-mode', choices=('off', 'collect', 'freeze', 'both'),
+                    default='off', help='GC mitigation arm for ALL boots')
+    ap.add_argument('--no-gap', action='store_true',
+                    help='continuous request stream (no 50ms inter-request '
+                         'sleep): the no-idle-gap load shape')
+    ap.add_argument('--single-arm', default=None,
+                    help='TAG: run ONE boot + one arm per case and exit '
+                         '(matrix-scripting mode; gc-mode/write-hz/'
+                         'reset-after apply to that boot)')
+    ap.add_argument('--write-hz-for-single', type=float, default=0.0)
+    ap.add_argument('--reset-after-seconds', type=float, default=0.0)
     ap.add_argument('--out', required=True)
     args = ap.parse_args()
     if not 100 <= args.domain <= 232:
@@ -229,6 +249,50 @@ def main():
     import rclpy
     from luggage_msgs.srv import QueryCargoCellsV2
     results = []
+
+    if args.single_arm:
+        # Matrix-scripting mode: one boot (--gc-mode, optional write load,
+        # optional lifecycle reset), one arm per case, exit.
+        extra = ['--gc-mode', args.gc_mode]
+        if args.write_hz_for_single > 0:
+            extra += ['--write-load-hz', str(args.write_hz_for_single)]
+        if args.reset_after_seconds > 0:
+            extra += ['--reset-after-seconds', str(args.reset_after_seconds)]
+        tag = args.single_arm
+        workS = work/tag
+        workS.mkdir(parents=True, exist_ok=True)
+        rclpy.init()
+        node = rclpy.create_node('phase_probe_%s' % tag.replace('-', '_'))
+        owner = boot_owner(args, environment, workS, extra=extra)
+        client = node.create_client(QueryCargoCellsV2, '/cargo_map/query_cells_v2')
+        if not client.wait_for_service(timeout_sec=30.):
+            raise RuntimeError('query service not available (%s)' % tag)
+        for case in cases:
+            run_arm(owner, node, client, templates[case], case,
+                    args.count, tag, results, no_gap=args.no_gap)
+        stop_owner(owner)
+        rclpy.shutdown()
+        report = analyze(results, workS/'owner'/'trace.jsonl')
+        report['gc_mode'] = args.gc_mode
+        report['no_gap'] = args.no_gap
+        report['records'] = results
+        (work/'probe_report.json').write_text(json.dumps(report, indent=1)+'\n')
+        for arm in report['arms']:
+            print(json.dumps(arm))
+        trace = [json.loads(l) for l in open(workS/'owner'/'trace.jsonl')]
+        manual = [r.get('wall_ms') for r in trace if r.get('stage') == 'gc_manual']
+        lifec = [r for r in trace if r.get('stage') == 'lifecycle_reset']
+        if manual:
+            import statistics as st
+            print('gc_manual n=%d med=%.1fms total=%.0fms' % (
+                len(manual), st.median(manual), sum(manual)))
+        for row in lifec:
+            print('lifecycle', row.get('phase'), 'rss', row.get('rss_kib'),
+                  'gc_objects', row.get('gc_objects'))
+        rss = [r['owner_rss_kib'] for r in results if 'owner_rss_kib' in r]
+        if rss:
+            print('owner RSS start/med/end KiB: %d/%d/%d' % (rss[0], rss[len(rss)//2], rss[-1]))
+        return
 
     # Arm A: baseline, no writes
     workA = work/'A'
