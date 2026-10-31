@@ -1,0 +1,24 @@
+{
+  "certification": "NOT_EVALUATED",
+  "uncovered_allocations": true,
+  "counted": [
+    {"class": "shared_blocks", "rule": "unique CellBlock objects, sizeof(CellBlock) times count, including live readers and the store"},
+    {"class": "old_view_blocks", "rule": "blocks absent from the current store but still owned by a snapshot"},
+    {"class": "surface_cache", "rule": "unique SurfaceCache objects, capacity times sizeof(SurfaceColumn)"},
+    {"class": "view_directories", "rule": "store map entry count plus each distinct snapshot map; not std::map node bytes"},
+    {"class": "inflight_responses", "rule": "sum of response buffers held until the service callback returns; peak kept"},
+    {"class": "entry_queue", "rule": "message count plus queued cloud payload bytes"},
+    {"class": "receipt_ledger", "rule": "record count plus string capacity and record size, not map nodes"},
+    {"class": "completion_history", "rule": "record count, capped at 4096"}
+  ],
+  "uncovered_classes": [
+    "octree_internal_nodes",
+    "std_map_directory_nodes",
+    "ledger_map_nodes",
+    "ingress_queue_nodes",
+    "completion_map_nodes",
+    "middleware_transport_buffers",
+    "tf_buffer",
+    "fingerprint_table"
+  ]
+}

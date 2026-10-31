@@ -5,6 +5,7 @@ int64 max_age_ms
 int64 timeout_ms
 ---
 string status
+string reason
 string handle
 uld_occ_observer/SnapshotIdentity identity
 int64 age_ns

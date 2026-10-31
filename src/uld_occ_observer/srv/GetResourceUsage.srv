@@ -13,4 +13,12 @@ uint64 entry_queue_messages
 uint64 entry_queue_messages_peak
 uint64 receipt_ledger_records
 uint64 receipt_ledger_records_peak
+uint64 entry_queue_payload_bytes
+uint64 entry_queue_payload_bytes_peak
+uint64 receipt_ledger_bytes
+uint64 receipt_ledger_bytes_peak
+uint64 completion_records
+uint64 completion_records_peak
 bool uncovered_allocations
+string certification
+string[] uncovered_classes

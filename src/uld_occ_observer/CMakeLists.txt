@@ -12,7 +12,8 @@ add_library(uld_occ_observer_core
   src/preprocessing.cpp src/geometry.cpp src/block_storage.cpp src/snapshot.cpp
   src/occupancy_grid.cpp src/observer.cpp
   src/snapshot_repository.cpp src/observation_worker.cpp
-  src/observation_ledger.cpp src/observation_ingress.cpp src/snapshot_wait_board.cpp)
+  src/observation_ledger.cpp src/observation_ingress.cpp src/snapshot_wait_board.cpp
+  src/observation_terminal.cpp)
 target_include_directories(uld_occ_observer_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include> ${OCTOMAP_INCLUDE_DIRS})
@@ -89,6 +90,7 @@ if(OBSERVER_WITH_ROS)
     "srv/ReadSurface.srv" "srv/ReleaseSnapshot.srv" "srv/ResetObservation.srv"
     "srv/CheckpointObservation.srv"
     "srv/GetObservationStatus.srv" "srv/WaitSnapshot.srv" "srv/GetResourceUsage.srv"
+    "srv/SetBehaviorHook.srv"
     DEPENDENCIES sensor_msgs geometry_msgs)
   add_executable(observer_node src/observer_node.cpp src/ros_adapters.cpp)
   target_link_libraries(observer_node uld_occ_observer_io)

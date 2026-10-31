@@ -43,6 +43,9 @@ class ObservationStore {
   UpdateReceipt integrate(const OpticalObservation& observation,
                           ProfileMode profile_mode = ProfileMode::Off);
   std::shared_ptr<const Snapshot> snapshot() const;
+  // The snapshot the store itself still owns. Does not build one and does not
+  // require the caller to keep a handle. Empty before the first publish.
+  std::shared_ptr<const Snapshot> retained_snapshot() const;
   Diagnostics diagnostics() const;
   std::uint64_t published_epoch() const;
   void collect_blocks(std::vector<std::shared_ptr<const CellBlock>>& out) const;

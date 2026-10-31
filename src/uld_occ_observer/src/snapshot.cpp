@@ -23,6 +23,7 @@ std::uint64_t Snapshot::surface_cache_allocated_bytes() const {
   if (!surface_cache_->value) return 0;
   return surface_cache_->value->capacity() * sizeof(SurfaceColumn);
 }
+const SurfaceCache* Snapshot::surface_cache() const { return surface_cache_.get(); }
 std::uint64_t Snapshot::known_entry_count() const {
   std::uint64_t count = 0;
   for (const auto& entry : blocks_) count += entry.second->known_count();

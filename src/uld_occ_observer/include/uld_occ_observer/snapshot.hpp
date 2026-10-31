@@ -74,6 +74,7 @@ class Snapshot {
   std::uint64_t directory_entries() const { return blocks_.size(); }
   void collect_blocks(std::vector<std::shared_ptr<const CellBlock>>& out) const;
   std::uint64_t surface_cache_allocated_bytes() const;
+  const SurfaceCache* surface_cache() const;
   std::uint64_t known_entry_count() const;
   static CellIndex block_index(CellIndex index);
  private:

@@ -1,0 +1,3 @@
+same_snapshot=1 one_cache=48000 two_cache=48000
+retained_blocks=2 reported_blocks_bytes=8336 retained_cache_bytes=48000 reported_cache_bytes=48000 readable_cells=8
+failures=0

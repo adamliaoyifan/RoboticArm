@@ -2,6 +2,7 @@
 #include "uld_occ_observer/observation_ingress.hpp"
 #include "uld_occ_observer/observation_ledger.hpp"
 #include "uld_occ_observer/observation_worker.hpp"
+#include "uld_occ_observer/observation_terminal.hpp"
 #include "uld_occ_observer/snapshot_repository.hpp"
 #include "uld_occ_observer/snapshot_wait_board.hpp"
 #include <atomic>
@@ -89,8 +90,10 @@ void test_reset_ttl_pressure_and_bytes(const ObserverConfiguration& cfg) {
   repository.release(first.handle);
   const auto after_release = repository.usage();
   expect(after_release.shared_block_bytes <= with_old.shared_block_bytes, "release drops unshared blocks");
-  expect(kept->surface() && !kept->surface()->empty(), "read started before reset still completes");
+  expect(kept->surface() && !kept->surface()->empty(), "surface is available before reset");
   const auto epoch = store.reset(store.published_epoch());
+  const auto after_reset = kept->read_cells({0, 0, 0}, {2, 2, 2}, 0, 8);
+  expect(after_reset.cells.size() == 8, "read started before reset still completes after reset");
   expect(epoch == 2, "reset advances epoch");
   bool expired = false;
   try { repository.get(latest.handle); }
@@ -200,6 +203,167 @@ void test_ledger_ingress_and_wait() {
   expect(rejection && rejection->status == "REJECTED", "target rejection is returned");
   const auto timed = board.poll(request, now + std::chrono::milliseconds(2000), 1000, 1, nullptr);
   expect(timed && timed->status == "TIMEOUT", "wait times out without a new frame");
+  SnapshotWaitBoard::Request overdue = request;
+  overdue.observation_id = "full";
+  overdue.timeout_ms = 10;
+  SnapshotWaitBoard::Completion queued;
+  queued.epoch = 1;
+  queued.sensor_id = "cam0";
+  queued.observation_id = "full";
+  queued.status = "REJECTED";
+  queued.reason = "QUEUE_FULL";
+  board.note_completion(queued);
+  const auto late = board.poll(overdue, now + std::chrono::milliseconds(50), 1000, 1, nullptr);
+  expect(late && late->status == "REJECTED" && late->reason == "QUEUE_FULL",
+         "a recorded rejection beats a later timeout");
+}
+void test_resource_ownership(const ObserverConfiguration& cfg) {
+  ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, false);
+  expect(store.integrate(observation(cfg, "seed", 1000000000)).status == "INTEGRATED", "ownership seed");
+  SnapshotRepository repo(store);
+  const auto first = repo.acquire(2000000000, 5000000000, true);
+  auto held = repo.get(first.handle);
+  auto cache = held->surface();
+  const auto one = repo.usage();
+  const auto directories = one.view_directory_entries;
+  const auto second = repo.acquire(2000000000, 5000000000, true);
+  const bool same = repo.get(second.handle).get() == held.get();
+  const auto two = repo.usage();
+  expect(same && one.surface_cache_bytes > 0 && two.surface_cache_bytes == one.surface_cache_bytes,
+         "same cache must be counted once for two handles");
+  expect(two.view_directory_entries == directories, "same snapshot directory is counted once");
+  expect(two.shared_block_bytes == one.shared_block_bytes, "same blocks stay deduplicated");
+  store.reset(1);
+  repo.release(first.handle);
+  repo.release(second.handle);
+  const auto retained = repo.usage();
+  std::vector<std::shared_ptr<const CellBlock>> blocks;
+  held->collect_blocks(blocks);
+  const auto readable = held->read_cells({0, 0, 0}, {2, 2, 2}, 0, 8);
+  expect(!blocks.empty() && retained.shared_block_bytes >= blocks.size() * sizeof(CellBlock),
+         "released handle with live reader must retain resource attribution");
+  expect(retained.surface_cache_bytes >= held->surface_cache_allocated_bytes(),
+         "live reader cache must remain attributed after reset and release");
+  expect(readable.cells.size() == 8, "live reader still sees the pre-reset cells");
+  expect(retained.certification == "NOT_EVALUATED" && retained.uncovered_allocations,
+         "partial resource sums stay not evaluated");
+  expect(!retained.uncovered_classes.empty(), "uncovered classes are listed");
+  held.reset();
+  cache.reset();
+  const auto released = repo.usage();
+  expect(released.shared_block_bytes == 0 && released.surface_cache_bytes == 0,
+         "last owner release returns to the empty post-reset baseline");
+
+  ObservationStore versions(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, false);
+  expect(versions.integrate(observation(cfg, "v1", 1000000000)).status == "INTEGRATED", "version one");
+  SnapshotRepository version_repo(versions);
+  const auto old_lease = version_repo.acquire(2000000000, 5000000000, true);
+  auto old_view = version_repo.get(old_lease.handle);
+  old_view->surface();
+  const auto old_usage = version_repo.usage();
+  expect(versions.integrate(observation(cfg, "v2", 3000000000)).status == "INTEGRATED", "version two");
+  const auto new_lease = version_repo.acquire(4000000000, 5000000000, true);
+  auto new_view = version_repo.get(new_lease.handle);
+  new_view->surface();
+  const auto both = version_repo.usage();
+  expect(old_view.get() != new_view.get(), "a changed map publishes a new snapshot");
+  expect(both.surface_cache_bytes >= old_usage.surface_cache_bytes + new_view->surface_cache_allocated_bytes()
+             || old_view->surface_cache() == new_view->surface_cache(),
+         "two live versions count each distinct surface cache");
+  expect(both.old_view_block_bytes > 0, "blocks retained only by the old version stay attributed");
+  version_repo.release(old_lease.handle);
+  version_repo.release(new_lease.handle);
+  old_view.reset();
+  const auto baseline = version_repo.usage();
+  expect(baseline.surface_cache_bytes == new_view->surface_cache_allocated_bytes(),
+         "dropping the old reader leaves the current snapshot cache as the baseline");
+  expect(baseline.old_view_block_bytes == 0, "old-version blocks leave with their last reader");
+  new_view.reset();
+
+  SnapshotRepository flights(versions);
+  auto first_response = flights.begin_response(1000);
+  auto second_response = flights.begin_response(2500);
+  expect(flights.usage().inflight_response_bytes == 3500, "concurrent responses add");
+  first_response = InflightResponse();
+  expect(flights.usage().inflight_response_bytes == 2500, "releasing one response keeps the other");
+  const auto peak = flights.usage().inflight_response_bytes_peak;
+  second_response = InflightResponse();
+  const auto done = flights.usage();
+  expect(done.inflight_response_bytes == 0 && done.inflight_response_bytes_peak == peak && peak >= 3500,
+         "the last response release returns inflight bytes to zero and keeps the peak");
+}
+void test_terminal_seal_and_bounds() {
+  const auto now = std::chrono::steady_clock::now();
+  ObservationLedger ledger;
+  SnapshotWaitBoard board;
+  UpdateReceipt missing;
+  missing.status = "INTEGRATED";
+  expect(!ledger.complete(1, "cam0", "absent", missing, now), "complete does not insert an unknown id");
+  expect(!ledger.query(1, "cam0", "absent"), "an unknown id stays unseen");
+  expect(ledger.admit(1, "cam0", "once", now).accepted, "seal admit");
+  UpdateReceipt queued;
+  queued.status = "QUEUE_FULL";
+  queued.sensor_id = "cam0";
+  queued.observation_id = "once";
+  queued.input_stamp_ns = 42;
+  const auto sealed = seal_inflight(ledger, board, 1, "cam0", "once", queued, now, 1.5);
+  expect(sealed.stored && sealed.state == "REJECTED" && sealed.receipt.status == "QUEUE_FULL",
+         "seal stores the rejection before a caller publishes");
+  UpdateReceipt later;
+  later.status = "INTEGRATED";
+  later.identity.observed_revision = 9;
+  expect(!seal_inflight(ledger, board, 1, "cam0", "once", later, now).stored,
+         "a second seal does not overwrite the terminal");
+  const auto stored = ledger.query(1, "cam0", "once");
+  expect(stored && stored->state == "REJECTED" && stored->receipt.status == "QUEUE_FULL" &&
+             stored->receipt.input_stamp_ns == 42 && stored->queue_ms == 1.5,
+         "query returns the sealed receipt");
+  SnapshotWaitBoard::Request wait;
+  wait.expected_epoch = 1;
+  wait.sensor_id = "cam0";
+  wait.observation_id = "once";
+  wait.max_age_ms = 2000;
+  wait.timeout_ms = 2000;
+  wait.started = now + std::chrono::seconds(5);
+  const auto rejection = board.poll(wait, now + std::chrono::seconds(5), 0, 1, nullptr);
+  expect(rejection && rejection->status == "REJECTED" && rejection->reason == "QUEUE_FULL",
+         "the waiter reads the sealed rejection rather than timing out");
+  note_unstored_rejection(board, 1, "cam0", "unsaved", "LEDGER_FULL", 7);
+  expect(!ledger.query(1, "cam0", "unsaved"), "a full ledger does not gain a row for the rejected id");
+  const auto unsaved = board.find(1, "cam0", "unsaved");
+  expect(unsaved && unsaved->reason == "LEDGER_FULL", "the rejection is still visible to waiters");
+  ledger.mark(1, "cam0", "once", "PROCESSING", true, now);
+  expect(ledger.query(1, "cam0", "once")->state == "REJECTED", "a terminal record is not reopened");
+
+  ObservationLedger aged;
+  aged.set_retention(std::chrono::milliseconds(5));
+  expect(aged.admit(1, "cam0", "old", now).accepted, "retention admit");
+  UpdateReceipt integrated;
+  integrated.status = "INTEGRATED";
+  integrated.observation_id = "old";
+  aged.complete(1, "cam0", "old", integrated, now);
+  aged.expire(now);
+  expect(aged.query(1, "cam0", "old")->state == "COMPLETED", "query before retention stays completed");
+  aged.expire(now + std::chrono::milliseconds(6));
+  expect(aged.query(1, "cam0", "old")->state == "EXPIRED", "query after retention is expired");
+
+  SnapshotWaitBoard bounded;
+  for (std::size_t i = 0; i < SnapshotWaitBoard::kMaxCompletions + 3; ++i) {
+    SnapshotWaitBoard::Completion completion;
+    completion.epoch = 1;
+    completion.sensor_id = "cam0";
+    completion.observation_id = "n" + std::to_string(i);
+    completion.status = "REJECTED";
+    completion.reason = "QUEUE_FULL";
+    bounded.note_completion(completion);
+  }
+  expect(bounded.size() == SnapshotWaitBoard::kMaxCompletions, "completion history is capped");
+  expect(!bounded.find(1, "cam0", "n0"), "the oldest completion is dropped");
+  expect(bounded.find(1, "cam0", "n" + std::to_string(SnapshotWaitBoard::kMaxCompletions + 2)).has_value(),
+         "the newest completion is kept");
+  bounded.drop_other_epochs(2);
+  expect(bounded.size() == 0, "reset drops completions from the previous epoch");
+  expect(bounded.accounted_bytes_peak() > 0, "completion history bytes were accounted before the drop");
 }
 }  // namespace
 
@@ -208,7 +372,9 @@ int main() {
     const auto cfg = load();
     test_read_while_store_locked(cfg);
     test_reset_ttl_pressure_and_bytes(cfg);
+    test_resource_ownership(cfg);
     test_ledger_ingress_and_wait();
+    test_terminal_seal_and_bounds();
   } catch (const std::exception& error) {
     std::cerr << "FAIL exception " << error.what() << '\n';
     return 1;

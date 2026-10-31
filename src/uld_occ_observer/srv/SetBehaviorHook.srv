@@ -1,0 +1,6 @@
+# Present only when behavior_test_hooks is true. Not a scoring or production control.
+string name
+int64 value
+---
+bool accepted
+string status

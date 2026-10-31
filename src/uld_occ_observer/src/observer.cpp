@@ -179,6 +179,10 @@ std::shared_ptr<const Snapshot> ObservationStore::snapshot() const {
   cached_snapshot_ = result;
   return result;
 }
+std::shared_ptr<const Snapshot> ObservationStore::retained_snapshot() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return cached_snapshot_;
+}
 std::uint64_t ObservationStore::published_epoch() const {
   return published_epoch_.load(std::memory_order_acquire);
 }

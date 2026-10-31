@@ -17,6 +17,7 @@ class ObservationIngress {
     std::string observation_id;
     std::uint64_t epoch{};
     std::shared_ptr<void> payload;
+    std::uint64_t payload_bytes{};
   };
   struct Result {
     bool accepted{false};
@@ -27,9 +28,13 @@ class ObservationIngress {
   std::optional<Item> try_pop();
   std::size_t size() const;
   std::size_t peak() const;
+  std::uint64_t payload_bytes() const;
+  std::uint64_t payload_peak() const;
  private:
   mutable std::mutex mutex_;
   std::deque<Item> queue_;
   std::size_t peak_{};
+  std::uint64_t queued_payload_{};
+  std::uint64_t payload_peak_{};
 };
 }  // namespace uld_occ_observer
