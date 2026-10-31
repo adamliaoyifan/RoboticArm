@@ -1,0 +1,2347 @@
+{
+  "revision": "e7b8b7a7fdc2e753e2fc36d40cc014ca7282fceb",
+  "results": [
+    {
+      "name": "o8_healthy",
+      "input": {
+        "gate": "o8",
+        "runs": [
+          {
+            "saturation_probability_keys": 0,
+            "saturation_geometry_blocks": 0,
+            "node_count_stable": true,
+            "rss_median_kib": [
+              1000,
+              1000,
+              1040
+            ]
+          },
+          {
+            "saturation_probability_keys": 0,
+            "saturation_geometry_blocks": 0,
+            "node_count_stable": true,
+            "rss_median_kib": [
+              1000,
+              1000,
+              1040
+            ]
+          },
+          {
+            "saturation_probability_keys": 0,
+            "saturation_geometry_blocks": 0,
+            "node_count_stable": true,
+            "rss_median_kib": [
+              1000,
+              1000,
+              1040
+            ]
+          }
+        ],
+        "holds": [
+          {
+            "kind": "no_input",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "no_input",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "no_input",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "occlusion",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "occlusion",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "occlusion",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          }
+        ]
+      },
+      "expected_status": "pass",
+      "actual": {
+        "pass": true,
+        "status": "pass",
+        "reasons": [],
+        "gate": "o8",
+        "capture_certified": false
+      },
+      "matched": true
+    },
+    {
+      "name": "o9_healthy",
+      "input": {
+        "gate": "o9",
+        "operations": {
+          "roi": [
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            }
+          ],
+          "integrate_30k": [
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            }
+          ],
+          "surface_first": [
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            }
+          ]
+        }
+      },
+      "expected_status": "pass",
+      "actual": {
+        "pass": true,
+        "status": "pass",
+        "reasons": [],
+        "injected_faults": [],
+        "performance_certified": true,
+        "gate": "o9",
+        "capture_certified": false
+      },
+      "matched": true
+    },
+    {
+      "name": "o6_healthy",
+      "input": {
+        "gate": "o6_group",
+        "id": "r02_b00_chamfer_c30000_o50_x00",
+        "cloud": 30000,
+        "integrate_ms": [
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0
+        ],
+        "init_s": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "warm_init_s": 1.0,
+        "rss_kib": 100000,
+        "resources": {
+          "rss_kib": 100000,
+          "read_view_bytes": 1024,
+          "cache_bytes": 1024,
+          "attribution_complete": true,
+          "unmarked_allocations": false
+        },
+        "acquire_ms": [
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0
+        ],
+        "roi_ms": [
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0
+        ],
+        "surface_first_ms": [
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0
+        ],
+        "surface_after_update_ms": [
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0
+        ],
+        "surface_repeat_ms": [
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0
+        ]
+      },
+      "expected_status": "pass",
+      "actual": {
+        "pass": true,
+        "status": "pass",
+        "reasons": [],
+        "resource_gate": "pass",
+        "gate": "o6_group",
+        "capture_certified": false
+      },
+      "matched": true
+    },
+    {
+      "name": "o8_rss_nan",
+      "input": {
+        "gate": "o8",
+        "runs": [
+          {
+            "saturation_probability_keys": 0,
+            "saturation_geometry_blocks": 0,
+            "node_count_stable": true,
+            "rss_median_kib": [
+              1000,
+              1000,
+              NaN
+            ]
+          },
+          {
+            "saturation_probability_keys": 0,
+            "saturation_geometry_blocks": 0,
+            "node_count_stable": true,
+            "rss_median_kib": [
+              1000,
+              1000,
+              1040
+            ]
+          },
+          {
+            "saturation_probability_keys": 0,
+            "saturation_geometry_blocks": 0,
+            "node_count_stable": true,
+            "rss_median_kib": [
+              1000,
+              1000,
+              1040
+            ]
+          }
+        ],
+        "holds": [
+          {
+            "kind": "no_input",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "no_input",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "no_input",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "occlusion",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "occlusion",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "occlusion",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          }
+        ]
+      },
+      "expected_status": "fail",
+      "actual": {
+        "pass": true,
+        "status": "pass",
+        "reasons": [],
+        "gate": "o8",
+        "capture_certified": false
+      },
+      "matched": false
+    },
+    {
+      "name": "o8_rss_negative",
+      "input": {
+        "gate": "o8",
+        "runs": [
+          {
+            "saturation_probability_keys": 0,
+            "saturation_geometry_blocks": 0,
+            "node_count_stable": true,
+            "rss_median_kib": [
+              1000,
+              1000,
+              -1
+            ]
+          },
+          {
+            "saturation_probability_keys": 0,
+            "saturation_geometry_blocks": 0,
+            "node_count_stable": true,
+            "rss_median_kib": [
+              1000,
+              1000,
+              1040
+            ]
+          },
+          {
+            "saturation_probability_keys": 0,
+            "saturation_geometry_blocks": 0,
+            "node_count_stable": true,
+            "rss_median_kib": [
+              1000,
+              1000,
+              1040
+            ]
+          }
+        ],
+        "holds": [
+          {
+            "kind": "no_input",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "no_input",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "no_input",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "occlusion",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "occlusion",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "occlusion",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          }
+        ]
+      },
+      "expected_status": "fail",
+      "actual": {
+        "pass": true,
+        "status": "pass",
+        "reasons": [],
+        "gate": "o8",
+        "capture_certified": false
+      },
+      "matched": false
+    },
+    {
+      "name": "o8_rss_bool",
+      "input": {
+        "gate": "o8",
+        "runs": [
+          {
+            "saturation_probability_keys": 0,
+            "saturation_geometry_blocks": 0,
+            "node_count_stable": true,
+            "rss_median_kib": [
+              1000,
+              1000,
+              true
+            ]
+          },
+          {
+            "saturation_probability_keys": 0,
+            "saturation_geometry_blocks": 0,
+            "node_count_stable": true,
+            "rss_median_kib": [
+              1000,
+              1000,
+              1040
+            ]
+          },
+          {
+            "saturation_probability_keys": 0,
+            "saturation_geometry_blocks": 0,
+            "node_count_stable": true,
+            "rss_median_kib": [
+              1000,
+              1000,
+              1040
+            ]
+          }
+        ],
+        "holds": [
+          {
+            "kind": "no_input",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "no_input",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "no_input",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "occlusion",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "occlusion",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "occlusion",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          }
+        ]
+      },
+      "expected_status": "fail",
+      "actual": {
+        "pass": true,
+        "status": "pass",
+        "reasons": [],
+        "gate": "o8",
+        "capture_certified": false
+      },
+      "matched": false
+    },
+    {
+      "name": "o8_rss_null",
+      "input": {
+        "gate": "o8",
+        "runs": [
+          {
+            "saturation_probability_keys": 0,
+            "saturation_geometry_blocks": 0,
+            "node_count_stable": true,
+            "rss_median_kib": [
+              1000,
+              1000,
+              null
+            ]
+          },
+          {
+            "saturation_probability_keys": 0,
+            "saturation_geometry_blocks": 0,
+            "node_count_stable": true,
+            "rss_median_kib": [
+              1000,
+              1000,
+              1040
+            ]
+          },
+          {
+            "saturation_probability_keys": 0,
+            "saturation_geometry_blocks": 0,
+            "node_count_stable": true,
+            "rss_median_kib": [
+              1000,
+              1000,
+              1040
+            ]
+          }
+        ],
+        "holds": [
+          {
+            "kind": "no_input",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "no_input",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "no_input",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "occlusion",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "occlusion",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          },
+          {
+            "kind": "occlusion",
+            "probability_unchanged": true,
+            "freshness_advanced": false
+          }
+        ]
+      },
+      "expected_status": "not_evaluated",
+      "actual": {
+        "exception": "TypeError",
+        "message": "unsupported operand type(s) for -: 'NoneType' and 'int'"
+      },
+      "matched": false
+    },
+    {
+      "name": "o6_missing_surface_first_ms",
+      "input": {
+        "gate": "o6_group",
+        "id": "r02_b00_chamfer_c30000_o50_x00",
+        "cloud": 30000,
+        "integrate_ms": [
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0
+        ],
+        "init_s": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "warm_init_s": 1.0,
+        "rss_kib": 100000,
+        "resources": {
+          "rss_kib": 100000,
+          "read_view_bytes": 1024,
+          "cache_bytes": 1024,
+          "attribution_complete": true,
+          "unmarked_allocations": false
+        },
+        "acquire_ms": [
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0
+        ],
+        "roi_ms": [
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0
+        ],
+        "surface_after_update_ms": [
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0
+        ],
+        "surface_repeat_ms": [
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0
+        ]
+      },
+      "expected_status": "not_evaluated",
+      "actual": {
+        "exception": "KeyError",
+        "message": "'surface_first_ms'"
+      },
+      "matched": false
+    },
+    {
+      "name": "o9_missing_off_ms",
+      "input": {
+        "gate": "o9",
+        "operations": {
+          "roi": [
+            {
+              "order": "AB",
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            }
+          ],
+          "integrate_30k": [
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            }
+          ],
+          "surface_first": [
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "AB",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            },
+            {
+              "order": "BA",
+              "off_ms": 10.0,
+              "on_ms": 10.5,
+              "missing": false,
+              "mismatched": false,
+              "injected_fault": null
+            }
+          ]
+        }
+      },
+      "expected_status": "not_evaluated",
+      "actual": {
+        "exception": "KeyError",
+        "message": "'off_ms'"
+      },
+      "matched": false
+    }
+  ]
+}

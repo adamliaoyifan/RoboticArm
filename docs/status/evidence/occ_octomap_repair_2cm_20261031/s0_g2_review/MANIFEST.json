@@ -1,0 +1,40 @@
+{
+  "revision": "e7b8b7a7fdc2e753e2fc36d40cc014ca7282fceb",
+  "worktree_dirty": false,
+  "scope": "offline numeric judge boundary; no product scoring",
+  "capture_complete": true,
+  "replay_possible": true,
+  "missing_items": [],
+  "input_encoding": "RESULTS.json includes Python JSON NaN extension; reproduce.py is canonical lossless generator",
+  "timestamp": "2026-10-31T08:28:32.794341+08:00",
+  "pytest": "11 passed",
+  "previous_five": "all explicitly rejected",
+  "new_controls": 3,
+  "new_failures": 6,
+  "files": {
+    "previous-five.json": {
+      "bytes": 2412,
+      "sha256": "13635761457b546bca8e8ccab5990fdbd5544036d357377190715d703a71abe7"
+    },
+    "previous-five.txt": {
+      "bytes": 2412,
+      "sha256": "13635761457b546bca8e8ccab5990fdbd5544036d357377190715d703a71abe7"
+    },
+    "COMMANDS.sh": {
+      "bytes": 602,
+      "sha256": "ad6d2c341e0b4b0d0bf1584a61185ec7622e02cb1630ee789ebb602ab5eaa0db"
+    },
+    "reproduce.py": {
+      "bytes": 2008,
+      "sha256": "fa414fccf1e312e4dfb45ecdc1fb0e9380e9ae236c73e629601ea54ef14c7484"
+    },
+    "RESULTS.json": {
+      "bytes": 58579,
+      "sha256": "f962ba9ee84e35a2884e4255044c15d66c5e37e649eba9b7452756f142f43603"
+    },
+    "pytest.txt": {
+      "bytes": 99,
+      "sha256": "7eb8ab4206fb2ebd3500689d92eb03d4230f93768c583daef214a1f7e6fcf9f3"
+    }
+  }
+}
