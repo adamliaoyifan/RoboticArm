@@ -35,6 +35,18 @@ def main():
     p.add_argument('--paired-trace', action='store_true')
     p.add_argument('--profile-distance', action='store_true')
     p.add_argument('--observe-gc',action='store_true',help='diagnostic rehearsal only')
+    p.add_argument('--observe-spans', action='store_true',
+        help='diagnostic rehearsal only: attach the product span collector '
+             '(service open/operation/meta-release spans with the serving '
+             "thread's CPU time) and time _open for BOTH trace arms")
+    p.add_argument('--write-load-hz', type=float, default=0.0,
+        help='diagnostic rehearsal only: after ready, apply synthetic '
+             'INTEGRATE_VIEW clouds at this rate from a daemon thread '
+             '(writer-vs-query contention arm; events logged as write_load)')
+    p.add_argument('--gc-disable', action='store_true',
+        help='diagnostic rehearsal only: gc.disable() before serving -- '
+             'the GC attribution experiment for the round-trip slow mode. '
+             'Memory grows unbounded; never use in formal scoring.')
     a = p.parse_args()
     if not 100 <= a.domain <= 232:
         p.error('dedicated ROS domain required')
@@ -80,6 +92,15 @@ def main():
     from occ_query_trace_buffer import SnapshotTraceBuffer
     snapshot_trace=SnapshotTraceBuffer()
     gc_callback = None
+    spans = []
+    if a.observe_spans:
+        # Diagnostic only: the product service layer already emits
+        # open/operation/meta-release spans with the serving thread's CPU
+        # time (cargo_map_query_service._execute); attaching a collector
+        # here is zero-effect on the unobserved path.
+        from luggage_perception import cargo_map_query as _core
+        _core.set_span_collector(spans)
+    write_stop = __import__('threading').Event()
     if a.observe_gc:
         import gc
         import luggage_perception.cargo_distance_query as distance_module
@@ -121,11 +142,15 @@ def main():
             finally:
                 profiler.dump_stats(str(out/'distance.cprofile'))
         distance_module.read_nearest = profile_distance
-    if a.trace:
+    if a.trace or a.observe_spans:
         original_open = MapQueryService._open
 
         def traced_open(self, query):
-            if a.paired_trace and not query.request_id.endswith('-trace_on'):
+            # observe_spans times BOTH arms: the trace_off arm is where the
+            # matrix residuals live, and leaving it unrecorded is exactly
+            # the blind spot the phase probe exists to remove.
+            if (a.paired_trace and not a.observe_spans
+                    and not query.request_id.endswith('-trace_on')):
                 return original_open(self,query)
             begin = time.perf_counter_ns()
             try:
@@ -223,6 +248,48 @@ def main():
             for name,mod in list(sys.modules.items()) if name.startswith(('luggage_','st09_contracts'))
             and getattr(mod,'__file__',None) and Path(mod.__file__).is_file()}
         save(out/'ready.json', manifest)
+        if a.write_load_hz > 0:
+            # Contention arm: a daemon thread applying synthetic converged-
+            # cloud updates against the SAME store the service callbacks
+            # query -- the writer-vs-reader topology under test. Events land
+            # in the shared deque as write_load rows for window alignment.
+            import threading
+
+            def write_load(node=node, hz=float(a.write_load_hz), stop=write_stop):
+                import time as _t
+                rng = np.random.default_rng(97531)
+                s, m = node._store, node._mapper
+                period = 1.0/hz
+                index = 0
+                next_t = _t.perf_counter()
+                while not stop.is_set():
+                    cloud = np.column_stack((
+                        rng.uniform(-m.inner_l/2, m.inner_l/2, 30000),
+                        rng.uniform(-m.inner_w/2, m.inner_w/2, 30000),
+                        rng.uniform(m._hull.floor_z+.05, m._hull.ceiling_z-.05,
+                                    30000)))
+                    begin = _t.perf_counter_ns()
+                    result = s.apply_update(MapUpdate(
+                        operation_id='load-%d' % index,
+                        kind=UpdateKind.INTEGRATE_VIEW,
+                        geometry_hash=m.geometry_hash, points=cloud,
+                        origin=None, stamp_key=(2000+index, 0),
+                        acquisition_stamp_ns=2_000_000_000+index,
+                        schema_version=1, settled=True))
+                    events.append(dict(
+                        stage='write_load', i=index,
+                        monotonic_ns=_t.perf_counter_ns(),
+                        wall_ms=(_t.perf_counter_ns()-begin)/1e6,
+                        accepted=bool(result.accepted)))
+                    index += 1
+                    next_t += period
+                    delay = next_t - _t.perf_counter()
+                    if delay > 0:
+                        _t.sleep(delay)
+                    else:
+                        next_t = _t.perf_counter()
+            threading.Thread(target=write_load, daemon=True,
+                             name='diag-write-load').start()
     module.CargoVolumeMapperNode.__init__ = initialize
 
     def capture(_signum=None, _frame=None):
@@ -241,6 +308,9 @@ def main():
             captured_ns=time.time_ns(), input='ready.json synthetic setup + request CDR files',
             window='transaction boundary after stopped scoring; heartbeat window in parent trace'))
     signal.signal(signal.SIGUSR1, capture)
+    if a.gc_disable:
+        import gc
+        gc.disable()
     stop_requested = []
     def stop_spin(_signum, _frame):
         # SIGINT also shuts rclpy's context, while production main performs
@@ -266,9 +336,13 @@ def main():
                 rclpy.shutdown()
             raise
     finally:
+        write_stop.set()
         if gc_callback is not None:
             import gc
             gc.callbacks.remove(gc_callback)
+        if spans:
+            from luggage_perception import cargo_map_query as _core
+            _core.set_span_collector(None)
         manifest.update(ended_ns=time.time_ns(),
             snapshot_trace_count=snapshot_trace.size,snapshot_trace_dropped=snapshot_trace.dropped,
             rss_peak_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
@@ -277,6 +351,8 @@ def main():
             for event in events:
                 stream.write(json.dumps(event)+'\n')
             for event in snapshot_trace.rows():
+                stream.write(json.dumps(event)+'\n')
+            for event in spans:
                 stream.write(json.dumps(event)+'\n')
 
 
