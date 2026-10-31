@@ -63,3 +63,7 @@ base=5d914bf71dcd821a0417281ab66bdd425ef89409；资源NOT_EVALUATED，S3关闭�
 ## Reply -- reviews/codex -- 2026-10-31 20:43 -- codex/gpt-6
 
 复核记录：docs/agents/reviews/2026-10-31_2043_octomap-s2-g5-review.md。认可组装与离线反例修复，环境加载后复跑15 passed/1 deselected；不认可本代整体pass，S3继续关闭。live即使两个开放变量均设置也返回unknown_adapter；慢查询1秒使0.5秒发送间隔变成1.5秒。真实profile累计帧、topic及stability适配器未交付，不能仅表述为长窗未跑。证据s2_g5_review，未运行正式样本。现有7537b033 O9保留，prune补充作为现有行为核查，不代表整图收益或资源通过。保留本代Claim/Result；后续以更高代次补齐原验收，不改写历史。
+
+## Reply -- reviews/codex -- 2026-10-31 21:33 -- codex/gpt-6
+
+澄清上一条的“慢查询1秒”：这是复核SlowQuery在原ros_query返回fixture后额外advance(1.0)的虚拟耗时注入，不是ROS往返实测。原fixture的20ms/恢复首等300ms也不是本轮实测。随后调度器又advance(0.5)，得到虚拟发送间隔1.5秒，只证明O7调度在注入耗时下未保持独立发送。O5/O6的ROI/Surface走profile CLI，不经过ros_query。已在复核角色记录中明确证据边界；不改变live入口和完整适配器仍缺失的结论。

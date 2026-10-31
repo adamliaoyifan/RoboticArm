@@ -14,7 +14,9 @@
 
 - 初次pytest缺libuld_occ_observer_io.so，13 passed/2 failed/1 deselected；保留原日志。source /opt/ros/humble/setup.bash及/tmp/s2-install/setup.bash后15 passed/1 deselected。不是产品行为失败，但COMMANDS.sh的运行环境需写全。
 - 独立audit禁止任何subprocess.Popen，设置S3_OPEN=1、CONFIRM_OFFICIAL=1、ADAPTER=live：实际exit=2、reason=unknown_adapter，却标dispatched=true。只有injected分支调用OfflineAdapter。这不是未授权阻止运行，而是live分支不存在。
-- 同一schedule用慢查询适配器（每次ros_query消耗虚拟1秒），两次发送时间0和1.5秒，合同要求间隔0.5秒。发送与查询同一顺序调用，未实现独立发送。
+- O7离线耗时注入反例：复核SlowQuery先调用原ros_query取得fixture结果，再额外执行self.clock.advance(1.0)。这1秒不是ROS往返测量，也不是原fixture报告的查询延迟。调度器随后再推进计划差值0.5秒，两次虚拟发送时间为0和1.5秒。该结果验证调度器对注入耗时的处理缺陷，不是实机发送抖动或服务超时的证据。发送与查询同一顺序调用，未实现独立发送。
+
+原离线fixture查询延迟20ms、恢复首等300ms也都是fixture字段，不是本轮ROS实测。此路径仅涉及O7窗口的ros_query；O5/O6的ROI与Surface走profile CLI，不经过该函数。上一轮对用户回复中的“查询耗时1秒”应按本段纠正为“人为注入1秒虚拟耗时”。
 - 单独O7未满足O5依赖返回非零，符合停止规则。
 - src/include/CMakeLists相对7537b033无差异；保留之前独立核对的O9，不要求重复跑。本次未再次重算30条trace。
 
