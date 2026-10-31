@@ -18,6 +18,15 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
+
+#: Distance leaf layouts are pure functions of the block shape and
+#: immutable; the owner side already shares them per shape. Rebuilding
+#: one per changed block on the serving process costs an argsort over
+#: every cell (measured 9 ms per 131-block delta) and holds the GIL
+#: against concurrent queries, so the replica shares them the same way.
+#: Only the single poller thread reads this cache.
+_LAYOUT_CACHE = {}
 
 from luggage_perception.cargo_query_snapshot_wire import (
     decode_array_object, decode_json_object, rebuild_snapshot)
@@ -694,7 +703,15 @@ class QueryReplica:
             int(name.split('.')[1]) for name in changed_names
             if name.startswith('block.')})
         new_blocks = list(self.snapshot.blocks)
-        for block_id in changed_blocks:
+        for index, block_id in enumerate(changed_blocks):
+            if index and index % 8 == 0:
+                # The rebuild glue is continuous Python and holds the GIL
+                # for the whole delta (~40 ms per 130 changed blocks),
+                # which stalled concurrent distance queries into 170 ms+
+                # spikes in the C2 rehearsal. Yielding every few blocks
+                # lets query threads interleave; apply wall time is not a
+                # gated metric.
+                time.sleep(0)
             new_blocks[block_id] = self._rebuild_block(
                 manifest, block_id, grid_meta)
         summary = MappingProxyType(dict(wire_decode_json(
@@ -795,7 +812,9 @@ class QueryReplica:
         box_members = MappingProxyType({
             k: bytes.fromhex(v) for k, v in members['box'].items()})
         shape = tuple(int(v) for v in meta['shape'])
-        layout = DistanceLeafLayout.initialize(shape)
+        layout = _LAYOUT_CACHE.get(shape)
+        if layout is None:
+            layout = _LAYOUT_CACHE[shape] = DistanceLeafLayout.initialize(shape)
         records = np.frombuffer(evidence, dtype=CELL_DTYPE)
         allowed = np.frombuffer(active, 'u1').astype(bool)
         distance_members = freeze_distance_members(layout, records,

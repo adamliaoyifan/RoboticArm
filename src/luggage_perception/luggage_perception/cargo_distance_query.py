@@ -44,6 +44,39 @@ def _jit_tables_for_data(data):
     return entry[0]
 
 
+#: Per-block decoded segments, keyed by the block OBJECT identity: the
+#: replica reuses unchanged block objects across generations, so under a
+#: write stream only changed blocks pay the decode (a generation-scoped
+#: table cache alone re-decoded every block per generation -- at 2 Hz
+#: writes with ~1 distance query per generation that tax landed on
+#: nearly every query, max 219 ms in the C2 rehearsal).
+_BLOCK_SEGMENT_CACHE = {}
+
+
+def _block_segment(block, state, origin, r):
+    per_block = _BLOCK_SEGMENT_CACHE.get(id(block))
+    if per_block is None:
+        cleanup = lambda _ref, key=id(block): _BLOCK_SEGMENT_CACHE.pop(key, None)
+        per_block = _BLOCK_SEGMENT_CACHE[id(block)] = (
+            {}, weakref.ref(block, cleanup))
+    segment = per_block[0].get(state)
+    if segment is None:
+        members = block.distance_members[state]
+        offsets = np.frombuffer(members.offsets, dtype='<u2')
+        starts = np.frombuffer(members.starts, dtype='<u2').astype(np.int64)
+        ends = np.frombuffer(members.ends, dtype='<u2').astype(np.int64)
+        leaf_ids = np.frombuffer(members.leaf_ids, dtype='u1')
+        low = origin+(np.asarray(block.start)+block.distance_layout.lower[leaf_ids])*r
+        high = origin+(np.asarray(block.start)+block.distance_layout.upper[leaf_ids])*r
+        xyz = block.distance_layout.cell_coordinates[offsets]+np.asarray(block.start)
+        segment = per_block[0][state] = dict(
+            leaf_low=low, leaf_high=high, starts=starts, ends=ends,
+            mem_low=origin+xyz*r, mem_high=origin+(xyz+1)*r,
+            mem_flat=np.asarray(block.flat_indices, dtype=np.int64)[offsets],
+            mem_offset=offsets.astype(np.int64))
+    return segment
+
+
 MAX_EXAMINED_CELLS = 2_000_000
 MAX_EXAMINED_BLOCKS = 50_000
 MAX_TIMEOUT_MS = 200.
@@ -206,24 +239,17 @@ def _jit_tables(data, state, cand_ids, volumes, origin, r):
     member_base = 0
     for block_id in cand_ids:
         block = data.blocks[block_id]
-        members = block.distance_members[state]
-        offsets = np.frombuffer(members.offsets, dtype='<u2')
-        starts = np.frombuffer(members.starts, dtype='<u2')
-        ends = np.frombuffer(members.ends, dtype='<u2')
-        leaf_ids = np.frombuffer(members.leaf_ids, dtype='u1')
-        low = origin+(np.asarray(block.start)+block.distance_layout.lower[leaf_ids])*r
-        high = origin+(np.asarray(block.start)+block.distance_layout.upper[leaf_ids])*r
-        leaf_lows.append(low)
-        leaf_highs.append(high)
-        leaf_gstarts.append(member_base+starts.astype(np.int64))
-        leaf_gends.append(member_base+ends.astype(np.int64))
-        xyz = block.distance_layout.cell_coordinates[offsets]+np.asarray(block.start)
-        mem_lows.append(origin+xyz*r)
-        mem_highs.append(origin+(xyz+1)*r)
-        mem_flats.append(np.asarray(block.flat_indices, dtype=np.int64)[offsets])
-        mem_offsets.append(offsets.astype(np.int64))
-        member_base += len(offsets)
-        leaf_base.append(leaf_base[-1]+len(low))
+        segment = _block_segment(block, state, origin, r)
+        leaf_lows.append(segment['leaf_low'])
+        leaf_highs.append(segment['leaf_high'])
+        leaf_gstarts.append(member_base+segment['starts'])
+        leaf_gends.append(member_base+segment['ends'])
+        mem_lows.append(segment['mem_low'])
+        mem_highs.append(segment['mem_high'])
+        mem_flats.append(segment['mem_flat'])
+        mem_offsets.append(segment['mem_offset'])
+        member_base += len(segment['mem_offset'])
+        leaf_base.append(leaf_base[-1]+len(segment['leaf_low']))
     max_leaves = max((len(x) for x in leaf_lows), default=1) or 1
     n_blocks = len(cand_ids)
     tables = dict(
