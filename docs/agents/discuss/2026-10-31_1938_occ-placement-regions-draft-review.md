@@ -78,7 +78,22 @@ D1–D8 建议（保留用户决策）：D1 区域独立下一阶段（区域层
 - 不能代表生产 SLA：矩阵/C2 压力合同口径、连发 probe、g8 历史 FAIL（保留不改判）。
 - 区域功能入首版未批准（D1 待用户）。
 
+## Result -- eng/claude -- 2026-10-31 20:31 -- claude-code/glm-5.3
+
+用户指令"按照计划，完成任务"——R1–R6 已实施并按拍板判据验收完毕。**产品默认关**（`region_fast_path=False`、`placement_budget_s=0.0`）；分支 `agent/eng/placement-regions`（worktree `/tmp/elfin-placement-regions`，自 master@c9090064）：`30190380`（实现+17 单测）→`98ef88fb`（验收跑器）→docs（placement.md 区域节）。合并与启用留待裁定。
+
+**实现**（与 Reply②建议一致）：`placement_regions.py` ROS 无关模块——FREE 连通分量+**全局高度跨度**（防链式漂移，ramp 测试钉死）、min/max 高度界、最大矩形分解、unknown=洞/occupied=障碍、**全 unknown=floor_prior 单全地板区域**（用户初始语义）、identity 键单快照缓存；候选=矩形边/角/中心对齐、去重、限额 32/区 256/箱。**solver 缝**：`candidate_windows` 优先窗前缀过**未改动的窗体**（同统计/同门/同打分=结构化零假接受）+`budget_s` 共享预算（回退=同预算内余下扫，绝不翻倍）；耗尽=诚实 `BUDGET_EXHAUSTED`（新失败码，先于容量判定）。节点：4 参数+惰性构建（5Hz 节拍兼容）+`result['regions']` 诊断+桩容忍守卫。
+
+**验收（`docs/status/evidence/occ_owner_b1/placement_regions_20261031/`，18 场景=6 景×3 箱型，30 样本/场）**：
+- **零假接受 0 违例**（fast ⊆ 全量基线，基线不截断——首轮 top_n=2000 截断伪影已修正留档）；**无解 0 success flip**；**0 崩溃**（失败定义=无 surface/崩溃；空解合法）
+- RTT P95 **20.7–493.9ms 全 <500ms**（5cm 20–29ms；2cm 骑满 0.45s 共享预算、余量 1–6%——建议合同期按分辨率调预算换余量）
+- 冷构建 **0–20.6ms=5Hz 周期 ≤10.3%**，warm ~0ms
+- 单核 CPU：**1qps 持续份额 0.02–0.47 ≤0.8**（OCC 更新流份额沿用 OCC 战役证据未重测）
+- 回归：test_placement_regions 17/17 + 全包 **145 passed+81 subtests 零回归**（唯一 deselect=stash 判别证实 clean master 亦失败的 env 相关测试）
+
+**诚实边界**：2cm 预算余量薄；初始全空闲语义与 real_scenario.md 措辞的契约化由 reviews 定稿；本验收=离线回放（拍板负载口径），在线/仿真未授权未跑；CPU 持续份额完整判定需叠加 OCC 更新流在线测量。
+
 ## Open
 
-- ①–⑤ 已交付；用户拍板指标已录入；D1（入首版与否）及 D2–D8 其余细节、实施合同由 reviews/用户后续形成；勘误已落 PRODUCTION_SHAPE_RISK.md。
+- 实施完成待裁定：分支合并、默认开启与否、预算按分辨率定值；D2–D8 其余细节进实施合同。
 
