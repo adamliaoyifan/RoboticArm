@@ -1,0 +1,1254 @@
+{
+  "cases": 208,
+  "matched": 208,
+  "rows": [
+    {
+      "name": "o5_group_integrate_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_integrate_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_integrate_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_integrate_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_integrate_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o5_group_integrate_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o5_group_acquire_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_acquire_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_acquire_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_acquire_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_acquire_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o5_group_acquire_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o5_group_roi_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_roi_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_roi_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_roi_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_roi_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o5_group_roi_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_first_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_first_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_first_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_first_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_first_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_first_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_after_update_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_after_update_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_after_update_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_after_update_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_after_update_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_after_update_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_repeat_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_repeat_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_repeat_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_repeat_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_repeat_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o5_group_surface_repeat_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o5_group_init_s_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_init_s_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_init_s_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_init_s_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_init_s_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o5_group_init_s_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o5_group_warm_init_s_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_warm_init_s_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_warm_init_s_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_warm_init_s_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_warm_init_s_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o5_group_warm_init_s_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o5_group_rss_kib_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_rss_kib_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_rss_kib_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_rss_kib_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_rss_kib_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o5_group_rss_kib_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o5_group_read_view_bytes_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_read_view_bytes_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_read_view_bytes_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_read_view_bytes_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_read_view_bytes_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o5_group_read_view_bytes_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o5_group_cache_bytes_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_cache_bytes_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_cache_bytes_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_cache_bytes_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o5_group_cache_bytes_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o5_group_cache_bytes_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o5_group_missing_integrate_ms",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o5_group_missing_surface_first_ms",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o5_group_missing_init_s",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o5_group_missing_warm_init_s",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o5_group_missing_rss_kib",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_integrate_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_integrate_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_integrate_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_integrate_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_integrate_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o6_group_integrate_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_acquire_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_acquire_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_acquire_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_acquire_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_acquire_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o6_group_acquire_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_roi_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_roi_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_roi_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_roi_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_roi_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o6_group_roi_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_first_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_first_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_first_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_first_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_first_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_first_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_after_update_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_after_update_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_after_update_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_after_update_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_after_update_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_after_update_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_repeat_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_repeat_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_repeat_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_repeat_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_repeat_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o6_group_surface_repeat_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_init_s_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_init_s_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_init_s_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_init_s_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_init_s_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o6_group_init_s_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_warm_init_s_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_warm_init_s_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_warm_init_s_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_warm_init_s_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_warm_init_s_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o6_group_warm_init_s_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_rss_kib_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_rss_kib_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_rss_kib_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_rss_kib_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_rss_kib_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o6_group_rss_kib_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_read_view_bytes_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_read_view_bytes_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_read_view_bytes_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_read_view_bytes_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_read_view_bytes_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o6_group_read_view_bytes_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_cache_bytes_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_cache_bytes_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_cache_bytes_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_cache_bytes_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o6_group_cache_bytes_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o6_group_cache_bytes_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_missing_integrate_ms",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_missing_surface_first_ms",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_missing_init_s",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_missing_warm_init_s",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o6_group_missing_rss_kib",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o7_surface_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_surface_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_surface_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_surface_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o7_surface_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o7_surface_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o7_age_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_age_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_age_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_age_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o7_age_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o7_age_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o7_latency_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_latency_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_latency_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_latency_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o7_latency_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o7_latency_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o7_integrate_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_integrate_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_integrate_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_integrate_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o7_integrate_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o7_integrate_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o7_queue_age_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_queue_age_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_queue_age_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_queue_age_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o7_queue_age_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o7_queue_age_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o7_health_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_health_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_health_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o7_health_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o7_health_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o7_health_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o7_missing_surface_ms",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o7_missing_age_ms",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o7_missing_health_times_s",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o8_rss_0_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o8_rss_0_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o8_rss_0_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o8_rss_0_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o8_rss_0_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o8_rss_0_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o8_rss_2_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o8_rss_2_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o8_rss_2_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o8_rss_2_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o8_rss_2_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o8_rss_2_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o8_missing_rss",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o9_off_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o9_off_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o9_off_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o9_off_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o9_off_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o9_off_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o9_missing_off_ms",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o9_on_ms_nan",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o9_on_ms_posinf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o9_on_ms_neginf",
+      "expected": "fail",
+      "reason": "nonfinite_value",
+      "matched": true
+    },
+    {
+      "name": "o9_on_ms_negative",
+      "expected": "fail",
+      "reason": "negative_value",
+      "matched": true
+    },
+    {
+      "name": "o9_on_ms_bool",
+      "expected": "fail",
+      "reason": "bad_type",
+      "matched": true
+    },
+    {
+      "name": "o9_on_ms_null",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    },
+    {
+      "name": "o9_missing_on_ms",
+      "expected": "not_evaluated",
+      "reason": "missing_observation",
+      "matched": true
+    }
+  ]
+}

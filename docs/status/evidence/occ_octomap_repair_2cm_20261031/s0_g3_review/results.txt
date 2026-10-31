@@ -1,0 +1,9 @@
+o8_healthy expected=pass {"pass": true, "status": "pass", "reasons": [], "gate": "o8", "capture_certified": false}
+o9_healthy expected=pass {"pass": true, "status": "pass", "reasons": [], "injected_faults": [], "performance_certified": true, "gate": "o9", "capture_certified": false}
+o6_healthy expected=pass {"pass": true, "status": "pass", "reasons": [], "resource_gate": "pass", "gate": "o6_group", "capture_certified": false}
+o8_rss_nan expected=fail {"pass": false, "status": "fail", "reasons": ["nonfinite_value"], "gate": "o8", "capture_certified": false}
+o8_rss_negative expected=fail {"pass": false, "status": "fail", "reasons": ["negative_value"], "gate": "o8", "capture_certified": false}
+o8_rss_bool expected=fail {"pass": false, "status": "fail", "reasons": ["bad_type"], "gate": "o8", "capture_certified": false}
+o8_rss_null expected=not_evaluated {"pass": false, "status": "not_evaluated", "reasons": ["missing_observation"], "gate": "o8", "capture_certified": false}
+o6_missing_surface_first_ms expected=not_evaluated {"pass": false, "status": "not_evaluated", "reasons": ["missing_observation"], "resource_gate": "pass", "gate": "o6_group", "capture_certified": false}
+o9_missing_off_ms expected=not_evaluated {"pass": false, "status": "not_evaluated", "reasons": ["missing_observation"], "injected_faults": [], "performance_certified": false, "gate": "o9", "capture_certified": false}

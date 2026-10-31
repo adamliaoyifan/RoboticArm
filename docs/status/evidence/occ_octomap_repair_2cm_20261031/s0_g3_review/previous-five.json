@@ -1,0 +1,94 @@
+{
+  "revision": "f28c0cf598faf90b9bec28a3a0168f65ecc65d72",
+  "scope": "offline judge audit, not product evaluation",
+  "results": [
+    {
+      "case": "recovery_one_rejected",
+      "expected": "explicit non-pass without exception",
+      "actual": {
+        "pass": false,
+        "status": "fail",
+        "reasons": [
+          "input_rejected"
+        ],
+        "legacy_immediate_first": {
+          "status": "STALE",
+          "age_ms": 30400.0,
+          "contract": "get_snapshot"
+        },
+        "legacy_changes_verdict": false,
+        "gate": "o7_recovery",
+        "capture_certified": false
+      },
+      "correctly_rejected": true
+    },
+    {
+      "case": "normal_duplicate_query_missing_other",
+      "expected": "explicit non-pass without exception",
+      "actual": {
+        "pass": false,
+        "status": "fail",
+        "reasons": [
+          "duplicate_query_id",
+          "missing_query"
+        ],
+        "gate": "o7_normal",
+        "capture_certified": false
+      },
+      "correctly_rejected": true
+    },
+    {
+      "case": "o6_same_group_96_times",
+      "expected": "explicit non-pass without exception",
+      "actual": {
+        "pass": false,
+        "status": "fail",
+        "reasons": [
+          "duplicate_group"
+        ],
+        "failed_groups": [],
+        "groups": 96,
+        "expected_groups": 96,
+        "pooled_latency": "not_computed",
+        "gate": "o6_campaign",
+        "capture_certified": false
+      },
+      "correctly_rejected": true
+    },
+    {
+      "case": "normal_wrong_snapshot",
+      "expected": "explicit non-pass without exception",
+      "actual": {
+        "pass": false,
+        "status": "fail",
+        "reasons": [
+          "wrong_snapshot"
+        ],
+        "gate": "o7_normal",
+        "capture_certified": false
+      },
+      "correctly_rejected": true
+    },
+    {
+      "case": "recovery_nan_latency",
+      "expected": "explicit non-pass without exception",
+      "actual": {
+        "pass": false,
+        "status": "fail",
+        "reasons": [
+          "nonfinite_value"
+        ],
+        "legacy_immediate_first": {
+          "status": "STALE",
+          "age_ms": 30400.0,
+          "contract": "get_snapshot"
+        },
+        "legacy_changes_verdict": false,
+        "gate": "o7_recovery",
+        "capture_certified": false
+      },
+      "correctly_rejected": true
+    }
+  ],
+  "false_pass_count": 0
+}
