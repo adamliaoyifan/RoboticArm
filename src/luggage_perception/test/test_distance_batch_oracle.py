@@ -256,7 +256,7 @@ class TestTimeBudgetBoundary(unittest.TestCase):
              unittest.mock.patch.object(self.dq, 'time', static_early), \
              unittest.mock.patch.object(self.dkj, '_clock_ns', jumping):
             batch = self._single_point_query(budget)
-        self.assertGreater(jumping.calls, 1)   # kernel entered AND checked
+        self.assertGreaterEqual(jumping.calls, 1)   # kernel entered AND checked
         self.assertEqual(batch.status, 'QUERY_BUDGET_EXHAUSTED')
         self.assertEqual(batch.results[0].status, 'QUERY_BUDGET_EXHAUSTED')
         point = batch.results[0]
@@ -294,28 +294,28 @@ class TestTimeBudgetBoundary(unittest.TestCase):
                              'QUERY_BUDGET_EXHAUSTED', use_jit)
 
     def test_pre_kernel_gap_spent_against_budget(self):
-        """Reviews' second-round repro: a 10 ms delay landing between the
-        dispatch-side remaining read and the kernel's clock reads must
-        be SPENT against the budget. Pre-fix, the kernel re-based its
-        elapsed at entry, so the constant delay cancelled out of the
-        difference and the query returned OK. The absolute-deadline
-        design anchors the deadline BEFORE the delay, so the kernel's
-        first stride check trips."""
+        """Reviews' repros (rounds 2 and 3): a 10 ms delay landing
+        anywhere between the deadline-setting read and the kernel's
+        clock reads must be SPENT against the budget. Round-2 pre-fix,
+        the kernel re-based its elapsed at entry so a constant delay
+        cancelled; round-3 pre-fix, a re-anchoring read added the
+        remaining budget onto a LATER clock, so a delay between the two
+        dispatch reads was stolen outright (reproduced: warm kernel,
+        static module clock, delayed anchor read, 1 ms budget -> OK).
+        The deadline is now passed through UNCHANGED, and every kernel
+        read is 10 ms late against it, so the first stride check
+        trips."""
         import time as _time
 
         class _DelayedKernelClock:
-            calls = 0
-
             def __call__(self):
-                _DelayedKernelClock.calls += 1
-                now = _time.perf_counter_ns()
-                # First call anchors the deadline (pre-delay); every
-                # later read -- the kernel's stride checks -- lands
-                # 10 ms past it.
-                return now if _DelayedKernelClock.calls == 1 else now + 10_000_000
+                return _time.perf_counter_ns() + 10_000_000
 
+        static_early = type('E', (), {'perf_counter_ns': staticmethod(
+            lambda: 0)})()
         budget = self.dq.DistanceBudget(timeout_ms=1.0)
         with unittest.mock.patch.object(self.dq, '_USE_JIT', True), \
+             unittest.mock.patch.object(self.dq, 'time', static_early), \
              unittest.mock.patch.object(self.dkj, '_clock_ns',
                                         _DelayedKernelClock()):
             batch = self._single_point_query(budget)

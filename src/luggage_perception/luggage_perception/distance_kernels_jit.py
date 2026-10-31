@@ -21,10 +21,12 @@ Replicates ``cargo_distance_query._nearest`` bit-for-bit:
   as the count half, but at a bounded stride so the interpreter
   round-trip stays cheap -- the read happens in an objmode block
   (measured ~255 ns/entry) through ``_clock_ns``, so tests can pin or
-  advance it by patching this module attribute. The caller passes an
-  ABSOLUTE deadline anchored once onto this clock at dispatch
-  (``_deadline_ns``); kernel reads compare against it directly, so
-  every dispatch-to-check gap (scheduling, first-call compilation,
+  advance it by patching this module attribute. The caller passes its
+  OWN absolute deadline through UNCHANGED (both clocks are
+  perf_counter_ns in production; with controlled clocks the patched
+  caller clock stays authoritative precisely because no second
+  re-anchoring read exists); kernel reads compare against it directly,
+  so every dispatch-to-check gap (scheduling, first-call compilation,
   initialization) is spent against the budget -- never re-based away.
   Stride schedule: check at the first pop, then geometric backoff 32,
   64, ... capped at 512 pops; the first check covers an
@@ -62,24 +64,16 @@ def _clock_ns():
     cannot type this interpreter build's ``time`` module). Resolved
     from this module's globals at call time, so tests can substitute a
     controlled clock by patching ``distance_kernels_jit._clock_ns``.
+
+    In production this is the SAME clock the caller's deadline is
+    expressed in (perf_counter_ns), and the caller passes that absolute
+    deadline through UNCHANGED -- there is no re-anchoring read
+    anywhere, so no two-read conversion window can re-base the budget
+    (reviews reproduced a 10 ms gap between the remaining-read and a
+    re-anchoring read stealing the whole gap from a 1 ms budget).
     """
     import time
     return time.perf_counter_ns()
-
-
-def _deadline_ns(remaining_ns):
-    """Anchor the caller's remaining budget onto THIS module's clock.
-
-    The kernel compares its own clock reads against the absolute
-    deadline directly, so the only clock-domain conversion happens
-    here, at dispatch: everything after this point -- scheduling, the
-    kernel's first-call compilation, initialization, the traversal --
-    is spent against the deadline and can no longer be re-based away
-    (the pre-kernel gap bug reviews reproduced on the remaining-budget
-    design). With unpatched clocks both reads are perf_counter_ns and
-    the result equals the caller's own absolute deadline.
-    """
-    return _clock_ns() + remaining_ns
 
 
 STATUS_MATCH, STATUS_RADIUS_CLEAR, STATUS_BUDGET = 0, 1, 2
@@ -186,11 +180,13 @@ def kernel_nearest(point, radius_squared,
     radius-admitted candidates in ascending BLOCK order (not lower
     order -- the seeded heap below holds the first-pop minimum);
     blk_leaf_base maps block position -> first concat-leaf of that
-    block (with an end sentinel). deadline_ns is the ABSOLUTE budget
-    deadline in this module's clock domain: kernel clock reads compare
-    against it directly, so every gap between dispatch and the checks
-    (scheduling, first-call compilation, initialization) is spent
-    against the budget and never re-based away. cells/blocks are
+    block (with an end sentinel). deadline_ns is the caller's ABSOLUTE
+    budget deadline, passed through UNCHANGED (same perf_counter_ns
+    clock as this module's reads in production): kernel clock reads
+    compare against it directly, so every gap between the caller's
+    deadline-setting read and the checks (scheduling, first-call
+    compilation, initialization) is spent against the budget -- no
+    re-anchoring read exists anywhere. cells/blocks are
     1-element carriers of the request-wide counters. scratch_* are
     per-block cursor rows (bounds + survivor order). Returns (status,
     best_sq, bound_sq, best_flat, best_member, best_block_pos)."""

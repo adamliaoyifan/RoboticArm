@@ -22,7 +22,7 @@ from luggage_perception.cargo_voxel_delta import immutable_array
 
 try:
     from luggage_perception.distance_kernels_jit import (
-        HAS_NUMBA, kernel_nearest, _deadline_ns,
+        HAS_NUMBA, kernel_nearest,
         STATUS_BUDGET, STATUS_MATCH, STATUS_RADIUS_CLEAR)
 except ImportError:  # pragma: no cover - kernel module is optional
     HAS_NUMBA = False
@@ -299,11 +299,11 @@ def _nearest_jit(handle, data, point, state, radius, work, candidate_blocks,
     """JIT twin of _nearest: identical traversal semantics (see
     distance_kernels_jit). Both budget halves are enforced at the same
     admission sites as the reference: counts per pop, the clock at a
-    bounded stride inside the kernel against an ABSOLUTE deadline
-    anchored once onto the kernel's clock at dispatch -- every
-    dispatch-to-check gap (scheduling, first-call compilation) is spent
-    against the budget, never re-based away; see the kernel module
-    header for the stride and overshoot bound."""
+    bounded stride inside the kernel against the caller's own ABSOLUTE
+    deadline, passed through UNCHANGED (both clocks are perf_counter_ns
+    in production) -- no re-anchoring read exists, so no two-read gap
+    can re-base the budget; see the kernel module header for the
+    stride and overshoot bound."""
     cand_ids = candidate_blocks[state]
     tables = _jit_tables(data, state, cand_ids, volumes,
                          np.asarray(data.grid.origin), data.grid.resolution)
@@ -321,7 +321,7 @@ def _nearest_jit(handle, data, point, state, radius, work, candidate_blocks,
         tables['leaf_gstart'], tables['leaf_gend'],
         tables['mem_low'], tables['mem_high'], tables['mem_flat'],
         work.budget.max_examined_cells, work.budget.max_examined_blocks,
-        _deadline_ns(work.deadline - time.perf_counter_ns()),
+        work.deadline,
         cells, blocks, tables['scratch_bounds'], tables['scratch_order'])
     work.cells, work.blocks = int(cells[0]), int(blocks[0])
     if status == STATUS_BUDGET:
