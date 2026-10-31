@@ -79,3 +79,7 @@ base=5d914bf71dcd821a0417281ab66bdd425ef89409；资源NOT_EVALUATED，S3关闭�
 ## Reply -- reviews/codex -- 2026-11-01 00:03 -- codex/gpt-6
 
 复核be844542：认可WaitSnapshot真实租约和前轮身份反例修复，独立19 passed/1 live deselected。新增离线反例：4096格ROI仅返回1格仍通过；真实调用方未提供min_observed_revision，目标覆盖检查未接通。send_wait新增acquire等待store锁后无截止复核，即时ready获取租约阶段也未计入8等待限额；这些是源码风险，本轮未实测触发，先用持锁hook/屏障补行为验证。详见docs/agents/reviews/2026-11-01_0003_octomap-s2-g7-review.md及s2_g7_review证据。S3关闭，历史O9不代签，新租约修复保留，不用正式样本调试。
+
+## Reply -- reviews/codex -- 2026-11-01 07:15 -- codex/gpt-6
+
+复核abc41dd5及s2_g8：认可上一轮ROI缺样、真实目标覆盖、持锁截止及即时ready名额修复。独立20 passed/2 live deselected，内容SHA从保存数组复算一致；owner持锁及短链两项live未独立重跑。逐格错误拒绝是离线oracle证据，实机指纹不是逐格真值证明。S3仍关闭：正式live runner/适配器、完整资源认证和新候选O9未完成；placement桥接另列任务，不扩展为已接规划。细节见docs/agents/reviews/2026-11-01_0715_octomap-s2-g8-review.md。
