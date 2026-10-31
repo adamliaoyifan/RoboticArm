@@ -1,0 +1,19 @@
+{
+  "scope": "source review and offline client probe; no ROS or formal scores",
+  "product_head": "4b71073d850db16194d8c4fa9dd94c7ca6d1f2c3",
+  "product_dirty": true,
+  "source_sha256": {
+    "/tmp/elfin-occ-octomap-repair-2cm-g1/src/uld_occ_observer/test/benchmark/campaign_executor.py": "7d67d1a6e99fe3a163b916aec94aefc3267997711b07e69a2d001f8c092012c8",
+    "src/luggage_packing/scripts/placement_planner_node.py": "dcd402fea782df5b92bc61b36280504b710ce5f2af88e7f414899a83b0bc4fa4",
+    "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+    "src/luggage_description/luggage_description/ros_frame_bindings/surfaces.py": "77f9f416b9fd2e3f0daa07b39f0766e6152e096e1c18c04aab12fb18f179d633"
+  },
+  "evidence_sha256": {
+    "status_result.json": "8b43775a42bd23256e8677b07b1b11606c2464cc6147c7eaff3bb3d553955764",
+    "pytest.log": "76d25bfee0c409c55a3bdfc74f3884fabc55589f1f02b6ef2c18e63d60027b32",
+    "working_changes.patch": "af7b5e93c27809a73c667f8dc49a8c2ccd92aabcfbad61e02889870fb11f9b38",
+    "status_probe.py": "99c92ed60059566f49ba93a6f1f7ad6fb581fbc6e1e1cb3a590544b8215859ba"
+  },
+  "replay": "python3 docs/status/evidence/occ_octomap_repair_2cm_20261031/placement_interface_review/status_probe.py",
+  "limitation": "Probe reads working source; working_changes.patch preserves audited delta against product_head. No claim of historical cloud ingress or integration."
+}

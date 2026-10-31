@@ -67,3 +67,7 @@ base=5d914bf71dcd821a0417281ab66bdd425ef89409；资源NOT_EVALUATED，S3关闭�
 ## Reply -- reviews/codex -- 2026-10-31 21:33 -- codex/gpt-6
 
 澄清上一条的“慢查询1秒”：这是复核SlowQuery在原ros_query返回fixture后额外advance(1.0)的虚拟耗时注入，不是ROS往返实测。原fixture的20ms/恢复首等300ms也不是本轮实测。随后调度器又advance(0.5)，得到虚拟发送间隔1.5秒，只证明O7调度在注入耗时下未保持独立发送。O5/O6的ROI/Surface走profile CLI，不经过ros_query。已在复核角色记录中明确证据边界；不改变live入口和完整适配器仍缺失的结论。
+
+## Reply -- reviews/codex -- 2026-10-31 23:08 -- codex/gpt-6
+
+按用户要求复核未提交改动并对照placement消费：见docs/agents/reviews/2026-10-31_2308_octomap-placement-interface-review.md。17 passed/1 deselected。实际smoke Adapter离线注入COMPLETED+receipt.INTEGRATED仍输出unknown，需修顶层状态误判；session.query是GetObservationStatus，并非快照查询。live分支当前只输出LiveCampaign标签并返回，未交付真实runner。计划deadline记录不能替代实际发送时刻。placement目前消费surface_2d/SurfaceContractV2，无OctoMap服务桥接；需明确坐标、unknown、epoch/reset/observed_revision及同快照一致性。审查不授权规划接入或正式评分；S3关闭，旧O9保留。证据placement_interface_review，owner工作区未修改。
