@@ -148,6 +148,72 @@ def main():
         with open(Path(root)/'writer_stats.json', 'w') as fh:
             json.dump({'done': index-3, 'wall_ms': wall}, fh)
 
+    import luggage_perception.cargo_distance_query as _dq
+    # Three-state table instrumentation (reviews Q-20261031-7, P2): the
+    # previous recorder labelled every request-level volumes miss a
+    # "build", which fires on the first query of EVERY request even when
+    # the generation cache answers it -- proving nothing about cold
+    # builds. Classify per cache layer instead: request hit (no event),
+    # generation hit (no assembly), or a REAL assembly, with the count
+    # of per-block segment builds vs cache hits inside it.
+    table_events = []
+    seg_counters = {'built': 0, 'reused': 0}
+    _orig_tables = _dq._jit_tables
+    _orig_segment = _dq._block_segment
+
+    def _recording_segment(block, state, origin, r):
+        per_block = _dq._BLOCK_SEGMENT_CACHE.get(id(block))
+        hit = per_block is not None and state in per_block[0]
+        out = _orig_segment(block, state, origin, r)
+        seg_counters['reused' if hit else 'built'] += 1
+        return out
+
+    def _recording_tables(data, state, cand_ids, volumes, origin, r):
+        if volumes.get(('__jit_tables', state)) is not None:
+            return _orig_tables(data, state, cand_ids, volumes, origin, r)
+        entry = _dq._JIT_TABLES_CACHE.get(id(data))
+        gen_hit = entry is not None and state in entry[0]
+        if gen_hit:
+            table_events.append((time.perf_counter(), 'gen_hit',
+                                 len(cand_ids), 0.0, 0, 0))
+            return _orig_tables(data, state, cand_ids, volumes, origin, r)
+        built0, reused0 = seg_counters['built'], seg_counters['reused']
+        begin = time.perf_counter()
+        out = _orig_tables(data, state, cand_ids, volumes, origin, r)
+        table_events.append((time.perf_counter(), 'assemble',
+                             len(cand_ids),
+                             (time.perf_counter()-begin)*1e3,
+                             seg_counters['built']-built0,
+                             seg_counters['reused']-reused0))
+        return out
+    _dq._jit_tables = _recording_tables
+    _dq._block_segment = _recording_segment
+
+    def dossier(elapsed_ms):
+        """Attribution for one distance sample: replica events plus the
+        cache-layer table events overlapping the query window. A
+        'gen_hit' line means the generation cache answered (NO table
+        work); an 'assemble' line carries its wall time and the
+        built/reused segment split -- only segments_built ~= cand_blocks
+        + a large assemble_ms is a true cold build."""
+        t_end = time.perf_counter()
+        applies = [dict(seq=(e.get('identity') or [0, 0])[1],
+                        event=e.get('event'))
+                   for e in replica.events()[-6:]]
+        overlaps = [dict(
+            ended_ms_ago=round((t_end-te[0])*1e3, 1), what=te[1],
+            cand_blocks=te[2],
+            assemble_ms=round(te[3], 1) if te[1] == 'assemble' else None,
+            segments_built=te[4] or None, segments_reused=te[5] or None)
+            for te in table_events
+            if 0 <= (t_end-te[0])*1e3 < elapsed_ms+50]
+        return dict(t_s=round(time.perf_counter()-t0_ref, 1),
+                    elapsed_ms=round(elapsed_ms, 1),
+                    revision=(replica.snapshot.identity[1]
+                              if replica.snapshot else None),
+                    recent_events=applies[-4:],
+                    tables_overlapping=overlaps[-4:])
+
     def query(kind):
         begin = time.perf_counter_ns()
         try:
@@ -173,6 +239,9 @@ def main():
     startup = {k: [] for k in RATES}
     failures = {k: [] for k in RATES}
     warmed = threading.Event()
+    warmed_kinds = {}
+    spikes = []
+    t0_ref = time.perf_counter()
 
     def run_queries():
         next_t = {k: time.perf_counter() for k in RATES}
@@ -189,10 +258,25 @@ def main():
                         startup[kind].append(elapsed)
                         if ok:
                             warmed.set()
+                    elif kind not in warmed_kinds:
+                        # Per-kind warmup: the FIRST successful query of
+                        # each kind pays its one-time cost (e.g. the
+                        # distance kernel's cold full-map table build) --
+                        # a once-per-process cost, not the steady state
+                        # this gate judges. The first distance query also
+                        # gets a dossier so the cold-build attribution is
+                        # evidenced, not assumed.
+                        warmed_kinds[kind] = elapsed
+                        if not ok:
+                            failures[kind].append(status)
+                        if kind == 'distance' and ok:
+                            spikes.append(dossier(elapsed))
                     else:
                         samples[kind].append(elapsed)
                         if not ok:
                             failures[kind].append(status)
+                        if kind == 'distance' and elapsed > 60:
+                            spikes.append(dossier(elapsed))
                     next_t[kind] += 1.0/rate
             time.sleep(0.002)
 
@@ -233,7 +317,14 @@ def main():
     report = dict(kind='c2_rehearsal', duration_s=args.duration,
                   startup_window_ms={k: [round(v, 1) for v in vlist[:3]]
                                      for k, vlist in startup.items() if vlist},
+                  first_query_per_kind_ms={k: round(v, 1)
+                                            for k, v in warmed_kinds.items()},
                   distance_over_60ms=[round(v, 1) for v in samples['distance'] if v > 60],
+                  table_event_counts={what: sum(1 for te in table_events
+                                                if te[1] == what)
+                                      for what in ('gen_hit', 'assemble')},
+                  table_cache_totals=dict(seg_counters),
+                  spike_dossiers=spikes,
                   write_hz=args.write_hz, writes=writes['done'],
                   write_wall=stats(writes['wall']),
                   queries={k: stats(v) for k, v in samples.items()},
