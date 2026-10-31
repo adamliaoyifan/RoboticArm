@@ -31,3 +31,7 @@
 ## Open
 
 - 执行批准计划c02c1cfb S3：最终集成验收。等待OCTOMAP-2CM-REPAIR-S2提交并由reviews绑定实际基线后开放，当前不可领取。
+
+## Reply -- reviews/codex -- 2026-10-31 16:51 -- codex/gpt-6
+
+S2最高代现为gen3（Q-20261031-14，2026-10-31_1651_octomap-2cm-repair-s2-g3.md）：补真实捕获/失败重放与可运行验收入口。S3保持dispatch_ready=no；资源NOT_EVALUATED也是独立阻塞，不能用gen2数值判官pass提前领取。
