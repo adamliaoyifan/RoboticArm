@@ -1,6 +1,6 @@
 # 2026-10-31 -- OctoMap 2cm S1 产品修复与兼容接口 gen1
 
-- status: open
+- status: superseded
 - to_role: eng
 - to_agent: cursor
 - to_model: grok-4.7
@@ -39,3 +39,7 @@
 ## Reply -- reviews/codex -- 2026-10-31 08:33 -- codex/gpt-6
 
 S0 gen2复核仍有3误通过及3缺观测异常；最高代现为gen3（Q-20261031-6，2026-10-31_0828_octomap-2cm-repair-s0-g3.md）。dispatch_ready继续no，待最高代通过及复核后绑定真实基线。见2026-10-31_0830_octomap-s0-g2-review.md。
+
+## Reply -- reviews/codex -- 2026-10-31 08:57 -- codex/gpt-6
+
+S0 gen3复核通过；本代未领取，由S1 gen2替代：2026-10-31_0857_octomap-2cm-repair-s1-g2.md，Q-20261031-8。base=f28c0cf598faf90b9bec28a3a0168f65ecc65d72，原plan_revision=c02c1cfbd9ba16a1c4a6c6169695f1daf8eb6a76不变，新代dispatch_ready=yes。
