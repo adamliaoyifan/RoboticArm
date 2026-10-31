@@ -79,6 +79,42 @@ def _clock_ns():
 STATUS_MATCH, STATUS_RADIUS_CLEAR, STATUS_BUDGET = 0, 1, 2
 
 
+def warmup():
+    """Pay the kernel's one-time process costs NOW (disk-cache load and
+    dispatcher setup, measured ~130 ms on this host) instead of on the
+    FIRST query, whose own budget is fully in force even when a harness
+    labels the sample cold (reviews Q-20261031-7 ruling: the cold-start
+    window is a statistics phase, not a timeout exemption). A warm call
+    is ~8 ns. Called at import from cargo_distance_query when the JIT
+    path is enabled; never raises -- a warmup failure defers to the
+    first real query, where it would surface as a real defect."""
+    if not HAS_NUMBA:
+        return
+    try:
+        import numpy as np
+        point = np.zeros(3)
+        cand_blocks = np.array([0], dtype=np.int64)
+        cand_lowers = np.array([0.5])
+        blk_leaf_base = np.array([0, 1], dtype=np.int64)
+        leaf_low = np.zeros((1, 3))
+        leaf_high = np.ones((1, 3))
+        gstart = np.array([0], dtype=np.int64)
+        gend = np.array([1], dtype=np.int64)
+        mem_low = np.zeros((1, 3))
+        mem_high = np.ones((1, 3))
+        mem_flat = np.array([0], dtype=np.int64)
+        cells = np.zeros(1, dtype=np.int64)
+        blocks = np.zeros(1, dtype=np.int64)
+        scratch_bounds = np.zeros((1, 1))
+        scratch_order = np.zeros((1, 3), dtype=np.int64)
+        kernel_nearest(point, 1.0, cand_blocks, cand_lowers, blk_leaf_base,
+                       leaf_low, leaf_high, gstart, gend, mem_low, mem_high,
+                       mem_flat, 100, 1, 1 << 62,
+                       cells, blocks, scratch_bounds, scratch_order)
+    except Exception:  # noqa: BLE001 - startup best-effort, never fatal
+        pass
+
+
 @njit(cache=True)
 def _less(a_l, a_b, a_f, b_l, b_b, b_f):
     if a_l != b_l:

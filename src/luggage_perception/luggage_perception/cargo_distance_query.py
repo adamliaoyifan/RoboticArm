@@ -22,11 +22,18 @@ from luggage_perception.cargo_voxel_delta import immutable_array
 
 try:
     from luggage_perception.distance_kernels_jit import (
-        HAS_NUMBA, kernel_nearest,
+        HAS_NUMBA, kernel_nearest, warmup,
         STATUS_BUDGET, STATUS_MATCH, STATUS_RADIUS_CLEAR)
 except ImportError:  # pragma: no cover - kernel module is optional
     HAS_NUMBA = False
 _USE_JIT = HAS_NUMBA and os.environ.get('DISTANCE_JIT', '1') != '0'
+if _USE_JIT:
+    # Move the kernel's one-time process costs (disk-cache load,
+    # ~130 ms measured) from the first query to import time: the first
+    # query's budget applies in full even when a harness calls the
+    # sample cold (frozen-matrix distance_1 max gate is 20 ms and the
+    # cold probe pays whatever the process has not paid yet).
+    warmup()
 import weakref
 #: id-keyed generation cache. The pinned batch object defines __eq__
 #: without __hash__ (unhashable), so WeakKeyDictionary cannot key it;
