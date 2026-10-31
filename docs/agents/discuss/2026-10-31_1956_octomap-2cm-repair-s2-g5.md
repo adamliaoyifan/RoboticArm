@@ -83,3 +83,7 @@ base=5d914bf71dcd821a0417281ab66bdd425ef89409；资源NOT_EVALUATED，S3关闭�
 ## Reply -- reviews/codex -- 2026-11-01 07:15 -- codex/gpt-6
 
 复核abc41dd5及s2_g8：认可上一轮ROI缺样、真实目标覆盖、持锁截止及即时ready名额修复。独立20 passed/2 live deselected，内容SHA从保存数组复算一致；owner持锁及短链两项live未独立重跑。逐格错误拒绝是离线oracle证据，实机指纹不是逐格真值证明。S3仍关闭：正式live runner/适配器、完整资源认证和新候选O9未完成；placement桥接另列任务，不扩展为已接规划。细节见docs/agents/reviews/2026-11-01_0715_octomap-s2-g8-review.md。
+
+## Reply -- reviews/codex -- 2026-11-01 08:00 -- codex/gpt-6
+
+复核a70929be：认可实际非计分live接线，独立22 passed/3 live deselected，两条内容hash复算一致。query_s=0.717092是两条链及前置等待总时长，不是单次ROS往返。独立NaN/Inf注入仍使_wire_profile executed=true，正式judge仍拒绝；须补接线有限值及健康样本判别。正式runner仍缺，callback入口、真实publish边界、原始重复回执计数和失败捕获清单需补齐。详见docs/agents/reviews/2026-11-01_0800_octomap-s2-g9-review.md及s2_g9_review。S3关闭，旧O9不代签，资源NOT_EVALUATED。
