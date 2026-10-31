@@ -1,0 +1,1 @@
+{"input_id": "o9-injected-truncated-trace", "epoch": 1, "status": "REJECTED", "reason": "TRACE_FOOTER_MISSING", "sensor_id": "cam0", "capture_complete": false}
