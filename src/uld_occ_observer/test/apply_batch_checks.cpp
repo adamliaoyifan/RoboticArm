@@ -5,6 +5,7 @@
 #include "uld_occ_observer/serialization.hpp"
 #include <octomap/OcTree.h>
 #include <cmath>
+#include <iostream>
 #include <sstream>
 #include <stdexcept>
 
@@ -51,8 +52,71 @@ void same_mutations(const std::vector<OccupancyMutation>& a,
 }
 }  // namespace
 
+void check_lossless_prune() {
+  const double resolution = 0.02;
+  const GeometryDescriptor geometry{"prune", "digest", .2, .2, 0, .2, {}};
+  const UldDomain domain(geometry, resolution);
+  OccupancyGrid grid(resolution);
+  octomap::OcTree reference(resolution);
+  configure_reference(reference);
+  auto hit_cells = [&](std::initializer_list<CellIndex> cells) {
+    OccupancyDiagnostic diagnostic(ProfileMode::Stages);
+    OccupancyScan scan;
+    grid.collect(scan, domain.center({0, 0, 0}), {}, domain, {}, diagnostic);
+    for (const auto& cell : cells) scan.occupied_cells.insert(key_from_cell_index(cell));
+    original_apply(reference, scan);
+    grid.apply(scan, diagnostic);
+    reference.prune();
+    return diagnostic.report().apply_breakdown.milliseconds[static_cast<std::size_t>(ApplyPhase::Prune)];
+  };
+  const CellIndex all[8] = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {1, 1, 0},
+                             {0, 0, 1}, {1, 0, 1}, {0, 1, 1}, {1, 1, 1}};
+  const auto collapsed_ms = hit_cells({all[0], all[1], all[2], all[3], all[4], all[5], all[6], all[7]});
+  const auto collapsed_nodes = grid.nodeCount();
+  const auto collapsed_bytes = grid.memoryUsage();
+  check(reference.search(key_from_cell_index(all[0])) == reference.search(key_from_cell_index(all[7])),
+        "eight equal-probability leaves did not collapse");
+  check(grid.nodeCount() == reference.size(), "pruned grid node count differs from the official tree");
+  const auto split_ms = hit_cells({all[0]});
+  check(reference.isNodeOccupied(reference.search(key_from_cell_index(all[0]))) &&
+        reference.isNodeOccupied(reference.search(key_from_cell_index(all[7]))),
+        "both siblings are occupied");
+  check(reference.search(key_from_cell_index(all[0])) != reference.search(key_from_cell_index(all[7])),
+        "occupied siblings with different log-odds were merged");
+  const auto split_nodes = grid.nodeCount();
+  const auto split_bytes = grid.memoryUsage();
+  check(split_nodes > collapsed_nodes && split_bytes > collapsed_bytes,
+        "refusing a lossy merge did not keep the extra nodes");
+  hit_cells({all[1], all[2], all[3], all[4], all[5], all[6], all[7]});
+  check(reference.search(key_from_cell_index(all[0])) == reference.search(key_from_cell_index(all[7])),
+        "equalized siblings did not collapse again");
+  hit_cells({all[0]});
+  check(reference.search(key_from_cell_index(all[0])) != reference.search(key_from_cell_index(all[7])),
+        "a local update did not expand the pruned parent");
+  const auto* updated = reference.search(key_from_cell_index(all[0]));
+  bool found = false;
+  grid.forEachLeaf([&](CellIndex index, float value) {
+    if (index.x == 0 && index.y == 0 && index.z == 0) {
+      check(value == updated->getLogOdds(), "expanded leaf probability differs from the official tree");
+      found = true;
+    }
+  });
+  check(found, "expanded leaf was not visited");
+  check(canonical_probability_digest(grid.serialize()) == canonical_probability_digest(bytes(reference)),
+        "prune changed the 2 cm probability state");
+  std::cout << "prune_collapsed_nodes " << collapsed_nodes
+            << " prune_split_nodes " << split_nodes
+            << " prune_collapsed_bytes " << collapsed_bytes
+            << " prune_split_bytes " << split_bytes
+            << " prune_ms " << collapsed_ms
+            << " expand_ms " << split_ms
+            << " read_view_bytes not_owned_by_octree"
+            << " cache_bytes not_owned_by_octree\n";
+}
+
 void FusionProfileChecks::check_apply_batch() {
   check_probability_digest();
+  check_lossless_prune();
   for (const auto resolution : {0.01, 0.02, 0.05}) {
     const GeometryDescriptor geometry{"apply", "digest", .2, .2, 0, .2, {}};
     const UldDomain domain(geometry, resolution);

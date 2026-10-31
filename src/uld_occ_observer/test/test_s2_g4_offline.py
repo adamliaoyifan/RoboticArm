@@ -155,12 +155,12 @@ def test_scheduler_runs_the_matrix_and_stops_for_o5_budget_and_faults(tmp_path):
     assert _stage(result, "o5")["started"] == 4 * 33
     assert _stage(result, "o6")["started"] == 96 * 33
     assert _stage(result, "o7")["started"] == 9 * 240 + 600 + 60
-    assert _stage(result, "o8")["started"] == 3 * (30 + 3 + 3)
+    assert _stage(result, "o8")["started"] == 3 * 30 + 3 + 3
     assert all(item["judge"]["pass"] for item in result["stages"])
     assert _stage(result, "o7")["recovery_first_query"] == "wait_snapshot"
     assert _stage(result, "o7")["overload"]["pass"] is True
     assert adapter.sender_calls == adapter.executor_calls
-    assert campaign_executor.OfflineAdapter.ros_send is not campaign_executor.OfflineAdapter.ros_spin
+    assert campaign_executor.OfflineAdapter.ros_send is not campaign_executor.OfflineAdapter.ros_collect
     o5_ids = {case["id"] for case in plan["o5_cases"]}
     o6_ids = {group["id"] for group in plan["o6_groups"]}
     assert o5_ids <= o6_ids
@@ -174,7 +174,7 @@ def test_scheduler_runs_the_matrix_and_stops_for_o5_budget_and_faults(tmp_path):
         scored[item["group"]] = scored.get(item["group"], 0) + 1
     assert set(scored) == o6_ids
     assert all(count == (60 if group in o5_ids else 30) for group, count in scored.items())
-    assert len(adapter.hold_calls) == 18
+    assert len(adapter.hold_calls) == 6
     assert len(adapter.stability_calls) == 90
 
     stopped = campaign_executor.schedule(
@@ -183,7 +183,7 @@ def test_scheduler_runs_the_matrix_and_stops_for_o5_budget_and_faults(tmp_path):
     assert _stage(stopped, "o6")["started"] == 0
     assert _stage(stopped, "o7")["started"] == 0
     assert _stage(stopped, "o6")["reason"] == "o5"
-    assert _stage(stopped, "o8")["started"] == 3 * (30 + 3 + 3)
+    assert _stage(stopped, "o8")["started"] == 3 * 30 + 3 + 3
 
     budget = campaign_executor.schedule(
         plan, campaign_executor.OfflineAdapter(clock=campaign_executor.ManualClock(step_s=3600)),
