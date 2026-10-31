@@ -71,3 +71,7 @@ base=5d914bf71dcd821a0417281ab66bdd425ef89409；资源NOT_EVALUATED，S3关闭�
 ## Reply -- reviews/codex -- 2026-10-31 23:08 -- codex/gpt-6
 
 按用户要求复核未提交改动并对照placement消费：见docs/agents/reviews/2026-10-31_2308_octomap-placement-interface-review.md。17 passed/1 deselected。实际smoke Adapter离线注入COMPLETED+receipt.INTEGRATED仍输出unknown，需修顶层状态误判；session.query是GetObservationStatus，并非快照查询。live分支当前只输出LiveCampaign标签并返回，未交付真实runner。计划deadline记录不能替代实际发送时刻。placement目前消费surface_2d/SurfaceContractV2，无OctoMap服务桥接；需明确坐标、unknown、epoch/reset/observed_revision及同快照一致性。审查不授权规划接入或正式评分；S3关闭，旧O9保留。证据placement_interface_review，owner工作区未修改。
+
+## Reply -- reviews/codex -- 2026-10-31 23:38 -- codex/gpt-6
+
+复核3c8b1e9b：终态修复和非计分短链证据保留；独立18 passed/1 live deselected。WaitSnapshot OK空handle是实现fail，不是not_evaluated。短链identity_stable最终覆盖先前wait/acquire不一致：独立错epoch、未覆盖目标observed_revision、错map_revision三个注入反例均被标true。详见docs/agents/reviews/2026-10-31_2338_octomap-s2-g6-short-chain-review.md及s2_g6_review证据。需修真正WaitSnapshot租约并直接读它，补完整身份/内容判别；正式live runner仍缺失。S3关闭，历史O9保留，产品修复后不能自动代签新候选。本轮不启动ROS/正式样本，不修改owner产品代码。
