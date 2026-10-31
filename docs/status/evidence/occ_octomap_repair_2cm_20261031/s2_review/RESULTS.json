@@ -1,0 +1,46 @@
+{
+  "scope": "offline review; no product or O9 timing runs",
+  "results": [
+    {
+      "case": "fabricated bundle without input/TF or execution",
+      "expected_replay_possible": false,
+      "actual": {
+        "replay_possible": true,
+        "status": "REJECTED",
+        "reason": "invented"
+      }
+    },
+    {
+      "case": "trace with 999 drops and no identities",
+      "expected_replay_possible": false,
+      "actual": {
+        "replay_possible": true,
+        "events": 3,
+        "dropped": "999"
+      }
+    }
+  ],
+  "o9_arithmetic": {
+    "roi": {
+      "pairs": 30,
+      "ratio": 0.9963607021704047
+    },
+    "integrate_30k": {
+      "pairs": 30,
+      "ratio": 0.9887859269007071
+    },
+    "surface_first": {
+      "pairs": 30,
+      "ratio": 1.007934487148608
+    }
+  },
+  "official_judge": {
+    "pass": true,
+    "status": "pass",
+    "reasons": [],
+    "injected_faults": [],
+    "performance_certified": true,
+    "gate": "o9",
+    "capture_certified": false
+  }
+}
