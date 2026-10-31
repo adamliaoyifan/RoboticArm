@@ -1,0 +1,222 @@
+{
+  "trace_count": 30,
+  "complete": 30,
+  "ratios": {
+    "integrate_30k": 0.9809603064420823,
+    "roi": 1.0156359705334954,
+    "surface_first": 1.0257049963063405
+  },
+  "traces": [
+    {
+      "file": "pair_00_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_01_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_02_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_03_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_04_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_05_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_06_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_07_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_08_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_09_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_10_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_11_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_12_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_13_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_14_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_15_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_16_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_17_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_18_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_19_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_20_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_21_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_22_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_23_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_24_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_25_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_26_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_27_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_28_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    },
+    {
+      "file": "pair_29_on.jsonl",
+      "capture_complete": true,
+      "replay_possible": false,
+      "errors": [],
+      "events": 9
+    }
+  ],
+  "scope": "saved evidence recheck; no new measurement"
+}
