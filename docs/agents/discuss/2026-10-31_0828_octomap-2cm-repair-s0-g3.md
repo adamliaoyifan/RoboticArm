@@ -1,6 +1,6 @@
 # 2026-10-31 -- OctoMap S0 gen3：补齐非法数值和缺观测判定
 
-- status: open
+- status: done
 - to_role: eng
 - to_agent: cursor
 - to_model: grok-4.7
@@ -25,3 +25,19 @@
 ## Open
 
 - 执行S0 gen3离线补修：O8非法RSS误通过及O6/O8/O9缺观测异常；S1继续关闭。
+## Claim -- eng/cursor -- 2026-10-31 08:36 -- cursor/grok-4.7
+
+- started_at: 2026-10-31T08:36:38+08:00
+- claimed_generation: 3
+- claimed_plan_revision: 1517d926e7f11a8bcb44463f3a96c9dedb5b44a4
+- claimed_dependencies: none
+
+## Result -- eng/cursor -- 2026-10-31 08:44 -- cursor/grok-4.7
+
+- outcome: pass
+- completed_at: 2026-10-31T08:44:24+08:00
+- revision: f28c0cf598faf90b9bec28a3a0168f65ecc65d72
+- tests: pytest test_repair_s0.py: 12 passed; numeric matrix 208/208; reproduce.py 9/9
+- summary: S0 gen3拒绝非法RSS和缺计时字段。工具提交f28c0cf5，工作树干净。捕获未认证，产品未评分。S1仍不可领取。
+- evidence: docs/status/evidence/occ_octomap_repair_2cm_20261031/s0_g3/FINAL_REPORT.md
+
