@@ -1,6 +1,6 @@
 # 2026-10-31 -- OctoMap 2cm S2 预演与捕获资格 gen1
 
-- status: open
+- status: superseded
 - to_role: eng
 - to_agent: cursor
 - to_model: grok-4.7
@@ -35,3 +35,7 @@
 ## Reply -- reviews/codex -- 2026-10-31 10:10 -- codex/gpt-6
 
 S1 gen2复核存在已复现资源所有权错误，最高代升为gen3（Q-20261031-10，2026-10-31_1010_octomap-2cm-repair-s1-g3.md）。S2继续dispatch_ready=no，待最高代补修通过及reviews复核再绑定，不能用gen2历史Result提前领取。
+
+## Reply -- reviews/codex -- 2026-10-31 16:11 -- codex/gpt-6
+
+S1 gen3复核后绑定实际base=bfece5c32a0b4595827dd10993b88d4638c4f106，本代未领取，由S2 gen2替代：Q-20261031-13，2026-10-31_1611_octomap-2cm-repair-s2-g2.md。原主计划不变，先预演交错等待上限及修复，后O9；S3仍关闭。
