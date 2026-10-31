@@ -178,7 +178,10 @@ def main():
                     print(f"FAIL pair {index} {label} exit {completed.returncode}", flush=True)
                     break
                 if trace:
-                    certified = capture_replay.certify_trace(run_dir / "trace.jsonl")
+                    expected_id = yaml.safe_load(frame.read_text())["observation_id"]
+                    certified = capture_replay.certify_trace(
+                        run_dir / "trace.jsonl",
+                        capture_replay.expected_profile_trace(expected_id, run_id="trace"))
                     if not certified["capture_complete"]:
                         failures.append({"index": index, "label": label, "trace": certified["errors"]})
                         print(f"FAIL pair {index} trace {certified['errors']}", flush=True)

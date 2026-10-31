@@ -97,6 +97,9 @@ def _stats(values, expected):
 def _latency_reason(reasons, values, expected, limits, metric):
     if _sample_problems(reasons, values):
         return {"n": len(values), "expected_n": expected, "status": "incomplete"}
+    if len(values) != expected:
+        _add(reasons, "missing_observation")
+        return {"n": len(values), "expected_n": expected, "status": "incomplete"}
     stats = _stats(values, expected)
     if not fusion_report.within_gate(stats, limits["p95_ms"], limits["max_ms"]):
         _add(reasons, metric)

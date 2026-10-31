@@ -110,16 +110,37 @@ def continue_after(stage_results):
 
 
 def judge_recorded_window(document):
-    """Judge one saved window. Missing numbers stay missing."""
-    reasons = []
-    samples = document.get("integrate_ms") if isinstance(document, dict) else None
-    if not isinstance(samples, list) or len(samples) != contract.SCORED_SAMPLES:
-        reasons.append("missing_sample")
-    elif any(not isinstance(value, (int, float)) or value < 0 for value in samples):
-        reasons.append("bad_sample")
-    if not isinstance(document, dict) or document.get("resource_certification") != "pass":
-        reasons.append("resource")
-    return {"pass": not reasons, "reasons": reasons}
+    """Judge one saved group with the S0 latency judge.
+
+    A resource_certification string is not a resource ledger. Samples of
+    100000 ms, NaN, or bool fail by the S0 names. Missing fields stay missing.
+    """
+    import repair_s0_judge
+    if not isinstance(document, dict):
+        return {"pass": False, "status": "fail", "reasons": ["bad_type"], "gate": "o5_group"}
+    case = dict(document)
+    case.setdefault("gate", "o5_group")
+    verdict = repair_s0_judge.judge_case(case)
+    samples = document.get("integrate_ms")
+    if isinstance(samples, list) and len(samples) == contract.SCORED_SAMPLES:
+        cloud = document.get("cloud")
+        if isinstance(cloud, bool) or not isinstance(cloud, (int, float)):
+            cloud = 30000
+        limits = repair_s0_judge._integrate_limits(cloud)
+        usable = [value for value in samples if repair_s0_judge._number_problem(value) is None]
+        if len(usable) == len(samples):
+            stats = repair_s0_judge._stats(usable, contract.SCORED_SAMPLES)
+            if not repair_s0_judge.fusion_report.within_gate(stats, limits["p95_ms"], limits["max_ms"]):
+                if "integrate" not in verdict["reasons"]:
+                    verdict["reasons"].append("integrate")
+    if verdict["reasons"]:
+        gaps = {"missing_observation", "missing_plan", "missing_identity"}
+        if any(code not in gaps for code in verdict["reasons"]):
+            verdict["status"] = "fail"
+        elif verdict.get("status") == "pass":
+            verdict["status"] = "not_evaluated"
+        verdict["pass"] = False
+    return verdict
 
 
 def prepare_inputs(fixtures, out_dir):

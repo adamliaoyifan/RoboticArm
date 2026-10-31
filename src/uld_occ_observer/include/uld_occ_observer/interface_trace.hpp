@@ -9,6 +9,9 @@ extern std::atomic<int> interface_trace_flag;
 
 void interface_trace_configure_from_env();
 void interface_trace_flush();
+// Fills an empty request id on later events from this thread. The off arm of
+// interface_trace_event does not read it.
+void interface_trace_bind_request(const char* request_id);
 void interface_trace_event_slow(const char* event, const char* request_id,
                                 const char* status, const char* phase);
 

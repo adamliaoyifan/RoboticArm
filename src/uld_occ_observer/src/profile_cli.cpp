@@ -12,6 +12,10 @@
 using namespace uld_occ_observer;
 namespace {
 using Clock = std::chrono::steady_clock;
+struct BoundRequest {
+  explicit BoundRequest(const std::string& id) { interface_trace_bind_request(id.c_str()); }
+  ~BoundRequest() { interface_trace_bind_request(""); }
+};
 double ms(Clock::time_point a, Clock::time_point b) {
   return std::chrono::duration<double,std::milli>(b-a).count();
 }
@@ -74,6 +78,7 @@ int main(int argc, char** argv) {
         if (row["input_sha256"].as<std::string>() != entry["sha256"].as<std::string>()) throw Error("INPUT_HASH_MISMATCH");
         const auto request = YAML::Load(bytes);
         const auto observation = observation_from_yaml(request);
+        BoundRequest bound_request(observation.identity.observation_id);
         const auto before = Clock::now();
         row["input_load_parse_ms"] = ms(sample_start,before);
         const auto cpu_before = std::clock();

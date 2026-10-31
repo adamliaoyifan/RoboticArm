@@ -146,13 +146,13 @@ def test_campaign_stages_match_the_plan_and_o5_stops_later_gates():
     assert campaign_entry.continue_after({"o5": "pass"})["continue_o6"] is True
     missing = campaign_entry.judge_recorded_window({"integrate_ms": [1.0] * 10, "resource_certification": "pass"})
     assert missing["pass"] is False
-    assert "missing_sample" in missing["reasons"]
+    assert "missing_observation" in missing["reasons"]
     resource = campaign_entry.judge_recorded_window({
         "integrate_ms": [1.0] * 30,
         "resource_certification": "NOT_EVALUATED",
     })
     assert resource["pass"] is False
-    assert "resource" in resource["reasons"]
+    assert "resource_missing" in resource["reasons"]
 
 
 def test_prepare_freezes_generation_manifests_without_scoring(tmp_path):

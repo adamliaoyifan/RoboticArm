@@ -43,6 +43,7 @@ std::thread g_flush;
 std::atomic<int> g_stop{0};
 std::uint32_t g_read = 0;
 std::mutex g_flush_mutex;
+thread_local std::string g_bound_request;
 
 std::int64_t clock_ns(clockid_t clock) {
   timespec ts{};
@@ -104,6 +105,10 @@ void flush_loop() {
 
 std::atomic<int> interface_trace_flag{0};
 
+void interface_trace_bind_request(const char* request_id) {
+  g_bound_request = request_id ? request_id : "";
+}
+
 void interface_trace_event_slow(const char* event, const char* request_id,
                                 const char* status, const char* phase) {
   // This mutex is the trace ring, not a product lock. Sequence and the
@@ -122,7 +127,9 @@ void interface_trace_event_slow(const char* event, const char* request_id,
   slot.tid = static_cast<int>(::syscall(SYS_gettid));
   slot.seq = g_seq.fetch_add(1, std::memory_order_relaxed);
   copy_field(slot.event, sizeof slot.event, event);
-  copy_field(slot.request_id, sizeof slot.request_id, request_id);
+  const char* bound = request_id;
+  if (bound == nullptr || bound[0] == '\0') bound = g_bound_request.c_str();
+  copy_field(slot.request_id, sizeof slot.request_id, bound);
   copy_field(slot.status, sizeof slot.status, status);
   copy_field(slot.phase, sizeof slot.phase, phase);
   slot.ready.store(1, std::memory_order_release);
