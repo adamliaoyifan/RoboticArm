@@ -13,7 +13,7 @@ add_library(uld_occ_observer_core
   src/occupancy_grid.cpp src/observer.cpp
   src/snapshot_repository.cpp src/observation_worker.cpp
   src/observation_ledger.cpp src/observation_ingress.cpp src/snapshot_wait_board.cpp
-  src/observation_terminal.cpp)
+  src/observation_terminal.cpp src/interface_trace.cpp)
 target_include_directories(uld_occ_observer_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include> ${OCTOMAP_INCLUDE_DIRS})

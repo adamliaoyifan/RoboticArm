@@ -5,6 +5,7 @@
 #include "uld_occ_observer/observation_ingress.hpp"
 #include "uld_occ_observer/observation_ledger.hpp"
 #include "uld_occ_observer/observation_terminal.hpp"
+#include "uld_occ_observer/interface_trace.hpp"
 #include "uld_occ_observer/snapshot_wait_board.hpp"
 #include "uld_occ_observer/srv/integrate_observation.hpp"
 #include "uld_occ_observer/srv/get_snapshot.hpp"
@@ -71,6 +72,7 @@ class ObserverNode : public rclcpp::Node {
     install_services();
     health_timer_ = create_wall_timer(std::chrono::milliseconds(500), [this] { publish_health(); }, health_group_);
     wait_timer_ = create_wall_timer(std::chrono::milliseconds(5), [this] { wake_waits(); }, service_group_);
+    interface_trace_configure_from_env();
     RCLCPP_INFO(get_logger(),"Ready: independent observer, OctoMap 1.9.8, input_mode=%s",mode_.c_str());
   }
   ~ObserverNode() override {
@@ -80,6 +82,7 @@ class ObserverNode : public rclcpp::Node {
     adapter_cv_.notify_all();
     if (adapter_.joinable()) adapter_.join();
     worker_.reset();
+    interface_trace_flush();
   }
   void run() {
     rclcpp::executors::SingleThreadedExecutor input_executor;
@@ -530,6 +533,14 @@ class ObserverNode : public rclcpp::Node {
           } else if (request->name == "adapter_paused") {
             adapter_pause_.store(request->value != 0);
             adapter_cv_.notify_all();
+          } else if (request->name == "wait_phase") {
+            wait_phase_.store(static_cast<int>(request->value));
+          } else if (request->name == "wait_accounting") {
+            std::lock_guard<std::mutex> lock(wait_mu_);
+            response->accepted = true;
+            response->status = "checking=" + std::to_string(waits_checking_) +
+                " queued=" + std::to_string(waiters_.size());
+            return;
           } else {
             response->accepted = false;
             response->status = "UNKNOWN_HOOK";
@@ -554,7 +565,7 @@ class ObserverNode : public rclcpp::Node {
         Waiter waiter{header, wait};
         std::lock_guard<std::mutex> lock(wait_mu_);
         const auto epoch = store_->published_epoch();
-        if (const auto immediate = board_.try_begin(waiters_.size(), wait, epoch)) {
+        if (const auto immediate = board_.try_begin(waiters_.size() + waits_checking_, wait, epoch)) {
           send_wait(waiter, *immediate, nullptr);
           return;
         }
@@ -567,11 +578,28 @@ class ObserverNode : public rclcpp::Node {
       }, rmw_qos_profile_services_default, service_group_);
   }
   void wake_waits() {
+    // Phase 1 leaves every queued waiter in place so a test can fill all 8
+    // before one check begins. Phase 2 swaps that batch and holds it there.
+    if (behavior_hooks_ && wait_phase_.load() == 1) return;
     std::vector<Waiter> pending;
     {
       std::lock_guard<std::mutex> lock(wait_mu_);
       if (waiters_.empty() || !wait_) return;
       pending.swap(waiters_);
+      waits_checking_ += pending.size();
+    }
+    struct ReleaseChecking {
+      ObserverNode* self;
+      std::size_t count;
+      ~ReleaseChecking() {
+        if (!count) return;
+        std::lock_guard<std::mutex> lock(self->wait_mu_);
+        self->waits_checking_ -= count;
+      }
+    } release{this, pending.size()};
+    if (behavior_hooks_ && wait_phase_.load() == 2) {
+      while (wait_phase_.load() == 2)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     const auto now = std::chrono::steady_clock::now();
     const auto epoch = store_->published_epoch();
@@ -591,10 +619,14 @@ class ObserverNode : public rclcpp::Node {
         else still.push_back(std::move(waiter));
       }
     }
-    std::lock_guard<std::mutex> lock(wait_mu_);
-    still.insert(still.end(), std::make_move_iterator(waiters_.begin()),
-                 std::make_move_iterator(waiters_.end()));
-    waiters_.swap(still);
+    {
+      std::lock_guard<std::mutex> lock(wait_mu_);
+      waits_checking_ -= release.count;
+      release.count = 0;
+      still.insert(still.end(), std::make_move_iterator(waiters_.begin()),
+                   std::make_move_iterator(waiters_.end()));
+      waiters_.swap(still);
+    }
   }
   void publish_health() {
     const auto d = worker_->diagnostics();
@@ -634,6 +666,8 @@ class ObserverNode : public rclcpp::Node {
   SnapshotWaitBoard board_;
   std::mutex wait_mu_;
   std::vector<Waiter> waiters_;
+  std::size_t waits_checking_{0};
+  std::atomic<int> wait_phase_{0};
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_;
   rclcpp::CallbackGroup::SharedPtr service_group_, input_group_, health_group_;
   rclcpp::Publisher<msg::UpdateReceipt>::SharedPtr receipt_pub_;

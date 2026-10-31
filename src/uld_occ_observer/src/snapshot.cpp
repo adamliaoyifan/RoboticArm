@@ -1,6 +1,8 @@
 #include "uld_occ_observer/snapshot.hpp"
+#include "uld_occ_observer/interface_trace.hpp"
 #include "uld_occ_observer/block_storage.hpp"
 #include <algorithm>
+#include <string>
 
 namespace uld_occ_observer {
 Snapshot::Snapshot(SnapshotIdentity identity, std::shared_ptr<const UldDomain> domain,
@@ -74,6 +76,7 @@ CellPage Snapshot::read_cells(CellIndex begin, CellIndex end, std::size_t cursor
   const std::size_t dx = end.x-begin.x, dy = end.y-begin.y, dz = end.z-begin.z;
   const std::size_t total = dx*dy*dz;
   if (cursor > total) throw Error("INVALID_CURSOR");
+  interface_trace_event("roi_begin", "", "", "query");
   CellPage result;
   const auto stop = cursor + std::min(limit, total-cursor);
   result.cells.reserve(stop-cursor);
@@ -84,6 +87,7 @@ CellPage Snapshot::read_cells(CellIndex begin, CellIndex end, std::size_t cursor
   }
   result.next_cursor = stop;
   result.done = stop == total;
+  interface_trace_event("roi_end", "", std::to_string(result.cells.size()).c_str(), "query");
   return result;
 }
 
@@ -95,6 +99,8 @@ std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface(SurfaceProfi
     profile->domain_init_collected = true;
   }
   std::lock_guard<std::mutex> lock(surface_cache_->mutex);
+  const bool cache_hit = static_cast<bool>(surface_cache_->value);
+  interface_trace_event("surface_begin", "", cache_hit ? "hit" : "miss", "query");
   const auto locked = profile ? Clock::now() : Clock::time_point{};
   if (profile) profile->lock_wait_ms = std::chrono::duration<double,std::milli>(locked-started).count();
   if (surface_cache_->value) {
@@ -103,6 +109,7 @@ std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface(SurfaceProfi
       profile->output_columns = surface_cache_->value->size();
       profile->total_ms = std::chrono::duration<double,std::milli>(Clock::now()-started).count();
     }
+    interface_trace_event("surface_end", "", "hit", "query");
     return surface_cache_->value;
   }
   const auto shape = domain_->shape();
@@ -154,6 +161,7 @@ std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface(SurfaceProfi
     profile->build_ms = std::chrono::duration<double,std::milli>(finished-locked).count();
     profile->total_ms = std::chrono::duration<double,std::milli>(finished-started).count();
   }
+  interface_trace_event("surface_end", "", "miss", "query");
   return surface_cache_->value;
 }
 }  // namespace uld_occ_observer

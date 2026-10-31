@@ -1,4 +1,5 @@
 #include "uld_occ_observer/configuration.hpp"
+#include "uld_occ_observer/interface_trace.hpp"
 #include "uld_occ_observer/checkpoint_io.hpp"
 #include "uld_occ_observer/serialization.hpp"
 #include "query_content_digest.hpp"
@@ -46,6 +47,7 @@ int main(int argc, char** argv) {
       mode_name=="detailed" ? ProfileMode::Detailed : throw Error("INVALID_PROFILE_MODE");
     if (!manifest["frames"].IsSequence() || !manifest["frames"].size()) throw Error("NO_FRAMES");
     const auto cfg = load_configuration(opt.at("--geometry"),opt.at("--config"));
+    interface_trace_configure_from_env();
     ObservationStore store(cfg.geometry,cfg.resolution,cfg.depth,cfg.clock_domain,cfg.digest,
                            cfg.discretize_endpoints);
     SnapshotRepository repo(store);
@@ -109,12 +111,13 @@ int main(int argc, char** argv) {
             for (int call=0;call<2;++call) {
               SurfaceProfile profile;
               const auto begin = Clock::now();
-              const auto surface = snap->surface(mode==ProfileMode::Off ? nullptr : &profile);
+              const auto surface = snap->surface(&profile);
               const auto end = Clock::now();
               if (call == 0) surface_first = surface;
               else surface_second = surface;
               YAML::Node sample;
               sample["external_ms"] = ms(begin,end);
+              sample["cache_hit"] = profile.cache_hit;
               sample["profile_enabled"] = mode!=ProfileMode::Off;
               if (mode!=ProfileMode::Off) sample["profile"] = surface_profile_to_yaml(profile);
               sample["columns"] = surface->size();
@@ -152,6 +155,11 @@ int main(int argc, char** argv) {
     }
     std::cout << "recorded=" << index << " run_wall_ms=" << ms(run_started,Clock::now())
               << " performance_verdict=not_evaluated\n";
+    interface_trace_flush();
     return failed ? 3 : 0;
-  } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 3; }
+  } catch (const std::exception& error) {
+    interface_trace_flush();
+    std::cerr << error.what() << '\n';
+    return 3;
+  }
 }

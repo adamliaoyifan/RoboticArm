@@ -1,4 +1,5 @@
 #include "uld_occ_observer/observer.hpp"
+#include "uld_occ_observer/interface_trace.hpp"
 #include "uld_occ_observer/block_storage.hpp"
 #include <openssl/evp.h>
 #include <optional>
@@ -71,6 +72,14 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
   receipt.observation_id = observation.identity.observation_id;
   receipt.input_stamp_ns = observation.identity.stamp_ns;
   receipt.raw_points = observation.points_m.size();
+  interface_trace_event("integrate_start", receipt.observation_id.c_str(), "", "writer");
+  struct TraceEnd {
+    const UpdateReceipt* receipt;
+    ~TraceEnd() {
+      interface_trace_event("integrate_end", receipt->observation_id.c_str(),
+                            receipt->status.c_str(), "writer");
+    }
+  } trace_end{&receipt};
   try {
     const auto& id = observation.identity;
     { auto span = diagnostic.span(ProfileStage::Validation);
