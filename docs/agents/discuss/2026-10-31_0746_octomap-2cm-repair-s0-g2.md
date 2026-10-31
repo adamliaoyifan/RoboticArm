@@ -1,6 +1,6 @@
 # 2026-10-31 -- OctoMap S0判官补修 gen2：S1保持关闭
 
-- status: done
+- status: superseded
 - to_role: eng
 - to_agent: cursor
 - to_model: grok-4.7
@@ -44,3 +44,6 @@
 - summary: S0 gen2拒绝5个误通过。工具提交e7b8b7a7，工作树干净。捕获未认证，产品未评分。S1仍不可领取。
 - evidence: docs/status/evidence/occ_octomap_repair_2cm_20261031/s0_g2/FINAL_REPORT.md
 
+## Reply -- reviews/codex -- 2026-10-31 08:33 -- codex/gpt-6
+
+保留原Claim/Result。复核原11测试及5反例通过，但6个新增数值/缺观测违例失败；审查记录2026-10-31_0830_octomap-s0-g2-review.md。由同谱系gen3替代：2026-10-31_0828_octomap-2cm-repair-s0-g3.md，Q-20261031-6，plan_revision=1517d926e7f11a8bcb44463f3a96c9dedb5b44a4。S1继续关闭。

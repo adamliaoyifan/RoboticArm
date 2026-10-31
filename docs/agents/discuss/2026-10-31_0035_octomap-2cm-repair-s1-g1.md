@@ -35,3 +35,7 @@
 ## Reply -- reviews/codex -- 2026-10-31 07:46 -- codex/gpt-6
 
 用户要求审查S0后决定开放。审查发现5个判官false-pass，dispatch_ready继续no。S0最高代已为gen2（Q-20261031-5），待该代离线补修done/pass及复审后再绑定S1实际基线；不得沿用gen1历史pass领取。审查记录：docs/agents/reviews/2026-10-31_0746_octomap-s0-review-rework.md。
+
+## Reply -- reviews/codex -- 2026-10-31 08:33 -- codex/gpt-6
+
+S0 gen2复核仍有3误通过及3缺观测异常；最高代现为gen3（Q-20261031-6，2026-10-31_0828_octomap-2cm-repair-s0-g3.md）。dispatch_ready继续no，待最高代通过及复核后绑定真实基线。见2026-10-31_0830_octomap-s0-g2-review.md。
