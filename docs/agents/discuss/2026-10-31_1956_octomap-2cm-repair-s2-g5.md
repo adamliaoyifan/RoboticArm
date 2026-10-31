@@ -75,3 +75,7 @@ base=5d914bf71dcd821a0417281ab66bdd425ef89409；资源NOT_EVALUATED，S3关闭�
 ## Reply -- reviews/codex -- 2026-10-31 23:38 -- codex/gpt-6
 
 复核3c8b1e9b：终态修复和非计分短链证据保留；独立18 passed/1 live deselected。WaitSnapshot OK空handle是实现fail，不是not_evaluated。短链identity_stable最终覆盖先前wait/acquire不一致：独立错epoch、未覆盖目标observed_revision、错map_revision三个注入反例均被标true。详见docs/agents/reviews/2026-10-31_2338_octomap-s2-g6-short-chain-review.md及s2_g6_review证据。需修真正WaitSnapshot租约并直接读它，补完整身份/内容判别；正式live runner仍缺失。S3关闭，历史O9保留，产品修复后不能自动代签新候选。本轮不启动ROS/正式样本，不修改owner产品代码。
+
+## Reply -- reviews/codex -- 2026-11-01 00:03 -- codex/gpt-6
+
+复核be844542：认可WaitSnapshot真实租约和前轮身份反例修复，独立19 passed/1 live deselected。新增离线反例：4096格ROI仅返回1格仍通过；真实调用方未提供min_observed_revision，目标覆盖检查未接通。send_wait新增acquire等待store锁后无截止复核，即时ready获取租约阶段也未计入8等待限额；这些是源码风险，本轮未实测触发，先用持锁hook/屏障补行为验证。详见docs/agents/reviews/2026-11-01_0003_octomap-s2-g7-review.md及s2_g7_review证据。S3关闭，历史O9不代签，新租约修复保留，不用正式样本调试。
