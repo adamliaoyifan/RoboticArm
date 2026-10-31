@@ -1,0 +1,49 @@
+-- The C compiler identification is GNU 11.4.0
+-- The CXX compiler identification is GNU 11.4.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.2")  
+-- Looking for pthread.h
+-- Looking for pthread.h - found
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /tmp/observer-s1-review
+[  5%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/preprocessing.cpp.o
+[ 11%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/geometry.cpp.o
+[ 16%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/block_storage.cpp.o
+[ 22%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/snapshot.cpp.o
+[ 27%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/occupancy_grid.cpp.o
+[ 33%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/observer.cpp.o
+[ 38%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/snapshot_repository.cpp.o
+[ 44%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/observation_worker.cpp.o
+[ 50%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/observation_ledger.cpp.o
+[ 55%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/observation_ingress.cpp.o
+[ 61%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/snapshot_wait_board.cpp.o
+[ 66%] Linking CXX static library libuld_occ_observer_core.a
+[ 66%] Built target uld_occ_observer_core
+[ 72%] Building CXX object CMakeFiles/uld_occ_observer_io.dir/src/configuration.cpp.o
+[ 77%] Building CXX object CMakeFiles/uld_occ_observer_io.dir/src/checkpoint_io.cpp.o
+[ 83%] Building CXX object CMakeFiles/uld_occ_observer_io.dir/src/serialization.cpp.o
+[ 88%] Linking CXX static library libuld_occ_observer_io.a
+[ 88%] Built target uld_occ_observer_io
+[ 94%] Building CXX object CMakeFiles/observer_repair_s1_behavior.dir/test/test_repair_s1_behavior.cpp.o
+[100%] Linking CXX executable observer_repair_s1_behavior
+[100%] Built target observer_repair_s1_behavior
+repair s1 behavior passed
+same_snapshot=1 one_cache=48000 two_cache=96000
+FAIL same cache must be counted once for two handles
+retained_blocks=2 reported_blocks_bytes=0 retained_cache_bytes=48000 reported_cache_bytes=0 readable_cells=8
+FAIL released handle with live reader must retain resource attribution
+FAIL live reader cache must remain attributed after reset and release
+failures=3
