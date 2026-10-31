@@ -549,6 +549,14 @@ class QueryReplica:
         # manifest + error) is replaced by ONE reference assignment --
         # a concurrent reader can never observe a new snapshot under
         # the old manifest or a READY state over the old pair.
+        # Before publishing, warm the distance JIT tables for the new
+        # generation ON THIS THREAD: under a write stream the
+        # per-generation assembly (fresh segments for every changed
+        # block) otherwise lands on the first query thread of the
+        # generation (C2: 7-9 ms per state, the dominant steady-spike
+        # component). Pure cache fill; no query semantics change.
+        from luggage_perception.cargo_distance_query import prewarm_tables
+        prewarm_tables(snapshot)
         self._record('validated', seq=manifest['seq'],
                      target_identity=list(manifest['target_identity']))
         self._swap(snapshot=snapshot, manifest=manifest,

@@ -270,6 +270,30 @@ def _jit_tables(data, state, cand_ids, volumes, origin, r):
     return tables
 
 
+def prewarm_tables(data):
+    """Fill the generation-level JIT table cache for both distance
+    states on a snapshot the replica is about to publish, so the first
+    query on that generation hits the cache instead of assembling on
+    the query thread (C2 rehearsal: with 2 Hz full-volume write clouds
+    nearly every generation changes ~120 of 175 blocks, and the
+    per-generation assembly -- 7-9 ms per state -- landed on the first
+    query of each generation as the dominant steady-spike component).
+    Candidates are computed exactly as read_nearest computes them, so
+    the warmed entry is the one the query will find. Pure cache fill;
+    no-ops without JIT or a distance index, and never changes query
+    semantics."""
+    if not _USE_JIT or data.distance_index is None:
+        return
+    counts = np.asarray([block.state_counts for block in data.blocks])
+    origin = np.asarray(data.grid.origin)
+    volumes = {}
+    for state in (0, 2):
+        cand_ids = np.flatnonzero(counts[:, state] > 0)
+        if len(cand_ids):
+            _jit_tables(data, state, cand_ids, volumes, origin,
+                        data.grid.resolution)
+
+
 def _nearest_jit(handle, data, point, state, radius, work, candidate_blocks,
                  lower_squared, volumes):
     """JIT twin of _nearest: identical traversal semantics (see
