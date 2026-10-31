@@ -273,8 +273,12 @@ def _jit_tables(data, state, cand_ids, volumes, origin, r):
 def _nearest_jit(handle, data, point, state, radius, work, candidate_blocks,
                  lower_squared, volumes):
     """JIT twin of _nearest: identical traversal semantics (see
-    distance_kernels_jit); count-based budget admission per pop, with
-    the clock half enforced by the caller between points."""
+    distance_kernels_jit). Both budget halves are enforced at the same
+    admission sites as the reference: counts per pop, the clock at a
+    bounded stride inside the kernel against the REMAINING budget
+    passed below (module-clock derived, so a patched/controlled clock
+    stays authoritative; see the kernel module header for the stride
+    and overshoot bound)."""
     cand_ids = candidate_blocks[state]
     tables = _jit_tables(data, state, cand_ids, volumes,
                          np.asarray(data.grid.origin), data.grid.resolution)
@@ -292,6 +296,7 @@ def _nearest_jit(handle, data, point, state, radius, work, candidate_blocks,
         tables['leaf_gstart'], tables['leaf_gend'],
         tables['mem_low'], tables['mem_high'], tables['mem_flat'],
         work.budget.max_examined_cells, work.budget.max_examined_blocks,
+        work.deadline - time.perf_counter_ns(),
         cells, blocks, tables['scratch_bounds'], tables['scratch_order'])
     work.cells, work.blocks = int(cells[0]), int(blocks[0])
     if status == STATUS_BUDGET:
@@ -459,9 +464,10 @@ def read_nearest(handle, data, points, radius, unknown_policy, budget):
                                          match if unknown_policy == 'separate' else None))
             continue
         if _USE_JIT and time.perf_counter_ns() >= work.deadline:
-            # JIT path enforces the clock half of the budget between
-            # points (the count half stays per-pop inside the kernel);
-            # every later probe would fail admits on the clock first.
+            # Fast fail before dispatching into the kernel (the kernel
+            # re-checks the remaining budget at its admission sites, so
+            # an expiry mid-traversal also returns QUERY_BUDGET_EXHAUSTED
+            # exactly like the reference's failed admits).
             match = DistanceMatch('QUERY_BUDGET_EXHAUSTED', False)
             results.append(DistancePoint(tuple(float(v) for v in point),
                                          'QUERY_BUDGET_EXHAUSTED', match,

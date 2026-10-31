@@ -17,15 +17,27 @@ Replicates ``cargo_distance_query._nearest`` bit-for-bit:
   successful push, matching push_next_leaf.
 - member scan: ascending member order, strict '<' keeps the FIRST
   minimum, tie-break on the smaller flat id -- matching the reference.
+- clock half of budget admission: checked at the SAME admission sites
+  as the count half, but at a bounded stride so the interpreter
+  round-trip stays cheap -- the read happens in an objmode block
+  (measured ~255 ns/entry) through ``_clock_ns``, so tests can pin or
+  advance it by patching this module attribute. The caller passes the
+  budget as REMAINING nanoseconds (module clock), which keeps a
+  controlled/patched caller clock authoritative: a negative remaining
+  trips the kernel's first admission check exactly like the reference's
+  first failed ``admits``. Stride schedule: check at the first pop,
+  then geometric backoff 32, 64, ... capped at 512 pops. Worst-case
+  work past an expired budget is bounded by one stride interval --
+  <= ~80 us of steady leaf pops (~150 ns each) or <= ~0.2 ms when the
+  interval is carried by block-decode pops (~microseconds each) --
+  instead of the reference's single-pop granularity.
 
-Only the clock half of budget admission moves from per-pop to
-per-point granularity in the caller; the count half stays per-pop.
 Without numba this module is inert and the original path is used.
 """
 import numpy as np
 
 try:
-    from numba import njit
+    from numba import njit, objmode, types as _nb_types
     HAS_NUMBA = True
 except ImportError:  # pragma: no cover - depends on host
     HAS_NUMBA = False
@@ -37,6 +49,18 @@ except ImportError:  # pragma: no cover - depends on host
         def wrap(fn):
             return fn
         return wrap
+
+
+def _clock_ns():
+    """Monotonic clock for the in-kernel budget check.
+
+    Only ever executed inside an objmode block (the nopython compiler
+    cannot type this interpreter build's ``time`` module). Resolved
+    from this module's globals at call time, so tests can substitute a
+    controlled clock by patching ``distance_kernels_jit._clock_ns``.
+    """
+    import time
+    return time.perf_counter_ns()
 
 
 STATUS_MATCH, STATUS_RADIUS_CLEAR, STATUS_BUDGET = 0, 1, 2
@@ -120,20 +144,33 @@ def _leaf_bound(low, high, point, lf):
 
 
 @njit(cache=True)
+def _clock_check(entry_clock, budget_ns, pops, check_next, stride):
+    """Read the clock through objmode and compare against the remaining
+    budget. Returns (expired, next_check_pop); the caller doubles the
+    stride (capped) after each passing check."""
+    with objmode(now=_nb_types.int64):
+        now = _clock_ns()
+    if now - entry_clock >= budget_ns:
+        return 1, check_next
+    return 0, pops + stride
+
+
+@njit(cache=True)
 def kernel_nearest(point, radius_squared,
                    cand_blocks, cand_lowers,
                    blk_leaf_base,
                    leaf_low, leaf_high, leaf_gstart, leaf_gend,
                    mem_low, mem_high, mem_flat,
-                   max_cells, max_blocks, cells, blocks,
+                   max_cells, max_blocks, budget_ns, cells, blocks,
                    scratch_bounds, scratch_order):
     """One (point, state) traversal. cand_blocks/cand_lowers are the
     radius-admitted candidates in ascending block order; blk_leaf_base
     maps block position -> first concat-leaf of that block (with an end
-    sentinel). cells/blocks are 1-element carriers of the request-wide
-    counters. scratch_* are per-block cursor rows (bounds + survivor
-    order). Returns (status, best_sq, bound_sq, best_flat, best_member,
-    best_block_pos)."""
+    sentinel). budget_ns is the REMAINING time budget at dispatch (from
+    the caller's module clock; <= 0 means already expired). cells/blocks
+    are 1-element carriers of the request-wide counters. scratch_* are
+    per-block cursor rows (bounds + survivor order). Returns (status,
+    best_sq, bound_sq, best_flat, best_member, best_block_pos)."""
     n = cand_blocks.shape[0]
     heap_cap = 2 * n + 4
     hl = np.empty(heap_cap, np.float64)
@@ -157,9 +194,24 @@ def kernel_nearest(point, radius_squared,
     best_member = -1
     best_bpos = -1
 
+    # Clock half of admission, at reference parity where it is observable:
+    # a dispatch that is already expired fails exactly like the
+    # reference's first failed admits -- before any charge, with the
+    # first pop's key (the heap root = cand_lowers[0]).
+    if n > 0 and budget_ns <= 0:
+        return (STATUS_BUDGET, best_squared,
+                min(cand_lowers[0], radius_squared),
+                best_flat, best_member, best_bpos)
+    with objmode(entry_clock=_nb_types.int64):
+        entry_clock = _clock_ns()
+    check_next = 0
+    stride = 32
+    pops = 0
+
     while size > 0:
         lower, bpos, leaf = _pop_root(hl, hb, hf, size)
         size -= 1
+        pops += 1
         if lower > best_squared:
             break
         leaf_base = blk_leaf_base[bpos]
@@ -170,6 +222,15 @@ def kernel_nearest(point, radius_squared,
             if cells[0] > max_cells or blocks[0] + 1 > max_blocks:
                 return (STATUS_BUDGET, best_squared, min(lower, best_squared),
                         best_flat, best_member, best_bpos)
+            if pops >= check_next:
+                expired, check_next = _clock_check(entry_clock, budget_ns,
+                                                   pops, check_next, stride)
+                if expired:
+                    return (STATUS_BUDGET, best_squared,
+                            min(lower, best_squared),
+                            best_flat, best_member, best_bpos)
+                if stride < 512:
+                    stride = 2 * stride
             blocks[0] += 1
             # First pop: bounds for every leaf, survivors filtered by the
             # CURRENT best_squared, stably ordered by (bound, leaf).
@@ -208,6 +269,14 @@ def kernel_nearest(point, radius_squared,
         if cells[0] + examined > max_cells or blocks[0] + 1 > max_blocks:
             return (STATUS_BUDGET, best_squared, min(lower, best_squared),
                     best_flat, best_member, best_bpos)
+        if pops >= check_next:
+            expired, check_next = _clock_check(entry_clock, budget_ns,
+                                               pops, check_next, stride)
+            if expired:
+                return (STATUS_BUDGET, best_squared, min(lower, best_squared),
+                        best_flat, best_member, best_bpos)
+            if stride < 512:
+                stride = 2 * stride
         cells[0] += examined
         blocks[0] += 1
         minimum = 0.0

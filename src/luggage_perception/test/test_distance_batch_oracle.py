@@ -14,6 +14,7 @@ import dataclasses
 import json
 import os
 import unittest
+import unittest.mock
 from pathlib import Path
 
 import numpy as np
@@ -21,7 +22,22 @@ import numpy as np
 from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
 from luggage_perception.occupancy_map_store import (
     MapUpdate, OccupancyMapStore, UpdateKind)
+from luggage_perception import cargo_distance_query
 from luggage_perception.cargo_distance_query import DistanceBudget
+
+
+class _FrozenClock:
+    """A module clock that never advances: the golden scenarios verify
+    traversal arithmetic and COUNT budgets, so wall-clock expiry (e.g. a
+    cold table build landing inside the first query under load) must not
+    be able to flip a scenario's status. elapsed_ns is exempt from the
+    golden comparison anyway."""
+
+    now = 0
+
+    @classmethod
+    def perf_counter_ns(cls):
+        return cls.now
 
 GOLDEN = Path(__file__).with_suffix('.golden.json')
 RESOLUTION = 0.02
@@ -118,6 +134,16 @@ def project(batch):
 
 def run_scenarios():
     out = {}
+    from luggage_perception import distance_kernels_jit
+    with unittest.mock.patch.object(cargo_distance_query, 'time', _FrozenClock), \
+         unittest.mock.patch.object(distance_kernels_jit, '_clock_ns',
+                                    lambda: 0):
+        out = _run_scenarios_inner()
+    return out
+
+
+def _run_scenarios_inner():
+    out = {}
     for tag, boxes in (('b0_radium_clear', 0), ('b5_quick_match', 5)):
         store = build_store(boxes)
         points = query_points(store.mapper)
@@ -147,6 +173,125 @@ class TestDistanceBatchOracle(unittest.TestCase):
         for name in sorted(golden):
             self.assertEqual(golden[name], scenarios[name],
                              'bit-exact divergence in scenario %s' % name)
+
+
+class _FakeModuleClock:
+    """Stand-in for the time module inside cargo_distance_query: every
+    perf_counter_ns read advances the clock by one step, so a budget
+    expires after a fixed number of reads regardless of real time."""
+
+    def __init__(self, step_ns):
+        self.step_ns = step_ns
+        self.now = 0
+
+    def perf_counter_ns(self):
+        self.now += self.step_ns
+        return self.now
+
+
+class _JumpingKernelClock:
+    """Stand-in for distance_kernels_jit._clock_ns: each call jumps a
+    fixed amount, so the kernel's elapsed measurement exceeds any
+    remaining budget after its first stride check."""
+
+    def __init__(self, jump_ns):
+        self.jump_ns = jump_ns
+        self.calls = 0
+        self._real = __import__('time').perf_counter_ns()
+
+    def __call__(self):
+        self.calls += 1
+        return self._real + self.jump_ns * self.calls
+
+
+class TestTimeBudgetBoundary(unittest.TestCase):
+    """P1 regression (reviews Q-20261031-7): the JIT kernel must honor
+    the clock half of the budget WITHIN a point's traversal, at the same
+    admission sites as the reference path. Pre-fix, only the count half
+    was checked per pop; the clock half ran between points only, so an
+    in-point expiry could still return OK."""
+
+    def setUp(self):
+        from luggage_perception import cargo_distance_query, distance_kernels_jit
+        if not distance_kernels_jit.HAS_NUMBA:
+            self.skipTest('numba unavailable')
+        self.dq = cargo_distance_query
+        self.dkj = distance_kernels_jit
+        self.store = build_store(0)   # empty map: RADIUS_CLEAR drains most
+        self.points = query_points(self.store.mapper)
+
+    def _single_point_query(self, budget=None):
+        with self.store.acquire_query_snapshot() as handle:
+            kwargs = {'budget': budget} if budget is not None else {}
+            return handle.nearest_obstacles(self.points[244:245], RADIUS,
+                                            'separate', **kwargs)
+
+    def test_controlled_clock_parity_both_paths(self):
+        """The reviews' controlled-clock repro: 1 ms budget, a clock that
+        has run 10 ms past the deadline. Both paths must report the
+        point as QUERY_BUDGET_EXHAUSTED."""
+        fake = _FakeModuleClock(step_ns=10_000_000)
+        budget = self.dq.DistanceBudget(timeout_ms=1.0)
+        for use_jit in (False, True):
+            with unittest.mock.patch.object(self.dq, '_USE_JIT', use_jit), \
+                 unittest.mock.patch.object(self.dq, 'time', fake):
+                fake.now = 0
+                batch = self._single_point_query(budget)
+            self.assertEqual(batch.status, 'QUERY_BUDGET_EXHAUSTED', use_jit)
+            self.assertFalse(batch.complete, use_jit)
+            self.assertEqual(batch.results[0].status,
+                             'QUERY_BUDGET_EXHAUSTED', use_jit)
+            self.assertIsNotNone(batch.results[0].occupied, use_jit)
+
+    def test_kernel_clock_expires_within_traversal(self):
+        """Isolate the KERNEL admission site: the module clock stays
+        early (wrapper never pre-fails, zero_match admits pass) while
+        the kernel clock jumps past the remaining budget, so exhaustion
+        can only come from the kernel's own stride check."""
+        static_early = type('E', (), {'perf_counter_ns': staticmethod(
+            lambda: 0)})()
+        jumping = _JumpingKernelClock(jump_ns=1_000_000_000)
+        budget = self.dq.DistanceBudget(timeout_ms=1.0)
+        with unittest.mock.patch.object(self.dq, '_USE_JIT', True), \
+             unittest.mock.patch.object(self.dq, 'time', static_early), \
+             unittest.mock.patch.object(self.dkj, '_clock_ns', jumping):
+            batch = self._single_point_query(budget)
+        self.assertGreater(jumping.calls, 1)   # kernel entered AND checked
+        self.assertEqual(batch.status, 'QUERY_BUDGET_EXHAUSTED')
+        self.assertEqual(batch.results[0].status, 'QUERY_BUDGET_EXHAUSTED')
+        point = batch.results[0]
+        exhausted = [m for m in (point.occupied, point.unknown)
+                     if m is not None and m.status == 'QUERY_BUDGET_EXHAUSTED']
+        self.assertEqual(len(exhausted), 1)
+        match = exhausted[0]
+        # lower_bound_m is only set by an in-kernel admission failure
+        # (zero_match and the between-points fast fail carry no bound),
+        # so a finite bound proves the kernel's own clock check fired,
+        # with the first pop's key exactly like the reference admits.
+        self.assertIsNotNone(match.lower_bound_m)
+        self.assertGreaterEqual(match.lower_bound_m, 0.0)
+        self.assertGreater(batch.examined_blocks, 0)
+        # Sanity: same geometry, real clocks, ample budget -> no
+        # exhaustion (the tight-budget result above is a clock effect).
+        with unittest.mock.patch.object(self.dq, '_USE_JIT', True):
+            control = self._single_point_query()
+        self.assertNotEqual(control.status, 'QUERY_BUDGET_EXHAUSTED')
+
+    def test_real_clock_mid_traversal_expiry(self):
+        """Self-calibrating real-clock check on both paths: a budget at
+        60% of the fastest full-budget elapsed must exhaust mid-query."""
+        with unittest.mock.patch.object(self.dq, '_USE_JIT', True):
+            for _ in range(4):
+                warm = self._single_point_query()
+        elapsed = [self._single_point_query().elapsed_ns for _ in range(3)]
+        tight_ns = 0.6 * min(elapsed)
+        budget = self.dq.DistanceBudget(timeout_ms=tight_ns / 1e6)
+        for use_jit in (False, True):
+            with unittest.mock.patch.object(self.dq, '_USE_JIT', use_jit):
+                batch = self._single_point_query(budget)
+            self.assertEqual(batch.status, 'QUERY_BUDGET_EXHAUSTED', use_jit)
+            self.assertEqual(batch.results[0].status,
+                             'QUERY_BUDGET_EXHAUSTED', use_jit)
 
 
 if __name__ == '__main__':
