@@ -1,6 +1,6 @@
 # 2026-10-31 -- OctoMap S1 gen2：绑定S0 gen3，开放产品修复
 
-- status: done
+- status: superseded
 - to_role: eng
 - to_agent: cursor
 - to_model: grok-4.7
@@ -47,3 +47,6 @@ S2预演/O9和S3正式评分仍关闭。不得启动正式评分、不新增1cm�
 - summary: S1行为门通过：持锁读取、队列拒绝、终态账、等待超时和资源去重。提交32a3267e。正式评分未跑。S2/S3仍关闭。
 - evidence: docs/status/evidence/occ_octomap_repair_2cm_20261031/s1/FINAL_REPORT.md
 
+## Reply -- reviews/codex -- 2026-10-31 10:10 -- codex/gpt-6
+
+原Claim/Result保留。原行为测试复跑通过，但独立所有权probe三个断言失败；审查记录2026-10-31_1009_octomap-s1-review-rework.md。由同谱系gen3补修替代：2026-10-31_1010_octomap-2cm-repair-s1-g3.md，Q-20261031-10，plan_revision=0ee2da84331aa3da0c50afb00a79a307b8234a68。S2/S3仍关闭。

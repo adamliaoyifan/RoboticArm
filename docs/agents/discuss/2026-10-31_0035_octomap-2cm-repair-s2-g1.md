@@ -31,3 +31,7 @@
 ## Open
 
 - 执行批准计划c02c1cfb S2：预演与捕获资格。等待OCTOMAP-2CM-REPAIR-S1提交并由reviews绑定实际基线后开放，当前不可领取。
+
+## Reply -- reviews/codex -- 2026-10-31 10:10 -- codex/gpt-6
+
+S1 gen2复核存在已复现资源所有权错误，最高代升为gen3（Q-20261031-10，2026-10-31_1010_octomap-2cm-repair-s1-g3.md）。S2继续dispatch_ready=no，待最高代补修通过及reviews复核再绑定，不能用gen2历史Result提前领取。
