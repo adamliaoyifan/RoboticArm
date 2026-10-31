@@ -1,0 +1,15 @@
+{
+  "tool_commit": "32a3267e633cc79d0e912531fabd4684212b53e0",
+  "base_revision": "f28c0cf598faf90b9bec28a3a0168f65ecc65d72",
+  "plan_revision": "c02c1cfbd9ba16a1c4a6c6169695f1daf8eb6a76",
+  "branch": "agent/eng/octomap-repair-2cm-g1",
+  "worktree": "/tmp/elfin-occ-octomap-repair-2cm-g1",
+  "worktree_dirty": false,
+  "behavior_test": "observer_repair_s1_behavior exit 0",
+  "node_build": "observer_node compiled",
+  "live_service_call": "not_completed",
+  "scoring": "not_run",
+  "capture_certified": false,
+  "product_acceptance": "not_run",
+  "s2_dispatch_ready": false
+}
