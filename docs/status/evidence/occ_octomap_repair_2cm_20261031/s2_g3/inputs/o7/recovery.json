@@ -1,0 +1,16 @@
+{
+  "duration_s": 30,
+  "first_query": "wait_snapshot",
+  "generator_version": "o6-load-v1",
+  "group_id": "r02_b20_chamfer_c30000_o50_x00",
+  "id": "recovery",
+  "input_hz": 2,
+  "inputs": 60,
+  "kind": "recovery",
+  "later_queries": "get_snapshot",
+  "legacy_immediate_query": "recorded_separately",
+  "point_bytes": "not_emitted",
+  "queries": 30,
+  "wait_max_age_ms": 2000.0,
+  "wait_timeout_ms": 2000.0
+}

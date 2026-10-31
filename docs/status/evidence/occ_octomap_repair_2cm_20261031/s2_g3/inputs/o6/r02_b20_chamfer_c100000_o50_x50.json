@@ -1,0 +1,284 @@
+{
+  "boxes": 20,
+  "cloud": 100000,
+  "config_sha256": "c5c58ffc0f32ee73d15356fd074f722b8395dca4a8438e0f233f50c411fc9a6b",
+  "cross": 0.5,
+  "frames": [
+    {
+      "base_seed": 0,
+      "index": 0,
+      "input_file_sha256": "not_emitted",
+      "round": -1,
+      "seed": 2597513991,
+      "warmup": true
+    },
+    {
+      "base_seed": 1,
+      "index": 1,
+      "input_file_sha256": "not_emitted",
+      "round": -1,
+      "seed": 1303949590,
+      "warmup": true
+    },
+    {
+      "base_seed": 2,
+      "index": 2,
+      "input_file_sha256": "not_emitted",
+      "round": -1,
+      "seed": 1631174384,
+      "warmup": true
+    },
+    {
+      "base_seed": 0,
+      "index": 3,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 2095734087,
+      "warmup": false
+    },
+    {
+      "base_seed": 1,
+      "index": 4,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 4011468406,
+      "warmup": false
+    },
+    {
+      "base_seed": 2,
+      "index": 5,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 2000780384,
+      "warmup": false
+    },
+    {
+      "base_seed": 3,
+      "index": 6,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 232190568,
+      "warmup": false
+    },
+    {
+      "base_seed": 4,
+      "index": 7,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 2903777609,
+      "warmup": false
+    },
+    {
+      "base_seed": 5,
+      "index": 8,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 1786524676,
+      "warmup": false
+    },
+    {
+      "base_seed": 6,
+      "index": 9,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 3647409028,
+      "warmup": false
+    },
+    {
+      "base_seed": 7,
+      "index": 10,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 3244971204,
+      "warmup": false
+    },
+    {
+      "base_seed": 8,
+      "index": 11,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 2109971798,
+      "warmup": false
+    },
+    {
+      "base_seed": 9,
+      "index": 12,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 1492373570,
+      "warmup": false
+    },
+    {
+      "base_seed": 0,
+      "index": 13,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 1419121259,
+      "warmup": false
+    },
+    {
+      "base_seed": 1,
+      "index": 14,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 2631681197,
+      "warmup": false
+    },
+    {
+      "base_seed": 2,
+      "index": 15,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 3358480741,
+      "warmup": false
+    },
+    {
+      "base_seed": 3,
+      "index": 16,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 3047022232,
+      "warmup": false
+    },
+    {
+      "base_seed": 4,
+      "index": 17,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 2911497338,
+      "warmup": false
+    },
+    {
+      "base_seed": 5,
+      "index": 18,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 3185995541,
+      "warmup": false
+    },
+    {
+      "base_seed": 6,
+      "index": 19,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 1187399353,
+      "warmup": false
+    },
+    {
+      "base_seed": 7,
+      "index": 20,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 2313761558,
+      "warmup": false
+    },
+    {
+      "base_seed": 8,
+      "index": 21,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 1997732818,
+      "warmup": false
+    },
+    {
+      "base_seed": 9,
+      "index": 22,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 3979058247,
+      "warmup": false
+    },
+    {
+      "base_seed": 0,
+      "index": 23,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 20841562,
+      "warmup": false
+    },
+    {
+      "base_seed": 1,
+      "index": 24,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 2695996655,
+      "warmup": false
+    },
+    {
+      "base_seed": 2,
+      "index": 25,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 4132631337,
+      "warmup": false
+    },
+    {
+      "base_seed": 3,
+      "index": 26,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 739116571,
+      "warmup": false
+    },
+    {
+      "base_seed": 4,
+      "index": 27,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 586835203,
+      "warmup": false
+    },
+    {
+      "base_seed": 5,
+      "index": 28,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 3822835883,
+      "warmup": false
+    },
+    {
+      "base_seed": 6,
+      "index": 29,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 3904916452,
+      "warmup": false
+    },
+    {
+      "base_seed": 7,
+      "index": 30,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 3811723664,
+      "warmup": false
+    },
+    {
+      "base_seed": 8,
+      "index": 31,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 2915953703,
+      "warmup": false
+    },
+    {
+      "base_seed": 9,
+      "index": 32,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 973633246,
+      "warmup": false
+    }
+  ],
+  "generator_version": "o6-load-v1",
+  "geometry_sha256": "c2912984be7de04c10ba1ec26a29cfb2d509d9fab2e4f7d27ba13183f99f5972",
+  "group_id": "r02_b20_chamfer_c100000_o50_x50",
+  "hull": "chamfer",
+  "outside": 0.5,
+  "point_bytes": "not_emitted",
+  "quotas": {
+    "cross": 25000,
+    "interior": 50000,
+    "miss": 25000
+  },
+  "resolution": 0.02
+}

@@ -1,0 +1,29 @@
+{
+  "tool_commit": "d653c9c84f2c47dc0daa0046ac57f26b30a9bb3b",
+  "product_cpp": "16dda82286b345b0a6f4208ac9c3f43621b8d8fd",
+  "cpp_diff_since_product": "empty",
+  "o9_qualification": "pass",
+  "o9_ratios_2cm": {
+    "roi": 1.0007700033478406,
+    "integrate_30k": 0.9959667471663929,
+    "surface_first": 0.9551624793742002
+  },
+  "previous_5cm_ratios_not_this_candidate": {
+    "roi": 0.9963607021704047,
+    "integrate_30k": 0.9887859269007071,
+    "surface_first": 1.007934487148608
+  },
+  "input_index_sha256": "3b485878cbf4608bf30ca91984fb0689930412848e51b256e0690c5926c255d8",
+  "frame_sha256": "2548ec3ec47233c976a724d2ee1eee01f153d5d2a9d395f5b5b09e4bc5579e34",
+  "geometry": "geometry_chamfer.yaml",
+  "config": "config_chamfer_r0p02.yaml",
+  "generator": "o6-load-v1",
+  "group": "r02_b00_chamfer_c30000_o50_x00",
+  "roi_cells": 4096,
+  "resource_certification": "NOT_EVALUATED",
+  "o5_o8_samples": "not_run",
+  "s3": "closed",
+  "capture_complete": true,
+  "replay_possible": true,
+  "budget": "within 2h rehearsal; formal 8h not used"
+}

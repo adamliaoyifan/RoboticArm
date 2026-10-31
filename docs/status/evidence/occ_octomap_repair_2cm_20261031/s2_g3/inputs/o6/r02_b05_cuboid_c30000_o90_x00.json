@@ -1,0 +1,284 @@
+{
+  "boxes": 5,
+  "cloud": 30000,
+  "config_sha256": "c5c58ffc0f32ee73d15356fd074f722b8395dca4a8438e0f233f50c411fc9a6b",
+  "cross": 0.0,
+  "frames": [
+    {
+      "base_seed": 0,
+      "index": 0,
+      "input_file_sha256": "not_emitted",
+      "round": -1,
+      "seed": 84328760,
+      "warmup": true
+    },
+    {
+      "base_seed": 1,
+      "index": 1,
+      "input_file_sha256": "not_emitted",
+      "round": -1,
+      "seed": 2315642695,
+      "warmup": true
+    },
+    {
+      "base_seed": 2,
+      "index": 2,
+      "input_file_sha256": "not_emitted",
+      "round": -1,
+      "seed": 2851266139,
+      "warmup": true
+    },
+    {
+      "base_seed": 0,
+      "index": 3,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 1063418857,
+      "warmup": false
+    },
+    {
+      "base_seed": 1,
+      "index": 4,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 2047348206,
+      "warmup": false
+    },
+    {
+      "base_seed": 2,
+      "index": 5,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 3226876921,
+      "warmup": false
+    },
+    {
+      "base_seed": 3,
+      "index": 6,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 3650155629,
+      "warmup": false
+    },
+    {
+      "base_seed": 4,
+      "index": 7,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 4138484124,
+      "warmup": false
+    },
+    {
+      "base_seed": 5,
+      "index": 8,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 1246553311,
+      "warmup": false
+    },
+    {
+      "base_seed": 6,
+      "index": 9,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 341112597,
+      "warmup": false
+    },
+    {
+      "base_seed": 7,
+      "index": 10,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 3527816781,
+      "warmup": false
+    },
+    {
+      "base_seed": 8,
+      "index": 11,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 347493804,
+      "warmup": false
+    },
+    {
+      "base_seed": 9,
+      "index": 12,
+      "input_file_sha256": "not_emitted",
+      "round": 0,
+      "seed": 3073271069,
+      "warmup": false
+    },
+    {
+      "base_seed": 0,
+      "index": 13,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 3694119283,
+      "warmup": false
+    },
+    {
+      "base_seed": 1,
+      "index": 14,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 3637264631,
+      "warmup": false
+    },
+    {
+      "base_seed": 2,
+      "index": 15,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 4173979432,
+      "warmup": false
+    },
+    {
+      "base_seed": 3,
+      "index": 16,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 427788400,
+      "warmup": false
+    },
+    {
+      "base_seed": 4,
+      "index": 17,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 2522995444,
+      "warmup": false
+    },
+    {
+      "base_seed": 5,
+      "index": 18,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 1676127235,
+      "warmup": false
+    },
+    {
+      "base_seed": 6,
+      "index": 19,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 3623771741,
+      "warmup": false
+    },
+    {
+      "base_seed": 7,
+      "index": 20,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 2759186461,
+      "warmup": false
+    },
+    {
+      "base_seed": 8,
+      "index": 21,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 3236294179,
+      "warmup": false
+    },
+    {
+      "base_seed": 9,
+      "index": 22,
+      "input_file_sha256": "not_emitted",
+      "round": 1,
+      "seed": 1903726274,
+      "warmup": false
+    },
+    {
+      "base_seed": 0,
+      "index": 23,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 2364695776,
+      "warmup": false
+    },
+    {
+      "base_seed": 1,
+      "index": 24,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 1207626811,
+      "warmup": false
+    },
+    {
+      "base_seed": 2,
+      "index": 25,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 409840439,
+      "warmup": false
+    },
+    {
+      "base_seed": 3,
+      "index": 26,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 1725165881,
+      "warmup": false
+    },
+    {
+      "base_seed": 4,
+      "index": 27,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 789414978,
+      "warmup": false
+    },
+    {
+      "base_seed": 5,
+      "index": 28,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 4226146226,
+      "warmup": false
+    },
+    {
+      "base_seed": 6,
+      "index": 29,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 2472540142,
+      "warmup": false
+    },
+    {
+      "base_seed": 7,
+      "index": 30,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 60541921,
+      "warmup": false
+    },
+    {
+      "base_seed": 8,
+      "index": 31,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 3774137020,
+      "warmup": false
+    },
+    {
+      "base_seed": 9,
+      "index": 32,
+      "input_file_sha256": "not_emitted",
+      "round": 2,
+      "seed": 2303284506,
+      "warmup": false
+    }
+  ],
+  "generator_version": "o6-load-v1",
+  "geometry_sha256": "490b8e565df1d65dc51da60a776477414fd8458b036f73f09b26a2883a5d8848",
+  "group_id": "r02_b05_cuboid_c30000_o90_x00",
+  "hull": "cuboid",
+  "outside": 0.9,
+  "point_bytes": "not_emitted",
+  "quotas": {
+    "cross": 0,
+    "interior": 3000,
+    "miss": 27000
+  },
+  "resolution": 0.02
+}

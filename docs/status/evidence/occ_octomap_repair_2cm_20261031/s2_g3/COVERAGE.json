@@ -1,0 +1,6 @@
+{
+  "certification": "NOT_EVALUATED",
+  "uncovered_allocations": true,
+  "s3_resource_gate": "blocked",
+  "s3_block": "O6 read-view and cache peak <= 512 MiB stays blocked. Uncovered classes are octree internals, std::map directory nodes, ledger and completion map nodes, ingress deque nodes, middleware buffers, the TF buffer, and the fingerprint table. RSS or a partial byte sum is not that gate."
+}

@@ -1,0 +1,20 @@
+{
+  "duration_s": 180,
+  "generator_version": "o6-load-v1",
+  "no_input_repeats": 3,
+  "no_input_s": 10.0,
+  "occlusion_repeats": 3,
+  "occlusion_s": 10.0,
+  "point_bytes": "not_emitted",
+  "ray_group": "o8_fixed_r02_b00_chamfer_c30000_o50_x00",
+  "ray_seed": 2119764893,
+  "rss_growth_limit": 0.05,
+  "runs": [
+    "o8_r0",
+    "o8_r1",
+    "o8_r2"
+  ],
+  "saturation_frames": 30,
+  "stamp_step_ns": 1000000000,
+  "warmup_s": 60
+}
