@@ -221,6 +221,7 @@ def main():
                 if kind == 'distance':
                     batch = handle.nearest_obstacles(points, 0.30, 'separate')
                     ok = batch.status == 'OK'
+                    status = batch.status
                 elif kind == 'summary':
                     handle.summary(); ok = True
                 elif kind == 'roi':
@@ -269,7 +270,9 @@ def main():
                         warmed_kinds[kind] = elapsed
                         if not ok:
                             failures[kind].append(status)
-                        if kind == 'distance' and ok:
+                        if kind == 'distance':
+                            # Dossier regardless of outcome: an exhausted
+                            # first query is itself attribution evidence.
                             spikes.append(dossier(elapsed))
                     else:
                         samples[kind].append(elapsed)
