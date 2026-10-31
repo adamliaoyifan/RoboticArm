@@ -1,0 +1,13 @@
+{
+  "items": [
+    {"id": "wait-handle", "status": "pass", "observation": "WaitSnapshot OK returned registered handle 1:1"},
+    {"id": "no-second-acquire", "status": "pass", "observation": "short chain does not call GetSnapshot"},
+    {"id": "identity-faults", "status": "pass", "observation": "wrong epoch, uncovered observed_revision, map_revision mismatch, empty handle are not stable"},
+    {"id": "content-hash", "status": "pass", "observation": "969cb7c308d20843f6ce707112387d2fb77e49b4370d163811676713ce387291"},
+    {"id": "formal-judge", "status": "pass", "observation": "short sample rejected"},
+    {"id": "historical-o9", "status": "pass", "observation": "7537b033 retained and does not sign this product change"},
+    {"id": "live-runner", "status": "not_evaluated"},
+    {"id": "placement-bridge", "status": "not_evaluated"},
+    {"id": "resource-512mib", "status": "not_evaluated"}
+  ]
+}

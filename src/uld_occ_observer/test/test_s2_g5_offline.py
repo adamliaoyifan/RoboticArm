@@ -152,6 +152,47 @@ def test_completed_receipt_is_integrated_without_counting_as_subscription():
         assert failed["disposition"] != "integrated"
 
 
+def test_snapshot_identity_faults_are_not_overwritten():
+    from types import SimpleNamespace as NS
+
+    def identity(epoch, observed, revision=1):
+        return NS(epoch=epoch, map_revision=revision, observed_revision=observed,
+                  last_integrated_stamp_ns=100, geometry_hash="geometry",
+                  config_digest="config", clock_domain="ros")
+
+    def page(ident, occupied=True):
+        return NS(status="OK", done=True, identity=ident, next_cursor=0,
+                  x=[0], y=[0], active_count=[1], known_count=[1],
+                  has_occupied=[occupied], top_z=[0.02])
+
+    def run(wait_identity, read_identity, handle="lease-1"):
+        class Session:
+            node = NS(create_client=lambda *args: args[1])
+
+            def wait_for(self, *args):
+                return NS(status="OK", reason="", age_ns=10, handle=handle, identity=wait_identity)
+
+            def wait_service(self, *args, **kwargs):
+                pass
+
+            def call(self, client, request, timeout):
+                if str(client).endswith("/read_surface"):
+                    return page(read_identity)
+                if str(client).endswith("/read_cells"):
+                    return NS(status="OK", identity=read_identity, states=[2])
+                return NS(status="OK")
+
+        return campaign_executor._read_snapshot_chain(Session(), {"epoch": 1, "observation_id": "target"})
+
+    healthy = run(identity(1, 7), identity(1, 7))
+    assert healthy["identity_stable"] is True
+    assert healthy["handle"] == "lease-1"
+    assert run(identity(1, 7), identity(2, 1))["identity_stable"] is False
+    assert run(identity(1, 7), identity(1, 6))["identity_stable"] is False
+    assert run(identity(1, 7, 2), identity(1, 7, 1))["identity_stable"] is False
+    assert run(identity(1, 7), identity(1, 7), handle="")["identity_stable"] is False
+
+
 def test_injected_query_time_does_not_stretch_sends(tmp_path):
     plan = _plan()
     plan["o7_windows"] = [plan["o7_windows"][0]]

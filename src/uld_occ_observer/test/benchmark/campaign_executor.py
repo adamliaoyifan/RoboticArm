@@ -824,67 +824,85 @@ def smoke_profile(plan, cli, eval_native, geometry, config, out):
 def _identity_tuple(identity):
     return (
         _field(identity, "epoch"),
+        _field(identity, "map_revision"),
         _field(identity, "observed_revision"),
+        _field(identity, "last_integrated_stamp_ns"),
         _field(identity, "geometry_hash"),
         _field(identity, "config_digest"),
+        _field(identity, "clock_domain"),
     )
 
 
+def _finite_age(value, limit):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return value >= 0 and value <= limit
+
+
 def _read_snapshot_chain(session, expected):
-    """WaitSnapshot, full ReadSurface, one ReadCells page, then release."""
-    from uld_occ_observer.srv import GetSnapshot, ReadCells, ReadSurface, ReleaseSnapshot
+    """Use only the WaitSnapshot lease. A later GetSnapshot is not a substitute."""
+    import hashlib
+    import json as json_mod
+    from uld_occ_observer.srv import ReadCells, ReadSurface, ReleaseSnapshot
     wait = session.wait_for(expected["epoch"], expected["observation_id"], 2000)
+    handle = wait.handle or ""
+    wait_identity = _identity_tuple(wait.identity)
+    reasons = []
+    if wait.status != "OK":
+        reasons.append("wait_%s" % wait.status)
+    if not handle:
+        reasons.append("empty_handle")
+    if not _finite_age(int(wait.age_ns), 2_000_000_000):
+        reasons.append("age")
+    if wait_identity[0] != expected.get("epoch"):
+        reasons.append("epoch")
+    minimum = expected.get("min_observed_revision")
+    if minimum is not None and (wait_identity[2] is None or wait_identity[2] < minimum):
+        reasons.append("target_not_covered")
     chain = {
         "wait_status": wait.status,
         "wait_reason": wait.reason,
         "age_ns": int(wait.age_ns),
-        "wait_handle": wait.handle,
-        "identity": _identity_tuple(wait.identity),
-        "covered_stamp_ns": int(wait.identity.last_integrated_stamp_ns),
+        "handle": handle,
+        "identity": wait_identity,
     }
-    handle = ""
-    snapshot = None
-    if wait.status == "OK":
-        acquire = session.node.create_client(GetSnapshot, "/uld_occ_observer/get_snapshot")
-        session.wait_service(acquire, timeout=5)
-        request = GetSnapshot.Request()
-        request.expected_epoch = int(expected["epoch"])
-        request.max_age_ms = 2000
-        request.allow_stale = False
-        request.exact_revision = False
-        snapshot = session.call(acquire, request, 5)
-        chain["snapshot_status"] = snapshot.status
-        chain["snapshot_age_ns"] = int(snapshot.age_ns)
-        chain["snapshot_identity"] = _identity_tuple(snapshot.identity)
-        handle = snapshot.handle or ""
-        if chain["snapshot_identity"] != chain["identity"]:
-            chain["identity_stable"] = False
     pages = []
     cells = None
     release_status = None
+    content = hashlib.sha256()
     try:
-        if wait.status != "OK" or snapshot is None or snapshot.status != "OK" or not handle:
-            chain["handle"] = handle
+        if reasons:
+            chain["identity_stable"] = False
+            chain["reasons"] = reasons
             return chain
-        chain["handle"] = handle
         surface = session.node.create_client(ReadSurface, "/uld_occ_observer/read_surface")
         roi = session.node.create_client(ReadCells, "/uld_occ_observer/read_cells")
-        release = session.node.create_client(ReleaseSnapshot, "/uld_occ_observer/release_snapshot")
         session.wait_service(surface, timeout=5)
         cursor = 0
+        occupied = False
         while True:
             request = ReadSurface.Request()
             request.handle = handle
             request.cursor = int(cursor)
             request.limit = 512
             page = session.call(surface, request, 5)
-            pages.append({
-                "status": page.status,
-                "done": bool(page.done),
-                "identity": _identity_tuple(page.identity),
-                "columns": len(page.x),
-            })
-            if page.status != "OK" or page.done:
+            columns = [_field(page, name) for name in (
+                "x", "y", "active_count", "known_count", "has_occupied", "top_z")]
+            width = None if columns[0] is None else len(columns[0])
+            shape_ok = width is not None and all(item is not None and len(item) == width for item in columns)
+            identity = _identity_tuple(page.identity)
+            if page.status != "OK" or not shape_ok or identity != wait_identity:
+                reasons.append("page")
+            if columns[4]:
+                occupied = occupied or any(columns[4])
+            content.update(json_mod.dumps([list(item) if item is not None else None for item in columns],
+                                          sort_keys=True).encode())
+            pages.append({"status": page.status, "done": bool(page.done), "identity": identity,
+                          "columns": width, "cursor": cursor})
+            if page.status != "OK" or page.done or reasons:
+                break
+            if page.next_cursor <= cursor:
+                reasons.append("cursor")
                 break
             cursor = page.next_cursor
         session.wait_service(roi, timeout=5)
@@ -895,8 +913,15 @@ def _read_snapshot_chain(session, expected):
         cell_request.cursor = 0
         cell_request.limit = 4096
         cell_page = session.call(roi, cell_request, 5)
-        cells = {"status": cell_page.status, "identity": _identity_tuple(cell_page.identity),
-                 "count": len(cell_page.states)}
+        cell_identity = _identity_tuple(cell_page.identity)
+        if cell_page.status != "OK" or cell_identity != wait_identity:
+            reasons.append("roi")
+        states = list(cell_page.states or [])
+        content.update(json_mod.dumps(states).encode())
+        cells = {"status": cell_page.status, "identity": cell_identity, "count": len(states),
+                 "occupied": any(state == 2 for state in states)}
+        if not occupied and not cells["occupied"]:
+            reasons.append("content_not_occupied")
     finally:
         if handle:
             try:
@@ -907,16 +932,18 @@ def _read_snapshot_chain(session, expected):
                 release_status = session.call(release, request, 5).status
             except Exception as exc:
                 release_status = "release_failed:%s" % exc
-    identities = [page["identity"] for page in pages]
-    if cells is not None:
-        identities.append(cells["identity"])
+                reasons.append("release")
+    if release_status != "OK":
+        reasons.append("release")
     chain.update({
         "pages": len(pages),
-        "surface_done": bool(pages) and pages[-1]["done"] and all(page["status"] == "OK" for page in pages),
+        "surface_done": bool(pages) and pages[-1]["done"] and not any(item == "page" for item in reasons),
         "roi": cells,
-        "identity_stable": len(set(identities)) == 1 and identities[0][2] not in (None, ""),
+        "content_sha256": content.hexdigest(),
+        "identity_stable": not reasons,
+        "reasons": reasons,
         "release_status": release_status,
-        "age_within_2s": int(wait.age_ns) <= 2_000_000_000,
+        "age_within_2s": "age" not in reasons,
     })
     return chain
 

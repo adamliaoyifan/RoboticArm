@@ -268,11 +268,37 @@ class ObserverNode : public rclcpp::Node {
   }
   void send_wait(const Waiter& waiter, const SnapshotWaitBoard::Outcome& outcome,
                  const SnapshotIdentity* latest) {
+    // The wait mutex is not held. acquire() registers a real lease and does not
+    // wait on the store lock while holding the handle table.
     srv::WaitSnapshot::Response response;
     response.status = outcome.status;
     response.reason = outcome.reason;
     response.age_ns = outcome.age_ns;
-    if (outcome.status == "OK" && latest) response.identity = ros_identity(*latest);
+    if (outcome.status == "OK") {
+      try {
+        if (waiter.board_request.max_age_ms < 0 || waiter.board_request.max_age_ms > 86400000)
+          throw Error("INVALID_MAX_AGE");
+        const auto lease = repository_->acquire(
+            now().nanoseconds(), waiter.board_request.max_age_ms * 1000000LL, false,
+            waiter.board_request.expected_epoch, std::nullopt);
+        if (lease.identity.epoch != waiter.board_request.expected_epoch ||
+            lease.identity.observed_revision < outcome.observed_revision) {
+          repository_->release(lease.handle);
+          response.status = "REVISION_NOT_COVERED";
+          response.handle.clear();
+        } else {
+          response.status = "OK";
+          response.handle = lease.handle;
+          response.identity = ros_identity(lease.identity);
+          response.age_ns = lease.age_ns;
+        }
+      } catch (const std::exception& error) {
+        response.status = error.what();
+        response.handle.clear();
+      }
+    } else if (latest) {
+      response.identity = ros_identity(*latest);
+    }
     wait_->send_response(*waiter.header, response);
   }
   template<class Service, class Callback>
@@ -563,15 +589,19 @@ class ObserverNode : public rclcpp::Node {
         wait.timeout_ms = request->timeout_ms;
         wait.started = std::chrono::steady_clock::now();
         Waiter waiter{header, wait};
-        std::lock_guard<std::mutex> lock(wait_mu_);
+        std::unique_lock<std::mutex> lock(wait_mu_);
         const auto epoch = store_->published_epoch();
         if (const auto immediate = board_.try_begin(waiters_.size() + waits_checking_, wait, epoch)) {
-          send_wait(waiter, *immediate, nullptr);
+          const auto outcome = *immediate;
+          lock.unlock();
+          send_wait(waiter, outcome, nullptr);
           return;
         }
         const auto latest = worker_->diagnostics().store.identity;
         if (const auto ready = board_.poll(wait, wait.started, this->now().nanoseconds(), epoch, &latest)) {
-          send_wait(waiter, *ready, ready->status == "OK" ? &latest : nullptr);
+          const auto outcome = *ready;
+          lock.unlock();
+          send_wait(waiter, outcome, outcome.status == "OK" ? &latest : nullptr);
           return;
         }
         waiters_.push_back(std::move(waiter));
