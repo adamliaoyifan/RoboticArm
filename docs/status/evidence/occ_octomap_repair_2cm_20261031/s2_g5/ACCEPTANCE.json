@@ -1,0 +1,14 @@
+{
+  "items": [
+    {"id": 1, "status": "pass", "observation": "rejected and unknown windows stay rejected; no manufactured queries"},
+    {"id": 2, "status": "pass", "observation": "faults travel schedule to judge; missing fields stay missing"},
+    {"id": 3, "status": "pass", "observation": "closed stage exits 2; injected open stage dispatches; judge and replay failures exit 1"},
+    {"id": 4, "status": "pass", "scope": "offline_fixture", "observation": "distinct surface timings and one directory per frame"},
+    {"id": "4-live-third-surface", "status": "not_evaluated", "observation": "profile CLI emits two surface calls; the third key is left absent"},
+    {"id": 5, "status": "pass", "scope": "offline_clock", "observation": "2 Hz, 10 Hz, 30 s drain, WaitSnapshot, 180 s runs, 10 s holds"},
+    {"id": "5-live-windows", "status": "not_evaluated"},
+    {"id": 6, "status": "pass", "observation": "one CLI frame and one ROS integrate; formal judge rejects both"},
+    {"id": 7, "status": "pass", "observation": "7537b033 O9 retained; 30/30 traces and the three ratios rechecked"},
+    {"id": 8, "status": "not_evaluated", "observation": "512 MiB resource gate; uncovered allocations remain"}
+  ]
+}

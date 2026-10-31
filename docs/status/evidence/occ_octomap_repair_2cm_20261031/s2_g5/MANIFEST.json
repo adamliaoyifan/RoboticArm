@@ -1,0 +1,34 @@
+{
+  "scheduler": "d5a309e1071ae54047fc91c6e587d36e33f73ba9",
+  "o9_candidate": "7537b033daf20561c247bb7e09b6ee8805358a93",
+  "base": "5d914bf71dcd821a0417281ab66bdd425ef89409",
+  "product_source_diff_vs_o9": "empty",
+  "official_o5_o8_samples": "not_run",
+  "resource_certification": "NOT_EVALUATED",
+  "s3": "closed",
+  "o9_rejudge": {"traces": 30, "capture_complete": 30, "rerun": false},
+  "ratios": {
+    "roi": 1.0156359705334954,
+    "integrate_30k": 0.9809603064420823,
+    "surface_first": 1.0257049963063405
+  },
+  "prune_probe": {
+    "case": "eight_sibling_leaves",
+    "collapsed_nodes": 16,
+    "split_nodes": 24,
+    "collapsed_bytes": 1536,
+    "split_bytes": 1728,
+    "prune_ms": 0.00025,
+    "expand_ms": 0.00009
+  },
+  "prune_30k_probe": {
+    "non_scored": true,
+    "tree_nodes": 177451,
+    "tree_bytes": 4947696,
+    "prune_ms": 1.500203,
+    "inner_update_ms": 1.838615,
+    "write_loop_ms": 24.376061,
+    "read_view_bytes": "not_owned_by_octree",
+    "cache_bytes": "not_owned_by_octree"
+  }
+}
