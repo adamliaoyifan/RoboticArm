@@ -293,6 +293,76 @@ class TestTimeBudgetBoundary(unittest.TestCase):
             self.assertEqual(batch.results[0].status,
                              'QUERY_BUDGET_EXHAUSTED', use_jit)
 
+    def test_pre_kernel_gap_spent_against_budget(self):
+        """Reviews' second-round repro: a 10 ms delay landing between the
+        dispatch-side remaining read and the kernel's clock reads must
+        be SPENT against the budget. Pre-fix, the kernel re-based its
+        elapsed at entry, so the constant delay cancelled out of the
+        difference and the query returned OK. The absolute-deadline
+        design anchors the deadline BEFORE the delay, so the kernel's
+        first stride check trips."""
+        import time as _time
+
+        class _DelayedKernelClock:
+            calls = 0
+
+            def __call__(self):
+                _DelayedKernelClock.calls += 1
+                now = _time.perf_counter_ns()
+                # First call anchors the deadline (pre-delay); every
+                # later read -- the kernel's stride checks -- lands
+                # 10 ms past it.
+                return now if _DelayedKernelClock.calls == 1 else now + 10_000_000
+
+        budget = self.dq.DistanceBudget(timeout_ms=1.0)
+        with unittest.mock.patch.object(self.dq, '_USE_JIT', True), \
+             unittest.mock.patch.object(self.dkj, '_clock_ns',
+                                        _DelayedKernelClock()):
+            batch = self._single_point_query(budget)
+        self.assertEqual(batch.status, 'QUERY_BUDGET_EXHAUSTED')
+        point = batch.results[0]
+        exhausted = [m for m in (point.occupied, point.unknown)
+                     if m is not None and m.status == 'QUERY_BUDGET_EXHAUSTED']
+        self.assertTrue(exhausted)
+        self.assertIsNotNone(exhausted[0].lower_bound_m)
+
+    def test_pre_expired_bound_is_true_minimum(self):
+        """Reviews' second-round repro: the pre-expiry bound must be the
+        first POPPED key -- the minimum lower over admitted candidates --
+        not cand_lowers[0] (candidates are ordered by block id; the
+        measured bug returned squared bound 0.0820857 where the true
+        minimum is 0). Kernel-level, with the reviewer's numbers."""
+        import numpy as np
+        from luggage_perception import distance_kernels_jit as dkj
+        point = np.zeros(3)
+        cand_blocks = np.array([0, 1], dtype=np.int64)
+        cand_lowers = np.array([0.0820857, 0.0])   # block order, NOT min-first
+        blk_leaf_base = np.array([0, 1, 2], dtype=np.int64)
+        leaf_low = np.zeros((2, 3))
+        leaf_high = np.ones((2, 3))
+        gstart = np.array([0, 1], dtype=np.int64)
+        gend = np.array([1, 2], dtype=np.int64)
+        mem_low = np.zeros((2, 3))
+        mem_high = np.ones((2, 3))
+        mem_flat = np.array([5, 7], dtype=np.int64)
+        cells = np.zeros(1, dtype=np.int64)
+        blocks = np.zeros(1, dtype=np.int64)
+        scratch_bounds = np.zeros((2, 2))
+        scratch_order = np.zeros((2, 4), dtype=np.int64)
+        status, best_sq, bound_sq, *_ = dkj.kernel_nearest(
+            point, 1.0, cand_blocks, cand_lowers, blk_leaf_base,
+            leaf_low, leaf_high, gstart, gend, mem_low, mem_high,
+            mem_flat, 2_000_000, 50_000,
+            0,   # deadline long past in this clock domain
+            cells, blocks, scratch_bounds, scratch_order)
+        self.assertEqual(status, dkj.STATUS_BUDGET)
+        # The first popped key is the TRUE minimum (0.0), not
+        # cand_lowers[0] (0.0820857).
+        self.assertEqual(bound_sq, 0.0)
+        # Reference parity: failed at the first admission, nothing charged.
+        self.assertEqual(int(cells[0]), 0)
+        self.assertEqual(int(blocks[0]), 0)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
