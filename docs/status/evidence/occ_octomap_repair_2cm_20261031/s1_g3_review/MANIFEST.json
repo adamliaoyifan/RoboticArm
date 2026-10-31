@@ -1,0 +1,21 @@
+{
+  "revision": "bfece5c32a0b4595827dd10993b88d4638c4f106",
+  "worktree_dirty": false,
+  "timestamp": "2026-10-31T16:10:30.201672+08:00",
+  "review_scope": "independent core rebuild and resource probe; reviewed owner live tests, not rerun",
+  "behavior_exit": 0,
+  "probe_exit": 0,
+  "s0_passed": 12,
+  "owner_live_passed": 22,
+  "node_sha256": "943ff5f983ca6b110b900f535d182c76d8b20914435bb4c16ec956def955ce68",
+  "capture_complete": true,
+  "replay_possible": true,
+  "resource_certification": "NOT_EVALUATED",
+  "product_scoring": "not_run",
+  "files": {
+    "core.log": "b0bec7d66cb1736cef2bdcab9138557905c32c48a204aba40527b8128ca862e8",
+    "COMMANDS.sh": "4f7f5726629ae1e6f2dea70687a37b6811be2a772a84062370fa6f085730fedc",
+    "probe.log": "497e0cb1d013f4f8cdfeb4205bad0dc896a40bb9de02ccf7747dc3664e40591b",
+    "s0.log": "9e54890e1442bd5cf7bcdfa22f226721993c297cd88bc59cd922a457b6fafe64"
+  }
+}
