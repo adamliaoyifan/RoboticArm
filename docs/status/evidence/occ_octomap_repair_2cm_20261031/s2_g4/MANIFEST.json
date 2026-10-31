@@ -1,0 +1,30 @@
+{
+  "candidate": "7537b033daf20561c247bb7e09b6ee8805358a93",
+  "base": "967d01a63eb6862b838d370659d859958b1d868a",
+  "plan_revision": "38dc898601fdf1bc994a966aa7287d193c05d746",
+  "dirty_at_measurement": 0,
+  "official_o5_o8_samples": "not_run",
+  "resource_certification": "NOT_EVALUATED",
+  "s3": "closed",
+  "old_o9_traces": {"root": "/tmp/s2-o9-g3", "traces": 30, "capture_complete": 0},
+  "new_o9_traces": {"root": "/tmp/s2-o9-g4", "traces": 30, "capture_complete": 30},
+  "qualification": "pass",
+  "ratios": {
+    "roi": 1.0156359705334954,
+    "integrate_30k": 0.9809603064420823,
+    "surface_first": 1.0257049963063405
+  },
+  "cli_sha256": "8e668c95956ae97cfe4a2f44fd9f4ebfb5b31e649745426f066361275ebfa025",
+  "node_sha256": "d486f3791c61e76b3f1f3ca2c6f2be02029c9379ce717de2fc59f8ba2f23d8d8",
+  "eval_native_sha256": "e87408f3986d53a8c9998669c0a2cd7d10ee34b3d5a8f5b3ee232a30fc8354d2",
+  "uncovered_allocations": [
+    "octree_internal_nodes",
+    "std_map_directory_nodes",
+    "ledger_map_nodes",
+    "ingress_queue_nodes",
+    "completion_map_nodes",
+    "middleware_transport_buffers",
+    "tf_buffer",
+    "fingerprint_table"
+  ]
+}
