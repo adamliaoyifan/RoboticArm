@@ -140,8 +140,12 @@ production packing success or a performance advantage over the existing grid.
 `test/benchmark/repair_s0.py` freezes the 2 cm / 5 cm case manifest and the
 offline judges for O5 through O9. It does not change observation, snapshot, or
 ROS behavior. P95 is the ceil(0.95 n)th ascending sample. O6 is the 96-group
-2 cm and 5 cm matrix. A missing read-view or cache attribution cannot pass the
-resource gate. A synthetic fault that the judge names is not a live capture
+2 cm and 5 cm matrix, matched by group id and load parameters; repeating one
+group does not cover the matrix. A missing read-view or cache attribution
+cannot pass the resource gate. Schema `occ_octomap_repair_s0_v2` adds snapshot
+epoch, revision, and content hash. A v1 ledger is judged without filling those
+fields, so a missing identity is not_evaluated rather than rewritten into a pass.
+A synthetic fault that the judge names is not a live capture
 certificate, and it is not a product score.
 
 ## Opt-in update profiling (performance diagnosis)

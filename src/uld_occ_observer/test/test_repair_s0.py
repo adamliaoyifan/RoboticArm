@@ -128,3 +128,34 @@ def test_write_bundle_matches_the_rehearsal(tmp_path):
                for row in discrimination["cases"])
     assert "没有生成" in (tmp_path / "FINAL_REPORT.md").read_text()
     assert "pytest" in (tmp_path / "COMMANDS.sh").read_text()
+
+
+def test_threshold_equality_passes_and_bad_numbers_do_not_raise():
+    group = judge.healthy_latency_group("r02_b00_chamfer_c30000_o50_x00", 30000)
+    for metric in ("integrate_ms", "acquire_ms", "roi_ms", "surface_first_ms",
+                   "surface_after_update_ms", "surface_repeat_ms"):
+        group[metric] = [500.0 if metric == "integrate_ms" else 100.0] * 30
+    assert judge.judge_case(group)["pass"] is True
+    infinite = judge.healthy_o7_normal()
+    infinite["queries"][0]["surface_ms"] = float("inf")
+    assert judge.judge_case(infinite)["reasons"] == ["nonfinite_value"]
+    boolean = judge.healthy_o7_normal()
+    boolean["queries"][0]["surface_ms"] = True
+    assert judge.judge_case(boolean)["reasons"] == ["bad_type"]
+    negative = judge.healthy_o7_normal()
+    negative["inputs"][0]["queue_age_ms"] = -0.1
+    assert judge.judge_case(negative)["reasons"] == ["negative_value"]
+
+
+def test_v1_ledger_is_judged_without_filling_identity():
+    payload = json.loads(replay.dump_bytes(judge.healthy_o7_normal()).decode())
+    payload["schema"] = contract.SCHEMA_V1
+    for row in payload["query_chain"]:
+        row.pop("epoch")
+        row.pop("observed_revision")
+        row.pop("content_hash")
+    verdict = replay.replay_bytes(json.dumps(payload).encode())
+    assert verdict["pass"] is False
+    assert verdict["status"] == "not_evaluated"
+    assert verdict["reasons"] == ["missing_identity"]
+    assert verdict["replay_possible"] is True

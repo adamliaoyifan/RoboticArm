@@ -17,6 +17,12 @@ def _copy(case):
     return json.loads(json.dumps(case))
 
 
+def _with_inputs(case, inputs):
+    case["inputs"] = inputs
+    case["planned_input_ids"] = [row["input_id"] for row in inputs]
+    return case
+
+
 def control_cases(group_ids, o5_ids):
     """Named ledgers the judge must separate. These are not captured runs."""
     healthy = judge.healthy_o7_normal()
@@ -53,10 +59,10 @@ def control_cases(group_ids, o5_ids):
     unknown["inputs"][0]["callback_enter_ns"] = None
     unknown["inputs"][0]["terminal_count"] = 0
     unknown["inputs"][0]["receipt_received"] = False
-    quiet = {"gate": "o7_overload", "in_flight_after_drain": 0,
-             "inputs": [judge._input(index, "overload") for index in range(contract.OVERLOAD_INPUTS)]}
-    for row in quiet["inputs"]:
+    quiet_inputs = [judge._input(index, "overload") for index in range(contract.OVERLOAD_INPUTS)]
+    for row in quiet_inputs:
         row["queue_age_ms"] = 0.0
+    quiet = _with_inputs({"gate": "o7_overload", "in_flight_after_drain": 0}, quiet_inputs)
     ratio = judge.healthy_o9()
     for pairs in ratio["operations"].values():
         for pair in pairs:
@@ -65,14 +71,51 @@ def control_cases(group_ids, o5_ids):
     injected["operations"]["roi"][0]["injected_fault"] = "dropped-sample"
     groups = [judge.healthy_latency_group(group_id, 30000) for group_id in group_ids]
     groups[0]["integrate_ms"] = [600.0] * contract.SCORED_SAMPLES
-    o5_groups = [judge.healthy_latency_group(group_id, 30000 if "c30000" in group_id else 100000)
-                 for group_id in o5_ids]
+    o5_groups = []
+    o5_plan = []
+    for group_id in o5_ids:
+        params = judge.parameters_from_id(group_id)
+        o5_groups.append(judge.healthy_latency_group(group_id, params["cloud"], params))
+        o5_plan.append(dict(params))
+    o5 = {"gate": "o5_campaign", "groups": o5_groups, "planned_groups": o5_plan}
+    full_groups = []
+    full_plan = []
+    for group_id in group_ids:
+        params = judge.parameters_from_id(group_id)
+        full_groups.append(judge.healthy_latency_group(group_id, params["cloud"], params))
+        full_plan.append(dict(params))
+    full_o6 = {"gate": "o6_campaign", "groups": full_groups, "planned_groups": full_plan}
+    repeated = {"gate": "o6_campaign", "groups": [
+        judge.healthy_latency_group(group_ids[0], 30000) for _ in range(contract.O6_GROUPS)]}
+    mismatched = json.loads(json.dumps(o5))
+    mismatched["groups"][0]["cloud"] = 1
+    stranger = json.loads(json.dumps(o5))
+    stranger["groups"][0]["id"] = "not-a-group"
+    copied_o5 = json.loads(json.dumps(o5))
+    copied_o5["groups"] = [copied_o5["groups"][0] for _ in range(contract.O5_GROUPS)]
+    windows = [judge.healthy_o7_normal("normal_b%02d_r%d" % (boxes, repeat))
+               for boxes in (0, 5, 20) for repeat in range(3)]
+    healthy_windows = {"gate": "o7_campaign", "windows": windows,
+                       "planned_window_ids": [window["id"] for window in windows]}
+    copied_windows = {"gate": "o7_campaign", "windows": [windows[0] for _ in range(contract.O7_WINDOWS)]}
+    one_reject = judge.healthy_o7_recovery()
+    one_reject["inputs"][1].update(disposition="rejected", reject_reason="QUEUE_FULL", integrate_ms=None)
+    copied_query = judge.healthy_o7_normal()
+    copied_query["queries"][1] = json.loads(json.dumps(copied_query["queries"][0]))
+    wrong_normal = judge.healthy_o7_normal()
+    wrong_normal["queries"][0]["covers_observation"] = False
+    nan_recovery = judge.healthy_o7_recovery()
+    nan_recovery["queries"][0]["latency_ms"] = float("nan")
+    missing_identity = judge.healthy_o7_normal()
+    del missing_identity["queries"][0]["content_hash"]
+    exact_health = judge.healthy_o7_normal()
+    exact_health["health_times_s"] = [float(index) for index in range(121)]
+    overload_reject = _with_inputs(
+        {"gate": "o7_overload", "in_flight_after_drain": 0},
+        [judge._input(index, "overload", "rejected") for index in range(contract.OVERLOAD_INPUTS)])
     growth = judge.healthy_o8()
     for run in growth["runs"]:
         run["rss_median_kib"] = [1000, 1000, 1060]
-    overload_reject = {"gate": "o7_overload", "in_flight_after_drain": 0,
-                       "inputs": [judge._input(index, "overload", "rejected")
-                                  for index in range(contract.OVERLOAD_INPUTS)]}
     return [
         ("healthy_normal", healthy, "pass", []),
         ("missing_frame", missing, "fail", ["missing_frame"]),
@@ -89,12 +132,26 @@ def control_cases(group_ids, o5_ids):
         ("perturbation_ratio", ratio, "fail", ["perturbation_ratio"]),
         ("injected_fault", injected, "fail", ["injected_fault"]),
         ("o6_one_group", {"gate": "o6_campaign", "groups": groups}, "fail", ["group:%s" % group_ids[0]]),
-        ("o5_campaign", {"gate": "o5_campaign", "groups": o5_groups}, "pass", []),
+        ("o5_campaign", o5, "pass", []),
         ("o8_growth", growth, "fail", ["rss_growth"]),
         ("healthy_recovery", judge.healthy_o7_recovery(), "pass", []),
         ("healthy_o8", judge.healthy_o8(), "pass", []),
         ("healthy_o9", judge.healthy_o9(), "pass", []),
         ("overload_all_rejected", overload_reject, "pass", []),
+        ("recovery_one_rejected", one_reject, "fail", ["input_rejected"]),
+        ("normal_duplicate_query", copied_query, "fail", ["duplicate_query_id", "missing_query"]),
+        ("o6_repeated_group", repeated, "fail", ["duplicate_group"]),
+        ("normal_wrong_snapshot", wrong_normal, "fail", ["wrong_snapshot"]),
+        ("recovery_nan_latency", nan_recovery, "fail", ["nonfinite_value"]),
+        ("healthy_o6", full_o6, "pass", []),
+        ("healthy_o7", healthy_windows, "pass", []),
+        ("o5_repeated_group", copied_o5, "fail", ["duplicate_group", "missing_group"]),
+        ("o7_repeated_window", copied_windows, "fail", ["duplicate_window"]),
+        ("o5_parameter_mismatch", mismatched, "fail", ["parameter_mismatch"]),
+        ("o5_unknown_group", stranger, "fail", ["unknown_group", "missing_group"]),
+        ("normal_missing_identity", missing_identity, "not_evaluated", ["missing_identity"]),
+        ("health_exact_second", exact_health, "fail", ["health_gap"]),
+        ("overload_one_reject", judge.healthy_o7_overload(), "pass", []),
     ]
 
 

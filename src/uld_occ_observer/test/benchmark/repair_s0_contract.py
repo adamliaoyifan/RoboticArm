@@ -9,7 +9,8 @@ PLAN_REVISION = "c02c1cfbd9ba16a1c4a6c6169695f1daf8eb6a76"
 PRODUCT_BASE = "4c8f1862ec357cb01616f4b04be636227461cf44"
 TOOL_BASE = "57d8c0bfe23fee54920c89c06a2b6bdcb97de976"
 GENERATOR_VERSION = "o6-load-v1"
-SCHEMA = "occ_octomap_repair_s0_v1"
+SCHEMA_V1 = "occ_octomap_repair_s0_v1"
+SCHEMA = "occ_octomap_repair_s0_v2"
 
 # P95 is the ceil(0.95*n)th ascending sample. n=30 selects the 29th.
 INTEGRATE_30K = {"p95_ms": 500.0, "max_ms": 1000.0}
@@ -62,10 +63,13 @@ INTEGRATE_FIELDS = (
     "input_id", "terminal_count", "integrate_ms", "queue_age_ms",
     "observed_revision", "receipt_received",
 )
-QUERY_FIELDS = (
+QUERY_FIELDS_V1 = (
     "query_id", "op", "status", "latency_ms", "age_ms", "covers_observation",
     "expected_observation_id", "acquire_ms", "roi_ms", "surface_ms",
 )
+QUERY_FIELDS = QUERY_FIELDS_V1 + ("epoch", "observed_revision", "content_hash")
+# v1 ledgers are judged as stored. Replay does not invent epoch, content, or plan ids.
+# A v1 ledger that lacks those fields is not_evaluated. It is not rewritten into v2.
 
 
 def gate_table():

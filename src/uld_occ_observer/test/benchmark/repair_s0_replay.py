@@ -11,20 +11,29 @@ import repair_s0_contract as contract
 import repair_s0_judge as judge
 
 
+def _present(row, fields):
+    """Copy only fields that are already stored. Do not invent a missing one."""
+    return {key: row[key] for key in fields if key in row}
+
+
 def segment_view(case):
     """Project a case into the four acceptance boundaries."""
     inputs = case.get("inputs") or []
     return {
         "schema": contract.SCHEMA,
         "gate": case["gate"],
-        "publish_to_callback": [{key: row[key] for key in contract.PUBLISH_FIELDS} for row in inputs],
-        "integrate_to_receipt": [{key: row[key] for key in contract.INTEGRATE_FIELDS} for row in inputs],
-        "query_chain": [{key: row[key] for key in contract.QUERY_FIELDS} for row in case.get("queries") or []],
+        "publish_to_callback": [_present(row, contract.PUBLISH_FIELDS) for row in inputs],
+        "integrate_to_receipt": [_present(row, contract.INTEGRATE_FIELDS) for row in inputs],
+        "query_chain": [_present(row, contract.QUERY_FIELDS) for row in case.get("queries") or []],
         "resource_and_recovery": {
             "health_times_s": case.get("health_times_s"),
             "resources": case.get("resources"),
             "in_flight_after_drain": case.get("in_flight_after_drain"),
             "legacy_immediate_first": case.get("legacy_immediate_first"),
+            "planned_input_ids": case.get("planned_input_ids"),
+            "planned_query_ids": case.get("planned_query_ids"),
+            "planned_groups": case.get("planned_groups"),
+            "planned_window_ids": case.get("planned_window_ids"),
             "runs": case.get("runs"),
             "holds": case.get("holds"),
             "operations": case.get("operations"),
@@ -58,14 +67,15 @@ def case_from_segments(segments):
     for name in ("publish_to_callback", "integrate_to_receipt", "query_chain", "resource_and_recovery"):
         if name not in segments:
             missing.append(name)
-    if missing or segments.get("schema") != contract.SCHEMA or "gate" not in segments:
+    if missing or "gate" not in segments or segments.get("schema") not in (contract.SCHEMA, contract.SCHEMA_V1):
         return None, missing or ["schema"]
+    query_fields = contract.QUERY_FIELDS_V1
     publish = segments["publish_to_callback"]
     integrate = segments["integrate_to_receipt"]
     queries = segments["query_chain"]
     extra = _missing_fields(publish, contract.PUBLISH_FIELDS)
     extra += _missing_fields(integrate, contract.INTEGRATE_FIELDS)
-    extra += _missing_fields(queries, contract.QUERY_FIELDS)
+    extra += _missing_fields(queries, query_fields)
     if extra or not isinstance(publish, list) or not isinstance(integrate, list) or not isinstance(queries, list):
         return None, extra or ["segment_type"]
     if [row["input_id"] for row in publish] != [row["input_id"] for row in integrate]:
