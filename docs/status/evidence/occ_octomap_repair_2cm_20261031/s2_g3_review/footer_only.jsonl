@@ -1,0 +1,1 @@
+{"schema_version": 1, "run_id": "no-work", "phase": "capture", "event_seq": 1, "event": "trace_footer", "mono_ns": 1, "pid": 1, "tid": 1, "thread_cpu_ns": 1, "request_id": null, "status": "0"}
