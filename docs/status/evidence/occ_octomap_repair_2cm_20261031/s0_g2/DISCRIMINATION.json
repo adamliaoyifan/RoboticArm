@@ -1,0 +1,306 @@
+{
+  "capture_certified": false,
+  "note": "Synthetic ledgers prove the judge names each fault. They do not certify a live capture.",
+  "cases": [
+    {
+      "name": "healthy_normal",
+      "status": "pass",
+      "reasons": [],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "missing_frame",
+      "status": "fail",
+      "reasons": [
+        "missing_frame"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "duplicate_terminal",
+      "status": "fail",
+      "reasons": [
+        "duplicate_terminal"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "all_rejected",
+      "status": "fail",
+      "reasons": [
+        "all_rejected"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "pre_callback_gap",
+      "status": "fail",
+      "reasons": [
+        "pre_callback_gap"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "health_gap",
+      "status": "fail",
+      "reasons": [
+        "health_gap"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "single_window",
+      "status": "fail",
+      "reasons": [
+        "normal_b00_r0:surface_ms"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "recovery_timeout",
+      "status": "fail",
+      "reasons": [
+        "recovery_timeout"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "wrong_snapshot",
+      "status": "fail",
+      "reasons": [
+        "wrong_snapshot"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "resource_missing",
+      "status": "fail",
+      "reasons": [
+        "resource_missing"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "pre_callback_overload",
+      "status": "fail",
+      "reasons": [
+        "pre_callback_gap"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "overload_not_observed",
+      "status": "not_evaluated",
+      "reasons": [
+        "overload_not_observed"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "perturbation_ratio",
+      "status": "fail",
+      "reasons": [
+        "perturbation_ratio"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "injected_fault",
+      "status": "fail",
+      "reasons": [
+        "injected_fault"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "o6_one_group",
+      "status": "fail",
+      "reasons": [
+        "group:r02_b00_chamfer_c30000_o50_x00"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "o5_campaign",
+      "status": "pass",
+      "reasons": [],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "o8_growth",
+      "status": "fail",
+      "reasons": [
+        "rss_growth"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "healthy_recovery",
+      "status": "pass",
+      "reasons": [],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "healthy_o8",
+      "status": "pass",
+      "reasons": [],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "healthy_o9",
+      "status": "pass",
+      "reasons": [],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "overload_all_rejected",
+      "status": "pass",
+      "reasons": [],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "recovery_one_rejected",
+      "status": "fail",
+      "reasons": [
+        "input_rejected"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "normal_duplicate_query",
+      "status": "fail",
+      "reasons": [
+        "duplicate_query_id",
+        "missing_query"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "o6_repeated_group",
+      "status": "fail",
+      "reasons": [
+        "duplicate_group"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "normal_wrong_snapshot",
+      "status": "fail",
+      "reasons": [
+        "wrong_snapshot"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "recovery_nan_latency",
+      "status": "fail",
+      "reasons": [
+        "nonfinite_value"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "healthy_o6",
+      "status": "pass",
+      "reasons": [],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "healthy_o7",
+      "status": "pass",
+      "reasons": [],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "o5_repeated_group",
+      "status": "fail",
+      "reasons": [
+        "duplicate_group",
+        "missing_group"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "o7_repeated_window",
+      "status": "fail",
+      "reasons": [
+        "duplicate_window"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "o5_parameter_mismatch",
+      "status": "fail",
+      "reasons": [
+        "parameter_mismatch"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "o5_unknown_group",
+      "status": "fail",
+      "reasons": [
+        "unknown_group",
+        "missing_group"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "normal_missing_identity",
+      "status": "not_evaluated",
+      "reasons": [
+        "missing_identity"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "health_exact_second",
+      "status": "fail",
+      "reasons": [
+        "health_gap"
+      ],
+      "replay_possible": true,
+      "capture_certified": false
+    },
+    {
+      "name": "overload_one_reject",
+      "status": "pass",
+      "reasons": [],
+      "replay_possible": true,
+      "capture_certified": false
+    }
+  ]
+}

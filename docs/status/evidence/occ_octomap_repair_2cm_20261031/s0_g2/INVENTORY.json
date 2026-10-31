@@ -1,0 +1,81 @@
+{
+  "classification": "fact, mechanism, and hypothesis are separate lists",
+  "facts": [
+    {
+      "id": "o6-historical-fail",
+      "statement": "1 cm group r01_b00_cuboid_c30000_o50_x50 integrate P95 is 517.297808 ms. The other 143 historical groups passed. This id is outside the new 96-group 2/5 cm matrix and stays failed.",
+      "source": "docs/status/evidence/occ_o6_o7_20261029/closeout_g2/FINAL_REPORT.md"
+    },
+    {
+      "id": "o7-surface-latency",
+      "statement": "Nine 1 Hz normal windows failed only surface_ms. Medians were 139-145 ms, 101-110 ms, and 112-124 ms for 0, 5, and 20 boxes. Queue age max was 0.03-0.04 ms.",
+      "source": "docs/status/evidence/occ_o6_o7_20261029/closeout_g2/WINDOW_LEDGER.json"
+    },
+    {
+      "id": "overload-gap",
+      "statement": "Overload sent 600, observed 523 completions, and left 77 ids at sent_no_receipt. A later boundary pass placed 227 inputs between publish return and callback entry, 13 at QUEUE_FULL, and 330 accepted frames waiting across another integrate. No DDS drop event was stored.",
+      "source": "docs/status/evidence/occ_o5_o7_interface_collection_20261030/run01/FINAL_REPORT.md"
+    },
+    {
+      "id": "recovery-stale",
+      "statement": "The immediate GetSnapshot recovery query selected a snapshot about 30.4 s old and returned STALE. A query issued after the integrated receipt selected a snapshot about 0.33 s old and returned OK.",
+      "source": "docs/status/evidence/occ_o5_o7_interface_collection_20261030/run01/FINAL_REPORT.md"
+    },
+    {
+      "id": "write-loop",
+      "statement": "On the scored O6 failure's diagnostic rerun, ApplyBatch was the larger fusion child on 30 of 30 samples, and write_loop_ms was the larger ApplyBatch child on 30 of 30. The rerun did not replace 517.297808 ms.",
+      "source": "docs/status/evidence/occ_o5_o7_interface_collection_20261030/run01/FINAL_REPORT.md"
+    },
+    {
+      "id": "store-lock-samples",
+      "statement": "On the instrumented b20_D1 arm, 2 of 30 surface callbacks waited on the store lock for more than 150 ms. The other 28, and the b00_D1 arm, stayed near the no-write band. Cache-hit surface() itself was about 0.003 ms.",
+      "source": "docs/status/evidence/occ_o5_o7_interface_collection_20261030/run01/FINAL_REPORT.md"
+    },
+    {
+      "id": "host-threads",
+      "statement": "The host reported 32 logical CPUs and powersave. The run was not pinned. Integrate runs on one worker thread. The observer executor is constructed with 6 threads.",
+      "source": "docs/status/evidence/occ_o6_o7_20261029/closeout_g2/MANIFEST.json"
+    },
+    {
+      "id": "unevaluated",
+      "statement": "Formal O5 was not evaluated. Read-view and cache bytes had no ownership attribution, so that resource gate was not evaluated.",
+      "source": "docs/status/evidence/occ_o6_o7_20261029/closeout_g2/FINAL_REPORT.md"
+    }
+  ],
+  "mechanisms": [
+    {
+      "id": "get-takes-store-lock",
+      "statement": "SnapshotRepository::get holds the repository mutex and calls ObservationStore::diagnostics, which locks the same mutex integrate holds for the whole update. A read of an existing handle waits for that update.",
+      "source": "src/uld_occ_observer/src/snapshot_repository.cpp"
+    },
+    {
+      "id": "callback-work",
+      "statement": "The subscription callback looks up TF with a 0.1 s timeout and calls store diagnostics before enqueue. The subscription is reliable KeepLast depth 2. The worker queue also rejects at depth 2.",
+      "source": "src/uld_occ_observer/src/observer_node.cpp"
+    },
+    {
+      "id": "health-cache",
+      "statement": "publish_health reads the worker's cached diagnostics under the worker mutex. That call itself does not take the store mutex.",
+      "source": "src/uld_occ_observer/src/observer_node.cpp"
+    },
+    {
+      "id": "single-integrator",
+      "statement": "ObservationWorker integrates on one thread. occupancy_grid.cpp has no OpenMP region.",
+      "source": "src/uld_occ_observer/src/observation_worker.cpp"
+    }
+  ],
+  "hypotheses": [
+    {
+      "id": "residual-surface",
+      "statement": "The two long store-lock samples do not account for the scored 101-145 ms surface medians. The historical response has no lock, build, copy, or serialization split, so that residual is not assigned."
+    },
+    {
+      "id": "publish-gap",
+      "statement": "The 227 publish-to-callback gaps are not identified as DDS loss. Depth 2 and callback work are a candidate, and this list does not treat that candidate as the measured cause."
+    },
+    {
+      "id": "write-loop-split",
+      "statement": "If a future 2 cm or 5 cm integrate exceeds its gate, the next split to record is search, probability, setNodeValue, allocation, inner update, and prune. That split was not measured here."
+    }
+  ]
+}

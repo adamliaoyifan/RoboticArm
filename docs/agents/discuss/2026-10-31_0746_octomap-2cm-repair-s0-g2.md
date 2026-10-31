@@ -1,6 +1,6 @@
 # 2026-10-31 -- OctoMap S0判官补修 gen2：S1保持关闭
 
-- status: open
+- status: done
 - to_role: eng
 - to_agent: cursor
 - to_model: grok-4.7
@@ -28,3 +28,19 @@
 ## Open
 
 - S0判官补修：修复5个已复现false-pass，按05739a10验收；只离线，不修产品不评分，S1继续关闭。
+## Claim -- eng/cursor -- 2026-10-31 07:57 -- cursor/grok-4.7
+
+- started_at: 2026-10-31T07:57:54+08:00
+- claimed_generation: 2
+- claimed_plan_revision: 05739a10c9c7c3854ad7dab0a4842fce7ffea32a
+- claimed_dependencies: none
+
+## Result -- eng/cursor -- 2026-10-31 08:15 -- cursor/grok-4.7
+
+- outcome: pass
+- completed_at: 2026-10-31T08:15:12+08:00
+- revision: e7b8b7a7fdc2e753e2fc36d40cc014ca7282fceb
+- tests: pytest test_repair_s0.py: 11 passed; reproduce.py false_pass_count 0
+- summary: S0 gen2拒绝5个误通过。工具提交e7b8b7a7，工作树干净。捕获未认证，产品未评分。S1仍不可领取。
+- evidence: docs/status/evidence/occ_octomap_repair_2cm_20261031/s0_g2/FINAL_REPORT.md
+
