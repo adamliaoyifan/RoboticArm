@@ -153,13 +153,21 @@ def boot_owner(args, environment, work, extra=()):
     return process
 
 
-def stop_owner(process):
+def stop_owner(process, work=None):
     import signal
     process.send_signal(signal.SIGUSR2)
     try:
-        process.wait(timeout=20)
+        process.wait(timeout=90)
     except subprocess.TimeoutExpired:
         process.terminate()
+        process.wait(timeout=10)
+    if work is not None:
+        # The owner's finally-dump (events+spans) can take tens of seconds
+        # with GC observation on; wait for the file instead of racing it.
+        deadline = time.monotonic()+60
+        trace = work/'owner'/'trace.jsonl'
+        while not trace.exists() and time.monotonic() < deadline:
+            time.sleep(0.5)
 
 
 def analyze(results, owner_trace):
@@ -259,8 +267,7 @@ def main():
         if args.reset_after_seconds > 0:
             extra += ['--reset-after-seconds', str(args.reset_after_seconds)]
         tag = args.single_arm
-        workS = work/tag
-        workS.mkdir(parents=True, exist_ok=True)
+        workS = work  # --out is already unique per invocation
         rclpy.init()
         node = rclpy.create_node('phase_probe_%s' % tag.replace('-', '_'))
         owner = boot_owner(args, environment, workS, extra=extra)
@@ -270,7 +277,7 @@ def main():
         for case in cases:
             run_arm(owner, node, client, templates[case], case,
                     args.count, tag, results, no_gap=args.no_gap)
-        stop_owner(owner)
+        stop_owner(owner, work=workS)
         rclpy.shutdown()
         report = analyze(results, workS/'owner'/'trace.jsonl')
         report['gc_mode'] = args.gc_mode
