@@ -102,7 +102,10 @@ All endpoints are under `/uld_occ_observer`:
 | reset_observation | expected_epoch and nonempty reset_id; resets only on matching epoch. |
 | checkpoint_observation | operation checkpoint/restore, path and expected_epoch; unknown operations return UNSUPPORTED_OPERATION. Existing checkpoint files are not overwritten. |
 | receipts | Each submitted observation's result and stage/queue timing. |
-| health | Metadata, revisions, queue/resource counts, and capabilities. The timer period is 500 ms, so the topic is 2 Hz. Older notes that called this 1 Hz are stale. Health carries no full map and does not refresh freshness. |
+| health | Metadata, revisions, queue/resource counts, and capabilities. The timer period is 500 ms, so the topic is 2 Hz. Health reads the worker cache and does not take the integrate lock. |
+| get_observation_status | epoch, sensor id, observation id. Returns NOT_SEEN, QUEUED, PROCESSING, COMPLETED, REJECTED, or EXPIRED. NOT_SEEN means the server has no record. |
+| wait_snapshot | Deferred response. Returns a snapshot whose observed revision includes the target or a later success, or TIMEOUT, EPOCH_MISMATCH, REJECTED, or WAIT_PRESSURE. |
+| get_resource_usage | Current and peak bytes for shared blocks, view directories, surface cache, in-flight responses, the entry queue, and the receipt ledger. Uncovered allocator overhead stays marked. |
 
 The worker queue holds at most two waiting observations, one processing. Queue
 pressure returns QUEUE_FULL instead of replacing frames. Transport receipt time,

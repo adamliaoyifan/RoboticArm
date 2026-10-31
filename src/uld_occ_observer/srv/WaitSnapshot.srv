@@ -1,0 +1,10 @@
+uint64 expected_epoch
+string sensor_id
+string observation_id
+int64 max_age_ms
+int64 timeout_ms
+---
+string status
+string handle
+uld_occ_observer/SnapshotIdentity identity
+int64 age_ns

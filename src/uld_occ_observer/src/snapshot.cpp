@@ -15,6 +15,14 @@ std::shared_ptr<const Snapshot> Snapshot::with_identity(SnapshotIdentity identit
 }
 
 CellIndex Snapshot::block_index(CellIndex i) { return BlockLayout::block_coordinate(i); }
+void Snapshot::collect_blocks(std::vector<std::shared_ptr<const CellBlock>>& out) const {
+  for (const auto& entry : blocks_) out.push_back(entry.second);
+}
+std::uint64_t Snapshot::surface_cache_allocated_bytes() const {
+  std::lock_guard<std::mutex> lock(surface_cache_->mutex);
+  if (!surface_cache_->value) return 0;
+  return surface_cache_->value->capacity() * sizeof(SurfaceColumn);
+}
 std::uint64_t Snapshot::known_entry_count() const {
   std::uint64_t count = 0;
   for (const auto& entry : blocks_) count += entry.second->known_count();

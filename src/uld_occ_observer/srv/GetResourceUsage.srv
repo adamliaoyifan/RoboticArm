@@ -1,0 +1,16 @@
+---
+string status
+uint64 shared_block_bytes
+uint64 shared_block_bytes_peak
+uint64 old_view_block_bytes
+uint64 view_directory_entries
+uint64 view_directory_entries_peak
+uint64 surface_cache_bytes
+uint64 surface_cache_bytes_peak
+uint64 inflight_response_bytes
+uint64 inflight_response_bytes_peak
+uint64 entry_queue_messages
+uint64 entry_queue_messages_peak
+uint64 receipt_ledger_records
+uint64 receipt_ledger_records_peak
+bool uncovered_allocations

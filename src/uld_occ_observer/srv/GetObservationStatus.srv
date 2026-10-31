@@ -1,0 +1,6 @@
+uint64 epoch
+string sensor_id
+string observation_id
+---
+string status
+uld_occ_observer/UpdateReceipt receipt

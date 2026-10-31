@@ -3,8 +3,11 @@
 #include "uld_occ_observer/preprocessing.hpp"
 #include "uld_occ_observer/snapshot.hpp"
 #include "uld_occ_observer/profiling.hpp"
+#include <atomic>
 #include <deque>
+#include <functional>
 #include <mutex>
+#include <vector>
 
 namespace uld_occ_observer {
 struct UpdateReceipt {
@@ -41,6 +44,11 @@ class ObservationStore {
                           ProfileMode profile_mode = ProfileMode::Off);
   std::shared_ptr<const Snapshot> snapshot() const;
   Diagnostics diagnostics() const;
+  std::uint64_t published_epoch() const;
+  void collect_blocks(std::vector<std::shared_ptr<const CellBlock>>& out) const;
+  std::uint64_t directory_entries() const;
+  // Test probe. Invoked while integrate holds the store mutex. Production leaves it empty.
+  void set_lock_probe_for_test(std::function<void()> probe);
   std::uint64_t reset(std::uint64_t expected_epoch);
   std::shared_ptr<const UldDomain> domain() const { return domain_; }
   Checkpoint checkpoint() const;
@@ -56,6 +64,8 @@ class ObservationStore {
   BlockRegistry blocks_;
   mutable std::shared_ptr<const Snapshot> cached_snapshot_;
   std::uint64_t epoch_{1}, map_revision_{}, observed_revision_{};
+  std::atomic<std::uint64_t> published_epoch_{1};
+  std::function<void()> lock_probe_;
   std::int64_t last_integrated_stamp_ns_{};
   std::map<std::string, std::int64_t> sensor_stamps_;
   std::map<std::pair<std::string, std::string>, std::string> fingerprints_;

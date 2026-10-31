@@ -65,6 +65,7 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
   };
   std::unique_lock<std::mutex> lock(mutex_, std::defer_lock);
   { auto span = diagnostic.span(ProfileStage::LockWait); lock.lock(); }
+  if (lock_probe_) lock_probe_();
   ++received_;
   receipt.sensor_id = observation.identity.sensor_id;
   receipt.observation_id = observation.identity.observation_id;
@@ -178,6 +179,21 @@ std::shared_ptr<const Snapshot> ObservationStore::snapshot() const {
   cached_snapshot_ = result;
   return result;
 }
+std::uint64_t ObservationStore::published_epoch() const {
+  return published_epoch_.load(std::memory_order_acquire);
+}
+void ObservationStore::collect_blocks(std::vector<std::shared_ptr<const CellBlock>>& out) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  for (const auto& entry : blocks_) out.push_back(entry.second);
+}
+std::uint64_t ObservationStore::directory_entries() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return blocks_.size();
+}
+void ObservationStore::set_lock_probe_for_test(std::function<void()> probe) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  lock_probe_ = std::move(probe);
+}
 Diagnostics ObservationStore::diagnostics() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return {identity_unlocked(), grid_.nodeCount(), known_cells_, blocks_.size(), grid_.memoryUsage(),
@@ -188,6 +204,7 @@ std::uint64_t ObservationStore::reset(std::uint64_t expected_epoch) {
   if (epoch_ != expected_epoch) throw Error("EPOCH_MISMATCH");
   grid_.reset();
   ++epoch_; map_revision_ = observed_revision_ = 0; last_integrated_stamp_ns_ = 0;
+  published_epoch_.store(epoch_, std::memory_order_release);
   known_cells_ = 0; blocks_.clear(); cached_snapshot_.reset();
   sensor_stamps_.clear(); fingerprints_.clear(); fingerprint_order_.clear();
   return epoch_;
@@ -228,6 +245,7 @@ std::uint64_t ObservationStore::restore(const Checkpoint& checkpoint, std::uint6
   blocks_ = std::move(published);
   known_cells_ = known;
   ++epoch_; map_revision_ = id.map_revision; observed_revision_ = id.observed_revision;
+  published_epoch_.store(epoch_, std::memory_order_release);
   last_integrated_stamp_ns_ = id.last_integrated_stamp_ns;
   sensor_stamps_ = checkpoint.sensor_stamps;
   // Payload fingerprints contain their original epoch. Restored timestamps still

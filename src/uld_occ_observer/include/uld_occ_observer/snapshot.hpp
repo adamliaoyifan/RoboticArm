@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <mutex>
+#include <vector>
 
 namespace uld_occ_observer {
 struct SnapshotIdentity {
@@ -71,6 +71,9 @@ class Snapshot {
   std::shared_ptr<const std::vector<SurfaceColumn>> surface(SurfaceProfile* profile = nullptr) const;
   std::shared_ptr<const Snapshot> with_identity(SnapshotIdentity identity) const;
   std::size_t block_count() const { return blocks_.size(); }
+  std::uint64_t directory_entries() const { return blocks_.size(); }
+  void collect_blocks(std::vector<std::shared_ptr<const CellBlock>>& out) const;
+  std::uint64_t surface_cache_allocated_bytes() const;
   std::uint64_t known_entry_count() const;
   static CellIndex block_index(CellIndex index);
  private:

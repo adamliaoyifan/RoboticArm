@@ -12,3 +12,8 @@ uint32[] active_count
 uint32[] known_count
 bool[] has_occupied
 float64[] top_z
+float64 repository_wait_ms
+float64 store_wait_ms
+float64 surface_build_ms
+float64 response_fill_ms
+float64 server_total_ms

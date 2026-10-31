@@ -12,3 +12,8 @@ bool done
 # 2 occupied, 3 out_of_domain. log_odds has meaning only for states 1 and 2.
 uint8[] states
 float32[] log_odds
+float64 repository_wait_ms
+float64 store_wait_ms
+float64 surface_build_ms
+float64 response_fill_ms
+float64 server_total_ms

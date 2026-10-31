@@ -11,7 +11,8 @@ find_package(yaml-cpp REQUIRED)
 add_library(uld_occ_observer_core
   src/preprocessing.cpp src/geometry.cpp src/block_storage.cpp src/snapshot.cpp
   src/occupancy_grid.cpp src/observer.cpp
-  src/snapshot_repository.cpp src/observation_worker.cpp)
+  src/snapshot_repository.cpp src/observation_worker.cpp
+  src/observation_ledger.cpp src/observation_ingress.cpp src/snapshot_wait_board.cpp)
 target_include_directories(uld_occ_observer_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include> ${OCTOMAP_INCLUDE_DIRS})
@@ -39,6 +40,9 @@ if(BUILD_TESTING)
             $<TARGET_FILE:observer_cli> $<TARGET_FILE:observer_profile_cli>
             $<TARGET_FILE:observer_eval_native>
             ${CMAKE_CURRENT_SOURCE_DIR}/config/observer.yaml)
+  add_executable(observer_repair_s1_behavior test/test_repair_s1_behavior.cpp)
+  target_link_libraries(observer_repair_s1_behavior PRIVATE uld_occ_observer_io)
+  add_test(NAME observer_repair_s1_behavior COMMAND observer_repair_s1_behavior)
   add_test(NAME repair_s0_judge
     COMMAND python3 -m pytest -q --tb=line ${CMAKE_CURRENT_SOURCE_DIR}/test/test_repair_s0.py)
 endif()
@@ -84,6 +88,7 @@ if(OBSERVER_WITH_ROS)
     "srv/IntegrateObservation.srv" "srv/GetSnapshot.srv" "srv/ReadCells.srv"
     "srv/ReadSurface.srv" "srv/ReleaseSnapshot.srv" "srv/ResetObservation.srv"
     "srv/CheckpointObservation.srv"
+    "srv/GetObservationStatus.srv" "srv/WaitSnapshot.srv" "srv/GetResourceUsage.srv"
     DEPENDENCIES sensor_msgs geometry_msgs)
   add_executable(observer_node src/observer_node.cpp src/ros_adapters.cpp)
   target_link_libraries(observer_node uld_occ_observer_io)
