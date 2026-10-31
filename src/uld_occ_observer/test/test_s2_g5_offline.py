@@ -127,6 +127,64 @@ def test_profile_frames_keep_distinct_surface_times_and_directories(tmp_path):
     assert sum(item["cold_start"] for item in adapter.profile_calls) == 4 * 30
 
 
+def test_completed_receipt_is_integrated_without_counting_as_subscription():
+    expected = {"epoch": 1, "sensor_id": "cam0", "observation_id": "obs-1"}
+    response = {
+        "status": "COMPLETED",
+        "receipt": {
+            "status": "INTEGRATED",
+            "sensor_id": "cam0",
+            "observation_id": "obs-1",
+            "identity": {"epoch": 1},
+        },
+    }
+    got = campaign_executor.interpret_observation_status(response, expected, subscribed_receipt=False)
+    assert got["disposition"] == "integrated"
+    assert got["receipt_status"] == "INTEGRATED"
+    assert got["receipt_received"] is False
+    subscribed = campaign_executor.interpret_observation_status(response, expected, subscribed_receipt=True)
+    assert subscribed["receipt_received"] is True
+    for top in ("REJECTED", "EXPIRED", "NOT_SEEN"):
+        failed = campaign_executor.interpret_observation_status(
+            {"status": top, "receipt": {"status": top, "sensor_id": "cam0", "observation_id": "obs-1"}},
+            expected)
+        assert failed["disposition"] == top
+        assert failed["disposition"] != "integrated"
+
+
+def test_injected_query_time_does_not_stretch_sends(tmp_path):
+    plan = _plan()
+    plan["o7_windows"] = [plan["o7_windows"][0]]
+
+    class SlowQuery(campaign_executor.OfflineAdapter):
+        def ros_query(self, window, index):
+            result = super().ros_query(window, index)
+            self.clock.advance(1.0)
+            return result
+
+    adapter = SlowQuery()
+    campaign_executor.schedule(
+        plan, adapter, tmp_path, stages=("o7",), input_limit=2,
+        allow_incomplete_dependencies=True)
+    sends = [entry for entry in adapter.order if entry[0] == "send"]
+    assert [entry[3] for entry in sends] == pytest.approx([0.0, 0.5])
+    assert [entry[4] for entry in sends] == pytest.approx([0.0, 0.5])
+    assert adapter.clock.elapsed_s > 1.0
+
+
+def test_authorized_live_route_does_not_start_official_windows(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("ULD_OCC_S3_OPEN", "1")
+    monkeypatch.setenv("ULD_OCC_S2_CONFIRM_OFFICIAL", "1")
+    monkeypatch.setenv("ULD_OCC_S2_ADAPTER", "live")
+    code = campaign_executor.main(["--mode", "stage", "--stage", "o5", "--out", str(tmp_path)])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 2
+    assert payload["adapter"] == "LiveCampaign"
+    assert payload["reason"] == "official_long_window_not_started"
+    assert payload["started"]["o5"] == 0
+    assert payload["official_samples"] == "not_run"
+
+
 def test_open_stage_dispatches_the_injected_runner(tmp_path, monkeypatch):
     monkeypatch.delenv("ULD_OCC_S3_OPEN", raising=False)
     closed = campaign_executor.main(["--mode", "stage", "--stage", "o5", "--out", str(tmp_path / "closed")])

@@ -1,0 +1,14 @@
+{
+  "items": [
+    {"id": "terminal-completed", "status": "pass", "observation": "COMPLETED plus receipt.INTEGRATED is integrated; subscription is separate"},
+    {"id": "terminal-negative", "status": "pass", "observation": "REJECTED, EXPIRED, NOT_SEEN stay unsuccessful"},
+    {"id": "send-planned-actual", "status": "pass", "observation": "injected 1s query leaves planned and actual send times at 0 and 0.5"},
+    {"id": "short-chain", "status": "pass", "observation": "one topic input, WaitSnapshot OK, GetSnapshot handle, 15 surface pages, 4096 ROI, release OK"},
+    {"id": "wait-snapshot-handle", "status": "not_evaluated", "observation": "WaitSnapshot.srv has handle but send_wait does not fill it; handle came from GetSnapshot"},
+    {"id": "formal-judge", "status": "pass", "observation": "short sample judge_pass is false"},
+    {"id": "o9-retained", "status": "pass", "observation": "30/30 saved traces still complete; product sources unchanged"},
+    {"id": "placement-bridge", "status": "not_evaluated"},
+    {"id": "official-windows", "status": "not_evaluated"},
+    {"id": "resource-512mib", "status": "not_evaluated"}
+  ]
+}

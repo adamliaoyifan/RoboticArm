@@ -358,13 +358,26 @@ def test_materialize_and_live_smokes_stay_non_scored(tmp_path):
     assert profile["non_scored"] is True
     assert profile["formal_pass"] is False
     assert profile["parseable"] is True
-    assert profile["trace"]["capture_complete"] is True
-    assert profile["stages"][0]["judge"]["pass"] is False
+    assert profile["processes"] == 1
+    assert profile["surfaces"]["surface_first_ms"] is not None
+    assert profile["surfaces"]["surface_repeat_ms"] is not None
+    assert profile["surfaces"]["surface_after_update_ms"] is not None
+    assert profile["judge"]["pass"] is False
 
     ros = campaign_executor.smoke_ros(plan, NODE, str(GEOMETRY), str(CONFIG), tmp_path / "ros")
     assert ros["non_scored"] is True
     assert ros["formal_pass"] is False
     assert ros["parseable"] is True
+    assert ros["terminal"]["status_query"] == "COMPLETED"
+    assert ros["terminal"]["receipt_status"] == "INTEGRATED"
+    assert ros["terminal"]["receipt_received"] is True
+    chain = ros["chain"]
+    assert chain["wait_status"] == "OK"
+    assert chain["surface_done"] is True
+    assert chain["identity_stable"] is True
+    assert chain["release_status"] == "OK"
+    assert chain["age_within_2s"] is True
     assert ros["stages"][0]["judge"]["pass"] is False
     assert ros["sender_thread"] != ros["spin_thread"]
+    assert ros["resource_certification"] == "NOT_EVALUATED"
     assert ros["dependency_gate"] == "skipped_non_scored"

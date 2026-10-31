@@ -22,6 +22,59 @@ GROUP_KEYS = ("resolution", "boxes", "hull", "cloud", "outside", "cross")
 BUDGET_S = 8 * 3600
 
 
+def _field(obj, name):
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return obj.get(name)
+    return getattr(obj, name, None)
+
+
+def interpret_observation_status(response, expected, subscribed_receipt=False):
+    """Ledger status is COMPLETED. The integrate result is receipt.status.
+
+    receipt_received is true only when an UpdateReceipt subscription observed
+    the same identity. A status query does not count as that subscription.
+    """
+    top = _field(response, "status")
+    receipt = _field(response, "receipt")
+    inner = _field(receipt, "status")
+    identity = _field(receipt, "identity")
+    epoch = _field(identity, "epoch") if identity is not None else _field(receipt, "epoch")
+    sensor = _field(receipt, "sensor_id")
+    observation = _field(receipt, "observation_id")
+    identity_ok = (
+        sensor == expected.get("sensor_id") and observation == expected.get("observation_id")
+        and (expected.get("epoch") is None or epoch in (None, expected.get("epoch")))
+    )
+    if top == "NOT_SEEN":
+        disposition = "NOT_SEEN"
+    elif top == "EXPIRED":
+        disposition = "EXPIRED"
+    elif top == "REJECTED":
+        disposition = "REJECTED"
+    elif not identity_ok:
+        disposition = "identity_mismatch"
+    elif top == "COMPLETED" and inner == "INTEGRATED":
+        disposition = "integrated"
+    else:
+        disposition = "unknown"
+    return {
+        "disposition": disposition,
+        "status_query": top,
+        "receipt_status": inner,
+        "identity_ok": identity_ok and disposition == "integrated",
+        "receipt_received": bool(subscribed_receipt),
+    }
+
+
+def launch_process(argv, **kwargs):
+    """The only process-start boundary for a live runner."""
+    kwargs.setdefault("text", True)
+    kwargs.setdefault("capture_output", True)
+    return subprocess.run(argv, **kwargs)
+
+
 class ManualClock:
     def __init__(self, step_s=0.0):
         self.elapsed_s = 0.0
@@ -134,13 +187,16 @@ class OfflineAdapter:
             sample["resources"] = _protocol_resources()
         return sample
 
-    def ros_send(self, window, index, input_id):
+    def ros_send(self, window, index, input_id, deadline=None, actual=None):
+        planned = self.clock.elapsed_s if deadline is None else deadline
+        actual_s = planned if actual is None else actual
         self.sender_calls.append((window["id"], index))
-        self.order.append(("send", window["id"], index, self.clock.elapsed_s))
+        self.order.append(("send", window["id"], index, planned, actual_s))
 
-    def ros_collect(self, window, index, input_id):
+    def ros_collect(self, window, index, input_id, deadline=None):
+        stamp = self.clock.elapsed_s if deadline is None else deadline
         self.executor_calls.append((window["id"], index))
-        self.order.append(("collect", window["id"], index, self.clock.elapsed_s))
+        self.order.append(("collect", window["id"], index, stamp))
         phase = _phase(window)
         disposition = self.input_disposition
         if (window["kind"] == "overload" and disposition == "integrated"
@@ -173,8 +229,9 @@ class OfflineAdapter:
             row["integrate_ms"] = 40.0
         return row
 
-    def ros_query(self, window, index):
-        self.query_calls.append((window["id"], index, self.clock.elapsed_s))
+    def ros_query(self, window, index, deadline=None):
+        stamp = self.clock.elapsed_s if deadline is None else deadline
+        self.query_calls.append((window["id"], index, stamp))
         if not self.emit_queries:
             return None
         op = "immediate"
@@ -214,8 +271,8 @@ class OfflineAdapter:
             return None
         return _health_times(window["duration_s"])
 
-    def ros_drain(self, window):
-        self.drain_time = self.clock.elapsed_s
+    def ros_drain(self, window, deadline=None):
+        self.drain_time = self.clock.elapsed_s if deadline is None else deadline
         return self.inflight_after_drain
 
     def stability_frame(self, run_id, index):
@@ -441,31 +498,42 @@ def _run_ros(plan, adapter, out, budget_s, input_limit):
         input_count = window["inputs"] if input_limit is None else min(window["inputs"], input_limit)
         full_queries = window.get("queries") or 0
         query_count = full_queries if input_limit is None else min(full_queries, input_limit)
+        origin = adapter.clock.elapsed_s
+        input_hz = float(window["input_hz"])
         sent = []
-        queries = []
-        cursor = 0.0
-        for kind, index, stamp in _window_events(window, input_count, query_count):
-            if not _advance(adapter.clock, budget_s, stamp - cursor):
+        # Send deadlines are fixed when the window opens. A query may advance
+        # the clock afterwards; that duration is not added to the next send.
+        for index in range(input_count):
+            deadline = origin + index / input_hz
+            if deadline > origin and adapter.clock.elapsed_s + (deadline - origin) >= budget_s:
                 budget_hit = True
                 break
-            cursor = stamp
-            if kind == "input":
-                adapter.ros_send(window, index, _input_id(window, index))
-                sent.append(index)
-                started += 1
-            else:
+            adapter.ros_send(window, index, _input_id(window, index), deadline, deadline)
+            sent.append(index)
+            started += 1
+        queries = []
+        if not budget_hit:
+            query_hz = float(window.get("query_hz") or 1)
+            for index in range(query_count):
+                deadline = origin + index / query_hz
+                if adapter.clock.elapsed_s < deadline:
+                    adapter.clock.advance(deadline - adapter.clock.elapsed_s)
                 query = adapter.ros_query(window, index)
                 if query is not None:
                     queries.append(query)
+        last_send = origin if not sent else origin + (sent[-1]) / input_hz
         inflight = None
         if not budget_hit and window["kind"] == "overload":
-            if _advance(adapter.clock, budget_s, window.get("drain_s") or 0):
-                inflight = adapter.ros_drain(window)
+            drain_at = last_send + float(window.get("drain_s") or 0)
+            if _advance(adapter.clock, budget_s, max(0.0, drain_at - adapter.clock.elapsed_s)):
+                inflight = adapter.ros_drain(window, drain_at)
             else:
                 budget_hit = True
         elif not budget_hit:
-            _advance(adapter.clock, budget_s, window["duration_s"] - cursor)
-        rows = [adapter.ros_collect(window, index, _input_id(window, index)) for index in sent]
+            planned_end = origin + float(window["duration_s"])
+            _advance(adapter.clock, budget_s, max(0.0, planned_end - adapter.clock.elapsed_s))
+        collect_at = origin + float(window["duration_s"])
+        rows = [adapter.ros_collect(window, index, _input_id(window, index), collect_at) for index in sent]
         health = adapter.ros_health(window)
         artifact = _assemble_window(window, rows, queries, health, inflight)
         _write(out / "o7" / ("%s.json" % window["id"]), artifact)
@@ -506,14 +574,13 @@ def _run_stability(plan, adapter, out, budget_s):
     budget_hit = False
     runs = []
     for run_id in item["runs"]:
-        if not _advance(adapter.clock, budget_s, item["duration_s"]):
-            budget_hit = True
-            break
-        for index in range(item["saturation_frames"]):
-            if adapter.clock.elapsed_s >= budget_s:
+        origin = adapter.clock.elapsed_s
+        frames = item["saturation_frames"]
+        for index in range(frames):
+            mark = origin + (index + 1) * (item["duration_s"] / frames)
+            if not _advance(adapter.clock, budget_s, mark - adapter.clock.elapsed_s):
                 budget_hit = True
                 break
-            adapter.clock.consume()
             adapter.stability_frame(run_id, index)
             started += 1
         if budget_hit:
@@ -597,6 +664,8 @@ class LiveProfileAdapter:
         self.profile_calls = []
         self.trace_verdict = None
         self.receipt_status = None
+        self.processes = 0
+        self.surfaces = {}
 
     def profile_frame(self, group, index, warmup, dest):
         import yaml
@@ -632,11 +701,11 @@ class LiveProfileAdapter:
         env["ULD_OCC_INTERFACE_TRACE"] = "1"
         env["ULD_OCC_TRACE_PATH"] = str(trace)
         env["ULD_OCC_TRACE_RUN_ID"] = "live"
-        timeout = self.clock.remaining(BUDGET_S)
-        completed = subprocess.run(
+        timeout = max(self.clock.remaining(BUDGET_S), 0.001)
+        completed = launch_process(
             [self.cli, "--geometry", self.geometry, "--config", self.config,
              "--manifest", str(manifest), "--out", str(samples)],
-            env=env, text=True, capture_output=True, timeout=timeout if timeout > 1 else None)
+            env=env, timeout=timeout)
         (run / "cli.log").write_text(completed.stdout + "\n" + completed.stderr)
         if completed.returncode != 0:
             raise RuntimeError(completed.stderr[-400:] or completed.stdout[-400:])
@@ -658,18 +727,198 @@ class LiveProfileAdapter:
                 sample[key] = value
         return sample
 
+    def run_cumulative(self, group, frame_count, dest):
+        """One profile process, several frames, three distinct surface calls."""
+        import yaml
+        import capture_replay
+        geometry = group.get("geometry_file") or self.geometry
+        config = group.get("config_file") or self.config
+        dest = Path(dest)
+        dest.mkdir(parents=True, exist_ok=True)
+        emitted = dest / "emitted"
+        completed = launch_process([
+            self.eval_native, "--geometry", geometry, "--config", config, "--gate", "emit-window",
+            "--group", group["id"], "--boxes", str(group["boxes"]), "--cloud", str(group["cloud"]),
+            "--outside", str(group["outside"]), "--cross", str(group["cross"]),
+            "--warmup", "0", "--repeat", str(frame_count), "--out", str(emitted),
+        ], timeout=max(self.clock.remaining(BUDGET_S), 0.001))
+        if completed.returncode != 0:
+            raise RuntimeError((completed.stderr or completed.stdout)[-400:])
+        frames = sorted((emitted / "frames").glob("f*.yaml"))
+        if len(frames) < frame_count:
+            raise RuntimeError("generator wrote %d frames" % len(frames))
+        manifest = {
+            "case_id": "cumulative-%s" % group["id"],
+            "mode": "off",
+            "surface": True,
+            "state_digest": False,
+            "frames": [{
+                "path": os.path.relpath(frame, dest),
+                "sha256": capture_replay.sha256_file(frame),
+                "warmup": False,
+                "expect_status": "INTEGRATED",
+            } for frame in frames[:frame_count]],
+        }
+        (dest / "manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))
+        samples = dest / "samples.yaml"
+        timeout = max(self.clock.remaining(BUDGET_S), 0.001)
+        completed = launch_process(
+            [self.cli, "--geometry", geometry, "--config", config,
+             "--manifest", str(dest / "manifest.yaml"), "--out", str(samples)],
+            timeout=timeout)
+        (dest / "cli.log").write_text((completed.stdout or "") + "\n" + (completed.stderr or ""))
+        if completed.returncode != 0:
+            raise RuntimeError((completed.stderr or completed.stdout)[-400:])
+        self.processes += 1
+        documents = [row for row in yaml.safe_load_all(samples.read_text()) if isinstance(row, dict)]
+        self.receipt_status = documents[0]["receipt"]["status"]
+        first = documents[0]["surface_first_call"]["external_ms"]
+        repeat = documents[0]["surface_second_call"]["external_ms"]
+        after = documents[1]["surface_first_call"]["external_ms"] if len(documents) > 1 else None
+        self.surfaces = {
+            "surface_first_ms": first,
+            "surface_repeat_ms": repeat,
+            "surface_after_update_ms": after,
+        }
+        scored = []
+        for document in documents:
+            call = document.get("surface_first_call") if isinstance(document.get("surface_first_call"), dict) else {}
+            again = document.get("surface_second_call") if isinstance(document.get("surface_second_call"), dict) else {}
+            sample = {"integrate_ms": document.get("integrate_external_ms")}
+            if call.get("external_ms") is not None:
+                sample["surface_first_ms"] = call["external_ms"]
+            if again.get("external_ms") is not None:
+                sample["surface_repeat_ms"] = again["external_ms"]
+            if document.get("roi_ms") is not None:
+                sample["roi_ms"] = document["roi_ms"]
+            if document.get("acquire_ms") is not None:
+                sample["acquire_ms"] = document["acquire_ms"]
+            if document.get("process_peak_rss_kib") is not None:
+                sample["rss_kib"] = document["process_peak_rss_kib"]
+            scored.append(sample)
+        if after is not None and scored:
+            scored[0]["surface_after_update_ms"] = after
+        return scored
+
 
 def smoke_profile(plan, cli, eval_native, geometry, config, out):
     case = next(item for item in plan["o5_cases"] if item["id"] == "r02_b00_chamfer_c30000_o50_x00")
-    mini = {"o5_cases": [case], "o6_groups": [], "o7_windows": [], "o8": plan["o8"]}
-    adapter = LiveProfileAdapter(cli, eval_native, geometry, config, out)
-    result = schedule(mini, adapter, out, stages=("o5",), frame_limit=1, scored=False)
-    result["non_scored"] = True
-    result["parseable"] = adapter.receipt_status == "INTEGRATED"
-    result["trace"] = adapter.trace_verdict
-    result["receipt_status"] = adapter.receipt_status
-    result["formal_pass"] = False
-    return result
+    group = dict(case["group"], geometry_file=geometry, config_file=config)
+    adapter = LiveProfileAdapter(cli, eval_native, geometry, config, out, clock=MonotonicClock())
+    samples = adapter.run_cumulative(group, 2, Path(out) / "cumulative")
+    artifact = _assemble_group(group, samples, "o5")
+    verdict = repair_s0_judge.judge_case(artifact)
+    return {
+        "non_scored": True,
+        "formal_pass": False,
+        "parseable": adapter.receipt_status == "INTEGRATED",
+        "receipt_status": adapter.receipt_status,
+        "processes": adapter.processes,
+        "surfaces": adapter.surfaces,
+        "judge": verdict,
+        "stages": [{"judge": verdict}],
+        "product_resource_certification": "NOT_EVALUATED",
+    }
+
+
+def _identity_tuple(identity):
+    return (
+        _field(identity, "epoch"),
+        _field(identity, "observed_revision"),
+        _field(identity, "geometry_hash"),
+        _field(identity, "config_digest"),
+    )
+
+
+def _read_snapshot_chain(session, expected):
+    """WaitSnapshot, full ReadSurface, one ReadCells page, then release."""
+    from uld_occ_observer.srv import GetSnapshot, ReadCells, ReadSurface, ReleaseSnapshot
+    wait = session.wait_for(expected["epoch"], expected["observation_id"], 2000)
+    chain = {
+        "wait_status": wait.status,
+        "wait_reason": wait.reason,
+        "age_ns": int(wait.age_ns),
+        "wait_handle": wait.handle,
+        "identity": _identity_tuple(wait.identity),
+        "covered_stamp_ns": int(wait.identity.last_integrated_stamp_ns),
+    }
+    handle = ""
+    snapshot = None
+    if wait.status == "OK":
+        acquire = session.node.create_client(GetSnapshot, "/uld_occ_observer/get_snapshot")
+        session.wait_service(acquire, timeout=5)
+        request = GetSnapshot.Request()
+        request.expected_epoch = int(expected["epoch"])
+        request.max_age_ms = 2000
+        request.allow_stale = False
+        request.exact_revision = False
+        snapshot = session.call(acquire, request, 5)
+        chain["snapshot_status"] = snapshot.status
+        chain["snapshot_age_ns"] = int(snapshot.age_ns)
+        chain["snapshot_identity"] = _identity_tuple(snapshot.identity)
+        handle = snapshot.handle or ""
+        if chain["snapshot_identity"] != chain["identity"]:
+            chain["identity_stable"] = False
+    pages = []
+    cells = None
+    release_status = None
+    try:
+        if wait.status != "OK" or snapshot is None or snapshot.status != "OK" or not handle:
+            chain["handle"] = handle
+            return chain
+        chain["handle"] = handle
+        surface = session.node.create_client(ReadSurface, "/uld_occ_observer/read_surface")
+        roi = session.node.create_client(ReadCells, "/uld_occ_observer/read_cells")
+        release = session.node.create_client(ReleaseSnapshot, "/uld_occ_observer/release_snapshot")
+        session.wait_service(surface, timeout=5)
+        cursor = 0
+        while True:
+            request = ReadSurface.Request()
+            request.handle = handle
+            request.cursor = int(cursor)
+            request.limit = 512
+            page = session.call(surface, request, 5)
+            pages.append({
+                "status": page.status,
+                "done": bool(page.done),
+                "identity": _identity_tuple(page.identity),
+                "columns": len(page.x),
+            })
+            if page.status != "OK" or page.done:
+                break
+            cursor = page.next_cursor
+        session.wait_service(roi, timeout=5)
+        cell_request = ReadCells.Request()
+        cell_request.handle = handle
+        cell_request.begin = [0, 0, 0]
+        cell_request.end = [16, 16, 16]
+        cell_request.cursor = 0
+        cell_request.limit = 4096
+        cell_page = session.call(roi, cell_request, 5)
+        cells = {"status": cell_page.status, "identity": _identity_tuple(cell_page.identity),
+                 "count": len(cell_page.states)}
+    finally:
+        if handle:
+            try:
+                release = session.node.create_client(ReleaseSnapshot, "/uld_occ_observer/release_snapshot")
+                session.wait_service(release, timeout=5)
+                request = ReleaseSnapshot.Request()
+                request.handle = handle
+                release_status = session.call(release, request, 5).status
+            except Exception as exc:
+                release_status = "release_failed:%s" % exc
+    identities = [page["identity"] for page in pages]
+    if cells is not None:
+        identities.append(cells["identity"])
+    chain.update({
+        "pages": len(pages),
+        "surface_done": bool(pages) and pages[-1]["done"] and all(page["status"] == "OK" for page in pages),
+        "roi": cells,
+        "identity_stable": len(set(identities)) == 1 and identities[0][2] not in (None, ""),
+        "release_status": release_status,
+        "age_within_2s": int(wait.age_ns) <= 2_000_000_000,
+    })
+    return chain
 
 
 def smoke_ros(plan, node, geometry, config, out):
@@ -695,34 +944,77 @@ def smoke_ros(plan, node, geometry, config, out):
             self.sender_ident = None
             self.response = None
 
-        def ros_send(self, item, index, input_id):
+        def ros_send(self, item, index, input_id, deadline=None, actual=None):
+            del deadline, actual
             self.sender_calls.append((item["id"], index))
             def send():
+                import time as time_mod
                 self.sender_ident = threading.get_ident()
-                self.response = s2_rehearsal._integrate(holder["session"], geometry_hash, "smoke-1")
+                session = holder["session"]
+                session.broadcaster.sendTransform(s2_rehearsal.transform(session.next_stamp()))
+                time_mod.sleep(0.4)
+                stamp = session.next_stamp()
+                holder["planned_s"] = time_mod.monotonic()
+                holder["pub"].publish(s2_rehearsal.cloud_message(stamp))
+                holder["actual_s"] = time_mod.monotonic()
+                holder["observation_id"] = str(stamp)
+                holder["stamp_ns"] = stamp
             self.sender_thread = threading.Thread(target=send)
             self.sender_thread.start()
 
-        def ros_collect(self, item, index, input_id):
+        def ros_collect(self, item, index, input_id, deadline=None):
+            del deadline
             self.executor_calls.append((item["id"], index))
             if self.sender_thread is not None:
                 self.sender_thread.join(timeout=10)
-            status = self.response.receipt.status if self.response is not None else None
-            holder["status"] = status
+            terminal = holder.get("terminal") or {}
             return {
                 "input_id": input_id,
                 "phase": "score",
-                "disposition": "integrated" if status == "INTEGRATED" else "unknown",
-                "receipt_received": status == "INTEGRATED",
+                "disposition": terminal.get("disposition", "unknown"),
+                "receipt_received": terminal.get("receipt_received", False),
+                "status_query": terminal.get("status_query"),
+                "receipt_status": terminal.get("receipt_status"),
             }
 
         def ros_query(self, item, index):
-            return None
+            import time as time_mod
+            deadline = time_mod.monotonic() + 8
+            while holder.get("observation_id") is None and time_mod.monotonic() < deadline:
+                time_mod.sleep(0.02)
+            observation_id = holder.get("observation_id")
+            if not observation_id:
+                return None
+            last = None
+            session = holder["session"]
+            expected = {"epoch": 1, "sensor_id": "cam0", "observation_id": observation_id}
+            while time_mod.monotonic() < deadline:
+                last = session.query(1, observation_id)
+                subscribed = any(
+                    message.observation_id == observation_id and message.sensor_id == "cam0"
+                    for message in session.receipts)
+                terminal = interpret_observation_status(last, expected, subscribed)
+                holder["terminal"] = terminal
+                holder["query_status"] = terminal["disposition"]
+                if terminal["disposition"] in ("integrated", "REJECTED", "EXPIRED", "NOT_SEEN"):
+                    if terminal["disposition"] != "NOT_SEEN":
+                        break
+                time_mod.sleep(0.05)
+            if holder.get("terminal", {}).get("disposition") == "integrated":
+                holder["chain"] = _read_snapshot_chain(session, expected)
+            if last is None:
+                return None
+            return {
+                "query_id": "q-%d" % index,
+                "op": "wait_snapshot" if holder.get("chain", {}).get("wait_status") == "OK" else "status_query",
+                "status": holder.get("terminal", {}).get("status_query"),
+            }
 
         def ros_health(self, item):
             return None
 
-        def ros_drain(self, item):
+        def ros_drain(self, item, deadline=None):
+            del item, deadline
             return None
 
     adapter = Adapter()
@@ -737,15 +1029,38 @@ def smoke_ros(plan, node, geometry, config, out):
     try:
         session = s2_rehearsal.Session()
         holder["session"] = session
+        from rclpy.qos import QoSProfile, ReliabilityPolicy
+        from sensor_msgs.msg import PointCloud2
+        holder["pub"] = session.node.create_publisher(
+            PointCloud2, "/s2_g6_cloud", QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE))
         observer = s2_rehearsal.start_observer(node, geometry, config, out, [
-            "-p", "input_mode:=service", "-p", "sensor_id:=cam0", "-p", "behavior_test_hooks:=false",
+            "-p", "input_mode:=subscription", "-p", "sensor_id:=cam0",
+            "-p", "optical_frame:=d555_color_optical_frame",
+            "-p", "cloud_topic:=/s2_g6_cloud", "-p", "behavior_test_hooks:=false",
         ], env)
-        session.wait_service(session.integrate)
+        session.wait_service(session.status)
         result = schedule(
             mini, adapter, out, stages=("o7",), input_limit=1, scored=False,
             allow_incomplete_dependencies=True)
         result["sender_thread"] = adapter.sender_ident
         result["spin_thread"] = session.thread.ident
+        import time as time_mod
+        time_mod.sleep(1.2)
+        samples = []
+        for raw in session.health:
+            parsed = yaml.safe_load(raw)
+            if isinstance(parsed, dict) and "tree_nodes" in parsed:
+                samples.append(parsed["tree_nodes"])
+        result["stability_samples"] = samples
+        result["stability_official_180s"] = "not_run"
+        try:
+            from uld_occ_observer.srv import GetResourceUsage
+            session.wait_service(session.resource, timeout=5)
+            usage = session.call(session.resource, GetResourceUsage.Request(), 5)
+            result["resource_certification"] = usage.certification
+        except Exception as exc:
+            result["resource_certification"] = "NOT_EVALUATED"
+            result["resource_error"] = str(exc)[-200:]
     finally:
         if session is not None:
             session.close()
@@ -754,8 +1069,14 @@ def smoke_ros(plan, node, geometry, config, out):
         if rclpy.ok():
             rclpy.shutdown()
     result["non_scored"] = True
-    result["parseable"] = holder.get("status") == "INTEGRATED"
-    result["receipt_status"] = holder.get("status")
+    result["parseable"] = holder.get("query_status") == "integrated"
+    result["receipt_status"] = (holder.get("terminal") or {}).get("receipt_status")
+    result["terminal"] = holder.get("terminal")
+    result["chain"] = holder.get("chain")
+    if result["chain"] is not None:
+        (Path(out) / "chain.json").write_text(json.dumps(result["chain"], indent=2) + "\n")
+    result["planned_s"] = holder.get("planned_s")
+    result["actual_s"] = holder.get("actual_s")
     result["formal_pass"] = False
     return result
 
@@ -801,6 +1122,14 @@ def main(argv):
         payload["dispatched"] = True
         if adapter_name == "live" and os.environ.get("ULD_OCC_S2_CONFIRM_OFFICIAL") != "1":
             payload["reason"] = "official_samples_not_authorized"
+            payload["adapter"] = "LiveCampaign"
+            payload["started"] = {stage: 0 for stage in ("o5", "o6", "o7", "o8")}
+            print(json.dumps(payload))
+            return 2
+        if adapter_name == "live":
+            payload["adapter"] = "LiveCampaign"
+            payload["launch_boundary"] = "launch_process"
+            payload["reason"] = "official_long_window_not_started"
             payload["started"] = {stage: 0 for stage in ("o5", "o6", "o7", "o8")}
             print(json.dumps(payload))
             return 2
@@ -856,11 +1185,13 @@ def main(argv):
             "formal_pass": False,
             "parseable": payload["parseable"],
             "receipt_status": payload["receipt_status"],
-            "trace_complete": bool(payload["trace"] and payload["trace"]["capture_complete"]),
-            "judge_pass": payload["stages"][0]["judge"]["pass"],
+            "processes": payload["processes"],
+            "surfaces": payload["surfaces"],
+            "judge_pass": payload["judge"]["pass"],
             "product_resource_certification": "NOT_EVALUATED",
         }))
-        return 0 if payload["parseable"] and payload["trace"]["capture_complete"] and not payload["stages"][0]["judge"]["pass"] else 1
+        surfaces = payload["surfaces"]
+        return 0 if payload["parseable"] and payload["processes"] == 1 and surfaces.get("surface_after_update_ms") is not None and not payload["judge"]["pass"] else 1
     if args.mode == "smoke-ros":
         payload = smoke_ros(plan, args.node, args.geometry, args.config, args.out)
         print(json.dumps({
