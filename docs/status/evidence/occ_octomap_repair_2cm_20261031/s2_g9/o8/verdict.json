@@ -1,0 +1,9 @@
+{
+  "pass": false,
+  "reasons": [
+    "run_count",
+    "missing_observation",
+    "hold_count"
+  ],
+  "status": "fail"
+}

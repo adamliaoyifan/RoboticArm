@@ -1,0 +1,88 @@
+{
+  "gate": "o8",
+  "holds": [],
+  "official_duration_s": "not_run",
+  "runs": [
+    {
+      "health": [
+        {
+          "health": {
+            "adapter_rejected": 0,
+            "capabilities": [
+              "OBSERVE",
+              "RESET",
+              "QUERY",
+              "CHECKPOINT",
+              "RESTORE",
+              "STATUS",
+              "WAIT",
+              "RESOURCE"
+            ],
+            "clock_domain": "ros",
+            "config_digest": "8983ea7ae6c6383a531b28ef04306429069ec70b247b768b648456f20dfed821",
+            "duplicates": 0,
+            "epoch": 1,
+            "geometry_hash": "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+            "in_flight": 0,
+            "integrated": 2,
+            "known_cells": 30,
+            "last_integrated_stamp_ns": 1793490049246694772,
+            "map_revision": 2,
+            "max_queue_ms": 0.038214,
+            "queue_rejected": 0,
+            "rejected": 0,
+            "stamp_ns": 1793490049715500421,
+            "submitted": 2,
+            "tree_nodes": 71,
+            "waiting": 0
+          },
+          "t_s": 0.5019417069852352
+        },
+        {
+          "health": {
+            "adapter_rejected": 0,
+            "capabilities": [
+              "OBSERVE",
+              "RESET",
+              "QUERY",
+              "CHECKPOINT",
+              "RESTORE",
+              "STATUS",
+              "WAIT",
+              "RESOURCE"
+            ],
+            "clock_domain": "ros",
+            "config_digest": "8983ea7ae6c6383a531b28ef04306429069ec70b247b768b648456f20dfed821",
+            "duplicates": 0,
+            "epoch": 1,
+            "geometry_hash": "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+            "in_flight": 0,
+            "integrated": 2,
+            "known_cells": 30,
+            "last_integrated_stamp_ns": 1793490049246694772,
+            "map_revision": 2,
+            "max_queue_ms": 0.038214,
+            "queue_rejected": 0,
+            "rejected": 0,
+            "stamp_ns": 1793490050215497803,
+            "submitted": 2,
+            "tree_nodes": 71,
+            "waiting": 0
+          },
+          "t_s": 1.0036575170233846
+        }
+      ],
+      "node_count_stable": true,
+      "rss_median_kib": [
+        30428,
+        30448
+      ],
+      "rss_samples_kib": [
+        30428,
+        30448
+      ],
+      "run_id": "wire"
+    }
+  ],
+  "sample_window_s": 1.0145501578226686
+}

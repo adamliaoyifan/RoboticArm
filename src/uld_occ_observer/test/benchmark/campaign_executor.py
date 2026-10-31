@@ -20,6 +20,9 @@ import repair_s0_judge
 
 GROUP_KEYS = ("resolution", "boxes", "hull", "cloud", "outside", "cross")
 BUDGET_S = 8 * 3600
+WIRE_BUDGET_S = 180.0
+WIRE_FRAMES = 2
+WIRE_INPUTS = 2
 
 
 def _field(obj, name):
@@ -666,6 +669,13 @@ class LiveProfileAdapter:
         self.receipt_status = None
         self.processes = 0
         self.surfaces = {}
+        self.budget_s = BUDGET_S
+
+    def _timeout(self):
+        remaining = self.clock.remaining(self.budget_s)
+        if remaining <= 0:
+            raise TimeoutError("runner budget exhausted")
+        return remaining
 
     def profile_frame(self, group, index, warmup, dest):
         import yaml
@@ -701,11 +711,10 @@ class LiveProfileAdapter:
         env["ULD_OCC_INTERFACE_TRACE"] = "1"
         env["ULD_OCC_TRACE_PATH"] = str(trace)
         env["ULD_OCC_TRACE_RUN_ID"] = "live"
-        timeout = max(self.clock.remaining(BUDGET_S), 0.001)
         completed = launch_process(
             [self.cli, "--geometry", self.geometry, "--config", self.config,
              "--manifest", str(manifest), "--out", str(samples)],
-            env=env, timeout=timeout)
+            env=env, timeout=self._timeout())
         (run / "cli.log").write_text(completed.stdout + "\n" + completed.stderr)
         if completed.returncode != 0:
             raise RuntimeError(completed.stderr[-400:] or completed.stdout[-400:])
@@ -741,7 +750,7 @@ class LiveProfileAdapter:
             "--group", group["id"], "--boxes", str(group["boxes"]), "--cloud", str(group["cloud"]),
             "--outside", str(group["outside"]), "--cross", str(group["cross"]),
             "--warmup", "0", "--repeat", str(frame_count), "--out", str(emitted),
-        ], timeout=max(self.clock.remaining(BUDGET_S), 0.001))
+        ], timeout=self._timeout())
         if completed.returncode != 0:
             raise RuntimeError((completed.stderr or completed.stdout)[-400:])
         frames = sorted((emitted / "frames").glob("f*.yaml"))
@@ -761,11 +770,10 @@ class LiveProfileAdapter:
         }
         (dest / "manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))
         samples = dest / "samples.yaml"
-        timeout = max(self.clock.remaining(BUDGET_S), 0.001)
         completed = launch_process(
             [self.cli, "--geometry", geometry, "--config", config,
              "--manifest", str(dest / "manifest.yaml"), "--out", str(samples)],
-            timeout=timeout)
+            timeout=self._timeout())
         (dest / "cli.log").write_text((completed.stdout or "") + "\n" + (completed.stderr or ""))
         if completed.returncode != 0:
             raise RuntimeError((completed.stderr or completed.stdout)[-400:])
@@ -1186,6 +1194,362 @@ def smoke_ros(plan, node, geometry, config, out):
     return result
 
 
+def _save_failure(out, stage, reason, details):
+    bundle = Path(out) / "failure" / stage
+    bundle.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        "stage": stage,
+        "reason": reason,
+        "details": details,
+        "official_samples": "not_run",
+        "capture_complete": True,
+        "replay_possible": False,
+    }
+    (bundle / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    return bundle
+
+
+def _rss_kib(pid):
+    status = Path("/proc/%s/status" % pid)
+    if not status.is_file():
+        return None
+    for line in status.read_text().splitlines():
+        if line.startswith("VmRSS:"):
+            return int(line.split()[1])
+    return None
+
+
+def _wait_integrated(session, observation_id, deadline_s):
+    end = time.monotonic() + deadline_s
+    last = None
+    terminal = {"disposition": "unknown", "receipt_received": False}
+    expected = {"epoch": 1, "sensor_id": "cam0", "observation_id": observation_id}
+    while time.monotonic() < end:
+        last = session.query(1, observation_id)
+        subscribed = any(
+            message.observation_id == observation_id and message.sensor_id == "cam0"
+            for message in session.receipts)
+        terminal = interpret_observation_status(last, expected, subscribed)
+        if terminal["disposition"] in ("integrated", "REJECTED", "EXPIRED"):
+            break
+        time.sleep(0.05)
+    return last, terminal
+
+
+def _profile_group(plan, stage):
+    if stage == "o5":
+        case = next(item for item in plan["o5_cases"] if item["id"] == "r02_b00_chamfer_c30000_o50_x00")
+        return dict(case["group"])
+    return next(
+        group for group in plan["o6_groups"]
+        if group["resolution"] == 0.02 and group["hull"] == "chamfer"
+        and group["boxes"] == 0 and group["cloud"] == 30000
+        and group["outside"] == 0.5 and group["cross"] == 0.0)
+
+
+class LiveCampaign:
+    """Real O5–O8 adapters. wire() is the non-scored entry; official counts stay at zero."""
+
+    def __init__(self, cli, eval_native, node, geometry, config, clock=None):
+        self.clock = clock or MonotonicClock()
+        self.cli = cli
+        self.eval_native = eval_native
+        self.node = node
+        self.geometry = geometry
+        self.config = config
+        self.profile = None
+
+    def wire(self, plan, out):
+        out = Path(out)
+        out.mkdir(parents=True, exist_ok=True)
+        self.profile = LiveProfileAdapter(
+            self.cli, self.eval_native, self.geometry, self.config, out, clock=self.clock)
+        self.profile.budget_s = WIRE_BUDGET_S
+        result = {
+            "adapter": "LiveCampaign",
+            "scoring": "non_scored",
+            "official_samples": "not_run",
+            "formal_pass": False,
+            "product_resource_certification": "NOT_EVALUATED",
+            "reason": "non_scored_wiring",
+            "started": {stage: 0 for stage in ("o5", "o6", "o7", "o8")},
+            "stages": [],
+            "wiring_complete": False,
+            "short_samples_rejected": False,
+        }
+        stage_name = "o5"
+        try:
+            for stage_name in ("o5", "o6"):
+                result["stages"].append(self._wire_profile(plan, out, stage_name, result["started"]))
+            stage_name = "o7"
+            ros = self._wire_ros(plan, out, result["started"])
+            result["stages"].extend(ros)
+            result["sender"] = ros[0].get("sender")
+        except Exception as exc:
+            _save_failure(out, stage_name, type(exc).__name__, str(exc)[-800:])
+            result["reason"] = "wiring_failed"
+            result["error"] = str(exc)[-400:]
+            _write(out / "wiring.json", result)
+            return result
+        rejected = bool(result["stages"]) and all(
+            item.get("judge", {}).get("pass") is False for item in result["stages"])
+        result["short_samples_rejected"] = rejected
+        result["formal_pass"] = any(item.get("judge", {}).get("pass") is True for item in result["stages"])
+        result["wiring_complete"] = rejected and result["formal_pass"] is False and all(
+            item.get("executed") is True for item in result["stages"])
+        if result["formal_pass"]:
+            result["reason"] = "short_sample_not_rejected"
+        _write(out / "wiring.json", result)
+        return result
+
+    def _wire_profile(self, plan, out, stage, started):
+        group = _profile_group(plan, stage)
+        before = self.profile.processes
+        samples = self.profile.run_cumulative(group, WIRE_FRAMES, out / stage / "cumulative")
+        started[stage] = len(samples)
+        artifact = _assemble_group(group, samples, stage)
+        planned = [
+            {"id": item[0]["id"], **{key: item[0][key] for key in GROUP_KEYS}}
+            for item in _profile_jobs(plan, stage)
+        ]
+        campaign = {
+            "gate": "%s_campaign" % stage,
+            "groups": [artifact],
+            "planned_groups": planned,
+        }
+        verdict = repair_s0_judge.judge_case(campaign)
+        _write(out / stage / "verdict.json", verdict)
+        surfaces = dict(self.profile.surfaces)
+        finite = all(isinstance(surfaces.get(key), (int, float)) and not isinstance(surfaces.get(key), bool)
+                     for key in ("surface_first_ms", "surface_repeat_ms", "surface_after_update_ms"))
+        return {
+            "stage": stage,
+            "started": len(samples),
+            "processes": self.profile.processes - before,
+            "surfaces": surfaces,
+            "judge": verdict,
+            "executed": self.profile.processes - before == 1 and len(samples) == WIRE_FRAMES and finite
+            and self.profile.receipt_status == "INTEGRATED" and verdict.get("pass") is False,
+        }
+
+    def _wire_ros(self, plan, out, started):
+        import threading
+        parent = str(Path(__file__).resolve().parents[1])
+        if parent not in sys.path:
+            sys.path.insert(0, parent)
+        import s2_rehearsal
+        window = next(item for item in plan["o7_windows"] if item["kind"] == "normal" and item["id"] == "normal_b00_r0")
+        group = next(item for item in plan["o6_groups"] if item["id"] == window["group_id"])
+        geometry = group["geometry_file"]
+        config = group["config_file"]
+        previous_domain = os.environ.get("ROS_DOMAIN_ID")
+        os.environ["ROS_DOMAIN_ID"] = "48"
+        import rclpy
+        if not rclpy.ok():
+            rclpy.init()
+        session = None
+        observer = None
+        (out / "o7").mkdir(parents=True, exist_ok=True)
+        try:
+            session = s2_rehearsal.Session()
+            env = os.environ.copy()
+            observer = s2_rehearsal.start_observer(self.node, geometry, config, out / "o7", [
+                "-p", "input_mode:=subscription", "-p", "sensor_id:=cam0",
+                "-p", "optical_frame:=d555_color_optical_frame",
+                "-p", "cloud_topic:=/s2_wire_cloud", "-p", "behavior_test_hooks:=false",
+            ], env)
+            from rclpy.qos import QoSProfile, ReliabilityPolicy
+            from sensor_msgs.msg import PointCloud2
+            publisher = session.node.create_publisher(
+                PointCloud2, "/s2_wire_cloud", QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE))
+            session.wait_service(session.status)
+            session.broadcaster.sendTransform(s2_rehearsal.transform(session.next_stamp()))
+            time.sleep(0.3)
+            origin = time.monotonic()
+            deadlines = [origin + index / float(window["input_hz"]) for index in range(WIRE_INPUTS)]
+            sent = []
+            sender_ident = {}
+
+            def publish():
+                sender_ident["id"] = threading.get_ident()
+                for index, deadline in enumerate(deadlines):
+                    delay = deadline - time.monotonic()
+                    if delay > 0:
+                        time.sleep(delay)
+                    stamp = session.next_stamp()
+                    actual = time.monotonic()
+                    publisher.publish(s2_rehearsal.cloud_message(stamp))
+                    sent.append({
+                        "index": index,
+                        "planned_s": deadline - origin,
+                        "actual_s": actual - origin,
+                        "observation_id": str(stamp),
+                        "stamp_ns": stamp,
+                    })
+
+            sender = threading.Thread(target=publish)
+            sender.start()
+            query_started = time.monotonic()
+            deadline = time.monotonic() + 8
+            while len(sent) < 1 and time.monotonic() < deadline:
+                time.sleep(0.01)
+            if not sent:
+                raise TimeoutError("sender published no cloud")
+            chains = []
+            rows = []
+            queries = []
+            for index in range(WIRE_INPUTS):
+                wait_end = time.monotonic() + 8
+                while len(sent) <= index and time.monotonic() < wait_end:
+                    time.sleep(0.01)
+                if len(sent) <= index:
+                    raise TimeoutError("sender missed input %d" % index)
+                item = sent[index]
+                last, terminal = _wait_integrated(session, item["observation_id"], 8)
+                row = {
+                    "input_id": "score-%d" % index,
+                    "phase": "score",
+                    "publish_end_ns": item["stamp_ns"],
+                    "disposition": terminal.get("disposition", "unknown"),
+                    "receipt_received": terminal.get("receipt_received", False),
+                    "receipt_status": terminal.get("receipt_status"),
+                    "status_query": terminal.get("status_query"),
+                    "terminal_count": 1 if terminal.get("receipt_received") else 0,
+                    "queue_age_ms": None,
+                    "observed_revision": None,
+                }
+                receipt = _field(last, "receipt")
+                if receipt is not None:
+                    row["queue_age_ms"] = _field(receipt, "queue_ms")
+                    row["integrate_ms"] = _field(receipt, "total_ms")
+                    identity = _field(receipt, "identity")
+                    row["observed_revision"] = _field(identity, "observed_revision")
+                rows.append(row)
+                expected = {
+                    "epoch": 1,
+                    "sensor_id": "cam0",
+                    "observation_id": item["observation_id"],
+                }
+                if terminal.get("disposition") == "integrated" and row["observed_revision"] is not None:
+                    expected["min_observed_revision"] = int(row["observed_revision"])
+                    expected.update(expected_map_contract(geometry, config))
+                    pinned = _identity_tuple(_field(receipt, "identity"))
+                    expected["receipt_matches_contract"] = pinned[4:] == (
+                        expected["geometry_hash"], expected["config_digest"], expected["clock_domain"])
+                    chain = _read_snapshot_chain(session, expected)
+                else:
+                    chain = {"identity_stable": False, "reasons": ["terminal_%s" % terminal.get("disposition")]}
+                (out / "o7").mkdir(parents=True, exist_ok=True)
+                (out / "o7" / ("chain-%d.json" % index)).write_text(json.dumps(chain, indent=2) + "\n")
+                chains.append(chain)
+                identity = chain.get("identity") or [None, None, None]
+                queries.append({
+                    "query_id": "q-%d" % index,
+                    "op": "wait_snapshot" if chain.get("wait_status") == "OK" else "status_query",
+                    "status": chain.get("wait_status"),
+                    "latency_ms": (time.monotonic() - query_started) * 1000.0,
+                    "age_ms": None if chain.get("age_ns") is None else chain["age_ns"] / 1e6,
+                    "covers_observation": chain.get("identity_stable") is True,
+                    "expected_observation_id": item["observation_id"],
+                    "epoch": identity[0],
+                    "observed_revision": identity[2],
+                    "content_hash": chain.get("content_sha256") or "",
+                })
+            sender.join(timeout=5)
+            if sender.is_alive():
+                raise TimeoutError("sender thread did not finish")
+            query_s = time.monotonic() - query_started
+            interval = sent[1]["actual_s"] - sent[0]["actual_s"]
+            import yaml
+            health = []
+            sample_origin = time.monotonic()
+            rss = []
+            for _ in range(2):
+                time.sleep(0.5)
+                parsed = None
+                for raw in reversed(session.health):
+                    loaded = yaml.safe_load(raw)
+                    if isinstance(loaded, dict) and "tree_nodes" in loaded:
+                        parsed = loaded
+                        break
+                health.append({"t_s": time.monotonic() - sample_origin, "health": parsed})
+                rss.append(_rss_kib(observer.proc.pid))
+            certification = None
+            try:
+                session.wait_service(session.resource, timeout=5)
+                from uld_occ_observer.srv import GetResourceUsage
+                usage = session.call(session.resource, GetResourceUsage.Request(), 5)
+                certification = usage.certification
+            except Exception as exc:
+                (out / "o7" / "resource_error.txt").write_text(str(exc)[-400:])
+            artifact = _assemble_window(window, rows, queries, None, None)
+            window_verdict = repair_s0_judge.judge_o7_normal(artifact)
+            planned = [item["id"] for item in plan["o7_windows"] if item["kind"] == "normal"]
+            campaign = repair_s0_judge.judge_o7_campaign({"windows": [artifact], "planned_window_ids": planned})
+            _write(out / "o7" / "window.json", artifact)
+            _write(out / "o7" / "campaign_verdict.json", campaign)
+            o8 = {
+                "gate": "o8",
+                "official_duration_s": "not_run",
+                "sample_window_s": time.monotonic() - sample_origin,
+                "runs": [{
+                    "run_id": "wire",
+                    "health": health,
+                    "rss_samples_kib": rss,
+                    "rss_median_kib": [item for item in rss if item is not None],
+                    "node_count_stable": len(health) == 2 and health[0]["health"] and health[1]["health"]
+                    and health[0]["health"].get("tree_nodes") == health[1]["health"].get("tree_nodes"),
+                }],
+                "holds": [],
+            }
+            o8_verdict = repair_s0_judge.judge_o8(o8)
+            _write(out / "o8" / "runs.json", o8)
+            _write(out / "o8" / "verdict.json", o8_verdict)
+            started["o7"] = len(rows)
+            started["o8"] = len(o8["runs"])
+            chains_ok = all(chain.get("identity_stable") is True for chain in chains)
+            if not chains_ok:
+                _save_failure(out, "o7", "chain_not_stable",
+                              json.dumps([chain.get("reasons") for chain in chains])[-800:])
+            sender_ok = (
+                len(sent) == WIRE_INPUTS
+                and abs(sent[1]["planned_s"] - sent[0]["planned_s"] - 0.5) < 1e-6
+                and sender_ident.get("id") not in (None, session.thread.ident))
+            o7 = {
+                "stage": "o7",
+                "started": len(rows),
+                "judge": campaign,
+                "window_judge": window_verdict,
+                "executed": chains_ok and sender_ok and certification == "NOT_EVALUATED",
+                "sender": {
+                    "planned_s": [item["planned_s"] for item in sent],
+                    "actual_s": [item["actual_s"] for item in sent],
+                    "interval_s": interval,
+                    "query_s": query_s,
+                    "sender_thread": sender_ident.get("id"),
+                    "spin_thread": session.thread.ident,
+                },
+                "chains_stable": chains_ok,
+                "resource_certification": certification,
+            }
+            return [
+                o7,
+                {"stage": "o8", "started": 1, "judge": o8_verdict, "executed": o8_verdict.get("pass") is False
+                 and o8["official_duration_s"] == "not_run"},
+            ]
+        finally:
+            if session is not None:
+                session.close()
+            if observer is not None:
+                observer.stop()
+            if rclpy.ok():
+                rclpy.shutdown()
+            if previous_domain is None:
+                os.environ.pop("ROS_DOMAIN_ID", None)
+            else:
+                os.environ["ROS_DOMAIN_ID"] = previous_domain
+
+
 def _s3_refused(stage):
     plan_note = {
         "stage": stage,
@@ -1203,7 +1567,7 @@ def main(argv):
     parser.add_argument("--out", required=True)
     parser.add_argument("--mode", required=True, choices=(
         "offline-proof", "stage", "judge", "replay", "materialize", "rejudge-o9",
-        "smoke-cli", "smoke-ros"))
+        "smoke-cli", "smoke-ros", "wire"))
     parser.add_argument("--cli")
     parser.add_argument("--eval-native")
     parser.add_argument("--node")
@@ -1234,10 +1598,27 @@ def main(argv):
         if adapter_name == "live":
             payload["adapter"] = "LiveCampaign"
             payload["launch_boundary"] = "launch_process"
-            payload["reason"] = "official_long_window_not_started"
-            payload["started"] = {stage: 0 for stage in ("o5", "o6", "o7", "o8")}
+            payload["official_samples"] = "not_run"
+            payload["formal_pass"] = False
+            payload["product_resource_certification"] = "NOT_EVALUATED"
+            if not all((args.cli, args.eval_native, args.node, args.geometry, args.config)):
+                payload["reason"] = "wiring_binaries_missing"
+                payload["started"] = {stage: 0 for stage in ("o5", "o6", "o7", "o8")}
+                print(json.dumps(payload))
+                return 2
+            plan = campaign_entry.load_plan(fixtures)
+            wired = LiveCampaign(
+                args.cli, args.eval_native, args.node, args.geometry, args.config).wire(plan, args.out)
+            payload.update({
+                "reason": wired["reason"],
+                "started": wired["started"],
+                "scoring": wired["scoring"],
+                "formal_pass": wired["formal_pass"],
+                "wiring_complete": wired["wiring_complete"],
+                "short_samples_rejected": wired["short_samples_rejected"],
+            })
             print(json.dumps(payload))
-            return 2
+            return 0 if wired["wiring_complete"] and wired["short_samples_rejected"] and not wired["formal_pass"] else 1
         if adapter_name != "injected":
             payload["reason"] = "unknown_adapter"
             print(json.dumps(payload))
@@ -1297,6 +1678,22 @@ def main(argv):
         }))
         surfaces = payload["surfaces"]
         return 0 if payload["parseable"] and payload["processes"] == 1 and surfaces.get("surface_after_update_ms") is not None and not payload["judge"]["pass"] else 1
+    if args.mode == "wire":
+        plan = campaign_entry.load_plan(fixtures)
+        wired = LiveCampaign(
+            args.cli, args.eval_native, args.node, args.geometry, args.config).wire(plan, args.out)
+        print(json.dumps({
+            "adapter": wired["adapter"],
+            "scoring": wired["scoring"],
+            "official_samples": wired["official_samples"],
+            "formal_pass": wired["formal_pass"],
+            "wiring_complete": wired["wiring_complete"],
+            "short_samples_rejected": wired["short_samples_rejected"],
+            "started": wired["started"],
+            "reason": wired["reason"],
+            "product_resource_certification": "NOT_EVALUATED",
+        }))
+        return 0 if wired["wiring_complete"] and not wired["formal_pass"] else 1
     if args.mode == "smoke-ros":
         payload = smoke_ros(plan, args.node, args.geometry, args.config, args.out)
         print(json.dumps({

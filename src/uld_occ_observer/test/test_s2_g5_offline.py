@@ -294,9 +294,63 @@ def test_authorized_live_route_does_not_start_official_windows(tmp_path, monkeyp
     payload = json.loads(capsys.readouterr().out)
     assert code == 2
     assert payload["adapter"] == "LiveCampaign"
-    assert payload["reason"] == "official_long_window_not_started"
+    assert payload["reason"] == "wiring_binaries_missing"
     assert payload["started"]["o5"] == 0
     assert payload["official_samples"] == "not_run"
+    assert payload["formal_pass"] is False
+
+
+def test_live_stage_invokes_the_wiring_runner(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("ULD_OCC_S3_OPEN", "1")
+    monkeypatch.setenv("ULD_OCC_S2_CONFIRM_OFFICIAL", "1")
+    monkeypatch.setenv("ULD_OCC_S2_ADAPTER", "live")
+    calls = {}
+
+    def wire(self, plan, out):
+        calls["plan"] = plan
+        calls["out"] = out
+        return {
+            "adapter": "LiveCampaign",
+            "scoring": "non_scored",
+            "official_samples": "not_run",
+            "formal_pass": False,
+            "product_resource_certification": "NOT_EVALUATED",
+            "reason": "non_scored_wiring",
+            "started": {"o5": 2, "o6": 2, "o7": 2, "o8": 1},
+            "wiring_complete": True,
+            "short_samples_rejected": True,
+        }
+
+    monkeypatch.setattr(campaign_executor.LiveCampaign, "wire", wire)
+    code = campaign_executor.main([
+        "--mode", "stage", "--stage", "all", "--out", str(tmp_path),
+        "--cli", "/bin/true", "--eval-native", "/bin/true", "--node", "/bin/true",
+        "--geometry", str(FIXTURES / "geometry_chamfer.yaml"),
+        "--config", str(FIXTURES / "config_chamfer_r0p02.yaml"),
+    ])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert calls["out"] == str(tmp_path)
+    assert payload["official_samples"] == "not_run"
+    assert payload["formal_pass"] is False
+    assert payload["started"]["o5"] == 2
+    assert payload["reason"] == "non_scored_wiring"
+
+
+def test_profile_launch_failure_is_saved(tmp_path):
+    plan = _plan()
+    campaign = campaign_executor.LiveCampaign(
+        "/no/such/profile-cli", "/no/such/eval-native", "/no/such/node",
+        str(FIXTURES / "geometry_chamfer.yaml"), str(FIXTURES / "config_chamfer_r0p02.yaml"))
+    result = campaign.wire(plan, tmp_path)
+    manifest = json.loads((tmp_path / "failure" / "o5" / "manifest.json").read_text())
+    assert result["formal_pass"] is False
+    assert result["wiring_complete"] is False
+    assert result["started"]["o5"] == 0
+    assert result["official_samples"] == "not_run"
+    assert manifest["stage"] == "o5"
+    assert manifest["capture_complete"] is True
+    assert (tmp_path / "o7").exists() is False
 
 
 def test_open_stage_dispatches_the_injected_runner(tmp_path, monkeypatch):

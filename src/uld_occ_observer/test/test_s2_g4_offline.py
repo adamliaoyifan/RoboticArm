@@ -381,3 +381,28 @@ def test_materialize_and_live_smokes_stay_non_scored(tmp_path):
     assert ros["sender_thread"] != ros["spin_thread"]
     assert ros["resource_certification"] == "NOT_EVALUATED"
     assert ros["dependency_gate"] == "skipped_non_scored"
+
+
+def test_live_campaign_wiring_stays_non_scored(tmp_path):
+    if not Path(EVAL).is_file() or not Path(CLI).is_file() or not Path(NODE).is_file():
+        pytest.fail("install binaries are missing")
+    wired = campaign_executor.LiveCampaign(
+        CLI, EVAL, NODE, str(GEOMETRY), str(CONFIG)).wire(_plan(), tmp_path)
+    assert wired["official_samples"] == "not_run"
+    assert wired["formal_pass"] is False
+    assert wired["short_samples_rejected"] is True
+    assert wired["wiring_complete"] is True
+    assert wired["product_resource_certification"] == "NOT_EVALUATED"
+    by_stage = {item["stage"]: item for item in wired["stages"]}
+    assert by_stage["o5"]["processes"] == 1
+    assert by_stage["o6"]["processes"] == 1
+    assert by_stage["o5"]["started"] == 2
+    assert by_stage["o5"]["judge"]["pass"] is False
+    assert by_stage["o6"]["judge"]["pass"] is False
+    assert by_stage["o7"]["judge"]["pass"] is False
+    assert by_stage["o8"]["judge"]["pass"] is False
+    assert by_stage["o7"]["chains_stable"] is True
+    assert by_stage["o7"]["resource_certification"] == "NOT_EVALUATED"
+    assert by_stage["o7"]["sender"]["sender_thread"] != by_stage["o7"]["sender"]["spin_thread"]
+    assert by_stage["o7"]["sender"]["planned_s"] == pytest.approx([0.0, 0.5])
+    assert (tmp_path / "failure").exists() is False

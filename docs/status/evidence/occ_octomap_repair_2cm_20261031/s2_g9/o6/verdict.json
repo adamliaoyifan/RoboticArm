@@ -1,0 +1,16 @@
+{
+  "capture_certified": false,
+  "expected_groups": 96,
+  "failed_groups": [
+    "r02_b00_chamfer_c30000_o50_x00"
+  ],
+  "gate": "o6_campaign",
+  "groups": 1,
+  "pass": false,
+  "pooled_latency": "not_computed",
+  "reasons": [
+    "missing_group",
+    "group:r02_b00_chamfer_c30000_o50_x00"
+  ],
+  "status": "fail"
+}
