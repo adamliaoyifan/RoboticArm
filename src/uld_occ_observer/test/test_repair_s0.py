@@ -159,3 +159,95 @@ def test_v1_ledger_is_judged_without_filling_identity():
     assert verdict["status"] == "not_evaluated"
     assert verdict["reasons"] == ["missing_identity"]
     assert verdict["replay_possible"] is True
+
+
+def _latency_case(gate):
+    case = judge.healthy_latency_group("r02_b00_chamfer_c30000_o50_x00", 30000)
+    case["gate"] = gate
+    return case
+
+
+def _numeric_specs():
+    """One healthy ledger per field, then each illegal sample and a deleted field."""
+    specs = []
+    values = (
+        ("nan", float("nan"), "fail", "nonfinite_value"),
+        ("posinf", float("inf"), "fail", "nonfinite_value"),
+        ("neginf", float("-inf"), "fail", "nonfinite_value"),
+        ("negative", -1, "fail", "negative_value"),
+        ("bool", True, "fail", "bad_type"),
+        ("null", None, "not_evaluated", "missing_observation"),
+    )
+
+    def add(name, factory, mutate):
+        for label, value, status, reason in values:
+            def _mutate(case, mutate=mutate, value=value):
+                mutate(case, value)
+            specs.append((name + "_" + label, factory, _mutate, status, reason))
+
+    def series(case, key, value):
+        case[key][0] = value
+
+    for gate in ("o5_group", "o6_group"):
+        for key in ("integrate_ms", "acquire_ms", "roi_ms", "surface_first_ms",
+                    "surface_after_update_ms", "surface_repeat_ms", "init_s"):
+            add(gate + "_" + key, lambda gate=gate: _latency_case(gate),
+                lambda case, value, key=key: series(case, key, value))
+        add(gate + "_warm_init_s", lambda gate=gate: _latency_case(gate),
+            lambda case, value: case.__setitem__("warm_init_s", value))
+        add(gate + "_rss_kib", lambda gate=gate: _latency_case(gate),
+            lambda case, value: case.__setitem__("rss_kib", value))
+        add(gate + "_read_view_bytes", lambda gate=gate: _latency_case(gate),
+            lambda case, value: case["resources"].__setitem__("read_view_bytes", value))
+        add(gate + "_cache_bytes", lambda gate=gate: _latency_case(gate),
+            lambda case, value: case["resources"].__setitem__("cache_bytes", value))
+        for key in ("integrate_ms", "surface_first_ms", "init_s", "warm_init_s", "rss_kib"):
+            specs.append((gate + "_missing_" + key, lambda gate=gate: _latency_case(gate),
+                          lambda case, key=key: case.pop(key), "not_evaluated", "missing_observation"))
+
+    def normal():
+        return judge.healthy_o7_normal()
+
+    add("o7_surface_ms", normal, lambda case, value: case["queries"][0].__setitem__("surface_ms", value))
+    add("o7_age_ms", normal, lambda case, value: case["queries"][0].__setitem__("age_ms", value))
+    add("o7_latency_ms", normal, lambda case, value: case["queries"][0].__setitem__("latency_ms", value))
+    add("o7_integrate_ms", normal, lambda case, value: case["inputs"][0].__setitem__("integrate_ms", value))
+    add("o7_queue_age_ms", normal, lambda case, value: case["inputs"][0].__setitem__("queue_age_ms", value))
+    add("o7_health", normal, lambda case, value: case["health_times_s"].__setitem__(1, value))
+    for key, mutate in (
+        ("surface_ms", lambda case: case["queries"][0].pop("surface_ms")),
+        ("age_ms", lambda case: case["queries"][0].pop("age_ms")),
+        ("health_times_s", lambda case: case.pop("health_times_s")),
+    ):
+        specs.append(("o7_missing_" + key, normal, mutate, "not_evaluated", "missing_observation"))
+
+    for index in (0, 2):
+        add("o8_rss_%d" % index, judge.healthy_o8,
+            lambda case, value, index=index: case["runs"][0]["rss_median_kib"].__setitem__(index, value))
+    specs.append(("o8_missing_rss", judge.healthy_o8,
+                  lambda case: case["runs"][0].pop("rss_median_kib"),
+                  "not_evaluated", "missing_observation"))
+
+    for key in ("off_ms", "on_ms"):
+        add("o9_" + key, judge.healthy_o9,
+            lambda case, value, key=key: case["operations"]["roi"][0].__setitem__(key, value))
+        specs.append(("o9_missing_" + key, judge.healthy_o9,
+                      lambda case, key=key: case["operations"]["roi"][0].pop(key),
+                      "not_evaluated", "missing_observation"))
+    return specs
+
+
+def test_numeric_matrix_rejects_illegal_samples_without_raising():
+    specs = _numeric_specs()
+    assert len(specs) >= 100
+    for name, factory, mutate, status, reason in specs:
+        case = factory()
+        mutate(case)
+        verdict = judge.judge_case(case)
+        assert verdict["status"] == status, name
+        assert reason in verdict["reasons"], name
+        assert verdict["pass"] is False
+        replayed = replay.verify_replay(case)
+        assert replayed["replay_possible"] is True, name
+        assert replayed["status"] == status, name
+        assert reason in replayed["reasons"], name

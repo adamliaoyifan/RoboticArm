@@ -145,6 +145,9 @@ group does not cover the matrix. A missing read-view or cache attribution
 cannot pass the resource gate. Schema `occ_octomap_repair_s0_v2` adds snapshot
 epoch, revision, and content hash. A v1 ledger is judged without filling those
 fields, so a missing identity is not_evaluated rather than rewritten into a pass.
+Timing, age, health, and resource samples must be finite and nonnegative.
+A missing sample is not_evaluated. NaN, infinity, a boolean, or a negative
+value fails by name. The judge does not fill those samples during replay.
 A synthetic fault that the judge names is not a live capture
 certificate, and it is not a product score.
 

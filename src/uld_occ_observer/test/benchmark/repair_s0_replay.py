@@ -69,13 +69,12 @@ def case_from_segments(segments):
             missing.append(name)
     if missing or "gate" not in segments or segments.get("schema") not in (contract.SCHEMA, contract.SCHEMA_V1):
         return None, missing or ["schema"]
-    query_fields = contract.QUERY_FIELDS_V1
     publish = segments["publish_to_callback"]
     integrate = segments["integrate_to_receipt"]
     queries = segments["query_chain"]
     extra = _missing_fields(publish, contract.PUBLISH_FIELDS)
     extra += _missing_fields(integrate, contract.INTEGRATE_FIELDS)
-    extra += _missing_fields(queries, query_fields)
+    extra += _missing_fields(queries, ("query_id",))
     if extra or not isinstance(publish, list) or not isinstance(integrate, list) or not isinstance(queries, list):
         return None, extra or ["segment_type"]
     if [row["input_id"] for row in publish] != [row["input_id"] for row in integrate]:

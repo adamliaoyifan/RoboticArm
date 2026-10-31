@@ -43,6 +43,51 @@ def _sample_problems(reasons, values):
     return blocked
 
 
+def _score_series(reasons, container, key, expected, limits, metric):
+    """Score one required list. A missing list is not_evaluated, not an exception."""
+    if not isinstance(container, dict) or key not in container or container[key] is None:
+        _add(reasons, "missing_observation")
+        return
+    values = container[key]
+    if not isinstance(values, list):
+        _add(reasons, "bad_type")
+        return
+    if limits is None:
+        if _sample_problems(reasons, values) or len(values) != expected:
+            if len(values) != expected:
+                _add(reasons, "missing_observation")
+        return
+    _latency_reason(reasons, values, expected, limits, metric)
+
+
+def _scalar(reasons, container, key, limit=None, fail_code=None):
+    if not isinstance(container, dict) or key not in container or container[key] is None:
+        _add(reasons, "missing_observation")
+        return None
+    problem = _number_problem(container[key])
+    if problem:
+        _add(reasons, problem)
+        return None
+    if limit is not None and container[key] > limit:
+        _add(reasons, fail_code)
+        return None
+    return container[key]
+
+
+def _query_numbers(reasons, queries):
+    for item in queries:
+        if not isinstance(item, dict):
+            _add(reasons, "missing_observation")
+            continue
+        for key in ("latency_ms", "age_ms", "acquire_ms", "roi_ms", "surface_ms"):
+            if key not in item or item[key] is None:
+                _add(reasons, "missing_observation")
+            else:
+                problem = _number_problem(item[key])
+                if problem:
+                    _add(reasons, problem)
+
+
 def _stats(values, expected):
     if any(_number_problem(value) for value in values):
         return {"n": len(values), "expected_n": expected, "status": "incomplete"}
@@ -65,8 +110,10 @@ def _integrate_limits(cloud):
 
 
 def _health(times, duration):
+    if times is None:
+        return ["missing_observation"]
     if not isinstance(times, list) or len(times) < 2:
-        return ["health_gap"]
+        return ["missing_observation"]
     problems = []
     for value in times:
         problem = _number_problem(value)
@@ -96,7 +143,7 @@ def _resources(resources):
     for value in (read_view, cache):
         problem = _number_problem(value)
         if problem == "missing_observation":
-            return ["resource_missing"], "not_evaluated"
+            return ["missing_observation"], "not_evaluated"
         if problem:
             return [problem], "fail"
     if isinstance(read_view, bool) or isinstance(cache, bool) or not isinstance(read_view, int) or not isinstance(cache, int):
@@ -178,6 +225,7 @@ def judge_o7_normal(case):
     _match_ids(reasons, [item.get("query_id") for item in queries], case.get("planned_query_ids"),
                "duplicate_query_id", "missing_query", "unknown_query")
     _query_identity(reasons, queries)
+    _query_numbers(reasons, queries)
     if len(queries) != contract.NORMAL_QUERIES or any(item.get("status") != "OK" for item in queries):
         _add(reasons, "query_status")
     blocked = {"all_rejected", "missing_frame", "pre_callback_gap", "input_conservation",
@@ -192,7 +240,8 @@ def judge_o7_normal(case):
         for metric in ("acquire_ms", "roi_ms", "surface_ms"):
             _latency_reason(reasons, [item.get(metric) for item in queries], contract.NORMAL_QUERIES,
                             contract.QUERY, metric)
-    reasons.extend(code for code in _health(case.get("health_times_s"), contract.NORMAL_DURATION_S)
+    reasons.extend(code for code in _health(case["health_times_s"] if "health_times_s" in case else None,
+                                            contract.NORMAL_DURATION_S)
                    if code not in reasons)
     return _result(reasons)
 
@@ -230,6 +279,7 @@ def judge_o7_recovery(case):
     _match_ids(reasons, [item.get("query_id") for item in queries], case.get("planned_query_ids"),
                "duplicate_query_id", "missing_query", "unknown_query")
     _query_identity(reasons, queries)
+    _query_numbers(reasons, queries)
     if len(queries) != contract.RECOVERY_QUERIES:
         _add(reasons, "recovery_queries")
     else:
@@ -296,28 +346,32 @@ def judge_o7_campaign(case):
 
 def judge_latency_group(case):
     reasons = []
-    cloud = case["cloud"]
-    _latency_reason(reasons, case["integrate_ms"], contract.SCORED_SAMPLES, _integrate_limits(cloud), "integrate")
+    cloud_problem = "missing_observation" if "cloud" not in case else _number_problem(case.get("cloud"))
+    if cloud_problem:
+        _add(reasons, cloud_problem)
+    limits = None if cloud_problem else _integrate_limits(case["cloud"])
+    _score_series(reasons, case, "integrate_ms", contract.SCORED_SAMPLES, limits, "integrate")
     for metric in contract.QUERY_METRICS:
-        _latency_reason(reasons, case[metric], contract.SCORED_SAMPLES, contract.QUERY, metric)
-    init = case.get("init_s") or []
-    if len(init) != contract.SCORED_SAMPLES or _sample_problems(reasons, init) \
-            or any(value > contract.INIT_LIMIT_S for value in init if _number_problem(value) is None):
-        if len(init) != contract.SCORED_SAMPLES or any(
-                _number_problem(value) is None and value > contract.INIT_LIMIT_S for value in init):
+        _score_series(reasons, case, metric, contract.SCORED_SAMPLES, contract.QUERY, metric)
+    if "init_s" not in case or case.get("init_s") is None:
+        _add(reasons, "missing_observation")
+    else:
+        init = case["init_s"]
+        if not isinstance(init, list):
+            _add(reasons, "bad_type")
+        elif not _sample_problems(reasons, init) and (
+                len(init) != contract.SCORED_SAMPLES or any(value > contract.INIT_LIMIT_S for value in init)):
             _add(reasons, "init")
-    warm = case.get("warm_init_s", None)
-    warm_problem = _number_problem(warm) if "warm_init_s" in case else "missing_observation"
-    if warm_problem:
-        _add(reasons, warm_problem if warm_problem != "missing_observation" else "init")
-    elif warm > contract.INIT_LIMIT_S:
-        _add(reasons, "init")
-    rss = case.get("rss_kib")
-    rss_problem = _number_problem(rss)
-    if rss_problem:
-        _add(reasons, rss_problem if rss_problem != "missing_observation" else "rss")
-    elif isinstance(rss, bool) or not isinstance(rss, int) or rss > contract.RSS_LIMIT_KIB:
-        _add(reasons, "rss")
+    warm = _scalar(reasons, case, "warm_init_s", contract.INIT_LIMIT_S, "init")
+    del warm
+    if "rss_kib" not in case or case.get("rss_kib") is None:
+        _add(reasons, "missing_observation")
+    else:
+        rss_problem = _number_problem(case["rss_kib"])
+        if rss_problem:
+            _add(reasons, rss_problem)
+        elif not isinstance(case["rss_kib"], int) or case["rss_kib"] > contract.RSS_LIMIT_KIB:
+            _add(reasons, "rss")
     resource_reasons, resource_status = _resources(case.get("resources"))
     for code in resource_reasons:
         _add(reasons, code)
@@ -366,29 +420,65 @@ def judge_named_campaign(case, expected, judge_child):
     return result
 
 
+def _rss_medians(reasons, run):
+    if "rss_median_kib" not in run or run.get("rss_median_kib") is None:
+        _add(reasons, "missing_observation")
+        return
+    medians = run["rss_median_kib"]
+    if not isinstance(medians, list) or len(medians) != 3:
+        _add(reasons, "missing_observation")
+        return
+    if _sample_problems(reasons, medians):
+        return
+    if medians[1] <= 0 or (medians[2] - medians[1]) / medians[1] > contract.O8_RSS_GROWTH:
+        _add(reasons, "rss_growth")
+
+
 def judge_o8(case):
     reasons = []
-    runs = case.get("runs") or []
-    if len(runs) != contract.O8_RUNS:
+    runs = case.get("runs") if isinstance(case.get("runs"), list) else None
+    if runs is None:
+        _add(reasons, "missing_observation")
+        runs = []
+    elif len(runs) != contract.O8_RUNS:
         _add(reasons, "run_count")
     for run in runs:
-        if run.get("saturation_probability_keys") != 0:
-            _add(reasons, "saturation_keys")
-        if run.get("saturation_geometry_blocks") != 0:
-            _add(reasons, "saturation_blocks")
-        if run.get("node_count_stable") is not True:
+        if not isinstance(run, dict):
+            _add(reasons, "missing_observation")
+            continue
+        for key, fail_code in (("saturation_probability_keys", "saturation_keys"),
+                               ("saturation_geometry_blocks", "saturation_blocks")):
+            if key not in run or run[key] is None:
+                _add(reasons, "missing_observation")
+            else:
+                problem = _number_problem(run[key])
+                if problem:
+                    _add(reasons, problem)
+                elif run[key] != 0:
+                    _add(reasons, fail_code)
+        if "node_count_stable" not in run:
+            _add(reasons, "missing_observation")
+        elif run["node_count_stable"] is not True:
             _add(reasons, "node_count")
-        medians = run.get("rss_median_kib") or []
-        if len(medians) != 3 or medians[1] <= 0 or (medians[2] - medians[1]) / medians[1] > contract.O8_RSS_GROWTH:
-            _add(reasons, "rss_growth")
-    holds = case.get("holds") or []
-    if sum(item.get("kind") == "no_input" for item in holds) != contract.O8_HOLDS \
-            or sum(item.get("kind") == "occlusion" for item in holds) != contract.O8_HOLDS:
+        _rss_medians(reasons, run)
+    holds = case.get("holds") if isinstance(case.get("holds"), list) else None
+    if holds is None:
+        _add(reasons, "missing_observation")
+        holds = []
+    elif sum(item.get("kind") == "no_input" for item in holds if isinstance(item, dict)) != contract.O8_HOLDS \
+            or sum(item.get("kind") == "occlusion" for item in holds if isinstance(item, dict)) != contract.O8_HOLDS:
         _add(reasons, "hold_count")
     for hold in holds:
-        if hold.get("probability_unchanged") is not True:
+        if not isinstance(hold, dict):
+            _add(reasons, "missing_observation")
+            continue
+        if "probability_unchanged" not in hold:
+            _add(reasons, "missing_observation")
+        elif hold["probability_unchanged"] is not True:
             _add(reasons, "probability")
-        if hold.get("freshness_advanced") is not False:
+        if "freshness_advanced" not in hold:
+            _add(reasons, "missing_observation")
+        elif hold["freshness_advanced"] is not False:
             _add(reasons, "freshness")
     return _result(reasons)
 
@@ -404,6 +494,9 @@ def judge_o9(case):
             _add(reasons, "missing_pair")
             continue
         for index, pair in enumerate(pairs):
+            if not isinstance(pair, dict):
+                _add(reasons, "missing_observation")
+                continue
             expected = "AB" if index % 2 == 0 else "BA"
             if pair.get("order") != expected:
                 _add(reasons, "schedule")
@@ -415,10 +508,23 @@ def judge_o9(case):
                 injected.append(pair["injected_fault"])
                 _add(reasons, "injected_fault")
         if "missing_pair" not in reasons and "mismatched" not in reasons:
-            off = _stats([pair["off_ms"] for pair in pairs], contract.O9_PAIRS)
-            on = _stats([pair["on_ms"] for pair in pairs], contract.O9_PAIRS)
-            if off.get("status") != "complete" or on.get("status") != "complete" or off["p95"] <= 0 \
-                    or on["p95"] / off["p95"] > contract.O9_RATIO:
+            off = []
+            on = []
+            complete = True
+            for pair in pairs:
+                if not isinstance(pair, dict) or "off_ms" not in pair or "on_ms" not in pair \
+                        or pair.get("off_ms") is None or pair.get("on_ms") is None:
+                    _add(reasons, "missing_observation")
+                    complete = False
+                    continue
+                off.append(pair["off_ms"])
+                on.append(pair["on_ms"])
+            if not complete or _sample_problems(reasons, off + on):
+                continue
+            off_stats = _stats(off, contract.O9_PAIRS)
+            on_stats = _stats(on, contract.O9_PAIRS)
+            if off_stats.get("status") != "complete" or on_stats.get("status") != "complete" or off_stats["p95"] <= 0 \
+                    or on_stats["p95"] / off_stats["p95"] > contract.O9_RATIO:
                 _add(reasons, "perturbation_ratio")
     result = _result(reasons)
     result["injected_faults"] = injected
