@@ -1,0 +1,15 @@
+{
+  "items": [
+    {"id": "roi-4096", "status": "pass", "observation": "one returned cell is missing_roi; live page count 4096, done, next_cursor 4096"},
+    {"id": "surface-domain", "status": "pass", "observation": "live 7425 columns, 15 pages, done; offline duplicate, missing, and out-of-range columns fail"},
+    {"id": "content-oracle", "status": "pass", "observation": "offline wrong states fail content_oracle; live sha256 recomputed from content_material"},
+    {"id": "target-coverage", "status": "pass", "observation": "receipt observed_revision and fixture geometry/config/clock are checked; omitted minimum still documented as caller-dependent"},
+    {"id": "lock-timeout", "status": "pass", "observation": "ready wait returned TIMEOUT with an empty handle before 0.8s while integrate held the store lock"},
+    {"id": "eight-limit", "status": "pass", "observation": "ninth immediate-ready wait returned WAIT_PRESSURE before 0.5s; released leases did not stick"},
+    {"id": "formal-judge", "status": "pass", "observation": "short sample judge_pass false"},
+    {"id": "historical-o9", "status": "pass", "observation": "7537b033 retained and does not sign this product change"},
+    {"id": "live-runner", "status": "not_evaluated"},
+    {"id": "placement-bridge", "status": "not_evaluated"},
+    {"id": "resource-512mib", "status": "not_evaluated"}
+  ]
+}

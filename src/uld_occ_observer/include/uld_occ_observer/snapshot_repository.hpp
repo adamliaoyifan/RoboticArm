@@ -47,6 +47,10 @@ class SnapshotRepository {
   SnapshotLease acquire(std::int64_t now_ns, std::int64_t max_age_ns,
       bool allow_stale = false, std::uint64_t expected_epoch = 0,
       std::optional<std::uint64_t> expected_revision = std::nullopt);
+  // Empty when the store mutex is busy. Does not wait.
+  std::optional<SnapshotLease> try_acquire(std::int64_t now_ns, std::int64_t max_age_ns,
+      bool allow_stale = false, std::uint64_t expected_epoch = 0,
+      std::optional<std::uint64_t> expected_revision = std::nullopt);
   std::shared_ptr<const Snapshot> get(const std::string& handle);
   void release(const std::string& handle);
   ResourceUsage usage();

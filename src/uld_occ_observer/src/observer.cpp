@@ -188,6 +188,15 @@ std::shared_ptr<const Snapshot> ObservationStore::snapshot() const {
   cached_snapshot_ = result;
   return result;
 }
+std::shared_ptr<const Snapshot> ObservationStore::try_snapshot() const {
+  std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+  if (!lock.owns_lock()) return nullptr;
+  if (!last_integrated_stamp_ns_) throw Error("NO_DATA");
+  if (cached_snapshot_) return cached_snapshot_;
+  auto result = std::make_shared<const Snapshot>(identity_unlocked(), domain_, blocks_);
+  cached_snapshot_ = result;
+  return result;
+}
 std::shared_ptr<const Snapshot> ObservationStore::retained_snapshot() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return cached_snapshot_;

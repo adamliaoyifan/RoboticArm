@@ -161,7 +161,7 @@ def test_snapshot_identity_faults_are_not_overwritten():
                   config_digest="config", clock_domain="ros")
 
     def page(ident, occupied=True):
-        return NS(status="OK", done=True, identity=ident, next_cursor=0,
+        return NS(status="OK", done=True, identity=ident, next_cursor=1,
                   x=[0], y=[0], active_count=[1], known_count=[1],
                   has_occupied=[occupied], top_z=[0.02])
 
@@ -179,7 +179,8 @@ def test_snapshot_identity_faults_are_not_overwritten():
                 if str(client).endswith("/read_surface"):
                     return page(read_identity)
                 if str(client).endswith("/read_cells"):
-                    return NS(status="OK", identity=read_identity, states=[2])
+                    return NS(status="OK", identity=read_identity, states=[2] * 4096,
+                              log_odds=[0.1] * 4096, done=True, next_cursor=4096)
                 return NS(status="OK")
 
         return campaign_executor._read_snapshot_chain(Session(), {"epoch": 1, "observation_id": "target"})
@@ -191,6 +192,78 @@ def test_snapshot_identity_faults_are_not_overwritten():
     assert run(identity(1, 7), identity(1, 6))["identity_stable"] is False
     assert run(identity(1, 7, 2), identity(1, 7, 1))["identity_stable"] is False
     assert run(identity(1, 7), identity(1, 7), handle="")["identity_stable"] is False
+
+
+def test_short_roi_and_omitted_coverage_do_not_pass():
+    from types import SimpleNamespace as NS
+
+    def identity(observed):
+        return NS(epoch=1, map_revision=1, observed_revision=observed,
+                  last_integrated_stamp_ns=100, geometry_hash="geometry",
+                  config_digest="config", clock_domain="ros")
+
+    def run(count, observed=7, minimum=None, states=None, odds=None, done=True,
+            columns=None, shape=None, oracle=None, next_cursor=None):
+        ident = identity(observed)
+        columns = columns or {"x": [0], "y": [0], "active_count": [1], "known_count": [1],
+                              "has_occupied": [True], "top_z": [0.02]}
+        width = len(columns["x"])
+        class Session:
+            node = NS(create_client=lambda *args: args[1])
+
+            def wait_for(self, *args):
+                return NS(status="OK", reason="", age_ns=10, handle="lease", identity=ident)
+
+            def wait_service(self, *args, **kwargs):
+                pass
+
+            def call(self, client, request, timeout):
+                if str(client).endswith("/read_surface"):
+                    return NS(status="OK", done=True, identity=ident,
+                              next_cursor=0 if next_cursor is None else next_cursor,
+                              **columns)
+                if str(client).endswith("/read_cells"):
+                    payload = [2] * count if states is None else states
+                    return NS(status="OK", identity=ident, states=payload,
+                              log_odds=[0.1] * len(payload) if odds is None else odds,
+                              done=done, next_cursor=len(payload))
+                return NS(status="OK")
+
+        expected = {"epoch": 1, "observation_id": "target",
+                    "geometry_hash": "geometry", "config_digest": "config", "clock_domain": "ros",
+                    "roi_states": [2] * 4096}
+        if minimum is not None:
+            expected["min_observed_revision"] = minimum
+        if shape is not None:
+            expected["surface_shape"] = shape
+        if oracle is not None:
+            expected["surface_columns"] = oracle
+        return campaign_executor._read_snapshot_chain(Session(), expected)
+
+    healthy_columns = [[0], [0], [1], [1], [True], [0.02]]
+    healthy = run(4096, shape=[1, 1], next_cursor=1, oracle=[healthy_columns])
+    assert healthy["identity_stable"] is True, healthy["reasons"]
+    assert healthy["content_sha256"] == campaign_executor._content_sha256(healthy["content_material"])
+    short = run(1, shape=[1, 1], next_cursor=1)
+    assert short["identity_stable"] is False
+    assert "missing_roi" in short["reasons"]
+    assert run(4096, observed=6, minimum=7, shape=[1, 1], next_cursor=1)["identity_stable"] is False
+    omitted = run(4096, observed=6, shape=[1, 1], next_cursor=1)
+    assert omitted["identity_stable"] is True
+    assert "target_not_covered" not in omitted["reasons"]
+    duplicate = run(4096, shape=[1, 1], next_cursor=2, columns={
+        "x": [0, 0], "y": [0, 0], "active_count": [1, 1], "known_count": [1, 1],
+        "has_occupied": [True, True], "top_z": [0.02, 0.02]})
+    assert "duplicate_column" in duplicate["reasons"]
+    missing = run(4096, shape=[1, 2], next_cursor=1)
+    assert "missing_column" in missing["reasons"]
+    outside = run(4096, shape=[1, 1], next_cursor=1, columns={
+        "x": [4], "y": [0], "active_count": [1], "known_count": [1],
+        "has_occupied": [True], "top_z": [0.02]})
+    assert "column_range" in outside["reasons"]
+    wrong = run(4096, states=[1] * 4096, shape=[1, 1], next_cursor=1)
+    assert "content_oracle" in wrong["reasons"]
+    assert wrong["identity_stable"] is False
 
 
 def test_injected_query_time_does_not_stretch_sends(tmp_path):
@@ -241,3 +314,98 @@ def test_open_stage_dispatches_the_injected_runner(tmp_path, monkeypatch):
     verdict = json.loads((tmp_path / "open" / "o5" / "verdict.json").read_text())
     assert verdict["pass"] is True
     assert os.environ["ULD_OCC_S3_OPEN"] == "1"
+
+
+def test_ready_wait_respects_timeout_and_the_eight_limit(tmp_path):
+    import threading
+    import time
+    import yaml
+    parent = str(Path(__file__).resolve().parent)
+    if parent not in sys.path:
+        sys.path.insert(0, parent)
+    import s2_rehearsal
+    node = "/tmp/s2-install/uld_occ_observer/lib/uld_occ_observer/observer_node"
+    geometry = "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_o6_o7_20261029/run01/fixtures/geometry_chamfer.yaml"
+    config = "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_o6_o7_20261029/run01/fixtures/config_chamfer_r0p02.yaml"
+    if not Path(node).is_file():
+        pytest.fail("observer node is not built")
+    geometry_hash = json.loads(yaml.safe_load(Path(geometry).read_text())["descriptor_json"])["geometry_hash"]
+    os.environ["ROS_DOMAIN_ID"] = "49"
+    import rclpy
+    rclpy.init()
+    env = os.environ.copy()
+    session = s2_rehearsal.Session()
+    observer = s2_rehearsal.start_observer(node, geometry, config, tmp_path, [
+        "-p", "input_mode:=service", "-p", "sensor_id:=cam0", "-p", "behavior_test_hooks:=true",
+    ], env)
+    try:
+        session.wait_service(session.integrate)
+        session.wait_service(session.hook)
+        session.wait_service(session.wait)
+        first = s2_rehearsal._integrate(session, geometry_hash, "frame-a")
+        assert first.receipt.status == "INTEGRATED"
+        session.hook_set("hold_integrate", 1)
+        blocked = {}
+
+        def second():
+            try:
+                blocked["receipt"] = s2_rehearsal._integrate(session, geometry_hash, "frame-b")
+            except Exception as exc:
+                blocked["error"] = str(exc)
+
+        worker = threading.Thread(target=second)
+        worker.start()
+        time.sleep(0.3)
+        started = time.monotonic()
+        waited = session.wait_for(1, "frame-a", 300)
+        elapsed = time.monotonic() - started
+        assert elapsed < 0.8, elapsed
+        assert waited.status == "TIMEOUT", waited.status
+        assert not waited.handle
+        requests = []
+        for index in range(8):
+            request = s2_rehearsal.WaitSnapshot.Request()
+            request.expected_epoch = 1
+            request.sensor_id = "cam0"
+            request.observation_id = "frame-a"
+            request.timeout_ms = 2000
+            request.max_age_ms = 2000
+            requests.append(session.wait.call_async(request))
+        time.sleep(0.1)
+        started = time.monotonic()
+        ninth = session.wait_for(1, "pressure-9", 400)
+        assert time.monotonic() - started < 0.5
+        assert ninth.status == "WAIT_PRESSURE", ninth.status
+        assert not ninth.handle
+        session.hook_set("hold_integrate", 0)
+        worker.join(timeout=5)
+        assert worker.is_alive() is False
+        from uld_occ_observer.srv import ReleaseSnapshot
+        release = session.node.create_client(ReleaseSnapshot, "/uld_occ_observer/release_snapshot")
+        session.wait_service(release, 5)
+        deadline = time.monotonic() + 2
+        for future in requests:
+            while not future.done():
+                if time.monotonic() > deadline:
+                    raise AssertionError("ready wait stayed blocked after the store lock was released")
+                time.sleep(0.01)
+            result = future.result()
+            assert result.status == "OK", result.status
+            assert result.handle
+            freed = ReleaseSnapshot.Request()
+            freed.handle = result.handle
+            assert session.call(release, freed, 5).status == "OK"
+        again = session.wait_for(1, "frame-a", 1000)
+        assert again.status == "OK" and again.handle
+        freed = ReleaseSnapshot.Request()
+        freed.handle = again.handle
+        assert session.call(release, freed, 5).status == "OK"
+    finally:
+        try:
+            session.hook_set("hold_integrate", 0)
+        except Exception:
+            pass
+        session.close()
+        observer.stop()
+        if rclpy.ok():
+            rclpy.shutdown()

@@ -43,6 +43,8 @@ class ObservationStore {
   UpdateReceipt integrate(const OpticalObservation& observation,
                           ProfileMode profile_mode = ProfileMode::Off);
   std::shared_ptr<const Snapshot> snapshot() const;
+  // Null when integrate holds the store mutex. Does not wait.
+  std::shared_ptr<const Snapshot> try_snapshot() const;
   // The snapshot the store itself still owns. Does not build one and does not
   // require the caller to keep a handle. Empty before the first publish.
   std::shared_ptr<const Snapshot> retained_snapshot() const;

@@ -266,7 +266,9 @@ class ObserverNode : public rclcpp::Node {
                                       std::chrono::steady_clock::now(), done.queue_ms);
     if (sealed.stored) publish_sealed(sealed);
   }
-  void send_wait(const Waiter& waiter, const SnapshotWaitBoard::Outcome& outcome,
+  // False means the store mutex is busy and the waiter must be queued again.
+  // The response has not been sent.
+  bool send_wait(const Waiter& waiter, const SnapshotWaitBoard::Outcome& outcome,
                  const SnapshotIdentity* latest) {
     // The wait mutex is not held. acquire() registers a real lease and does not
     // wait on the store lock while holding the handle table.
@@ -278,19 +280,32 @@ class ObserverNode : public rclcpp::Node {
       try {
         if (waiter.board_request.max_age_ms < 0 || waiter.board_request.max_age_ms > 86400000)
           throw Error("INVALID_MAX_AGE");
-        const auto lease = repository_->acquire(
-            now().nanoseconds(), waiter.board_request.max_age_ms * 1000000LL, false,
-            waiter.board_request.expected_epoch, std::nullopt);
-        if (lease.identity.epoch != waiter.board_request.expected_epoch ||
-            lease.identity.observed_revision < outcome.observed_revision) {
-          repository_->release(lease.handle);
-          response.status = "REVISION_NOT_COVERED";
+        const auto deadline = waiter.board_request.started +
+            std::chrono::milliseconds(std::max<std::int64_t>(0, waiter.board_request.timeout_ms));
+        if (std::chrono::steady_clock::now() >= deadline) {
+          response.status = "TIMEOUT";
           response.handle.clear();
         } else {
-          response.status = "OK";
-          response.handle = lease.handle;
-          response.identity = ros_identity(lease.identity);
-          response.age_ns = lease.age_ns;
+          const auto now_ns = now().nanoseconds();
+          const auto lease = repository_->try_acquire(
+              now_ns, waiter.board_request.max_age_ms * 1000000LL, false,
+              waiter.board_request.expected_epoch, std::nullopt);
+          if (!lease) return false;
+          if (std::chrono::steady_clock::now() >= deadline) {
+            repository_->release(lease->handle);
+            response.status = "TIMEOUT";
+            response.handle.clear();
+          } else if (lease->identity.epoch != waiter.board_request.expected_epoch ||
+                     lease->identity.observed_revision < outcome.observed_revision) {
+            repository_->release(lease->handle);
+            response.status = "REVISION_NOT_COVERED";
+            response.handle.clear();
+          } else {
+            response.status = "OK";
+            response.handle = lease->handle;
+            response.identity = ros_identity(lease->identity);
+            response.age_ns = lease->age_ns;
+          }
         }
       } catch (const std::exception& error) {
         response.status = error.what();
@@ -300,6 +315,7 @@ class ObserverNode : public rclcpp::Node {
       response.identity = ros_identity(*latest);
     }
     wait_->send_response(*waiter.header, response);
+    return true;
   }
   template<class Service, class Callback>
   typename rclcpp::Service<Service>::SharedPtr service(const std::string& name, Callback callback) {
@@ -600,8 +616,15 @@ class ObserverNode : public rclcpp::Node {
         const auto latest = worker_->diagnostics().store.identity;
         if (const auto ready = board_.poll(wait, wait.started, this->now().nanoseconds(), epoch, &latest)) {
           const auto outcome = *ready;
+          // Count the lease attempt itself. A store lock that is busy must not
+          // leave this request outside the 8-wait limit.
+          const bool leasing = outcome.status == "OK";
+          if (leasing) ++waits_checking_;
           lock.unlock();
-          send_wait(waiter, outcome, outcome.status == "OK" ? &latest : nullptr);
+          const bool sent = send_wait(waiter, outcome, outcome.status == "OK" ? &latest : nullptr);
+          std::lock_guard<std::mutex> guard(wait_mu_);
+          if (leasing && waits_checking_) --waits_checking_;
+          if (!sent) waiters_.push_back(std::move(waiter));
           return;
         }
         waiters_.push_back(std::move(waiter));
@@ -636,17 +659,18 @@ class ObserverNode : public rclcpp::Node {
     std::vector<Waiter> need_revision;
     std::vector<Waiter> still;
     for (auto& waiter : pending) {
-      if (const auto outcome = board_.poll(waiter.board_request, now, 0, epoch, nullptr))
-        send_wait(waiter, *outcome, nullptr);
-      else need_revision.push_back(std::move(waiter));
+      if (const auto outcome = board_.poll(waiter.board_request, now, 0, epoch, nullptr)) {
+        if (!send_wait(waiter, *outcome, nullptr)) still.push_back(std::move(waiter));
+      } else need_revision.push_back(std::move(waiter));
     }
     if (!need_revision.empty()) {
       const auto now_ns = this->now().nanoseconds();
       const auto latest = worker_->diagnostics().store.identity;
       for (auto& waiter : need_revision) {
-        if (const auto outcome = board_.poll(waiter.board_request, now, now_ns, epoch, &latest))
-          send_wait(waiter, *outcome, outcome->status == "OK" ? &latest : nullptr);
-        else still.push_back(std::move(waiter));
+        if (const auto outcome = board_.poll(waiter.board_request, now, now_ns, epoch, &latest)) {
+          if (!send_wait(waiter, *outcome, outcome->status == "OK" ? &latest : nullptr))
+            still.push_back(std::move(waiter));
+        } else still.push_back(std::move(waiter));
       }
     }
     {

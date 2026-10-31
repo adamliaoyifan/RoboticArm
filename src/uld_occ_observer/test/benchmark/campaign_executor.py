@@ -839,10 +839,39 @@ def _finite_age(value, limit):
     return value >= 0 and value <= limit
 
 
-def _read_snapshot_chain(session, expected):
-    """Use only the WaitSnapshot lease. A later GetSnapshot is not a substitute."""
+def _content_sha256(material):
     import hashlib
     import json as json_mod
+    digest = hashlib.sha256()
+    for item in material:
+        digest.update(json_mod.dumps(item, sort_keys=True).encode())
+    return digest.hexdigest()
+
+
+def expected_map_contract(geometry_file, config_file):
+    """Identity and surface shape taken from the fixture files, not from a response."""
+    import hashlib
+    import math
+    import yaml
+    geometry_bytes = Path(geometry_file).read_bytes()
+    config_bytes = Path(config_file).read_bytes()
+    descriptor = json.loads(yaml.safe_load(geometry_bytes.decode())["descriptor_json"])
+    config = yaml.safe_load(config_bytes.decode())
+    resolution = float(config["resolution_m"])
+    return {
+        "geometry_hash": descriptor["geometry_hash"],
+        "config_digest": hashlib.sha256(
+            geometry_bytes + b"\n" + config_bytes + b"\nprobability-profile-v1").hexdigest(),
+        "clock_domain": config["clock_domain"],
+        "surface_shape": [
+            math.ceil(float(descriptor["length"]) / resolution),
+            math.ceil(float(descriptor["width"]) / resolution),
+        ],
+    }
+
+
+def _read_snapshot_chain(session, expected):
+    """Use only the WaitSnapshot lease. A later GetSnapshot is not a substitute."""
     from uld_occ_observer.srv import ReadCells, ReadSurface, ReleaseSnapshot
     wait = session.wait_for(expected["epoch"], expected["observation_id"], 2000)
     handle = wait.handle or ""
@@ -852,6 +881,8 @@ def _read_snapshot_chain(session, expected):
         reasons.append("wait_%s" % wait.status)
     if not handle:
         reasons.append("empty_handle")
+    if expected.get("receipt_matches_contract") is False:
+        reasons.append("receipt_contract")
     if not _finite_age(int(wait.age_ns), 2_000_000_000):
         reasons.append("age")
     if wait_identity[0] != expected.get("epoch"):
@@ -859,6 +890,9 @@ def _read_snapshot_chain(session, expected):
     minimum = expected.get("min_observed_revision")
     if minimum is not None and (wait_identity[2] is None or wait_identity[2] < minimum):
         reasons.append("target_not_covered")
+    for name, index in (("geometry_hash", 4), ("config_digest", 5), ("clock_domain", 6)):
+        if name in expected and wait_identity[index] != expected[name]:
+            reasons.append(name)
     chain = {
         "wait_status": wait.status,
         "wait_reason": wait.reason,
@@ -869,17 +903,20 @@ def _read_snapshot_chain(session, expected):
     pages = []
     cells = None
     release_status = None
-    content = hashlib.sha256()
+    material = []
+    seen = set()
     try:
         if reasons:
             chain["identity_stable"] = False
             chain["reasons"] = reasons
+            chain["content_material"] = material
+            chain["content_sha256"] = _content_sha256(material)
             return chain
         surface = session.node.create_client(ReadSurface, "/uld_occ_observer/read_surface")
         roi = session.node.create_client(ReadCells, "/uld_occ_observer/read_cells")
         session.wait_service(surface, timeout=5)
         cursor = 0
-        occupied = False
+        shape = expected.get("surface_shape")
         while True:
             request = ReadSurface.Request()
             request.handle = handle
@@ -893,18 +930,35 @@ def _read_snapshot_chain(session, expected):
             identity = _identity_tuple(page.identity)
             if page.status != "OK" or not shape_ok or identity != wait_identity:
                 reasons.append("page")
-            if columns[4]:
-                occupied = occupied or any(columns[4])
-            content.update(json_mod.dumps([list(item) if item is not None else None for item in columns],
-                                          sort_keys=True).encode())
+            stored = [list(item) if item is not None else None for item in columns]
+            material.append(stored)
+            if shape_ok:
+                for column in zip(columns[0], columns[1]):
+                    x, y = int(column[0]), int(column[1])
+                    if (x, y) in seen:
+                        reasons.append("duplicate_column")
+                    seen.add((x, y))
+                    if shape is not None and not (0 <= x < int(shape[0]) and 0 <= y < int(shape[1])):
+                        reasons.append("column_range")
             pages.append({"status": page.status, "done": bool(page.done), "identity": identity,
-                          "columns": width, "cursor": cursor})
-            if page.status != "OK" or page.done or reasons:
+                          "columns": width, "cursor": int(cursor),
+                          "next_cursor": int(page.next_cursor)})
+            if page.status != "OK" or not shape_ok:
                 break
-            if page.next_cursor <= cursor:
+            if page.done:
+                if int(page.next_cursor) != int(cursor) + width:
+                    reasons.append("cursor")
+                break
+            if int(page.next_cursor) <= int(cursor):
                 reasons.append("cursor")
                 break
-            cursor = page.next_cursor
+            cursor = int(page.next_cursor)
+        if not pages or not pages[-1]["done"]:
+            reasons.append("surface_incomplete")
+        if shape is not None and len(seen) != int(shape[0]) * int(shape[1]):
+            reasons.append("missing_column")
+        if "surface_columns" in expected and material != list(expected["surface_columns"]):
+            reasons.append("content_oracle")
         session.wait_service(roi, timeout=5)
         cell_request = ReadCells.Request()
         cell_request.handle = handle
@@ -916,12 +970,21 @@ def _read_snapshot_chain(session, expected):
         cell_identity = _identity_tuple(cell_page.identity)
         if cell_page.status != "OK" or cell_identity != wait_identity:
             reasons.append("roi")
-        states = list(cell_page.states or [])
-        content.update(json_mod.dumps(states).encode())
+        states = [int(item) for item in list(cell_page.states or [])]
+        odds = [float(item) for item in list(_field(cell_page, "log_odds") or [])]
+        material.append(states)
+        material.append(odds)
         cells = {"status": cell_page.status, "identity": cell_identity, "count": len(states),
+                 "done": bool(_field(cell_page, "done")),
+                 "next_cursor": int(_field(cell_page, "next_cursor") or 0),
                  "occupied": any(state == 2 for state in states)}
-        if not occupied and not cells["occupied"]:
-            reasons.append("content_not_occupied")
+        if (len(states) != 4096 or len(odds) != len(states) or not cells["done"]
+                or cells["next_cursor"] != 4096):
+            reasons.append("missing_roi")
+        if "roi_states" in expected and states != [int(item) for item in expected["roi_states"]]:
+            reasons.append("content_oracle")
+        if "roi_log_odds" in expected and odds != [float(item) for item in expected["roi_log_odds"]]:
+            reasons.append("content_oracle")
     finally:
         if handle:
             try:
@@ -937,9 +1000,13 @@ def _read_snapshot_chain(session, expected):
         reasons.append("release")
     chain.update({
         "pages": len(pages),
-        "surface_done": bool(pages) and pages[-1]["done"] and not any(item == "page" for item in reasons),
+        "page_log": pages,
+        "surface_columns": len(seen),
+        "surface_done": bool(pages) and pages[-1]["done"] and "surface_incomplete" not in reasons
+        and "page" not in reasons,
         "roi": cells,
-        "content_sha256": content.hexdigest(),
+        "content_material": material,
+        "content_sha256": _content_sha256(material),
         "identity_stable": not reasons,
         "reasons": reasons,
         "release_status": release_status,
@@ -960,7 +1027,7 @@ def smoke_ros(plan, node, geometry, config, out):
     window = next(item for item in plan["o7_windows"] if item["kind"] == "normal")
     mini = dict(plan)
     mini["o7_windows"] = [dict(window)]
-    holder = {}
+    holder = {"geometry": geometry, "config": config}
 
     class Adapter:
         def __init__(self):
@@ -1028,6 +1095,17 @@ def smoke_ros(plan, node, geometry, config, out):
                         break
                 time_mod.sleep(0.05)
             if holder.get("terminal", {}).get("disposition") == "integrated":
+                receipt = _field(last, "receipt")
+                receipt_identity = _field(receipt, "identity")
+                covered = _field(receipt_identity, "observed_revision")
+                if covered is not None:
+                    expected["min_observed_revision"] = int(covered)
+                if holder.get("geometry") and holder.get("config"):
+                    contract = expected_map_contract(holder["geometry"], holder["config"])
+                    expected.update(contract)
+                    pinned = _identity_tuple(receipt_identity)
+                    expected["receipt_matches_contract"] = pinned[4:] == (
+                        contract["geometry_hash"], contract["config_digest"], contract["clock_domain"])
                 holder["chain"] = _read_snapshot_chain(session, expected)
             if last is None:
                 return None

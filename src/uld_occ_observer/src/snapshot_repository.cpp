@@ -87,6 +87,40 @@ SnapshotLease SnapshotRepository::acquire(std::int64_t now_ns, std::int64_t max_
   track_unlocked(selected);
   return {handle, identity, age, age > max_age_ns};
 }
+std::optional<SnapshotLease> SnapshotRepository::try_acquire(
+    std::int64_t now_ns, std::int64_t max_age_ns, bool allow_stale,
+    std::uint64_t expected_epoch, std::optional<std::uint64_t> expected_revision) {
+  const auto latest = store_.try_snapshot();
+  if (!latest) return std::nullopt;
+  std::lock_guard<std::mutex> lock(mutex_);
+  const auto epoch = store_.published_epoch();
+  if (latest->identity().epoch != epoch) throw Error("EPOCH_MISMATCH");
+  const auto now = Clock::now();
+  expire_unlocked(now, epoch);
+  if (expected_epoch && expected_epoch != epoch) throw Error("EPOCH_MISMATCH");
+  auto selected = latest;
+  if (expected_revision && *expected_revision != latest->identity().map_revision) {
+    selected.reset();
+    for (const auto& entry : entries_) {
+      if (entry.second.snapshot->identity().map_revision == *expected_revision) {
+        selected = entry.second.snapshot; break;
+      }
+    }
+    if (!selected) throw Error("REVISION_UNAVAILABLE");
+  }
+  const auto& identity = selected->identity();
+  if (now_ns < identity.last_integrated_stamp_ns || max_age_ns < 0) throw Error("INVALID_QUERY_TIME");
+  const auto age = now_ns - identity.last_integrated_stamp_ns;
+  if (age > max_age_ns && !allow_stale) throw Error("STALE");
+  std::set<std::uint64_t> revisions;
+  revisions.insert(identity.map_revision);
+  for (const auto& entry : entries_) revisions.insert(entry.second.snapshot->identity().map_revision);
+  if (entries_.size() >= 8 || revisions.size() > 2) throw Error("SNAPSHOT_PRESSURE");
+  const auto handle = std::to_string(identity.epoch) + ":" + std::to_string(++next_handle_);
+  entries_.emplace(handle, Entry{selected, now + ttl_});
+  track_unlocked(selected);
+  return SnapshotLease{handle, identity, age, age > max_age_ns};
+}
 std::shared_ptr<const Snapshot> SnapshotRepository::get(const std::string& handle) {
   std::lock_guard<std::mutex> lock(mutex_);
   const auto epoch = store_.published_epoch();
