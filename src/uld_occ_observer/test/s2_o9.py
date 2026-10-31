@@ -22,6 +22,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "benchmark"))
+import capture_replay  # noqa: E402
 import repair_s0_judge as judge  # noqa: E402
 
 
@@ -37,28 +38,20 @@ def sha256_file(path):
     return digest.hexdigest()
 
 
-def write_frame(path, geometry_hash, clock_domain):
-    rng = random.Random(20261031)
-    lines = [
-        "sensor_id: cam0",
-        "observation_id: o9-30k",
-        "optical_frame: d555_color_optical_frame",
-        f"clock_domain: {clock_domain}",
-        f"geometry_hash: {geometry_hash}",
-        "epoch: 1",
-        "stamp_ns: 1000000000",
-        "transform:",
-        "  stamp_ns: 1000000000",
-        "  rotation: [0, 0, 1, -1, 0, 0, 0, -1, 0]",
-        "  translation: [-1.15, 0.0, 1.20]",
-        "points_m:",
-    ]
-    for _ in range(POINTS):
-        x = rng.uniform(-0.15, 0.15)
-        y = rng.uniform(-0.15, 0.15)
-        z = rng.uniform(0.9, 1.4)
-        lines.append(f"  - [{x:.5f}, {y:.5f}, {z:.5f}]")
-    path.write_text("\n".join(lines) + "\n")
+def emit_frame(eval_native, geometry, config, out):
+    """One scored frame from occ_load, group r02_b00_chamfer_c30000_o50_x00."""
+    dest = out / "emitted"
+    completed = subprocess.run([
+        eval_native, "--geometry", geometry, "--config", config, "--gate", "emit-window",
+        "--group", "r02_b00_chamfer_c30000_o50_x00", "--boxes", "0", "--cloud", "30000",
+        "--outside", "0.5", "--cross", "0", "--warmup", "0", "--repeat", "1", "--out", str(dest),
+    ], text=True, capture_output=True)
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr[-1000:] or completed.stdout[-1000:])
+    frame = dest / "frames" / "f000.yaml"
+    if not frame.is_file():
+        raise RuntimeError("generator did not write f000.yaml")
+    return frame
 
 
 def run_cli(cli, geometry, config, manifest, out, trace, trace_path):
@@ -84,11 +77,15 @@ def sample_metrics(path):
     second = document["surface_second_call"]
     if first.get("cache_hit") is not False or second.get("cache_hit") is not True:
         raise RuntimeError(f"surface cache state first={first.get('cache_hit')} second={second.get('cache_hit')}")
+    if int(document.get("roi_cells") or 0) != 4096:
+        raise RuntimeError("roi_cells=%s" % document.get("roi_cells"))
+    if not document.get("roi_surface_content_sha256"):
+        raise RuntimeError("missing content hash")
     return {
         "integrate_30k": float(document["integrate_external_ms"]),
         "roi": float(document["roi_ms"]),
         "surface_first": float(first["external_ms"]),
-        "content": document.get("roi_surface_content_sha256"),
+        "content": document["roi_surface_content_sha256"],
         "rss_kib": document.get("process_peak_rss_kib"),
     }
 
@@ -107,12 +104,19 @@ def environment():
         "rmw": os.environ.get("RMW_IMPLEMENTATION", "rmw_fastrtps_cpp"),
         "platform": platform.platform(),
         "python": platform.python_version(),
+        "loadavg": Path("/proc/loadavg").read_text().split()[:3] if Path("/proc/loadavg").is_file() else [],
+        "cpu_freq_khz": Path("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq").read_text().strip()
+        if Path("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq").is_file() else "unknown",
+        "context_switches": next((line.split()[1] for line in Path("/proc/stat").read_text().splitlines()
+                                  if line.startswith("ctxt ")), "unknown"),
+        "logical_cpus_are_utilization": False,
     }
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cli", required=True)
+    parser.add_argument("--eval-native", required=True)
     parser.add_argument("--geometry", required=True)
     parser.add_argument("--config", required=True)
     parser.add_argument("--out", required=True)
@@ -134,8 +138,7 @@ def main():
         geometry = yaml.safe_load(Path(args.geometry).read_text())
         config = yaml.safe_load(Path(args.config).read_text())
         geometry_hash = json.loads(geometry["descriptor_json"])["geometry_hash"]
-        frame = out / "frame_30k.yaml"
-        write_frame(frame, geometry_hash, config["clock_domain"])
+        frame = emit_frame(args.eval_native, args.geometry, args.config, out)
         frame_sha = sha256_file(frame)
         operations = {name: [] for name in ("roi", "integrate_30k", "surface_first")}
         failures = []
@@ -171,9 +174,15 @@ def main():
                 (run_dir / "cli.log").write_text(completed.stdout + "\n" + completed.stderr)
                 if completed.returncode != 0:
                     failures.append({"index": index, "label": label, "returncode": completed.returncode,
-                                     "elapsed_s": elapsed})
+                                     "elapsed_s": elapsed, "stderr": completed.stderr[-400:]})
                     print(f"FAIL pair {index} {label} exit {completed.returncode}", flush=True)
                     break
+                if trace:
+                    certified = capture_replay.certify_trace(run_dir / "trace.jsonl")
+                    if not certified["capture_complete"]:
+                        failures.append({"index": index, "label": label, "trace": certified["errors"]})
+                        print(f"FAIL pair {index} trace {certified['errors']}", flush=True)
+                        break
                 metrics = sample_metrics(samples)
                 measured[label] = metrics
                 contents[label] = metrics["content"]
@@ -183,7 +192,7 @@ def main():
                 for name in operations:
                     operations[name].append({"index": index, "order": order, "missing": True})
                 continue
-            mismatched = contents["off"] != contents["on"]
+            mismatched = not contents.get("off") or contents.get("off") != contents.get("on")
             for name in operations:
                 operations[name].append({
                     "index": index, "order": order, "off_ms": measured["off"][name],
@@ -194,29 +203,51 @@ def main():
                   f"{measured['on']['integrate_30k']:.1f} ms", flush=True)
         case = {"gate": "o9", "operations": operations}
         verdict = judge.judge_case(case)
-        injected = {
-            "input_id": "o9-injected-truncated-trace",
-            "epoch": 1,
-            "status": "REJECTED",
-            "reason": "TRACE_FOOTER_MISSING",
-            "sensor_id": "cam0",
-            "capture_complete": False,
-        }
-        injected_path = out / "injected_incomplete.json"
-        injected_path.write_text(json.dumps(injected) + "\n")
-        replay_incomplete = {"replay_possible": False, "missing": ["capture_complete"]}
-        real_fault = {
-            "input_id": "o9-injected-epoch",
-            "epoch": 99,
-            "status": "REJECTED",
-            "reason": "EPOCH_MISMATCH",
-            "sensor_id": "cam0",
-            "capture_complete": True,
-            "frame_sha256": frame_sha,
-        }
-        real_path = out / "injected_epoch.json"
-        real_path.write_text(json.dumps(real_fault, indent=2) + "\n")
-        replay_real = json.loads(real_path.read_text()) == real_fault and real_fault["capture_complete"]
+        epoch_frame = out / "epoch99.yaml"
+        epoch_text = frame.read_text().replace("\nepoch: 1\n", "\nepoch: 99\n", 1)
+        epoch_text = epoch_text.replace("observation_id: r02_b00_chamfer_c30000_o50_x00-0",
+                                        "observation_id: epoch-reject", 1)
+        epoch_frame.write_text(epoch_text)
+        epoch_dir = out / "epoch_first"
+        epoch_dir.mkdir()
+        epoch_manifest = epoch_dir / "manifest.yaml"
+        epoch_manifest.write_text(yaml.safe_dump({
+            "case_id": "epoch-reject", "mode": "off", "surface": False, "state_digest": False,
+            "frames": [{"path": os.path.relpath(epoch_frame, epoch_dir),
+                        "sha256": sha256_file(epoch_frame), "warmup": False,
+                        "expect_status": "EPOCH_MISMATCH"}],
+        }, sort_keys=False))
+        epoch_samples = epoch_dir / "samples.yaml"
+        epoch_run = subprocess.run(capture_replay.profile_command(
+            args.cli, args.geometry, args.config, epoch_manifest, epoch_samples),
+            text=True, capture_output=True)
+        epoch_replay = {"replay_possible": False, "executed": False}
+        if epoch_run.returncode == 0:
+            row = next(yaml.safe_load_all(epoch_samples.read_text()))
+            receipt = row["receipt"]
+            bundle = {
+                "observation_id": receipt["observation_id"],
+                "epoch": receipt["epoch"],
+                "input_epoch": 99,
+                "status": receipt["status"],
+                "reason": receipt["status"],
+                "sensor_id": receipt["sensor_id"],
+                "input_file": str(epoch_frame),
+                "input_sha256": sha256_file(epoch_frame),
+                "geometry_file": args.geometry,
+                "geometry_sha256": sha256_file(args.geometry),
+                "config_file": args.config,
+                "config_sha256": sha256_file(args.config),
+                "command": capture_replay.profile_command(args.cli, args.geometry, args.config),
+                "tf": {"present": True, "stamp_ns": receipt["input_stamp_ns"], "source": "input_transform"},
+                "map_prefix": {"tree_nodes": row["tree_nodes"]},
+            }
+            bundle_path = out / "injected_epoch.json"
+            bundle_path.write_text(json.dumps(bundle, indent=2) + "\n")
+            epoch_replay = capture_replay.replay_failure(bundle_path, out / "epoch_replay")
+        fabricated = capture_replay.replay_failure(
+            "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_octomap_repair_2cm_20261031/s2_review/fabricated_failure.json",
+            out / "fabricated_unused")
         ratios = {}
         for name, pairs in operations.items():
             off = sorted(pair["off_ms"] for pair in pairs if "off_ms" in pair)
@@ -235,14 +266,22 @@ def main():
             "geometry_sha256": sha256_file(args.geometry),
             "config_sha256": sha256_file(args.config),
             "peak_rss_kib": max(rss) if rss else None,
-            "injected_incomplete_replay_possible": replay_incomplete["replay_possible"],
-            "injected_epoch_replay_possible": bool(replay_real),
-            "performance_certified": verdict.get("performance_certified") is True and not failures,
+            "fabricated_replay_possible": fabricated["replay_possible"],
+            "fabricated_executed": fabricated["executed"],
+            "epoch_replay": epoch_replay,
+            "latency_gate": verdict.get("pass") is True and not failures,
+            "capture_gate": not failures and epoch_replay.get("replay_possible") is True
+            and epoch_replay.get("executed") is True and fabricated["replay_possible"] is False,
+            "performance_certified": False,
+            "qualification": "pending",
         }
+        payload["qualification"] = (
+            "pass" if payload["latency_gate"] and payload["capture_gate"] else "fail")
         (out / "o9_result.json").write_text(json.dumps(payload, indent=2) + "\n")
-        print(json.dumps({"pass": payload["performance_certified"], "ratios": ratios,
-                          "reasons": verdict.get("reasons")}, indent=2), flush=True)
-        return 0 if payload["performance_certified"] and replay_real and not replay_incomplete["replay_possible"] else 1
+        print(json.dumps({"qualification": payload["qualification"], "ratios": ratios,
+                          "reasons": verdict.get("reasons"), "epoch_replay": epoch_replay.get("replay_possible"),
+                          "failures": len(failures)}, indent=2), flush=True)
+        return 0 if payload["qualification"] == "pass" else 1
     finally:
         fcntl.flock(lock, fcntl.LOCK_UN)
         lock.close()

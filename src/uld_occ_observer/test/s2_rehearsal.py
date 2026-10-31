@@ -11,9 +11,13 @@ import os
 import signal
 import struct
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "benchmark"))
+import capture_replay  # noqa: E402
 
 import rclpy
 import yaml
@@ -178,32 +182,6 @@ class Session:
         return self.call(self.wait, request, timeout_ms / 1000.0 + 2.0)
 
 
-def replay_bundle(path):
-    required = ("input_id", "epoch", "status", "reason", "sensor_id")
-    try:
-        document = json.loads(Path(path).read_text())
-    except (OSError, json.JSONDecodeError):
-        return {"replay_possible": False, "missing": ["unreadable"]}
-    missing = [key for key in required if document.get(key) in (None, "")]
-    if missing or document.get("capture_complete") is not True:
-        return {"replay_possible": False, "missing": missing or ["capture_complete"]}
-    again = json.loads(Path(path).read_text())
-    return {"replay_possible": again == document, "status": again["status"], "reason": again["reason"]}
-
-
-def replay_trace(path):
-    try:
-        lines = [json.loads(line) for line in Path(path).read_text().splitlines() if line.strip()]
-    except (OSError, json.JSONDecodeError):
-        return {"replay_possible": False, "missing": ["unreadable"]}
-    events = {line.get("event") for line in lines}
-    footer = next((line for line in lines if line.get("event") == "trace_footer"), None)
-    missing = [name for name in ("integrate_start", "integrate_end", "trace_footer") if name not in events]
-    if missing or footer is None:
-        return {"replay_possible": False, "missing": missing or ["trace_footer"]}
-    return {"replay_possible": True, "events": len(lines), "dropped": footer.get("status")}
-
-
 def start_observer(binary, geometry, config, log_dir, extra, env):
     args = ["-p", f"geometry_file:={geometry}", "-p", f"config_file:={config}", *extra]
     log = Path(log_dir) / f"observer-{len(list(Path(log_dir).glob('observer-*.log')))}.log"
@@ -282,25 +260,43 @@ def functional(session, binary, geometry, config, out, env, geometry_hash):
         session.check("startup health is ready",
                       health is not None and int(health["epoch"]) == 1, str(health))
         stamp = session.next_stamp()
-        session.cloud.publish(cloud_message(stamp))
+        message = cloud_message(stamp)
+        cloud_path = Path(out) / "tf_absent_cloud.json"
+        cloud_path.write_text(json.dumps({
+            "stamp_ns": stamp, "frame_id": message.header.frame_id, "data_sha256": __import__("hashlib").sha256(bytes(message.data)).hexdigest(),
+        }) + "\n")
+        session.cloud.publish(message)
         observation_id = str(stamp)
         status = _poll(session, 1, observation_id, lambda item: item.status == "REJECTED")
-        bundle = {
-            "input_id": observation_id, "epoch": 1, "status": None if status is None else status.status,
-            "reason": None if status is None else status.receipt.status, "sensor_id": SENSOR,
-            "capture_complete": status is not None and status.status == "REJECTED",
-        }
-        fault = Path(out) / "tf_failure.json"
-        fault.write_text(json.dumps(bundle, indent=2) + "\n")
-        replayed = replay_bundle(fault)
-        session.check("tf failure is captured and replays",
-                      replayed["replay_possible"] and replayed["status"] == "REJECTED", str(replayed))
-        incomplete = Path(out) / "incomplete_failure.json"
-        incomplete.write_text(json.dumps({"input_id": observation_id, "capture_complete": False}) + "\n")
-        session.check("incomplete failure bundle cannot replay",
-                      replay_bundle(incomplete)["replay_possible"] is False, "")
+        first = None if status is None else {"status": status.status, "reason": status.receipt.status}
     finally:
         failed.stop()
+    if first is None or first["status"] != "REJECTED":
+        session.check("tf failure is captured and replays", False, str(first))
+    else:
+        replayed = start_observer(binary, geometry, config, out, [
+            "-p", "input_mode:=subscription", "-p", "sensor_id:=cam0",
+            "-p", "optical_frame:=" + FRAME, "-p", f"cloud_topic:={CLOUD}",
+            "-p", "behavior_test_hooks:=false",
+        ], env)
+        try:
+            deadline = time.monotonic() + 5.0
+            while session.cloud.get_subscription_count() < 1 and time.monotonic() < deadline:
+                time.sleep(0.05)
+            session.cloud.publish(message)
+            second_status = _poll(session, 1, observation_id, lambda item: item.status == "REJECTED")
+            second = None if second_status is None else {
+                "status": second_status.status, "reason": second_status.receipt.status}
+        finally:
+            replayed.stop()
+        incomplete = Path(out) / "incomplete_failure.json"
+        incomplete.write_text(json.dumps({"observation_id": observation_id, "capture_complete": False}) + "\n")
+        refused = capture_replay.replay_failure(incomplete, Path(out) / "unused-replay")
+        session.check("tf failure is re-executed",
+                      second is not None and second == first and first["reason"] not in ("", None),
+                      "first=%s second=%s" % (first, second))
+        session.check("incomplete failure bundle cannot replay",
+                      refused["replay_possible"] is False and refused["executed"] is False, str(refused))
 
     static = transform(session.node.get_clock().now().nanoseconds)
     static.header.stamp.sec = 0
@@ -351,13 +347,14 @@ def functional(session, binary, geometry, config, out, env, geometry_hash):
                       and len(usage.uncovered_classes) > 0, usage.certification)
     finally:
         node.stop()
-    traced_replay = replay_trace(trace_path)
-    session.check("live trace footer replays", traced_replay["replay_possible"] is True, str(traced_replay))
+    traced = capture_replay.certify_trace(trace_path)
+    session.check("live trace is complete and is not by itself a replay",
+                  traced["capture_complete"] is True and traced["replay_possible"] is False, str(traced))
     stripped = Path(out) / "trace_without_footer.jsonl"
     body = [line for line in trace_path.read_text().splitlines() if '"trace_footer"' not in line]
     stripped.write_text("\n".join(body) + "\n")
-    session.check("trace without a footer cannot replay",
-                  replay_trace(stripped)["replay_possible"] is False, "")
+    session.check("trace without a footer is incomplete",
+                  capture_replay.certify_trace(stripped)["capture_complete"] is False, "")
 
 
 def _health_until(session, timeout):
