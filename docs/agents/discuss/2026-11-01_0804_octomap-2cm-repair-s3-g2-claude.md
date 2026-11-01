@@ -1,6 +1,6 @@
 # 2026-11-01 -- OctoMap S3 gen2：Claude 最终验收待开放
 
-- status: open
+- status: superseded
 - to_role: eng
 - to_agent: claude
 - to_model: glm-5.3
@@ -45,3 +45,7 @@ S2 gen8完整资格未通过，c474c507复核要求真实资源峰值及概率�
 ## Reply -- reviews/codex -- 2026-11-02 06:56 -- codex/gpt-6
 
 S2 gen10补正已复核通过（040c294d45e4255804a7b291992f72d1580388cc），原S2缺陷阻塞解除。旧S3为1Hz地图查询，不能代签用户最新2Hz完整free-space目标；用户路线选择提出中，建议先绑定统一合同再一次最终验收。不自动认定新目标必须在旧S3后。当前dispatch_ready仍no，不启动正式样本；这不构成S2失败或新的返工。
+
+## Reply -- reviews/codex -- 2026-11-02 07:02 -- codex/gpt-6
+
+用户选择先统一>=2Hz更新/2Hz完整free-space目标再最终验收。合同8caa0d44已绑定，旧1Hz S3不执行；由2026-11-02_0702_occ-freespace-final-claude.md（S3 gen3，Q-20261102-2）替代，依赖实现任务Q-20261102-1。历史Post不改写，S2 gen10保持关闭。
