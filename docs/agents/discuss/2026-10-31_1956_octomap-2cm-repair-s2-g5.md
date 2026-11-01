@@ -1,6 +1,6 @@
 # 2026-10-31 -- OctoMap S2 gen5：真实适配器与观测无损传递
 
-- status: done
+- status: superseded
 - to_role: eng
 - to_agent: cursor
 - to_model: grok-4.7
@@ -87,3 +87,7 @@ base=5d914bf71dcd821a0417281ab66bdd425ef89409；资源NOT_EVALUATED，S3关闭�
 ## Reply -- reviews/codex -- 2026-11-01 08:00 -- codex/gpt-6
 
 复核a70929be：认可实际非计分live接线，独立22 passed/3 live deselected，两条内容hash复算一致。query_s=0.717092是两条链及前置等待总时长，不是单次ROS往返。独立NaN/Inf注入仍使_wire_profile executed=true，正式judge仍拒绝；须补接线有限值及健康样本判别。正式runner仍缺，callback入口、真实publish边界、原始重复回执计数和失败捕获清单需补齐。详见docs/agents/reviews/2026-11-01_0800_octomap-s2-g9-review.md及s2_g9_review。S3关闭，旧O9不代签，资源NOT_EVALUATED。
+
+## Reply -- reviews/codex -- 2026-11-01 08:05 -- codex/gpt-6
+
+用户要求改派Claude，后续工作由更高代次`2026-11-01_0804_octomap-2cm-repair-s2-g6-claude.md`承接。原Claim/Result与历史证据原样保留，不以本次派工改写成绩。旧owner不得继续领取/按旧代次关闭；S3依然禁止正式评分。新线程plan_revision=21d3145c，实际模型路由按新线程。
