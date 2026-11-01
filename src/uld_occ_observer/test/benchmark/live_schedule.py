@@ -712,28 +712,35 @@ class LiveScheduleAdapter:
         self._await_terminal(run, state["stamps"])
         before = self._hold_probe(run)
         if kind == "occlusion":
-            # A fully-outside cloud: real transport, nothing acceptable in it.
-            if not getattr(run, "occlusion_frames", None):
-                group = run.group
-                run.occlusion_frames = _emit_frames(
-                    self.eval_native, self.group_geometry(group), self.group_config(group),
-                    {**group, "outside": 1.0}, 1, run.out / "occlusion")
-            frame = run.occlusion_frames[0]
-            stamp = session.next_stamp()
-            message, _points = cloud_from_frame(frame)
-            message.header.stamp.sec = int(stamp // 1_000_000_000)
-            message.header.stamp.nanosec = int(stamp % 1_000_000_000)
-            run.publisher.publish(message)
+            # Occlusion input: the same cloud identity replayed, which the
+            # observer rejects at the ledger (duplicates never re-update the
+            # map). Real transport, nothing accepted — an all-outside cloud
+            # does not work: its rays still cross the container and integrate.
+            if not getattr(run, "occlusion_stamp", None):
+                run.occlusion_stamp = state["stamps"][-1] if state["stamps"] else None
+            if run.occlusion_stamp:
+                stamp = int(run.occlusion_stamp)
+                frame = run.o8_frames[0]
+                message, _points = cloud_from_frame(frame)
+                message.header.stamp.sec = int(stamp // 1_000_000_000)
+                message.header.stamp.nanosec = int(stamp % 1_000_000_000)
+                run.publisher.publish(message)
         # The hold spans real seconds; the scheduler's advance is a no-op here.
         time.sleep(seconds)
         after = self._hold_probe(run)
         return {
             "kind": kind,
-            "probability_unchanged": (before is not None and after is not None
-                                      and before["content_hash"] == after["content_hash"]),
-            "freshness_advanced": (before is not None and after is not None
-                                   and after["last_integrated_stamp_ns"]
-                                   > before["last_integrated_stamp_ns"]),
+            "probability_unchanged": (
+                before is not None and after is not None
+                and before.get("content_hash") is not None
+                and before.get("content_hash") == after.get("content_hash")),
+            "freshness_advanced": (
+                before is not None and after is not None
+                and before.get("last_integrated_stamp_ns") is not None
+                and (after.get("last_integrated_stamp_ns") or -1)
+                > before["last_integrated_stamp_ns"]),
+            "probe_before": before,
+            "probe_after": after,
             "duration_s": seconds,
         }
 
@@ -781,8 +788,8 @@ class LiveScheduleAdapter:
                 "content_hash": executor._content_sha256([states]),
                 "last_integrated_stamp_ns": identity[3] if len(identity) > 3 else None,
             }
-        except Exception:
-            return None
+        except Exception as exc:
+            return {"error": "%s:%s" % (type(exc).__name__, str(exc)[:160])}
 
     # ------------------------------------------------------------- lifecycle
     def bind_plan(self, plan):
