@@ -312,6 +312,44 @@ def test_ros_send_continues_the_overload_observer_into_recovery():
         live_schedule._WindowRun.start = original_start
 
 
+def test_stability_stage_tears_down_the_lingering_o7_window(monkeypatch):
+    """Two live observers on one domain split every service call: the O8 run
+    must finish the O7 stage's still-open window before opening its own."""
+    adapter = object.__new__(live_schedule.LiveScheduleAdapter)
+    adapter.overruns = []
+    adapter._stability = None
+    adapter.eval_native = "stub-eval-native"
+    adapter._window = NS(window={"id": "recovery", "kind": "recovery"})
+    adapter._continuity = None
+    adapter.out = Path("/tmp/gen7-o8-teardown")
+    finished = []
+    order = []
+    adapter._finish_window = lambda: order.append("finish_o7")
+    adapter.plan_o8 = {"ray_group": "o8_fixed_g", "duration_s": 180,
+                       "saturation_frames": 30}
+    adapter.plan_groups = [{"id": "g", "geometry_file": "g.yaml", "config_file": "c.yaml"}]
+
+    class FakeStabilityRun:
+        def __init__(self, adapter_, window, group, out):
+            order.append("open_o8")
+            self.window = window
+            self.out = Path(out)
+        def start_for_o8(self, count):
+            self.origin_ns = time.monotonic_ns()
+            self.clock_origin = 0.0
+            self.session = NS(next_stamp=lambda: 1_000_000_000)
+            self.publisher = NS(publish=lambda message: None)
+            self.sleep_to = lambda wall_ns, label: None
+    monkeypatch.setattr(live_schedule, "_WindowRun", FakeStabilityRun)
+    monkeypatch.setattr(live_schedule, "_emit_frames",
+                        lambda *args, **kwargs: [{"points_m": []}])
+    monkeypatch.setattr(live_schedule, "cloud_from_frame",
+                        lambda frame: (NS(header=NS(stamp=NS(sec=0, nanosec=0)),
+                                          publish=lambda message: None), 0))
+    adapter.stability_frame("o8_r0", 0)
+    assert order == ["finish_o7", "open_o8"], order
+
+
 def test_ros_drain_takes_one_pass_at_the_deadline():
     adapter = object.__new__(live_schedule.LiveScheduleAdapter)
     queries = []

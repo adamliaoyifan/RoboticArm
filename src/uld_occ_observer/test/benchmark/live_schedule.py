@@ -847,6 +847,12 @@ class LiveScheduleAdapter:
         if (self._stability is None or self._stability.get("run_id") != run_id):
             if self._stability is not None:
                 self._stability["run"].stop()
+            if self._window is not None:
+                # The O7 stage's last window must not outlive its stage: two
+                # live observers on one domain split every service call
+                # between different maps, and the stability probes would read
+                # whichever answered first.
+                self._finish_window()
             o8 = self.plan_o8
             base_id = o8["ray_group"][len("o8_fixed_"):]
             group = next(item for item in self.plan_groups if item["id"] == base_id)
