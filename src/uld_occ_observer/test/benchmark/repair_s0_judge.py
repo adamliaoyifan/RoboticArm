@@ -446,34 +446,75 @@ def judge_named_campaign(case, expected, judge_child):
 
 
 def _rss_medians(reasons, run):
-    if "rss_median_kib" not in run or run.get("rss_median_kib") is None:
+    """Recompute the window medians from the raw timestamped samples.
+
+    The artifact's medians are only accepted when the judge's own
+    re-bucketing of rss_samples into the three fixed windows reproduces them.
+    """
+    raw = run.get("rss_samples")
+    if not isinstance(raw, list) or not raw:
         _add(reasons, "missing_observation")
         return
-    medians = run["rss_median_kib"]
+    samples = []
+    for item in raw:
+        if (not isinstance(item, (list, tuple)) or len(item) != 2
+                or isinstance(item[1], bool) or not isinstance(item[1], int)
+                or isinstance(item[0], bool) or not isinstance(item[0], (int, float))):
+            _add(reasons, "bad_type")
+            return
+        samples.append((float(item[0]), int(item[1])))
+    window_s = contract.O8_RSS_WINDOW_S
+    recomputed = []
+    counts = []
+    for index in range(3):
+        start = index * window_s
+        bucket = [value for elapsed, value in samples if start <= elapsed < start + window_s]
+        counts.append(len(bucket))
+        recomputed.append(sorted(bucket)[(len(bucket) - 1) // 2] if bucket else None)
+    medians = run.get("rss_median_kib")
     if not isinstance(medians, list) or len(medians) != 3:
         _add(reasons, "missing_observation")
         return
     if _sample_problems(reasons, medians):
         return
-    # Medians must come from real timestamped windows: an empty window has no
-    # median, and a window count of zero means the span was never covered.
-    counts = run.get("rss_window_counts")
-    if not isinstance(counts, list) or len(counts) != 3:
-        _add(reasons, "missing_observation")
-    elif any(not isinstance(count, int) or isinstance(count, bool) or count < 1
-             for count in counts):
+    if any(count < 1 for count in counts):
         _add(reasons, "rss_span")
+        return
+    if medians != recomputed:
+        _add(reasons, "rss_recompute")
+        return
+    declared_counts = run.get("rss_window_counts")
+    if declared_counts != counts:
+        _add(reasons, "rss_recompute")
+        return
     if medians[1] <= 0 or (medians[2] - medians[1]) / medians[1] > contract.O8_RSS_GROWTH:
         _add(reasons, "rss_growth")
 
 
 def _judge_saturation_run(reasons, run):
-    """Every saturation frame needs a matched successful terminal receipt."""
-    expected = run.get("saturation_frames_expected", contract.O8_SATURATION_FRAMES)
-    receipts = run.get("saturation_receipts")
-    if not isinstance(receipts, list) or len(receipts) != expected:
+    """Every saturation frame needs THE frame that was actually sent.
+
+    The frame count is the contract's fixed 30 (the artifact's own claim must
+    agree), each receipt must carry the sent identity (unique, matching the
+    recorded stamp, with epoch/sensor), exactly one terminal event, a
+    COMPLETED/INTEGRATED disposition, and zero change counters.
+    """
+    expected = contract.O8_SATURATION_FRAMES
+    if run.get("saturation_frames_expected") != expected:
         _add(reasons, "saturation_frames")
         return
+    receipts = run.get("saturation_receipts")
+    stamps = run.get("saturation_stamps")
+    if (not isinstance(receipts, list) or len(receipts) != expected
+            or not isinstance(stamps, list) or len(stamps) != expected):
+        _add(reasons, "saturation_frames")
+        return
+    ids = [entry.get("observation_id") if isinstance(entry, dict) else None
+           for entry in receipts]
+    if any(not isinstance(item, str) or not item for item in ids):
+        _add(reasons, "saturation_identity")
+    elif len(set(ids)) != expected or sorted(ids) != sorted(str(item) for item in stamps):
+        _add(reasons, "saturation_identity")
     for entry in receipts:
         if not isinstance(entry, dict):
             _add(reasons, "missing_observation")
@@ -481,9 +522,14 @@ def _judge_saturation_run(reasons, run):
         events = entry.get("events")
         if not isinstance(events, int) or isinstance(events, bool) or events < 1:
             _add(reasons, "saturation_receipt_missing")
-            continue
-        if entry.get("status") != "COMPLETED":
+        elif events != 1:
+            _add(reasons, "saturation_duplicate")
+        if entry.get("status") != "COMPLETED" or entry.get("disposition") != "integrated":
             _add(reasons, "saturation_receipt_rejected")
+        if entry.get("epoch") != 1 or entry.get("sensor_id") != "cam0":
+            _add(reasons, "saturation_identity")
+        if entry.get("receipt_observation_id") != entry.get("observation_id"):
+            _add(reasons, "saturation_identity")
         changed = entry.get("changed_keys")
         rebuilt = entry.get("rebuilt_blocks")
         changed_problem = _number_problem(changed) if changed is not None else "missing_observation"
@@ -498,6 +544,17 @@ def _judge_saturation_run(reasons, run):
                  else rebuilt_problem)
         elif rebuilt != 0:
             _add(reasons, "saturation_blocks")
+    # The aggregates must be exactly what the receipts say.
+    changed_values = [entry.get("changed_keys") for entry in receipts
+                      if isinstance(entry, dict) and isinstance(entry.get("changed_keys"), int)]
+    rebuilt_values = [entry.get("rebuilt_blocks") for entry in receipts
+                      if isinstance(entry, dict) and isinstance(entry.get("rebuilt_blocks"), int)]
+    if (len(changed_values) == expected
+            and run.get("saturation_probability_keys") != max(changed_values)):
+        _add(reasons, "saturation_aggregate")
+    if (len(rebuilt_values) == expected
+            and run.get("saturation_geometry_blocks") != max(rebuilt_values)):
+        _add(reasons, "saturation_aggregate")
 
 
 def _judge_node_stability(reasons, run):
@@ -505,17 +562,49 @@ def _judge_node_stability(reasons, run):
         _add(reasons, "missing_observation")
         return
     times = run.get("node_health_times_s")
-    if not isinstance(times, list) or len(times) < contract.O8_HEALTH_MIN_SAMPLES:
+    values = run.get("node_health_values")
+    if (not isinstance(times, list) or not isinstance(values, list)
+            or len(times) != len(values)
+            or len(times) < contract.O8_HEALTH_MIN_SAMPLES):
         # A single lucky sample cannot certify stability: the post-warmup
         # window must actually be covered.
         _add(reasons, "node_health_span")
         return
     if _sample_problems(reasons, times):
         return
-    if times[0] > 5.0 + getattr(contract, "O8_RSS_WINDOW_S", 60.0):
+    if _sample_problems(reasons, values):
+        return
+    # Strictly increasing sample times: duplicated timestamps are one sample
+    # counted twice and do not extend coverage.
+    if any(times[index] >= times[index + 1] for index in range(len(times) - 1)):
+        _add(reasons, "node_health_duplicate")
+        return
+    warmup = getattr(contract, "O8_RSS_WINDOW_S", 60.0)
+    duration = 3 * warmup
+    if times[0] > warmup + 5.0 or times[-1] < duration - 5.0:
         _add(reasons, "node_health_span")
-    if run["node_count_stable"] is not True:
+    # Stability is recomputed from the raw values, not taken on trust.
+    if len(set(values)) != 1 or run["node_count_stable"] is not True:
         _add(reasons, "node_count")
+
+
+def _verify_probability_from_probes(reasons, hold, flag_name):
+    """Recompute the probability verdict from the probe hashes themselves.
+
+    The adapter's flag is a convenience; the gate compares the recorded voxel
+    states and log-odds hashes directly, so a forged flag over changed
+    probabilities cannot pass.
+    """
+    before = hold.get("probe_before")
+    after = hold.get("probe_after")
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return  # probe_incomplete already recorded
+    unchanged = (
+        isinstance(before.get("states_hash"), str)
+        and before.get("states_hash") == after.get("states_hash")
+        and before.get("log_odds_hash") == after.get("log_odds_hash"))
+    if unchanged is not (hold.get(flag_name) is True):
+        _add(reasons, "probability")
 
 
 def judge_o8(case):
@@ -557,10 +646,28 @@ def judge_o8(case):
             _add(reasons, "missing_observation")
             continue
         kind = hold.get("kind")
+        # Measured hold duration: a hold that did not actually span the
+        # contract seconds proves nothing, whatever the flags say.
+        measured = hold.get("duration_measured_s")
+        required = contract.O8_HOLD_S
+        if not isinstance(measured, (int, float)) or isinstance(measured, bool) \
+                or measured < required - 1.0:
+            _add(reasons, "hold_duration")
+        # Both probes must be complete reads of a non-empty oracle: error
+        # probes, empty regions, or a failed release cannot compare equal.
+        for name in ("probe_before", "probe_after"):
+            probe = hold.get(name)
+            if not isinstance(probe, dict) or probe.get("error") is not None:
+                _add(reasons, "probe_incomplete")
+            elif not isinstance(probe.get("cells"), int) or probe["cells"] <= 0:
+                _add(reasons, "oracle_empty")
+            elif probe.get("release") != "OK" or probe.get("pages_done") is not True:
+                _add(reasons, "probe_incomplete")
         if kind == "occlusion":
             # A real blocking input: accepted new data whose rays never cross
-            # the old region. The region oracle must be recorded and unchanged;
-            # freshness may legitimately advance (the occluder is new data).
+            # the old region. The probability oracle must be recorded and
+            # unchanged at the voxel level; freshness may legitimately advance
+            # (the occluder is new data).
             record = hold.get("occlusion_input")
             if not isinstance(record, dict) or not isinstance(
                     record.get("points_sha256"), str) or not record.get("point_count"):
@@ -579,6 +686,7 @@ def judge_o8(case):
                 _add(reasons, "occlusion_no_effect")
             if hold.get("region_probability_unchanged") is not True:
                 _add(reasons, "probability")
+            _verify_probability_from_probes(reasons, hold, "region_probability_unchanged")
         else:
             # no_input and duplicate_id: nothing may be accepted, so the map
             # must not move and freshness must not advance. The duplicate
@@ -587,6 +695,7 @@ def judge_o8(case):
                 _add(reasons, "missing_observation")
             elif hold["probability_unchanged"] is not True:
                 _add(reasons, "probability")
+            _verify_probability_from_probes(reasons, hold, "probability_unchanged")
             if "freshness_advanced" not in hold:
                 _add(reasons, "missing_observation")
             elif hold["freshness_advanced"] is not False:
@@ -831,13 +940,17 @@ def healthy_latency_group(group_id, cloud, parameters=None):
 def healthy_o8():
     def run(run_index):
         frames = contract.O8_SATURATION_FRAMES
+        stamps = ["170000000000000000%d-%d" % (run_index, index)
+                  for index in range(frames)]
         return {
             "run_id": "o8_r%d" % run_index,
             "saturation_frames_expected": frames,
             "saturation_frames_verified": frames,
+            "saturation_stamps": stamps,
             "saturation_receipts": [
-                {"index": index, "observation_id": "sat-%d-%d" % (run_index, index),
-                 "events": 1, "status": "COMPLETED", "disposition": "integrated",
+                {"index": index, "observation_id": stamps[index], "events": 1,
+                 "status": "COMPLETED", "disposition": "integrated", "epoch": 1,
+                 "sensor_id": "cam0", "receipt_observation_id": stamps[index],
                  "changed_keys": 0, "rebuilt_blocks": 0}
                 for index in range(frames)],
             "saturation_probability_keys": 0,
@@ -845,15 +958,47 @@ def healthy_o8():
             "node_count_stable": True,
             "node_health_times_s": [round(60.0 + index * 0.5, 3)
                                     for index in range(240)],
+            "node_health_values": [4321] * 240,
             "node_health_count": 240,
-            "rss_median_kib": [1000, 1000, 1040],
+            "rss_median_kib": [1000, 1000, 1004],
             "rss_window_counts": [30, 30, 30],
-            "rss_sample_times_ns": [1_000_000_000 * index for index in range(90)],
+            "rss_samples": [[round(index * 2.0, 3), 1000 + (4 if index >= 60 else 0)]
+                            for index in range(90)],
+        }
+
+    def probe(marker):
+        return {
+            "states_hash": "states-%s" % marker,
+            "log_odds_hash": "odds-%s" % marker,
+            "cells": 483516,
+            "surface_hash": "surface-%s" % marker,
+            "surface_columns": 6534,
+            "region": {"begin": [9, 0, 0], "end": [75, 99, 74]},
+            "identity": {"epoch": 1, "map_revision": 2, "observed_revision": 2,
+                         "last_integrated_stamp_ns": 1700000000000000000},
+            "release": "OK",
+            "pages": 8,
+            "pages_done": True,
+            "probe_mono_ns": 1,
+            "duration_ms": 120.0,
+            "last_integrated_stamp_ns": 1700000000000000000,
         }
 
     def hold(kind):
-        row = {"kind": kind, "duration_s": 10}
+        before = probe("b")
+        after = dict(probe("b"))
+        after["probe_mono_ns"] = 2
+        after["identity"] = dict(before["identity"])
+        row = {"kind": kind, "duration_s": 10, "duration_measured_s": 10.4,
+               "probe_before": before, "probe_after": after}
         if kind == "occlusion":
+            after_occl = dict(probe("b"))
+            after_occl["probe_mono_ns"] = 3
+            after_occl["surface_hash"] = "surface-after"
+            after_occl["identity"] = {"epoch": 1, "map_revision": 3,
+                                      "observed_revision": 3,
+                                      "last_integrated_stamp_ns": 1700000001000000000}
+            after_occl["last_integrated_stamp_ns"] = 1700000001000000000
             row.update({
                 "occlusion_input": {"shape": "plane", "plane_uld_x_m": -0.62,
                                     "plane_max_cell_x": 7, "oracle_min_cell_x": 9,
@@ -862,17 +1007,22 @@ def healthy_o8():
                 "input_accepted": True,
                 "occluder_receipt": {"status": "COMPLETED", "changed_keys": 700},
                 "region_probability_unchanged": True,
+                "surface_geometry_unchanged": False,
                 "freshness_advanced": True,
             })
+            row["probe_after"] = after_occl
         elif kind == "duplicate_id":
             row.update({
                 "duplicate_receipt": {"status": "COMPLETED", "disposition": "rejected"},
                 "duplicate_rejected": True,
                 "probability_unchanged": True,
+                "surface_geometry_unchanged": True,
                 "freshness_advanced": False,
             })
         else:
-            row.update({"probability_unchanged": True, "freshness_advanced": False})
+            row.update({"probability_unchanged": True,
+                        "surface_geometry_unchanged": True,
+                        "freshness_advanced": False})
         return row
 
     return {

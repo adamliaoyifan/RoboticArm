@@ -115,6 +115,10 @@ def control_cases(group_ids, o5_ids):
         [judge._input(index, "overload", "rejected") for index in range(contract.OVERLOAD_INPUTS)])
     growth = judge.healthy_o8()
     for run in growth["runs"]:
+        # The judge recomputes medians from the raw samples: the fault must
+        # live in the samples themselves, not only the declared aggregates.
+        run["rss_samples"] = [[t, 1060 if t >= 120 else v]
+                              for t, v in run["rss_samples"]]
         run["rss_median_kib"] = [1000, 1000, 1060]
     return [
         ("healthy_normal", healthy, "pass", []),

@@ -58,6 +58,35 @@ def occluder_points():
     return points
 
 
+def _probability_unchanged(before, after):
+    """Voxel-level comparison: complete states AND log-odds over the region.
+
+    Both probes must be error-free, cover the same non-empty cell count, and
+    carry both hashes. The surface geometry hash is deliberately NOT part of
+    this: sub-threshold log-odds changes leave the surface summary alone.
+    """
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return False
+    if "error" in before or "error" in after:
+        return False
+    cells_before, cells_after = before.get("cells"), after.get("cells")
+    if not isinstance(cells_before, int) or cells_before <= 0 or cells_before != cells_after:
+        return False
+    return (isinstance(before.get("states_hash"), str)
+            and before.get("states_hash") == after.get("states_hash")
+            and before.get("log_odds_hash") == after.get("log_odds_hash"))
+
+
+def _surface_unchanged(before, after):
+    """Secondary geometric summary comparison (surface columns)."""
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return False
+    if "error" in before or "error" in after:
+        return False
+    return (isinstance(before.get("surface_hash"), str)
+            and before.get("surface_hash") == after.get("surface_hash"))
+
+
 def resources_from_usage(usage):
     """Map a CLI resource_usage row onto the judge's resources dict.
 
@@ -893,6 +922,7 @@ class LiveScheduleAdapter:
         self._await_terminal(run, state["stamps"], timeout_s=30.0)
         saturation_frames = int(self.plan_o8["saturation_frames"])
         receipts = []
+        published_stamps = []
         for index in range(saturation_frames):
             stamp = run.session.next_stamp()
             frame = run.o8_frames[0]
@@ -901,15 +931,20 @@ class LiveScheduleAdapter:
             message.header.stamp.nanosec = int(stamp % 1_000_000_000)
             run.publisher.publish(message)
             observation = str(stamp)
+            published_stamps.append(observation)
             last, terminal = self._wait_terminal(run, observation, timeout_s=10.0)
             events = executor._receipt_events(run.session, observation)
             receipt = executor._field(last, "receipt")
+            identity = executor._field(receipt, "identity") or {}
             entry = {
                 "index": index,
                 "observation_id": observation,
                 "events": len(events),
                 "status": executor._field(last, "status"),
                 "disposition": terminal["disposition"],
+                "epoch": executor._field(identity, "epoch"),
+                "sensor_id": executor._field(receipt, "sensor_id"),
+                "receipt_observation_id": executor._field(receipt, "observation_id"),
                 "changed_keys": executor._field(receipt, "changed_keys"),
                 "rebuilt_blocks": executor._field(receipt, "rebuilt_blocks"),
                 "queue_ms": executor._field(receipt, "queue_ms"),
@@ -938,14 +973,18 @@ class LiveScheduleAdapter:
             if warmup_s <= relative <= duration_s:
                 nodes.append(int(loaded["tree_nodes"]))
                 node_times.append(round(relative, 3))
+        # Raw RSS samples with times so the judge re-buckets and recomputes.
+        rss_samples = [
+            [round((mark_ns - origin) / 1e9, 3), value]
+            for mark_ns, value in run.rss_samples
+            if isinstance(value, int)]
         # Three real 60 s RSS windows over the run, bucketed by sample time.
         window_s = contract.O8_RSS_WINDOW_S
         windows = []
         counts = []
         for start in (0, window_s, 2 * window_s):
-            bucket = [value for mark_ns, value in run.rss_samples
-                      if isinstance(value, int)
-                      and start <= (mark_ns - origin) / 1e9 < start + window_s]
+            bucket = [value for elapsed, value in rss_samples
+                      if start <= elapsed < start + window_s]
             windows.append(int(statistics.median(bucket)) if bucket else None)
             counts.append(len(bucket))
         row = {
@@ -953,18 +992,22 @@ class LiveScheduleAdapter:
             "saturation_frames_expected": saturation_frames,
             "saturation_frames_verified": sum(
                 1 for entry in receipts
-                if entry["events"] and entry["status"] == "COMPLETED"
+                if entry["events"] == 1 and entry["status"] == "COMPLETED"
+                and entry["disposition"] == "integrated"
+                and entry["receipt_observation_id"] == entry["observation_id"]
                 and isinstance(entry["changed_keys"], int)
                 and isinstance(entry["rebuilt_blocks"], int)),
+            "saturation_stamps": published_stamps,
             "saturation_receipts": receipts,
             "saturation_probability_keys": changed_keys,
             "saturation_geometry_blocks": rebuilt,
             "node_count_stable": bool(nodes) and len(set(nodes)) == 1,
             "node_health_times_s": sorted(node_times),
+            "node_health_values": [value for _time, value in sorted(zip(node_times, nodes))],
             "node_health_count": len(nodes),
             "rss_median_kib": windows,
             "rss_window_counts": counts,
-            "rss_sample_times_ns": [mark_ns for mark_ns, _value in run.rss_samples],
+            "rss_samples": rss_samples,
         }
         executor._write(run.out / ("saturation-%s.json" % run_id), row)
         return row
@@ -984,12 +1027,14 @@ class LiveScheduleAdapter:
         # to reach a terminal state, otherwise a straggler integration moves
         # the map during the hold.
         self._await_terminal(run, state["stamps"])
+        hold_started_ns = time.monotonic_ns()
         before = self._hold_probe(run)
         row = {
             "kind": kind,
             "duration_s": seconds,
             "probe_before": before,
             "probe_after": None,
+            "duration_measured_s": None,
         }
         if kind == "occlusion":
             # Real geometric blocking: a plane of valid points between the
@@ -1022,10 +1067,8 @@ class LiveScheduleAdapter:
             row["input_accepted"] = (
                 occluder_receipt is not None
                 and occluder_receipt.get("status") == "COMPLETED")
-            row["region_probability_unchanged"] = (
-                before is not None and after is not None
-                and before.get("content_hash") is not None
-                and before.get("content_hash") == after.get("content_hash"))
+            row["region_probability_unchanged"] = _probability_unchanged(before, after)
+            row["surface_geometry_unchanged"] = _surface_unchanged(before, after)
             row["freshness_advanced"] = self._freshness_advanced(before, after)
         elif kind == "duplicate_id":
             # Dedup check, separate from occlusion: the same cloud identity
@@ -1059,20 +1102,19 @@ class LiveScheduleAdapter:
             row["duplicate_rejected"] = (
                 duplicate_receipt is not None
                 and duplicate_receipt.get("duplicate_event") is True)
-            row["probability_unchanged"] = (
-                before is not None and after is not None
-                and before.get("content_hash") is not None
-                and before.get("content_hash") == after.get("content_hash"))
+            row["probability_unchanged"] = _probability_unchanged(before, after)
+            row["surface_geometry_unchanged"] = _surface_unchanged(before, after)
             row["freshness_advanced"] = self._freshness_advanced(before, after)
         else:
             time.sleep(seconds)
             after = self._hold_probe(run)
-            row["probability_unchanged"] = (
-                before is not None and after is not None
-                and before.get("content_hash") is not None
-                and before.get("content_hash") == after.get("content_hash"))
+            row["probability_unchanged"] = _probability_unchanged(before, after)
+            row["surface_geometry_unchanged"] = _surface_unchanged(before, after)
             row["freshness_advanced"] = self._freshness_advanced(before, after)
         row["probe_after"] = after
+        row["duration_measured_s"] = round(
+            (after.get("probe_mono_ns", time.monotonic_ns()) - hold_started_ns) / 1e9, 3) \
+            if after and "error" not in after else None
         executor._write(run.out / ("hold-%s-%d.json" % (kind, repeat)), row)
         return row
 
@@ -1100,16 +1142,58 @@ class LiveScheduleAdapter:
                 time.sleep(0.2)
         return not pending
 
-    def _hold_probe(self, run):
-        """Old-region oracle: surface columns at and beyond the occluder margin.
+    def _oracle_region(self, run):
+        """The explicit old region beyond the occluder margin, as cell bounds.
 
-        The columns' (x, y, counts, occupancy, top z) rows for x >= the oracle
-        bound are hashed; the bounds and column count are saved with the hash
-        so the region the hash covers is explicit.
+        The grid shape is derived from the fixture geometry (ceil of extent
+        over resolution) and cross-checked against the full-grid surface
+        column count on first use; a mismatch is an error, never a guess.
+        """
+        cached = getattr(self, "_oracle_region_cache", None)
+        if cached is not None:
+            return cached
+        import yaml
+        geometry_file = self.group_geometry(run.group)
+        config_file = self.group_config(run.group)
+        try:
+            geometry = yaml.safe_load(Path(geometry_file).read_text())
+            config = yaml.safe_load(Path(config_file).read_text())
+            descriptor = json.loads(geometry["descriptor_json"])
+            resolution = float(config["resolution_m"])
+            shape = [int(-(-extent // resolution)) for extent in (
+                descriptor["length"], descriptor["width"],
+                descriptor["ceiling_z"] - descriptor["floor_z"])]
+            if min(shape) <= _ORACLE_MIN_CELL_X:
+                raise ValueError("oracle bound outside grid")
+            region = {
+                "begin": [_ORACLE_MIN_CELL_X, 0, 0],
+                "end": shape,
+                "shape": shape,
+                "cells": (shape[0] - _ORACLE_MIN_CELL_X) * shape[1] * shape[2],
+                "resolution_m": resolution,
+                "geometry_hash": geometry.get("descriptor_sha256"),
+            }
+        except Exception as exc:
+            return {"error": "%s:%s" % (type(exc).__name__, str(exc)[:160])}
+        self._oracle_region_cache = region
+        return region
+
+    def _hold_probe(self, run):
+        """Old-region probability oracle: complete voxel states + log-odds.
+
+        One lease pages the WHOLE explicit region (every cell including
+        unknown and out-of-domain ones) plus the full surface as a secondary
+        geometric summary. Any page error, empty-before-done page, repeated
+        cursor, identity mismatch, or failed release is an error — never a
+        small clean hash that would compare equal to another error.
         """
         session = run.session
+        region = self._oracle_region(run)
+        if "error" in region:
+            return dict(region)
         try:
-            from uld_occ_observer.srv import GetSnapshot, ReadSurface, ReleaseSnapshot
+            from uld_occ_observer.srv import GetSnapshot, ReadCells, ReadSurface, ReleaseSnapshot
+            started_ns = time.monotonic_ns()
             request = GetSnapshot.Request()
             request.expected_epoch = 1
             # A hold deliberately ages the map for tens of seconds: the probe
@@ -1120,23 +1204,62 @@ class LiveScheduleAdapter:
             if lease.status != "OK":
                 return {"error": "snapshot_%s" % lease.status}
             identity = executor._identity_tuple(executor._field(lease, "identity"))
+            cells = session.node.create_client(ReadCells, "/uld_occ_observer/read_cells")
             surface = session.node.create_client(ReadSurface, "/uld_occ_observer/read_surface")
-            session.wait_service(surface, timeout=5)
+            release_client = session.node.create_client(
+                ReleaseSnapshot, "/uld_occ_observer/release_snapshot")
+            for client in (cells, surface, release_client):
+                session.wait_service(client, timeout=5)
+            seen_cursors = set()
+            states = []
+            log_odds = []
             cursor = 0
+            pages = 0
+            while True:
+                page_request = ReadCells.Request()
+                page_request.handle = lease.handle
+                page_request.begin = list(region["begin"])
+                page_request.end = list(region["end"])
+                page_request.cursor = int(cursor)
+                page_request.limit = 65536
+                page = session.call(cells, page_request, 10)
+                if page.status != "OK":
+                    return {"error": "cells_page_%s" % page.status}
+                if int(cursor) in seen_cursors:
+                    return {"error": "cells_page_repeat_cursor"}
+                seen_cursors.add(int(cursor))
+                page_states = list(page.states or [])
+                page_odds = list(page.log_odds or [])
+                if len(page_states) != len(page_odds):
+                    return {"error": "cells_page_field_mismatch"}
+                pages += 1
+                states.extend(page_states)
+                log_odds.extend(round(float(value), 6) for value in page_odds)
+                if page.done:
+                    break
+                if not page_states:
+                    return {"error": "cells_page_empty_before_done"}
+                cursor = int(page.next_cursor)
+            # Secondary geometric summary: full-grid surface columns filtered
+            # to the same region.
             columns = []
+            total_columns = 0
+            surface_cursor = 0
+            surface_pages = 0
             while True:
                 page_request = ReadSurface.Request()
                 page_request.handle = lease.handle
-                page_request.cursor = int(cursor)
+                page_request.cursor = int(surface_cursor)
                 page_request.limit = 512
-                page = session.call(surface, page_request, 5)
+                page = session.call(surface, page_request, 10)
+                if page.status != "OK":
+                    return {"error": "surface_page_%s" % page.status}
                 xs = executor._field(page, "x")
-                if xs is None:
-                    break
                 fields = {name: executor._field(page, name) for name in
                           ("y", "active_count", "known_count", "has_occupied", "top_z")}
-                if any(fields[name] is None for name in fields):
+                if xs is None or any(fields[name] is None for name in fields):
                     return {"error": "surface_page_missing_fields"}
+                total_columns += len(xs)
                 for index, x in enumerate(xs):
                     if int(x) < _ORACLE_MIN_CELL_X:
                         continue
@@ -1147,18 +1270,41 @@ class LiveScheduleAdapter:
                         bool(fields["has_occupied"][index]),
                         float(fields["top_z"][index]),
                     ])
-                if page.status != "OK" or page.done:
+                surface_pages += 1
+                if page.done:
                     break
-                cursor = int(page.next_cursor)
-            release = session.node.create_client(ReleaseSnapshot, "/uld_occ_observer/release_snapshot")
-            session.wait_service(release, timeout=5)
+                if not xs:
+                    return {"error": "surface_page_empty_before_done"}
+                surface_cursor = int(page.next_cursor)
             release_request = ReleaseSnapshot.Request()
             release_request.handle = lease.handle
-            session.call(release, release_request, 5)
+            release_status = session.call(release_client, release_request, 5).status
+            if release_status != "OK":
+                return {"error": "release_%s" % release_status}
+            if len(states) != region["cells"]:
+                return {"error": "cells_incomplete:%d/%d" % (len(states), region["cells"])}
+            # Shape cross-check: the full-grid surface must carry exactly
+            # shape.x*shape.y columns, or the derived bounds are wrong.
+            shape = region["shape"]
+            if total_columns != shape[0] * shape[1]:
+                return {"error": "shape_mismatch:%d/%d"
+                        % (total_columns, shape[0] * shape[1])}
             return {
-                "content_hash": executor._content_sha256(sorted(columns)),
-                "columns": len(columns),
-                "oracle_min_cell_x": _ORACLE_MIN_CELL_X,
+                "states_hash": executor._content_sha256(states),
+                "log_odds_hash": executor._content_sha256(log_odds),
+                "cells": len(states),
+                "surface_hash": executor._content_sha256(sorted(columns)),
+                "surface_columns": len(columns),
+                "region": {"begin": region["begin"], "end": region["end"],
+                           "shape": region["shape"], "resolution_m": region["resolution_m"]},
+                "identity": {"epoch": identity[0], "map_revision": identity[1],
+                             "observed_revision": identity[2],
+                             "last_integrated_stamp_ns": identity[3] if len(identity) > 3 else None},
+                "release": release_status,
+                "pages": pages,
+                "pages_done": True,
+                "probe_mono_ns": started_ns,
+                "duration_ms": (time.monotonic_ns() - started_ns) / 1e6,
                 "last_integrated_stamp_ns": identity[3] if len(identity) > 3 else None,
             }
         except Exception as exc:

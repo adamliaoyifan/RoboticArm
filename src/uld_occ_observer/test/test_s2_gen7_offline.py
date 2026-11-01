@@ -89,12 +89,19 @@ def test_o8_single_health_sample_does_not_certify_stability():
 def test_o8_rss_windows_need_real_samples():
     run = _healthy_run()
     run["rss_window_counts"] = [30, 30, 0]
+    run["rss_median_kib"] = [1000, 1000, 1000]
+    run["rss_samples"] = [[t, v] for t, v in run["rss_samples"] if t < 120]
     case = judge.healthy_o8()
     case["runs"] = [dict(run, run_id=str(index)) for index in range(contract.O8_RUNS)]
     verdict = judge.judge_o8(case)
     assert "rss_span" in verdict["reasons"]
     run = _healthy_run()
     run["rss_window_counts"] = None
+    case = judge.healthy_o8()
+    case["runs"] = [dict(run, run_id=str(index)) for index in range(contract.O8_RUNS)]
+    assert "rss_recompute" in judge.judge_o8(case)["reasons"]
+    run = _healthy_run()
+    del run["rss_samples"]
     case = judge.healthy_o8()
     case["runs"] = [dict(run, run_id=str(index)) for index in range(contract.O8_RUNS)]
     assert "missing_observation" in judge.judge_o8(case)["reasons"]
@@ -494,9 +501,8 @@ def _gen7_binaries():
 
 def test_live_occluder_blocks_without_touching_the_old_region(tmp_path):
     """Live occlusion semantics: an accepted plane input whose rays stop at
-    the plane. The old region beyond the plane must hash identically; the
-    duplicate-id replay must be rejected and move nothing."""
-    import yaml
+    the plane. The old region's voxel states AND log-odds must hash
+    identically; the duplicate-id replay must be rejected and move nothing."""
     cli, native, node = _gen7_binaries()
     fixtures = Path("/home/adamliao/work/elfin_humble_ws/docs/status/evidence/"
                     "occ_o6_o7_20261029/run01/fixtures")
@@ -514,7 +520,9 @@ def test_live_occluder_blocks_without_touching_the_old_region(tmp_path):
         adapter._await_terminal(run, adapter._stability["stamps"], timeout_s=30.0)
         before = adapter._hold_probe(run)
         assert "error" not in before, before
-        assert before["columns"] > 0
+        assert before["cells"] > 400000, before.get("cells")
+        assert before["release"] == "OK" and before["pages_done"] is True
+        assert before["region"]["begin"] == [live_schedule._ORACLE_MIN_CELL_X, 0, 0]
         # The occluder: valid input, accepted, integrates new cells.
         receipt = live_schedule.publish_occluder(run.session, run.publisher,
                                                  live_schedule.occluder_points())
@@ -523,11 +531,13 @@ def test_live_occluder_blocks_without_touching_the_old_region(tmp_path):
         assert isinstance(receipt["changed_keys"], int) and receipt["changed_keys"] > 0, receipt
         after = adapter._hold_probe(run)
         assert "error" not in after, after
-        assert after["content_hash"] == before["content_hash"], \
-            "the old region beyond the plane must be untouched"
+        # Voxel probabilities (states + log-odds) over the old region are
+        # identical; the surface geometry summary is secondary.
+        assert after["states_hash"] == before["states_hash"]
+        assert after["log_odds_hash"] == before["log_odds_hash"]
+        assert after["cells"] == before["cells"]
         assert after["last_integrated_stamp_ns"] > before["last_integrated_stamp_ns"]
-        # Duplicate identity: unstored DUPLICATE receipt, map and freshness
-        # unmoved (the replayed stamp is identical, so freshness cannot move).
+        # Duplicate identity: unstored DUPLICATE receipt, map and freshness unmoved.
         duplicate_before = adapter._hold_probe(run)
         stamp = int(adapter._stability["stamps"][-1])
         events_before = len(executor._receipt_events(run.session, str(stamp)))
@@ -541,8 +551,55 @@ def test_live_occluder_blocks_without_touching_the_old_region(tmp_path):
         assert any(event.get("status") == "DUPLICATE" for event in events), events
         assert len(events) == events_before + 1
         duplicate_after = adapter._hold_probe(run)
-        assert duplicate_after["content_hash"] == duplicate_before["content_hash"]
+        assert duplicate_after["states_hash"] == duplicate_before["states_hash"]
+        assert duplicate_after["log_odds_hash"] == duplicate_before["log_odds_hash"]
         assert duplicate_after["last_integrated_stamp_ns"] == \
             duplicate_before["last_integrated_stamp_ns"]
+    finally:
+        adapter.close()
+
+
+def test_live_holds_all_three_kinds_measured_complete(tmp_path):
+    """All three hold kinds through the real wiring, with the voxel oracle:
+    measured durations, complete probes, and judge-shaped rows."""
+    cli, native, node = _gen7_binaries()
+    fixtures = Path("/home/adamliao/work/elfin_humble_ws/docs/status/evidence/"
+                    "occ_o6_o7_20261029/run01/fixtures")
+    plan = executor.campaign_entry.load_plan(str(fixtures))
+    adapter = live_schedule.LiveScheduleAdapter(
+        cli, native, node, str(fixtures / "geometry_chamfer.yaml"),
+        str(fixtures / "config_chamfer_r0p02.yaml"), tmp_path)
+    adapter.bind_plan(plan)
+    # Keep the holds short but real: the plan seconds are per the contract;
+    # the probe round-trips dominate the wall time here.
+    try:
+        adapter.clock.advance(1.0)
+        for index in range(3):
+            adapter.stability_frame("holds-check", index)
+        for kind in contract.O8_HOLD_KINDS:
+            row = adapter.hold("holds-check", kind, 0)
+            assert row["duration_measured_s"] >= row["duration_s"] - 1.0, row
+            for probe in (row["probe_before"], row["probe_after"]):
+                assert "error" not in probe, (kind, probe)
+                assert probe["cells"] > 400000 and probe["release"] == "OK"
+            if kind == "occlusion":
+                assert row["input_accepted"] is True
+                assert row["region_probability_unchanged"] is True
+                assert row["surface_geometry_unchanged"] is False
+            elif kind == "duplicate_id":
+                assert row["duplicate_rejected"] is True
+                assert row["probability_unchanged"] is True
+                assert row["freshness_advanced"] is False
+            else:
+                assert row["probability_unchanged"] is True
+                assert row["freshness_advanced"] is False
+        verdict = judge.judge_o8({"gate": "o8", "runs": [], "holds": [
+            adapter.hold("holds-check", kind, repeat)
+            for kind in contract.O8_HOLD_KINDS for repeat in range(contract.O8_HOLDS)]})
+        # With zero runs the judge fails on run_count, but the hold section
+        # must contribute no hold/probe/probability reasons of its own.
+        hold_codes = {code for code in verdict["reasons"]
+                      if not code.startswith(("run_count", "missing_observation"))}
+        assert hold_codes == set(), verdict["reasons"]
     finally:
         adapter.close()

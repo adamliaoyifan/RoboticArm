@@ -287,15 +287,18 @@ class OfflineAdapter:
         return {"run_id": run_id, "index": index}
 
     def stability_run(self, run_id):
-        medians = [1000, 1000, 2000] if self.rss_growth else [1000, 1000, 1040]
+        medians = [1000, 1000, 2000] if self.rss_growth else [1000, 1000, 1004]
         frames = contract.O8_SATURATION_FRAMES
+        stamps = ["offline-sat-%d" % index for index in range(frames)]
         return {
             "run_id": run_id,
             "saturation_frames_expected": frames,
             "saturation_frames_verified": frames,
+            "saturation_stamps": stamps,
             "saturation_receipts": [
-                {"index": index, "observation_id": "sat-%d" % index, "events": 1,
-                 "status": "COMPLETED", "disposition": "integrated",
+                {"index": index, "observation_id": stamps[index], "events": 1,
+                 "status": "COMPLETED", "disposition": "integrated", "epoch": 1,
+                 "sensor_id": "cam0", "receipt_observation_id": stamps[index],
                  "changed_keys": 0, "rebuilt_blocks": 0}
                 for index in range(frames)],
             "saturation_probability_keys": 0,
@@ -303,17 +306,45 @@ class OfflineAdapter:
             "node_count_stable": self.node_stable,
             "node_health_times_s": [round(60.0 + index * 0.5, 3)
                                     for index in range(240)],
+            "node_health_values": [4321 if self.node_stable else 4321 + (index % 2)
+                                   for index in range(240)],
             "node_health_count": 240,
             "rss_median_kib": medians,
             "rss_window_counts": [30, 30, 30],
-            "rss_sample_times_ns": [1_000_000_000 * index for index in range(90)],
+            "rss_samples": [[round(index * 2.0, 3),
+                             medians[2] if index >= 60 else medians[0]]
+                            for index in range(90)],
+        }
+
+    def _offline_probe(self, marker):
+        return {
+            "states_hash": "states-%s" % marker,
+            "log_odds_hash": "odds-%s" % marker,
+            "cells": 483516,
+            "surface_hash": "surface-%s" % marker,
+            "surface_columns": 6534,
+            "region": {"begin": [9, 0, 0], "end": [75, 99, 74]},
+            "identity": {"epoch": 1, "map_revision": 2, "observed_revision": 2,
+                         "last_integrated_stamp_ns": 1000},
+            "release": "OK",
+            "pages": 8,
+            "pages_done": True,
+            "probe_mono_ns": 1,
+            "duration_ms": 100.0,
+            "last_integrated_stamp_ns": 1000,
         }
 
     def hold(self, run_id, kind, repeat):
         self.hold_calls.append((run_id, kind, repeat, self.hold_ok))
+        before = self._offline_probe("b")
+        after = self._offline_probe("b")
+        after["probe_mono_ns"] = 2
         row = {
             "kind": kind,
             "duration_s": 10,
+            "duration_measured_s": 10.2,
+            "probe_before": before,
+            "probe_after": after,
         }
         if kind == "occlusion":
             row["occlusion_input"] = {
