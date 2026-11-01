@@ -1,0 +1,22 @@
+.F......F.............................................                   [100%]
+=================================== FAILURES ===================================
+________________ test_epoch_rejection_is_observed_and_replayed _________________
+/tmp/elfin-occ-octomap-repair-2cm-g2/src/uld_occ_observer/test/test_s2_g3_offline.py:74: in test_epoch_rejection_is_observed_and_replayed
+    assert completed.returncode == 0, completed.stderr
+E   AssertionError: *** stack smashing detected ***: terminated
+E     
+E   assert -6 == 0
+E    +  where -6 = CompletedProcess(args=['/tmp/s2-install/uld_occ_observer/lib/uld_occ_observer/observer_profile_cli', '--geometry', '/h...tion_is_observ0/first/samples.yaml'], returncode=-6, stdout='', stderr='*** stack smashing detected ***: terminated\n').returncode
+____________ test_replay_child_compares_identity_and_rejects_tamper ____________
+/tmp/elfin-occ-octomap-repair-2cm-g2/src/uld_occ_observer/test/test_s2_g4_offline.py:311: in test_replay_child_compares_identity_and_rejects_tamper
+    path, bundle = _epoch_bundle(tmp_path)
+/tmp/elfin-occ-octomap-repair-2cm-g2/src/uld_occ_observer/test/test_s2_g4_offline.py:285: in _epoch_bundle
+    assert completed.returncode == 0, completed.stderr
+E   AssertionError: *** stack smashing detected ***: terminated
+E     
+E   assert -6 == 0
+E    +  where -6 = CompletedProcess(args=['/tmp/s2-install/uld_occ_observer/lib/uld_occ_observer/observer_profile_cli', '--geometry', '/h...d_compares_ide0/first/samples.yaml'], returncode=-6, stdout='', stderr='*** stack smashing detected ***: terminated\n').returncode
+=========================== short test summary info ============================
+FAILED ../../../../tmp/elfin-occ-octomap-repair-2cm-g2/src/uld_occ_observer/test/test_s2_g3_offline.py::test_epoch_rejection_is_observed_and_replayed
+FAILED ../../../../tmp/elfin-occ-octomap-repair-2cm-g2/src/uld_occ_observer/test/test_s2_g4_offline.py::test_replay_child_compares_identity_and_rejects_tamper
+2 failed, 52 passed, 6 deselected in 1.85s

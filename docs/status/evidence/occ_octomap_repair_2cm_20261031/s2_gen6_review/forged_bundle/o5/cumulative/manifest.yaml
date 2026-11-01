@@ -1,0 +1,3 @@
+frames:
+- path: missing.yaml
+  sha256: fake

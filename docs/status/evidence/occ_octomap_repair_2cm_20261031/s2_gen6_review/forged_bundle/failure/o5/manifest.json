@@ -1,0 +1,33 @@
+{
+  "stage": "o5",
+  "reason": "injected_missing_input",
+  "details": {
+    "text": "offline audit",
+    "truncated": false
+  },
+  "official_samples": "not_run",
+  "capture_complete": true,
+  "replay_possible": true,
+  "missing": [],
+  "replay_inputs": [
+    "o5/cumulative/manifest.yaml"
+  ],
+  "file_count": 3,
+  "files": [
+    {
+      "path": "o5/cumulative/cli.log",
+      "bytes": 8,
+      "sha256": "e80b71cd14d3cbd65f4173abcbfcf01a545dbca32a72d575108b553a648cc96f"
+    },
+    {
+      "path": "o5/cumulative/manifest.yaml",
+      "bytes": 44,
+      "sha256": "85f19ffa59d6131d9a5c2dd649def71dc5ef502ad921e84962c75988a760ea8a"
+    },
+    {
+      "path": "o5/cumulative/samples.yaml",
+      "bytes": 3,
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+    }
+  ]
+}

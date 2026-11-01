@@ -1,0 +1,13 @@
+sensor_id: cam0
+observation_id: epoch-reject
+optical_frame: d555_color_optical_frame
+clock_domain: ros
+geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+epoch: 99
+stamp_ns: 1000000000
+points_m:
+- [0.0, 0.0, 1.0]
+transform:
+  stamp_ns: 1000000000
+  translation: [-1.15, 0.0, 1.2]
+  rotation: [0, 0, 1, -1, 0, 0, 0, -1, 0]
