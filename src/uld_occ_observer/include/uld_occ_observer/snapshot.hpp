@@ -90,6 +90,10 @@ class Snapshot {
   const SnapshotIdentity identity_;
   const std::shared_ptr<const UldDomain> domain_;
   const BlockRegistry blocks_;
+  // Declared before surface_cache_ so the init list can use it: true when
+  // this snapshot CREATED the cache (counted once here), false when it
+  // shares an existing one (never re-counted).
+  const bool fresh_surface_cache_;
   const std::shared_ptr<SurfaceCache> surface_cache_;
 };
 }  // namespace uld_occ_observer

@@ -7,11 +7,13 @@
 
 namespace uld_occ_observer {
 SurfaceCache::~SurfaceCache() {
-  auto& totals = AllocationTotals::instance();
-  totals.subtract("surface_caches", sizeof(SurfaceCache) + kControlBlockBytes);
-  if (value)
-    totals.subtract("surface_caches",
-                    value->capacity() * static_cast<std::uint64_t>(sizeof(SurfaceColumn)));
+  // Only the cache OBJECT is released here. The column buffer is owned by
+  // its own shared_ptr (surface() hands it to callers), so its bytes are
+  // subtracted by the buffer's deleter at the LAST release — a caller may
+  // legitimately keep the buffer alive after the cache and snapshot are
+  // gone, and those bytes stay attributed until that reader lets go.
+  AllocationTotals::instance().subtract(
+      "surface_caches", sizeof(SurfaceCache) + kControlBlockBytes);
 }
 Snapshot::~Snapshot() {
   auto& totals = AllocationTotals::instance();
@@ -23,16 +25,21 @@ Snapshot::~Snapshot() {
 Snapshot::Snapshot(SnapshotIdentity identity, std::shared_ptr<const UldDomain> domain,
                    BlockRegistry blocks, std::shared_ptr<SurfaceCache> surface_cache)
     : identity_(std::move(identity)), domain_(std::move(domain)), blocks_(std::move(blocks)),
-      surface_cache_(surface_cache ? std::move(surface_cache) : std::make_shared<SurfaceCache>()) {
-  // Allocation-lifecycle accounting: the snapshot object plus the registry
-  // copy's nodes, raised at the construction site. Copies that share the
-  // cache only account the cache once, at its build site in surface().
+      fresh_surface_cache_(!surface_cache),
+      surface_cache_(surface_cache ? std::move(surface_cache)
+                                   : std::make_shared<SurfaceCache>()) {
+  // Occupancy accounting: the snapshot object plus the registry copy's
+  // nodes. A cache object is counted exactly once, at its creation — the
+  // freshness flag is captured BEFORE the parameter is moved into the
+  // member: testing the moved-from parameter would see null and
+  // double-count every shared cache (72 -> 144 bytes with a residual 72
+  // after release).
   auto& totals = AllocationTotals::instance();
   totals.add("snapshot_objects", sizeof(Snapshot) + kControlBlockBytes);
   totals.add("block_directory_nodes",
              static_cast<std::uint64_t>(blocks_.size())
                  * map_node_bytes<BlockRegistry::value_type>());
-  if (!surface_cache)
+  if (fresh_surface_cache_)
     totals.add("surface_caches", sizeof(SurfaceCache) + kControlBlockBytes);
 }
 
@@ -147,7 +154,18 @@ std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface(SurfaceProfi
     profile->domain_init_scanned_cells = init.scanned_cells;
     profile->domain_init_ms = init.milliseconds;
   }
-  auto output = std::make_shared<std::vector<SurfaceColumn>>(active_counts.size());
+  // The buffer's bytes ride its own shared ownership: added here, released
+  // by the deleter at the last owner (cache replacement, cache destruction,
+  // or an external reader letting go — whichever happens last).
+  const auto buffer_bytes = static_cast<std::uint64_t>(active_counts.size())
+      * sizeof(SurfaceColumn);
+  AllocationTotals::instance().add("surface_caches", buffer_bytes);
+  auto output = std::shared_ptr<std::vector<SurfaceColumn>>(
+      new std::vector<SurfaceColumn>(active_counts.size()),
+      [buffer_bytes](std::vector<SurfaceColumn>* columns) {
+        AllocationTotals::instance().subtract("surface_caches", buffer_bytes);
+        delete columns;
+      });
   std::vector<int> highest_occupied(active_counts.size(), -1);
   for (int y = 0; y < shape.y; ++y) {
     for (int x = 0; x < shape.x; ++x) {
@@ -179,17 +197,9 @@ std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface(SurfaceProfi
       }
     });
   }
-  // Occupancy accounting: a rebuild swaps the buffer — the old capacity is
-  // released and the new one acquired, so both directions are tracked.
-  {
-    auto& totals = AllocationTotals::instance();
-    if (surface_cache_->value)
-      totals.subtract("surface_caches",
-          surface_cache_->value->capacity()
-              * static_cast<std::uint64_t>(sizeof(SurfaceColumn)));
-    totals.add("surface_caches",
-               output->capacity() * static_cast<std::uint64_t>(sizeof(SurfaceColumn)));
-  }
+  // Occupancy accounting on a rebuild: the new buffer was added at its
+  // allocation above; the old buffer's bytes leave with its deleter when
+  // the last owner (possibly an external reader) releases it.
   surface_cache_->value = output;
   if (profile) {
     profile->scanned_cells = scanned;

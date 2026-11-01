@@ -245,6 +245,17 @@ ResourceUsage SnapshotRepository::usage() {
         old_bytes += sizeof(CellBlock) + kControlBlockBytes;
     }
   }
+  // Externally held surface buffers: surface() hands the column vector to
+  // callers, and a reader can outlive the cache and snapshot that built it.
+  // The tracker counts those bytes (added at build, released by the
+  // buffer's deleter at the last owner); the walk above only sees buffers
+  // reachable through snapshots, so the difference is exactly the external
+  // share — never dropped from the live sums because "the owner is not in
+  // the repository directory".
+  const auto tracked_cache_live = AllocationTotals::instance().live("surface_caches");
+  const auto external_buffers = tracked_cache_live > surface
+      ? tracked_cache_live - surface : 0;
+  surface += external_buffers;
   // The reader-tracking vector's retained capacity (weak_ptr slots).
   std::uint64_t readers_bytes = 0;
   {

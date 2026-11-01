@@ -272,6 +272,14 @@ struct CountingAllocator {
 };
 }  // namespace
 
+std::uint64_t live_cache_object_bytes() {
+  return sizeof(SurfaceCache) + kControlBlockBytes;
+}
+std::uint64_t buffer_bytes_of(const Snapshot* snapshot) {
+  return snapshot && snapshot->surface_cache()
+      ? snapshot->surface_cache_allocated_bytes() : 0;
+}
+
 void test_resource_ownership(const ObserverConfiguration& cfg) {
   CountingState probe;
   {
@@ -545,6 +553,84 @@ void test_resource_ownership(const ObserverConfiguration& cfg) {
     expect(settled.class_peaks.at("surface_caches")
                >= sequential.class_peaks.at("surface_caches"),
            "peaks never decrease");
+  }
+
+  // Review scenario 1 (resource_probe): two snapshots sharing ONE
+  // SurfaceCache must not double-count the cache object, and the last
+  // release must return the class to its baseline.
+  {
+    AllocationTotals::instance().reset_for_test();
+    ObservationStore shared_store(cfg.geometry, cfg.resolution, cfg.depth,
+                                  cfg.clock_domain, cfg.digest, false);
+    expect(shared_store.integrate(observation(cfg, "sh", 1000000000)).status == "INTEGRATED",
+           "shared-cache seed");
+    SnapshotRepository shared_repo(shared_store);
+    const auto lease = shared_repo.acquire(2000000000, 5000000000, true);
+    auto first_snapshot = shared_repo.get(lease.handle);
+    first_snapshot->surface();
+    const auto cache_pointer = first_snapshot->surface_cache();
+    const auto one_object = live_cache_object_bytes();
+    const auto shared_buffer_bytes = buffer_bytes_of(first_snapshot.get());
+    // with_identity shares the SAME cache pointer.
+    auto second_snapshot = first_snapshot->with_identity(first_snapshot->identity());
+    expect(second_snapshot->surface_cache() == cache_pointer,
+           "with_identity shares the cache pointer");
+    const auto during = AllocationTotals::instance().live("surface_caches");
+    expect(during == one_object + shared_buffer_bytes,
+           "a shared cache counts its object and buffer exactly once (no 72->144)");
+    expect(second_snapshot->surface()->size() == first_snapshot->surface()->size(),
+           "shared buffer stays readable");
+    // Repeated new identities sharing the cache never raise the peak.
+    for (int repeat = 0; repeat < 5; ++repeat)
+      (void)first_snapshot->with_identity(first_snapshot->identity());
+    const auto peak = AllocationTotals::instance().peak("surface_caches");
+    expect(peak == one_object + shared_buffer_bytes,
+           "repeated shared identities do not inflate the peak");
+    second_snapshot.reset();
+    first_snapshot.reset();
+    shared_repo.release(lease.handle);
+    // The store retains the last published snapshot, so object and buffer
+    // legitimately survive the repository's release...
+    expect(AllocationTotals::instance().live("surface_caches")
+               == one_object + shared_buffer_bytes,
+           "store retention keeps exactly one cache object and buffer");
+    // ...and fall to zero when that last owner (the store) lets go.
+    (void)shared_store.reset(shared_store.published_epoch());
+    expect(AllocationTotals::instance().live("surface_caches") == 0,
+           "the last owner's release returns the cache class to baseline");
+  }
+
+  // Review scenario 2 (resource_probe): an external reader keeps the
+  // surface() buffer after the lease is released and the store reset — the
+  // buffer bytes stay attributed until that reader lets go.
+  {
+    AllocationTotals::instance().reset_for_test();
+    ObservationStore keep_store(cfg.geometry, cfg.resolution, cfg.depth,
+                                cfg.clock_domain, cfg.digest, false);
+    expect(keep_store.integrate(observation(cfg, "kp", 1000000000)).status == "INTEGRATED",
+           "keep-buffer seed");
+    SnapshotRepository keep_repo(keep_store);
+    const auto lease = keep_repo.acquire(2000000000, 5000000000, true);
+    auto snapshot = keep_repo.get(lease.handle);
+    auto columns = snapshot->surface();
+    const auto buffer_bytes = columns->capacity() * sizeof(SurfaceColumn);
+    keep_repo.release(lease.handle);
+    (void)keep_store.reset(keep_store.published_epoch());
+    snapshot.reset();
+    const auto held = keep_repo.usage();
+    expect(columns && !columns->empty(), "the external reader still reads the buffer");
+    expect(held.cache_bytes >= buffer_bytes,
+           "an externally held buffer stays in the live cache bytes");
+    expect(AllocationTotals::instance().live("surface_caches") >= buffer_bytes,
+           "the tracker keeps the externally held buffer attributed");
+    const auto reported = held.cache_bytes;
+    columns.reset();
+    const auto released = keep_repo.usage();
+    expect(released.cache_bytes == reported - buffer_bytes
+               || released.cache_bytes == 0,
+           "the reader's release drops the buffer bytes");
+    expect(AllocationTotals::instance().live("surface_caches") == 0,
+           "the final release returns the cache class to zero");
   }
 
   // Ingress retained capacity: chunks are never freed on pop, so an empty
