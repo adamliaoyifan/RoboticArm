@@ -11,6 +11,7 @@ import json
 import math
 import os
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -395,3 +396,104 @@ def test_live_stage_rehearsal_dispatches_the_scheduler(tmp_path):
         log = json.loads(send_log.read_text())
         assert log["sender_thread"] != log["spin_thread"]
         assert all(item["publish_return_mono_ns"] for item in log["sent"])
+
+
+def test_live_blocked_query_does_not_push_the_sender(tmp_path):
+    """Behavioral rehearsal for handoff acceptance 3.
+
+    2 Hz, two sends, and a query deliberately blocked for more than a second:
+    the second publish must still start in its planned 0.5 s ±0.1 s slot and
+    return before the blocked query ends. Boundaries and thread identities are
+    saved. The offline virtual-clock counterpart is
+    test_s2_g5_offline.py::test_slow_query_does_not_stretch_the_send_schedule.
+    Needs /tmp/s2g6-install; deselect by node id when absent.
+    """
+    _gen6_binaries()
+    import threading
+    parent = str(Path(__file__).resolve().parent)
+    if parent not in sys.path:
+        sys.path.insert(0, parent)
+    import s2_rehearsal
+    import rclpy
+    session = None
+    observer = None
+    previous = os.environ.get("ROS_DOMAIN_ID")
+    # The domain must be set before rclpy.init: the context reads it once.
+    os.environ["ROS_DOMAIN_ID"] = "45"
+    env = os.environ.copy()
+    env["ROS_DOMAIN_ID"] = "45"
+    if not rclpy.ok():
+        rclpy.init()
+    try:
+        session = s2_rehearsal.Session()
+        observer = s2_rehearsal.start_observer(
+            NODE, str(FIXTURES / "geometry_chamfer.yaml"),
+            str(FIXTURES / "config_chamfer_r0p02.yaml"), tmp_path, [
+                "-p", "input_mode:=subscription", "-p", "sensor_id:=cam0",
+                "-p", "optical_frame:=d555_color_optical_frame",
+                "-p", "cloud_topic:=/s2g6_blocked_cloud", "-p", "behavior_test_hooks:=false",
+            ], env)
+        from sensor_msgs.msg import PointCloud2
+        publisher = session.node.create_publisher(
+            PointCloud2, "/s2g6_blocked_cloud", executor._cloud_publisher_qos())
+        session.wait_service(session.status)
+        session.broadcaster.sendTransform(s2_rehearsal.transform(session.next_stamp()))
+        time.sleep(0.3)
+        sent = []
+        origin_ns = time.monotonic_ns()
+        deadline_ns = origin_ns + 500_000_000
+
+        def send():
+            for index in range(2):
+                slot_ns = origin_ns + index * 500_000_000
+                delay_s = (slot_ns - time.monotonic_ns()) / 1e9
+                if delay_s > 0:
+                    time.sleep(delay_s)
+                stamp = session.next_stamp()
+                call_start_ns = time.monotonic_ns()
+                publisher.publish(s2_rehearsal.cloud_message(stamp))
+                sent.append({
+                    "index": index,
+                    "planned_s": (slot_ns - origin_ns) / 1e9,
+                    "call_start_mono_ns": call_start_ns,
+                    "publish_return_mono_ns": time.monotonic_ns(),
+                    "observation_id": str(stamp),
+                })
+
+        sender = threading.Thread(target=send)
+        sender.start()
+        # A deliberately blocked query: the target id is never sent, so the
+        # deferred wait runs its full two-second timeout.
+        query_started_ns = time.monotonic_ns()
+        blocked = session.wait_for(1, "never-sent-404", 2000)
+        query_ended_ns = time.monotonic_ns()
+        sender.join(timeout=5)
+        boundaries = {
+            "origin_mono_ns": origin_ns,
+            "second_deadline_mono_ns": deadline_ns,
+            "query_started_mono_ns": query_started_ns,
+            "query_ended_mono_ns": query_ended_ns,
+            "query_status": blocked.status,
+            "blocked_ms": (query_ended_ns - query_started_ns) / 1e6,
+            "sender_thread": sender.ident,
+            "spin_thread": session.thread.ident,
+            "sent": sent,
+        }
+        (tmp_path / "blocked_query_boundaries.json").write_text(json.dumps(boundaries, indent=2))
+        assert blocked.status == "TIMEOUT"
+        assert boundaries["blocked_ms"] > 1000.0
+        assert len(sent) == 2
+        second_start_s = (sent[1]["call_start_mono_ns"] - origin_ns) / 1e9
+        assert abs(second_start_s - 0.5) < 0.1, second_start_s
+        # The second publish returned while the blocked query was still open.
+        assert sent[1]["publish_return_mono_ns"] < query_ended_ns
+        assert sender.ident != session.thread.ident
+    finally:
+        if session is not None:
+            session.close()
+        if observer is not None:
+            observer.stop()
+        if previous is None:
+            os.environ.pop("ROS_DOMAIN_ID", None)
+        else:
+            os.environ["ROS_DOMAIN_ID"] = previous
