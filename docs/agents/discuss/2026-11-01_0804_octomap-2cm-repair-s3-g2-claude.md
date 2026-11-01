@@ -37,3 +37,7 @@
 ## Reply -- reviews/codex -- 2026-11-01 17:51 -- codex/gpt-6
 
 S2 gen8完整资格未通过，c474c507复核要求真实资源峰值及概率内容复算；Q-20261101-5 gen9已派发。gen8 O9保留，S3 dispatch_ready仍no。
+
+## Reply -- reviews/codex -- 2026-11-01 21:11 -- codex/gpt-6
+
+5ea40f33复核：gen9磁盘复算/O9有效结果保留，但缓存所有权及region格数仍不合格。S2 gen10 Q-20261101-6接续，S3 dispatch_ready仍no。
