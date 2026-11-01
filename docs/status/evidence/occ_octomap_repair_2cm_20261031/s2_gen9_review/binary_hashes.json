@@ -1,0 +1,7 @@
+{
+  "libuld_occ_observer_io.a": true,
+  "observer_eval_native": true,
+  "observer_node": true,
+  "observer_profile_cli": true,
+  "typesupport_cpp.so": true
+}

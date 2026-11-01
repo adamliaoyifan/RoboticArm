@@ -1,0 +1,13 @@
+{
+  "kind": "offline injection into saved artifact; originals unchanged",
+  "healthy": {
+    "pass": true,
+    "status": "pass",
+    "reasons": []
+  },
+  "one_cell_with_full_region_label": {
+    "pass": true,
+    "status": "pass",
+    "reasons": []
+  }
+}
