@@ -1,0 +1,5 @@
+shared_cache same=1 before=72 during=72
+shared_cache_after_last_owner=0
+integrate=INTEGRATED
+external_surface_columns=1200 retained_buffer_bytes=48000 reported_cache=48000 tracker_live=48000
+after_external_release=0 tracker_live=0
