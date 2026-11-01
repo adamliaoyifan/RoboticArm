@@ -1,10 +1,60 @@
 #pragma once
 #include <cstdint>
 #include <map>
+#include <mutex>
 #include <string>
 #include <vector>
 
 namespace uld_occ_observer {
+// Red-black node overhead for std::map nodes on LP64 (color+padding plus
+// parent/left/right). A map node allocation is this plus the padded pair.
+inline constexpr std::uint64_t kMapNodeOverhead = 8u + 3u * sizeof(void*);
+// A make_shared control block is roughly two pointers folded into the same
+// allocation as the object.
+inline constexpr std::uint64_t kControlBlockBytes = 2u * sizeof(void*);
+// Heap bytes actually allocated for a string: SSO strings (capacity within
+// the local buffer) own nothing; a heap string owns capacity()+1 bytes
+// including the terminator.
+inline std::uint64_t heap_string_bytes(const std::string& text) {
+  static const std::size_t kSsoCapacity = std::string{}.capacity();
+  return text.capacity() > kSsoCapacity ? text.capacity() + 1 : 0;
+}
+// One map entry's allocated node: rb overhead plus the padded pair payload.
+template <class Pair>
+inline std::uint64_t map_node_bytes() {
+  return kMapNodeOverhead + sizeof(Pair);
+}
+
+// Process-wide allocation totals raised at the allocation sites themselves.
+// Totals are monotone: they count every allocation ever made for a class, so
+// an object created and released between two usage() samples still raises the
+// recorded total. This is the allocation-lifecycle peak; the live ownership
+// walk in SnapshotRepository::usage() is the sampled current value.
+class AllocationTotals {
+ public:
+  static AllocationTotals& instance() {
+    static AllocationTotals totals;
+    return totals;
+  }
+  void add(const char* name, std::uint64_t bytes) {
+    if (bytes == 0) return;
+    std::lock_guard<std::mutex> lock(mutex_);
+    totals_[name] += bytes;
+  }
+  std::uint64_t total(const char* name) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto found = totals_.find(name);
+    return found == totals_.end() ? 0 : found->second;
+  }
+  void reset_for_test() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    totals_.clear();
+  }
+ private:
+  mutable std::mutex mutex_;
+  std::map<std::string, std::uint64_t> totals_;
+};
+
 // Counts are ownership sums. Two scopes are declared:
 //  - READ_VIEW/CACHE SCOPE (the O6 512 MiB gate): block allocations (shared by
 //    the store and old views, counted once per unique block), block-directory
@@ -68,6 +118,11 @@ struct ResourceUsage {
   std::uint64_t read_view_bytes_peak{};
   std::uint64_t cache_bytes{};
   std::uint64_t cache_bytes_peak{};
+  // Allocation-lifecycle totals (monotone, raised at the allocation sites):
+  // an object allocated and released between two samples still raises these.
+  std::uint64_t read_view_alloc_bytes{};
+  std::uint64_t cache_alloc_bytes{};
+  std::map<std::string, std::uint64_t> class_alloc_totals{};
   // Per-class ownership sums for this scope; keys match node_bytes_basis().
   std::map<std::string, std::uint64_t> class_bytes{};
   // "class" -> "container type and node-size derivation" for every class in
@@ -86,6 +141,8 @@ struct ResourceAccounts {
   std::uint64_t entry_message_peak{};
   std::uint64_t entry_payload_bytes{};
   std::uint64_t entry_payload_bytes_peak{};
+  // Retained deque capacity from the owning container's chunk model.
+  std::uint64_t entry_queue_allocated_bytes{};
   std::uint64_t ledger_records{};
   std::uint64_t ledger_record_peak{};
   std::uint64_t ledger_bytes{};

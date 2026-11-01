@@ -1,4 +1,5 @@
 #include "uld_occ_observer/snapshot_wait_board.hpp"
+#include "uld_occ_observer/resource_usage.hpp"
 #include <algorithm>
 
 namespace uld_occ_observer {
@@ -87,13 +88,26 @@ std::size_t SnapshotWaitBoard::peak() const {
 std::uint64_t SnapshotWaitBoard::accounted_bytes_unlocked() const {
   std::uint64_t bytes = 0;
   for (const auto& completion : completions_) {
-    bytes += sizeof(Completion);
-    bytes += completion.first.capacity();
-    bytes += completion.second.sensor_id.capacity();
-    bytes += completion.second.observation_id.capacity();
-    bytes += completion.second.status.capacity();
-    bytes += completion.second.reason.capacity();
+    // Node-inclusive accounting: rb overhead + padded pair (key string and
+    // Completion objects are inside the pair) + heap strings (+ terminator).
+    bytes += map_node_bytes<std::pair<const std::string, Completion>>();
+    for (const std::string* text : {
+             &completion.first,
+             &completion.second.sensor_id,
+             &completion.second.observation_id,
+             &completion.second.status,
+             &completion.second.reason,
+         })
+      bytes += heap_string_bytes(*text);
   }
+  // The eviction order deque: fixed chunks of std::string objects, retained
+  // per the same chunk model as the ingress, plus the strings' heaps.
+  constexpr std::size_t kChunkBytes = 512;
+  constexpr std::size_t per_chunk =
+      sizeof(std::string) < kChunkBytes ? kChunkBytes / sizeof(std::string) : 1;
+  const std::size_t chunks = order_.size() / per_chunk + 2;
+  bytes += static_cast<std::uint64_t>(chunks) * (per_chunk * sizeof(std::string));
+  for (const auto& key : order_) bytes += heap_string_bytes(key);
   return bytes;
 }
 std::uint64_t SnapshotWaitBoard::accounted_bytes() const {

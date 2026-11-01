@@ -1,4 +1,5 @@
 #include "uld_occ_observer/observation_ledger.hpp"
+#include "uld_occ_observer/resource_usage.hpp"
 #include <algorithm>
 
 namespace uld_occ_observer {
@@ -104,15 +105,21 @@ void ObservationLedger::drop_terminal_other_epochs(std::uint64_t epoch) {
 std::uint64_t ObservationLedger::accounted_bytes_unlocked() const {
   std::uint64_t bytes = 0;
   for (const auto& record : records_) {
-    bytes += sizeof(Record);
-    bytes += record.first.capacity();
-    bytes += record.second.state.capacity();
-    bytes += record.second.receipt.status.capacity();
-    bytes += record.second.receipt.sensor_id.capacity();
-    bytes += record.second.receipt.observation_id.capacity();
-    bytes += record.second.receipt.identity.geometry_hash.capacity();
-    bytes += record.second.receipt.identity.config_digest.capacity();
-    bytes += record.second.receipt.identity.clock_domain.capacity();
+    // One map node: rb-tree overhead plus the padded pair (the key string
+    // object and the Record object are inside the pair). Each heap string
+    // owns capacity()+1 bytes; SSO strings own nothing beyond the pair.
+    bytes += map_node_bytes<std::pair<const std::string, Record>>();
+    for (const std::string* text : {
+             &record.first,
+             &record.second.state,
+             &record.second.receipt.status,
+             &record.second.receipt.sensor_id,
+             &record.second.receipt.observation_id,
+             &record.second.receipt.identity.geometry_hash,
+             &record.second.receipt.identity.config_digest,
+             &record.second.receipt.identity.clock_domain,
+         })
+      bytes += heap_string_bytes(*text);
   }
   return bytes;
 }

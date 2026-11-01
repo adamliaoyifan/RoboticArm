@@ -546,6 +546,7 @@ class ObserverNode : public rclcpp::Node {
         accounts.entry_message_peak = ingress_.peak();
         accounts.entry_payload_bytes = ingress_.payload_bytes();
         accounts.entry_payload_bytes_peak = ingress_.payload_peak();
+        accounts.entry_queue_allocated_bytes = ingress_.allocated_bytes();
         accounts.ledger_records = ledger_.size();
         accounts.ledger_record_peak = ledger_.peak();
         accounts.ledger_bytes = ledger_.accounted_bytes();
@@ -582,6 +583,9 @@ class ObserverNode : public rclcpp::Node {
         response->read_view_bytes_peak = usage.read_view_bytes_peak;
         response->cache_bytes = usage.cache_bytes;
         response->cache_bytes_peak = usage.cache_bytes_peak;
+        response->read_view_alloc_bytes = usage.read_view_alloc_bytes;
+        response->cache_alloc_bytes = usage.cache_alloc_bytes;
+        response->entry_queue_allocated_bytes = accounts.entry_queue_allocated_bytes;
         response->store_tree_bytes = usage.store_tree_bytes;
         response->uncovered_allocations = usage.uncovered_allocations;
         response->certification = usage.certification;

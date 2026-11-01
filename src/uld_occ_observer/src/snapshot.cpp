@@ -1,6 +1,7 @@
 #include "uld_occ_observer/snapshot.hpp"
 #include "uld_occ_observer/interface_trace.hpp"
 #include "uld_occ_observer/block_storage.hpp"
+#include "uld_occ_observer/resource_usage.hpp"
 #include <algorithm>
 #include <string>
 
@@ -8,7 +9,18 @@ namespace uld_occ_observer {
 Snapshot::Snapshot(SnapshotIdentity identity, std::shared_ptr<const UldDomain> domain,
                    BlockRegistry blocks, std::shared_ptr<SurfaceCache> surface_cache)
     : identity_(std::move(identity)), domain_(std::move(domain)), blocks_(std::move(blocks)),
-      surface_cache_(surface_cache ? std::move(surface_cache) : std::make_shared<SurfaceCache>()) {}
+      surface_cache_(surface_cache ? std::move(surface_cache) : std::make_shared<SurfaceCache>()) {
+  // Allocation-lifecycle accounting: the snapshot object plus the registry
+  // copy's nodes, raised at the construction site. Copies that share the
+  // cache only account the cache once, at its build site in surface().
+  auto& totals = AllocationTotals::instance();
+  totals.add("snapshot_objects", sizeof(Snapshot) + kControlBlockBytes);
+  totals.add("block_directory_nodes",
+             static_cast<std::uint64_t>(blocks_.size())
+                 * map_node_bytes<BlockRegistry::value_type>());
+  if (!surface_cache)
+    totals.add("surface_caches", sizeof(SurfaceCache) + kControlBlockBytes);
+}
 
 std::shared_ptr<const Snapshot> Snapshot::with_identity(SnapshotIdentity identity) const {
   if (identity.map_revision != identity_.map_revision || identity.epoch != identity_.epoch)
@@ -154,6 +166,13 @@ std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface(SurfaceProfi
     });
   }
   surface_cache_->value = output;
+  // Allocation-lifecycle accounting: the column buffer at its allocated
+  // capacity, counted once per cache build (the object itself was counted at
+  // construction). A cache built and dropped between two samples still
+  // raises this total.
+  AllocationTotals::instance().add(
+      "surface_caches",
+      output->capacity() * static_cast<std::uint64_t>(sizeof(SurfaceColumn)));
   if (profile) {
     profile->scanned_cells = scanned;
     profile->output_columns = output->size();

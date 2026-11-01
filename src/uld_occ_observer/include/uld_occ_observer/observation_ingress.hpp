@@ -30,6 +30,12 @@ class ObservationIngress {
   std::size_t peak() const;
   std::uint64_t payload_bytes() const;
   std::uint64_t payload_peak() const;
+  // Retained chunk capacity of the deque, from the owning container's own
+  // chunk model. libstdc++ deque allocates fixed-size chunks and never frees
+  // them on pop, so an empty queue retains at least the chunks its high-water
+  // mark filled (plus one spare). This counts real retained capacity, not a
+  // per-message estimate.
+  std::uint64_t allocated_bytes() const;
  private:
   mutable std::mutex mutex_;
   std::deque<Item> queue_;

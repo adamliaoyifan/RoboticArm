@@ -5,6 +5,9 @@
 #include "uld_occ_observer/observation_terminal.hpp"
 #include "uld_occ_observer/snapshot_repository.hpp"
 #include "uld_occ_observer/snapshot_wait_board.hpp"
+#include "uld_occ_observer/resource_usage.hpp"
+#include <map>
+#include <string>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -238,7 +241,51 @@ void test_ledger_ingress_and_wait() {
   expect(late && late->status == "REJECTED" && late->reason == "QUEUE_FULL",
          "a recorded rejection beats a later timeout");
 }
+// Independent measurement harness: a counting allocator observes what a
+// std::map node actually allocates, so the per-entry expectations in the
+// resource test never reuse the product's own formulas.
+namespace {
+struct CountingState {
+  std::size_t node_allocated = 0;
+  std::size_t node_live = 0;
+};
+template <class T>
+struct CountingAllocator {
+  using value_type = T;
+  CountingState* state{};
+  CountingAllocator() = default;
+  explicit CountingAllocator(CountingState* s) : state(s) {}
+  template <class U> CountingAllocator(const CountingAllocator<U>& other) : state(other.state) {}
+  T* allocate(std::size_t n) {
+    if (state) {
+      state->node_allocated += n * sizeof(T);
+      state->node_live += n * sizeof(T);
+    }
+    return static_cast<T*>(::operator new(n * sizeof(T)));
+  }
+  void deallocate(T* p, std::size_t n) {
+    if (state) state->node_live -= n * sizeof(T);
+    ::operator delete(p);
+  }
+  bool operator==(const CountingAllocator& other) const { return state == other.state; }
+  bool operator!=(const CountingAllocator& other) const { return state != other.state; }
+};
+}  // namespace
+
 void test_resource_ownership(const ObserverConfiguration& cfg) {
+  CountingState probe;
+  {
+    // One real rb-map node insertion, measured by the counting allocator.
+    std::map<std::string, std::string, std::less<>,
+             CountingAllocator<std::pair<const std::string, std::string>>>
+        measured(std::less<>{},
+                 CountingAllocator<std::pair<const std::string, std::string>>{&probe});
+    measured[std::string(64, 'k')] = std::string(200, 'v');
+    expect(probe.node_allocated ==
+               sizeof(std::pair<const std::string, std::string>) + 8 + 3 * sizeof(void*),
+           "the counting allocator independently derives the map node size");
+  }
+
   ObservationStore store(cfg.geometry, cfg.resolution, cfg.depth, cfg.clock_domain, cfg.digest, false);
   expect(store.integrate(observation(cfg, "seed", 1000000000)).status == "INTEGRATED", "ownership seed");
   SnapshotRepository repo(store);
@@ -284,8 +331,9 @@ void test_resource_ownership(const ObserverConfiguration& cfg) {
     repo.release(latest.handle);
     independent_blocks = unique.size();
   }
-  expect(two.class_bytes.at("block_allocations") == independent_blocks * sizeof(CellBlock),
-         "independent block count times sizeof(CellBlock) matches the class sum");
+  expect(two.class_bytes.at("block_allocations")
+             == independent_blocks * (sizeof(CellBlock) + kControlBlockBytes),
+         "independent block count times object+control matches the class sum");
   expect(two.view_directory_entries
              == held->directory_entries() + store.directory_entries() + 2,
          "store + snapshot + open handles equals the directory entry count");
@@ -341,7 +389,8 @@ void test_resource_ownership(const ObserverConfiguration& cfg) {
   old_view.reset();
   const auto baseline = version_repo.usage();
   expect(baseline.surface_cache_bytes
-             == sizeof(SurfaceCache) + new_view->surface_cache_allocated_bytes(),
+             == sizeof(SurfaceCache) + kControlBlockBytes
+                    + new_view->surface_cache_allocated_bytes(),
          "dropping the old reader leaves the current snapshot cache as the baseline");
   expect(baseline.old_view_block_bytes == 0, "old-version blocks leave with their last reader");
   new_view.reset();
@@ -372,6 +421,108 @@ void test_resource_ownership(const ObserverConfiguration& cfg) {
   const auto done = flights.usage();
   expect(done.inflight_response_bytes == 0 && done.inflight_response_bytes_peak == peak && peak >= 3500,
          "the last response release returns inflight bytes to zero and keeps the peak");
+
+  // Per-entry ledger delta against the independently measured node size: the
+  // heap-string expectation below is written from first principles (a heap
+  // string owns capacity()+1 bytes; SSO owns nothing), not from the product's
+  // helper.
+  {
+    ObservationLedger ledger;
+    const auto now = std::chrono::steady_clock::now();
+    const auto before_bytes = ledger.accounted_bytes();
+    expect(ledger.admit(1, "cam0", std::string(40, 'x'), now).accepted, "long id admit");
+    const auto delta = ledger.accounted_bytes() - before_bytes;
+    const auto key = std::string("1|cam0|") + std::string(40, 'x');
+    // The counting allocator measured the rb-node OVERHEAD for its own pair
+    // type; the ledger's node is that overhead plus its own padded pair.
+    const std::size_t node_overhead =
+        probe.node_allocated - sizeof(std::pair<const std::string, std::string>);
+    const auto add_heap = [](const std::string& text) {
+      return text.capacity() > 15 ? text.capacity() + 1 : 0;
+    };
+    std::size_t expected = node_overhead + sizeof(std::pair<const std::string, ObservationLedger::Record>);
+    expected += add_heap(key);
+    expected += add_heap("QUEUED");       // state
+    expected += add_heap("cam0");         // receipt sensor id (SSO: zero)
+    expected += add_heap(std::string(40, 'x'));
+    expect(delta == expected, "ledger per-entry delta matches the independent node+string accounting");
+    // SSO strings own nothing: a short id costs no heap beyond the node.
+    const auto before_short = ledger.accounted_bytes();
+    expect(ledger.admit(1, "cam0", "short", now).accepted, "short id admit");
+    const auto short_delta = ledger.accounted_bytes() - before_short;
+    const auto key_short = std::string("1|cam0|short");
+    expect(short_delta == node_overhead + sizeof(std::pair<const std::string, ObservationLedger::Record>)
+                         + add_heap(key_short) + add_heap("QUEUED"),
+           "SSO strings add no heap bytes");
+  }
+
+  // Inter-sample lifecycle: caches built and old views dropped entirely
+  // between two usage() calls still raise the allocation totals while the
+  // live sums return to the current state.
+  {
+    AllocationTotals::instance().reset_for_test();
+    ObservationStore lifecycle(cfg.geometry, cfg.resolution, cfg.depth,
+                               cfg.clock_domain, cfg.digest, false);
+    expect(lifecycle.integrate(observation(cfg, "l1", 1000000000)).status == "INTEGRATED",
+           "lifecycle seed");
+    SnapshotRepository lifecycle_repo(lifecycle);
+    {
+      const auto lease = lifecycle_repo.acquire(2000000000, 5000000000, true);
+      auto view = lifecycle_repo.get(lease.handle);
+      view->surface();
+      lifecycle_repo.release(lease.handle);
+      view.reset();
+    }  // cache created and dropped with no usage() call in between
+    expect(lifecycle.integrate(observation(cfg, "l2", 3000000000)).status == "INTEGRATED",
+           "lifecycle second");
+    {
+      // A second snapshot (and its cache) is created by the next acquire and
+      // then dropped, still without a usage() sample in between.
+      const auto lease = lifecycle_repo.acquire(3000000000, 5000000000, true);
+      auto view = lifecycle_repo.get(lease.handle);
+      view->surface();
+      lifecycle_repo.release(lease.handle);
+      view.reset();
+    }
+    const auto after = lifecycle_repo.usage();
+    expect(after.cache_alloc_bytes >= after.cache_bytes,
+           "allocation totals bound the live cache bytes");
+    // The dropped cache plus the current snapshot's registry nodes and object
+    // were all allocated even though a sample never observed them.
+    expect(after.class_alloc_totals.at("surface_caches")
+               >= 2 * (sizeof(SurfaceCache) + kControlBlockBytes),
+           "a cache built and dropped between samples still raises its total");
+    expect(after.class_alloc_totals.at("snapshot_objects")
+               >= 2 * (sizeof(Snapshot) + kControlBlockBytes),
+           "snapshot objects allocated between samples still raise their total");
+    expect(after.read_view_alloc_bytes >= after.read_view_bytes,
+           "read-view allocation total bounds the live sum");
+  }
+
+  // Ingress retained capacity: chunks are never freed on pop, so an empty
+  // queue keeps the high-water capacity.
+  {
+    ObservationIngress ingress;
+    for (std::size_t index = 0; index < ObservationIngress::kCapacity; ++index) {
+      ObservationIngress::Item item;
+      item.sensor_id = "cam0";
+      item.observation_id = "i" + std::to_string(index);
+      item.payload_bytes = 100;
+      const auto admitted = ingress.try_admit(std::move(item));
+      expect(admitted.accepted, "ingress admits to capacity");
+    }
+    while (ingress.try_pop().has_value()) {}
+    expect(ingress.size() == 0, "queue drained");
+    expect(ingress.allocated_bytes()
+               >= ObservationIngress::kCapacity * sizeof(ObservationIngress::Item),
+           "an empty queue retains the high-water chunk capacity");
+    const auto retained = ingress.allocated_bytes();
+    ObservationIngress::Item extra;
+    extra.sensor_id = "cam0";
+    extra.observation_id = "extra";
+    expect(ingress.try_admit(std::move(extra)).accepted, "one more admit");
+    expect(ingress.allocated_bytes() >= retained, "retained capacity never shrinks");
+  }
 }
 void test_terminal_seal_and_bounds() {
   const auto now = std::chrono::steady_clock::now();

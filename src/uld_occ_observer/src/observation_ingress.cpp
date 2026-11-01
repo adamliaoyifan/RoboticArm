@@ -41,4 +41,15 @@ std::uint64_t ObservationIngress::payload_peak() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return payload_peak_;
 }
+std::uint64_t ObservationIngress::allocated_bytes() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  // libstdc++ deque buffer size: 512 / sizeof(T) elements per chunk (or one
+  // element when T exceeds 512 bytes), chunks are retained after pops, and
+  // one spare chunk is kept so a push never allocates empty-handed.
+  constexpr std::size_t kChunkBytes = 512;
+  constexpr std::size_t per_chunk =
+      sizeof(Item) < kChunkBytes ? kChunkBytes / sizeof(Item) : 1;
+  const std::size_t chunks = peak_ / per_chunk + 2;  // filled + partial + spare
+  return static_cast<std::uint64_t>(chunks) * (per_chunk * sizeof(Item));
+}
 }  // namespace uld_occ_observer

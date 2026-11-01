@@ -1,4 +1,5 @@
 #include "uld_occ_observer/block_storage.hpp"
+#include "uld_occ_observer/resource_usage.hpp"
 #include <limits>
 
 namespace uld_occ_observer {
@@ -102,6 +103,10 @@ void BlockUpdateBatch::write(CellIndex index, CellValue value) {
       diagnostic_->block_copied(existing->second->known_count());
       created = std::make_shared<CellBlock>(*existing->second);
     }
+    // Allocation-lifecycle accounting: every block object allocation (with
+    // its make_shared control block) raises the class total at the site.
+    AllocationTotals::instance().add(
+        "block_allocations", sizeof(CellBlock) + kControlBlockBytes);
     touched_.push_back(std::move(created));
     touched_blocks_.push_back(address.block_index);
     slot = touched_.back().get();
@@ -113,7 +118,13 @@ void BlockUpdateBatch::write(CellIndex index, CellValue value) {
 void BlockUpdateBatch::commit(BlockRegistry& registry) {
   if (committed_) throw Error("BLOCK_BATCH_CLOSED");
   committed_ = true;
-  for (std::size_t i = 0; i < touched_.size(); ++i)
+  for (std::size_t i = 0; i < touched_.size(); ++i) {
+    // A brand-new key allocates a registry node; replacing an existing key
+    // reuses its node and allocates nothing.
+    if (registry.find(touched_blocks_[i]) == registry.end())
+      AllocationTotals::instance().add(
+          "block_directory_nodes", map_node_bytes<BlockRegistry::value_type>());
     registry[touched_blocks_[i]] = touched_[i];
+  }
 }
 }  // namespace uld_occ_observer

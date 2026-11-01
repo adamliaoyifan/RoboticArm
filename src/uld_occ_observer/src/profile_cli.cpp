@@ -163,6 +163,8 @@ int main(int argc, char** argv) {
         resources["read_view_bytes_peak"] = repo_usage.read_view_bytes_peak;
         resources["cache_bytes"] = repo_usage.cache_bytes;
         resources["cache_bytes_peak"] = repo_usage.cache_bytes_peak;
+        resources["read_view_alloc_bytes"] = repo_usage.read_view_alloc_bytes;
+        resources["cache_alloc_bytes"] = repo_usage.cache_alloc_bytes;
         resources["attribution_complete"] =
             repo_usage.certification == "READ_VIEW_CACHE_ATTRIBUTED";
         resources["unmarked_allocations"] = repo_usage.uncovered_allocations;
@@ -180,6 +182,10 @@ int main(int argc, char** argv) {
         YAML::Node classes(YAML::NodeType::Map);
         for (const auto& item : repo_usage.class_bytes) classes[item.first] = item.second;
         resources["class_bytes"] = classes;
+        YAML::Node alloc_totals(YAML::NodeType::Map);
+        for (const auto& item : repo_usage.class_alloc_totals)
+          alloc_totals[item.first] = item.second;
+        resources["class_alloc_totals"] = alloc_totals;
         YAML::Node basis(YAML::NodeType::Map);
         for (const auto& item : repo_usage.class_basis) basis[item.first] = item.second;
         resources["class_basis"] = basis;
