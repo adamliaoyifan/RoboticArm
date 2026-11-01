@@ -107,9 +107,13 @@ class Session:
         self.thread.start()
         self.health = []
         self.receipts = []
+        # (time.monotonic_ns(), message): raw receipt events for counting and
+        # duplicate detection. The receipts list stays for compatibility.
+        self.receipt_events = []
         reliable = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE)
         self.node.create_subscription(String, "/uld_occ_observer/health", self._health, reliable)
-        self.node.create_subscription(UpdateReceipt, "/uld_occ_observer/receipts", self._receipt, 100)
+        # Frozen plan §2B: the receipt ledger subscription depth is 1024.
+        self.node.create_subscription(UpdateReceipt, "/uld_occ_observer/receipts", self._receipt, 1024)
         self.wait = self.node.create_client(WaitSnapshot, "/uld_occ_observer/wait_snapshot")
         self.status = self.node.create_client(GetObservationStatus, "/uld_occ_observer/get_observation_status")
         self.integrate = self.node.create_client(IntegrateObservation, "/uld_occ_observer/integrate_observation")
@@ -125,6 +129,7 @@ class Session:
 
     def _receipt(self, message):
         self.receipts.append(message)
+        self.receipt_events.append((time.monotonic_ns(), message))
 
     def close(self):
         self.executor.shutdown()

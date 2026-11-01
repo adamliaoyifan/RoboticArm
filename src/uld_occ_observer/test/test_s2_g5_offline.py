@@ -349,7 +349,11 @@ def test_profile_launch_failure_is_saved(tmp_path):
     assert result["started"]["o5"] == 0
     assert result["official_samples"] == "not_run"
     assert manifest["stage"] == "o5"
-    assert manifest["capture_complete"] is True
+    # gen6: a launch failure captured nothing, and the manifest says so.
+    # capture_complete is computed from disk, never asserted.
+    assert manifest["capture_complete"] is False
+    assert manifest["replay_possible"] is False
+    assert manifest["missing"]
     assert (tmp_path / "o7").exists() is False
 
 
@@ -378,7 +382,9 @@ def test_ready_wait_respects_timeout_and_the_eight_limit(tmp_path):
     if parent not in sys.path:
         sys.path.insert(0, parent)
     import s2_rehearsal
-    node = "/tmp/s2-install/uld_occ_observer/lib/uld_occ_observer/observer_node"
+    node = os.environ.get(
+        "OCC_S2_NODE",
+        "/tmp/s2-install/uld_occ_observer/lib/uld_occ_observer/observer_node")
     geometry = "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_o6_o7_20261029/run01/fixtures/geometry_chamfer.yaml"
     config = "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_o6_o7_20261029/run01/fixtures/config_chamfer_r0p02.yaml"
     if not Path(node).is_file():

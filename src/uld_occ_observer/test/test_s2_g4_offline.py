@@ -397,6 +397,8 @@ def test_live_campaign_wiring_stays_non_scored(tmp_path):
     assert by_stage["o5"]["processes"] == 1
     assert by_stage["o6"]["processes"] == 1
     assert by_stage["o5"]["started"] == 2
+    assert by_stage["o5"]["sample_problems"] == []
+    assert by_stage["o5"]["frame_receipts"] == ["INTEGRATED", "INTEGRATED"]
     assert by_stage["o5"]["judge"]["pass"] is False
     assert by_stage["o6"]["judge"]["pass"] is False
     assert by_stage["o7"]["judge"]["pass"] is False
@@ -405,4 +407,9 @@ def test_live_campaign_wiring_stays_non_scored(tmp_path):
     assert by_stage["o7"]["resource_certification"] == "NOT_EVALUATED"
     assert by_stage["o7"]["sender"]["sender_thread"] != by_stage["o7"]["sender"]["spin_thread"]
     assert by_stage["o7"]["sender"]["planned_s"] == pytest.approx([0.0, 0.5])
+    # gen6: the aggregate is labeled as both chains plus join, and per-request
+    # boundaries exist alongside it.
+    assert by_stage["o7"]["sender"]["chains_wall_s"] == by_stage["o7"]["sender"]["query_s"]
+    assert len(by_stage["o7"]["sender"]["send_query_timeline"]) == 6
+    assert by_stage["o8"]["health_valid"] is True
     assert (tmp_path / "failure").exists() is False

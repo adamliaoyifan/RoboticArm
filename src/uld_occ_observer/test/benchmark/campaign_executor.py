@@ -23,6 +23,10 @@ BUDGET_S = 8 * 3600
 WIRE_BUDGET_S = 180.0
 WIRE_FRAMES = 2
 WIRE_INPUTS = 2
+_WIRED_SAMPLE_FIELDS = frozenset((
+    "integrate_ms", "acquire_ms", "roi_ms", "surface_first_ms", "surface_repeat_ms",
+    "surface_after_update_ms", "rss_kib", "init_s", "warm_init_s",
+))
 
 
 def _field(obj, name):
@@ -720,20 +724,21 @@ class LiveProfileAdapter:
             raise RuntimeError(completed.stderr[-400:] or completed.stdout[-400:])
         row = next(yaml.safe_load_all(samples.read_text()))
         self.receipt_status = row["receipt"]["status"]
+        self.frame_receipts = [row.get("receipt", {}).get("status")]
         self.trace_verdict = capture_replay.certify_trace(
             trace, capture_replay.expected_profile_trace(observation_id, run_id="live"))
         first = row.get("surface_first_call") if isinstance(row.get("surface_first_call"), dict) else {}
         second = row.get("surface_second_call") if isinstance(row.get("surface_second_call"), dict) else {}
-        sample = {}
-        for key, value in (
-                ("integrate_ms", row.get("integrate_external_ms")),
-                ("acquire_ms", row.get("acquire_ms")),
-                ("roi_ms", row.get("roi_ms")),
-                ("surface_first_ms", first.get("external_ms")),
-                ("surface_repeat_ms", second.get("external_ms")),
-                ("rss_kib", row.get("process_peak_rss_kib"))):
-            if value is not None:
-                sample[key] = value
+        # Raw values only; poisoned or missing values stay visible to the judge.
+        sample = {
+            "integrate_ms": row.get("integrate_external_ms"),
+            "acquire_ms": row.get("acquire_ms"),
+            "roi_ms": row.get("roi_ms"),
+            "surface_first_ms": first.get("external_ms"),
+            "surface_repeat_ms": second.get("external_ms"),
+            "rss_kib": row.get("process_peak_rss_kib"),
+        }
+        self.sample_problems = [dict(problem, frame=0) for problem in _wire_sample_problems(sample)]
         return sample
 
     def run_cumulative(self, group, frame_count, dest):
@@ -780,6 +785,7 @@ class LiveProfileAdapter:
         self.processes += 1
         documents = [row for row in yaml.safe_load_all(samples.read_text()) if isinstance(row, dict)]
         self.receipt_status = documents[0]["receipt"]["status"]
+        self.frame_receipts = [document.get("receipt", {}).get("status") for document in documents]
         first = documents[0]["surface_first_call"]["external_ms"]
         repeat = documents[0]["surface_second_call"]["external_ms"]
         after = documents[1]["surface_first_call"]["external_ms"] if len(documents) > 1 else None
@@ -788,24 +794,28 @@ class LiveProfileAdapter:
             "surface_repeat_ms": repeat,
             "surface_after_update_ms": after,
         }
+        self.surface_problems = _wire_sample_problems(self.surfaces)
         scored = []
         for document in documents:
             call = document.get("surface_first_call") if isinstance(document.get("surface_first_call"), dict) else {}
             again = document.get("surface_second_call") if isinstance(document.get("surface_second_call"), dict) else {}
-            sample = {"integrate_ms": document.get("integrate_external_ms")}
-            if call.get("external_ms") is not None:
-                sample["surface_first_ms"] = call["external_ms"]
-            if again.get("external_ms") is not None:
-                sample["surface_repeat_ms"] = again["external_ms"]
-            if document.get("roi_ms") is not None:
-                sample["roi_ms"] = document["roi_ms"]
-            if document.get("acquire_ms") is not None:
-                sample["acquire_ms"] = document["acquire_ms"]
-            if document.get("process_peak_rss_kib") is not None:
-                sample["rss_kib"] = document["process_peak_rss_kib"]
-            scored.append(sample)
+            # Raw values only. A poisoned or missing value stays in its column so
+            # the judge scores it as nonfinite/missing instead of silently
+            # shrinking the sample; the wiring layer records its own problems.
+            scored.append({
+                "integrate_ms": document.get("integrate_external_ms"),
+                "surface_first_ms": call.get("external_ms"),
+                "surface_repeat_ms": again.get("external_ms"),
+                "roi_ms": document.get("roi_ms"),
+                "acquire_ms": document.get("acquire_ms"),
+                "rss_kib": document.get("process_peak_rss_kib"),
+            })
         if after is not None and scored:
             scored[0]["surface_after_update_ms"] = after
+        self.sample_problems = []
+        for index, sample in enumerate(scored):
+            for problem in _wire_sample_problems(sample):
+                self.sample_problems.append(dict(problem, frame=index))
         return scored
 
 
@@ -847,6 +857,105 @@ def _finite_age(value, limit):
     return value >= 0 and value <= limit
 
 
+def _wire_sample_problems(values):
+    """Named problems for wiring-level samples: bool/NaN/Inf/negative/missing.
+
+    This check is independent of the campaign judge. A missing_group rejection
+    must not mask a poisoned sample, so the wiring layer keeps its own list and
+    refuses to call itself executed while any problem stands.
+    """
+    problems = []
+    for key in sorted(values):
+        problem = repair_s0_judge._number_problem(values[key])
+        if problem:
+            problems.append({"field": key, "problem": problem})
+    return problems
+
+
+def _cloud_publisher_qos():
+    """Frozen plan §2B: the cloud topic is Reliable + KeepLast(32)."""
+    from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+    return QoSProfile(history=HistoryPolicy.KEEP_LAST, depth=32,
+                      reliability=ReliabilityPolicy.RELIABLE,
+                      durability=DurabilityPolicy.VOLATILE)
+
+
+def _receipt_events(session, observation_id, sensor_id="cam0"):
+    """Raw same-ID receipt subscription events, oldest first.
+
+    Counts and duplicate detection come from this list only; a boolean cannot
+    discover a repeated terminal receipt.
+    """
+    events = getattr(session, "receipt_events", None)
+    if events is None:
+        # Compatibility: messages retained without receive times.
+        events = [(None, message) for message in getattr(session, "receipts", [])]
+    collected = []
+    for received_mono_ns, message in events:
+        if _field(message, "observation_id") != observation_id:
+            continue
+        if _field(message, "sensor_id") != sensor_id:
+            continue
+        collected.append({
+            "received_mono_ns": received_mono_ns,
+            "status": _field(message, "status"),
+            "queue_ms": _field(message, "queue_ms"),
+            "total_ms": _field(message, "total_ms"),
+            "input_stamp_ns": _field(message, "input_stamp_ns"),
+            # 0 is the product's not-recorded sentinel for this additive field.
+            "callback_enter_ns": _field(message, "callback_enter_ns") or None,
+        })
+    return collected
+
+
+def _receipt_event_problems(events, observation_id):
+    problems = []
+    for index, event in enumerate(events):
+        for key in ("queue_ms", "total_ms"):
+            problem = repair_s0_judge._number_problem(event.get(key))
+            if problem:
+                problems.append({"event": index, "field": key, "problem": problem,
+                                 "observation_id": observation_id})
+    if len(events) > 1:
+        problems.append({"event": "duplicate", "problem": "duplicate_terminal",
+                         "observation_id": observation_id, "count": len(events)})
+    return problems
+
+
+def _o8_health_valid(health, rss):
+    """O8 wiring validity: parseable, distinct-stamp health and readable RSS.
+
+    Missing samples, repeated timestamps, poisoned node counts, or an exited
+    process (unreadable /proc) keep the wiring from claiming it executed.
+    """
+    health_dicts = [item["health"] for item in health if isinstance(item["health"], dict)]
+    stamps = [item.get("stamp_ns") for item in health_dicts]
+    return bool(
+        len(health_dicts) == 2
+        and len(stamps) == len(set(stamps)) == 2
+        and all(repair_s0_judge._number_problem(item.get("tree_nodes")) is None
+                for item in health_dicts)
+        and len(rss) == 2 and all(value is not None for value in rss))
+
+
+def _logged_call(session, client, request, timeout, service, request_id):
+    """One service call with an independent request id and monotonic boundaries.
+
+    The log entry keeps the CLOCK_MONOTONIC domain; the status is copied from
+    the response verbatim and never synthesized.
+    """
+    started = time.monotonic_ns()
+    response = session.call(client, request, timeout)
+    status = _field(response, "status")
+    return response, {
+        "service": service,
+        "request_id": request_id,
+        "started_mono_ns": started,
+        "ended_mono_ns": time.monotonic_ns(),
+        "status": status if status is not None else "no_status_field",
+    }
+
+
 def _content_sha256(material):
     import hashlib
     import json as json_mod
@@ -881,7 +990,18 @@ def expected_map_contract(geometry_file, config_file):
 def _read_snapshot_chain(session, expected):
     """Use only the WaitSnapshot lease. A later GetSnapshot is not a substitute."""
     from uld_occ_observer.srv import ReadCells, ReadSurface, ReleaseSnapshot
+    service_calls = []
+    chain_started_ns = time.monotonic_ns()
+    wait_started_ns = time.monotonic_ns()
     wait = session.wait_for(expected["epoch"], expected["observation_id"], 2000)
+    wait_ms = (time.monotonic_ns() - wait_started_ns) / 1e6
+    service_calls.append({
+        "service": "wait_snapshot",
+        "request_id": "wait-%s" % expected["observation_id"],
+        "started_mono_ns": wait_started_ns,
+        "ended_mono_ns": time.monotonic_ns(),
+        "status": getattr(wait, "status", None),
+    })
     handle = wait.handle or ""
     wait_identity = _identity_tuple(wait.identity)
     reasons = []
@@ -919,18 +1039,26 @@ def _read_snapshot_chain(session, expected):
             chain["reasons"] = reasons
             chain["content_material"] = material
             chain["content_sha256"] = _content_sha256(material)
+            chain["wait_ms"] = wait_ms
+            chain["service_calls"] = service_calls
+            chain["total_ms"] = (time.monotonic_ns() - chain_started_ns) / 1e6
             return chain
         surface = session.node.create_client(ReadSurface, "/uld_occ_observer/read_surface")
         roi = session.node.create_client(ReadCells, "/uld_occ_observer/read_cells")
         session.wait_service(surface, timeout=5)
         cursor = 0
         shape = expected.get("surface_shape")
+        surface_pages_ms = 0.0
         while True:
             request = ReadSurface.Request()
             request.handle = handle
             request.cursor = int(cursor)
             request.limit = 512
-            page = session.call(surface, request, 5)
+            page, page_call = _logged_call(
+                session, surface, request, 5, "read_surface",
+                "surface-%s-%d" % (handle or "none", int(cursor)))
+            service_calls.append(page_call)
+            surface_pages_ms += (page_call["ended_mono_ns"] - page_call["started_mono_ns"]) / 1e6
             columns = [_field(page, name) for name in (
                 "x", "y", "active_count", "known_count", "has_occupied", "top_z")]
             width = None if columns[0] is None else len(columns[0])
@@ -950,7 +1078,8 @@ def _read_snapshot_chain(session, expected):
                         reasons.append("column_range")
             pages.append({"status": page.status, "done": bool(page.done), "identity": identity,
                           "columns": width, "cursor": int(cursor),
-                          "next_cursor": int(page.next_cursor)})
+                          "next_cursor": int(page.next_cursor),
+                          "call_ms": (page_call["ended_mono_ns"] - page_call["started_mono_ns"]) / 1e6})
             if page.status != "OK" or not shape_ok:
                 break
             if page.done:
@@ -974,7 +1103,10 @@ def _read_snapshot_chain(session, expected):
         cell_request.end = [16, 16, 16]
         cell_request.cursor = 0
         cell_request.limit = 4096
-        cell_page = session.call(roi, cell_request, 5)
+        cell_page, cell_call = _logged_call(
+            session, roi, cell_request, 5, "read_cells", "cells-%s" % (handle or "none"))
+        service_calls.append(cell_call)
+        cells_ms = (cell_call["ended_mono_ns"] - cell_call["started_mono_ns"]) / 1e6
         cell_identity = _identity_tuple(cell_page.identity)
         if cell_page.status != "OK" or cell_identity != wait_identity:
             reasons.append("roi")
@@ -1000,7 +1132,15 @@ def _read_snapshot_chain(session, expected):
                 session.wait_service(release, timeout=5)
                 request = ReleaseSnapshot.Request()
                 request.handle = handle
+                release_started_ns = time.monotonic_ns()
                 release_status = session.call(release, request, 5).status
+                service_calls.append({
+                    "service": "release_snapshot",
+                    "request_id": "release-%s" % handle,
+                    "started_mono_ns": release_started_ns,
+                    "ended_mono_ns": time.monotonic_ns(),
+                    "status": release_status,
+                })
             except Exception as exc:
                 release_status = "release_failed:%s" % exc
                 reasons.append("release")
@@ -1019,6 +1159,11 @@ def _read_snapshot_chain(session, expected):
         "reasons": reasons,
         "release_status": release_status,
         "age_within_2s": "age" not in reasons,
+        "wait_ms": wait_ms,
+        "surface_pages_ms": surface_pages_ms,
+        "cells_ms": cells_ms,
+        "service_calls": service_calls,
+        "total_ms": (time.monotonic_ns() - chain_started_ns) / 1e6,
     })
     return chain
 
@@ -1070,6 +1215,7 @@ def smoke_ros(plan, node, geometry, config, out):
             if self.sender_thread is not None:
                 self.sender_thread.join(timeout=10)
             terminal = holder.get("terminal") or {}
+            events = _receipt_events(holder["session"], holder.get("observation_id") or "")
             return {
                 "input_id": input_id,
                 "phase": "score",
@@ -1077,6 +1223,7 @@ def smoke_ros(plan, node, geometry, config, out):
                 "receipt_received": terminal.get("receipt_received", False),
                 "status_query": terminal.get("status_query"),
                 "receipt_status": terminal.get("receipt_status"),
+                "terminal_count": len(events),
             }
 
         def ros_query(self, item, index):
@@ -1092,10 +1239,10 @@ def smoke_ros(plan, node, geometry, config, out):
             expected = {"epoch": 1, "sensor_id": "cam0", "observation_id": observation_id}
             while time_mod.monotonic() < deadline:
                 last = session.query(1, observation_id)
-                subscribed = any(
-                    message.observation_id == observation_id and message.sensor_id == "cam0"
-                    for message in session.receipts)
-                terminal = interpret_observation_status(last, expected, subscribed)
+                events = _receipt_events(session, observation_id)
+                terminal = interpret_observation_status(last, expected, bool(events))
+                terminal["terminal_count"] = len(events)
+                terminal["receipt_events"] = events
                 holder["terminal"] = terminal
                 holder["query_status"] = terminal["disposition"]
                 if terminal["disposition"] in ("integrated", "REJECTED", "EXPIRED", "NOT_SEEN"):
@@ -1142,10 +1289,9 @@ def smoke_ros(plan, node, geometry, config, out):
     try:
         session = s2_rehearsal.Session()
         holder["session"] = session
-        from rclpy.qos import QoSProfile, ReliabilityPolicy
         from sensor_msgs.msg import PointCloud2
         holder["pub"] = session.node.create_publisher(
-            PointCloud2, "/s2_g6_cloud", QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE))
+            PointCloud2, "/s2_g6_cloud", _cloud_publisher_qos())
         observer = s2_rehearsal.start_observer(node, geometry, config, out, [
             "-p", "input_mode:=subscription", "-p", "sensor_id:=cam0",
             "-p", "optical_frame:=d555_color_optical_frame",
@@ -1194,16 +1340,78 @@ def smoke_ros(plan, node, geometry, config, out):
     return result
 
 
-def _save_failure(out, stage, reason, details):
-    bundle = Path(out) / "failure" / stage
+_FAILURE_EXPECTED = {
+    "o5": ("cumulative/samples.yaml", "cumulative/manifest.yaml", "cumulative/cli.log"),
+    "o6": ("cumulative/samples.yaml", "cumulative/manifest.yaml", "cumulative/cli.log"),
+    "o7": ("o7/window.json", "o7/campaign_verdict.json"),
+    "o8": ("o8/runs.json", "o8/verdict.json"),
+}
+
+
+def _save_failure(out, stage, reason, details, stage_dir=None):
+    """Persist the failure bundle before teardown.
+
+    Nothing here is asserted: capture_complete is computed from the files that
+    are actually on disk (with trace integrity), replay_possible requires a
+    persisted manifest whose frames carry hashes, and every file gets a sha256.
+    Callers must invoke this before tearing sessions or observer processes so
+    the inventory reflects what the failed run really captured.
+    """
+    import capture_replay
+    out = Path(out)
+    bundle = out / "failure" / stage
     bundle.mkdir(parents=True, exist_ok=True)
+    roots = [Path(stage_dir)] if stage_dir else [out / stage]
+    inventory = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for item in sorted(root.rglob("*")):
+            if item.is_file():
+                entry = {
+                    "path": str(item.relative_to(out)),
+                    "bytes": item.stat().st_size,
+                    "sha256": capture_replay.sha256_file(item),
+                }
+                if item.name == "trace.jsonl":
+                    events, errors = capture_replay._load_events(item)
+                    entry["trace_events"] = len(events)
+                    entry["trace_errors"] = errors
+                inventory.append(entry)
+    present = {entry["path"] for entry in inventory}
+    missing = [name for name in _FAILURE_EXPECTED.get(stage, ())
+               if not any(path == name or path.endswith("/" + name) for path in present)]
+    capture_complete = not missing and all(
+        not entry.get("trace_errors") for entry in inventory if "trace_errors" in entry)
+    replay_possible = False
+    replay_inputs = []
+    for entry in inventory:
+        document = None
+        if entry["path"].endswith("manifest.yaml"):
+            try:
+                import yaml
+                document = yaml.safe_load((out / entry["path"]).read_text())
+            except Exception:
+                document = None
+        if isinstance(document, dict) and isinstance(document.get("frames"), list) and document["frames"]:
+            if all(isinstance(item, dict) and isinstance(item.get("sha256"), str)
+                   for item in document["frames"]):
+                replay_possible = True
+                replay_inputs.append(entry["path"])
+    bounded = {"text": str(details), "truncated": False}
+    if len(bounded["text"]) > 8000:
+        bounded = {"text": bounded["text"][:8000], "truncated": True}
     manifest = {
         "stage": stage,
         "reason": reason,
-        "details": details,
+        "details": bounded,
         "official_samples": "not_run",
-        "capture_complete": True,
-        "replay_possible": False,
+        "capture_complete": capture_complete,
+        "replay_possible": replay_possible,
+        "missing": missing,
+        "replay_inputs": replay_inputs,
+        "file_count": len(inventory),
+        "files": inventory,
     }
     (bundle / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     return bundle
@@ -1224,12 +1432,13 @@ def _wait_integrated(session, observation_id, deadline_s):
     last = None
     terminal = {"disposition": "unknown", "receipt_received": False}
     expected = {"epoch": 1, "sensor_id": "cam0", "observation_id": observation_id}
+    events = []
     while time.monotonic() < end:
         last = session.query(1, observation_id)
-        subscribed = any(
-            message.observation_id == observation_id and message.sensor_id == "cam0"
-            for message in session.receipts)
-        terminal = interpret_observation_status(last, expected, subscribed)
+        events = _receipt_events(session, observation_id)
+        terminal = interpret_observation_status(last, expected, bool(events))
+        terminal["terminal_count"] = len(events)
+        terminal["receipt_events"] = events
         if terminal["disposition"] in ("integrated", "REJECTED", "EXPIRED"):
             break
         time.sleep(0.05)
@@ -1286,7 +1495,10 @@ class LiveCampaign:
             result["stages"].extend(ros)
             result["sender"] = ros[0].get("sender")
         except Exception as exc:
-            _save_failure(out, stage_name, type(exc).__name__, str(exc)[-800:])
+            # Persist before the finally teardown inventories the stage dir.
+            _save_failure(out, stage_name, type(exc).__name__,
+                          {"error_type": type(exc).__name__, "error": str(exc)},
+                          out / stage_name)
             result["reason"] = "wiring_failed"
             result["error"] = str(exc)[-400:]
             _write(out / "wiring.json", result)
@@ -1320,15 +1532,30 @@ class LiveCampaign:
         verdict = repair_s0_judge.judge_case(campaign)
         _write(out / stage / "verdict.json", verdict)
         surfaces = dict(self.profile.surfaces)
-        finite = all(isinstance(surfaces.get(key), (int, float)) and not isinstance(surfaces.get(key), bool)
-                     for key in ("surface_first_ms", "surface_repeat_ms", "surface_after_update_ms"))
+        # Wiring-level judgment: finite/non-negative/typed surfaces, every frame
+        # receipt INTEGRATED, and no per-sample problem. These checks stand on
+        # their own — a judge missing_group rejection must not mask bad samples,
+        # and bad samples must keep executed false even when the judge rejects.
+        problems = list(getattr(self.profile, "surface_problems", None) or _wire_sample_problems(surfaces))
+        # Recompute per-frame problems from the samples themselves so an
+        # adapter that does not self-report cannot mask a poisoned frame.
+        for index, sample in enumerate(samples):
+            present = {key: value for key, value in dict(sample).items()
+                       if key in _WIRED_SAMPLE_FIELDS}
+            for problem in _wire_sample_problems(present):
+                problems.append(dict(problem, frame=index))
+        frame_receipts = list(getattr(self.profile, "frame_receipts", None) or [])
+        receipts_ok = bool(frame_receipts) and all(status == "INTEGRATED" for status in frame_receipts)
         return {
             "stage": stage,
             "started": len(samples),
             "processes": self.profile.processes - before,
             "surfaces": surfaces,
+            "sample_problems": problems,
+            "frame_receipts": frame_receipts,
             "judge": verdict,
-            "executed": self.profile.processes - before == 1 and len(samples) == WIRE_FRAMES and finite
+            "executed": self.profile.processes - before == 1 and len(samples) == WIRE_FRAMES
+            and not problems and receipts_ok
             and self.profile.receipt_status == "INTEGRATED" and verdict.get("pass") is False,
         }
 
@@ -1358,38 +1585,47 @@ class LiveCampaign:
                 "-p", "optical_frame:=d555_color_optical_frame",
                 "-p", "cloud_topic:=/s2_wire_cloud", "-p", "behavior_test_hooks:=false",
             ], env)
-            from rclpy.qos import QoSProfile, ReliabilityPolicy
             from sensor_msgs.msg import PointCloud2
             publisher = session.node.create_publisher(
-                PointCloud2, "/s2_wire_cloud", QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE))
+                PointCloud2, "/s2_wire_cloud", _cloud_publisher_qos())
             session.wait_service(session.status)
             session.broadcaster.sendTransform(s2_rehearsal.transform(session.next_stamp()))
             time.sleep(0.3)
-            origin = time.monotonic()
-            deadlines = [origin + index / float(window["input_hz"]) for index in range(WIRE_INPUTS)]
+            origin_ns = time.monotonic_ns()
+            spacing_s = 1.0 / float(window["input_hz"])
+            deadlines_ns = [
+                origin_ns + int(round(index * spacing_s * 1e9)) for index in range(WIRE_INPUTS)]
             sent = []
             sender_ident = {}
 
             def publish():
                 sender_ident["id"] = threading.get_ident()
-                for index, deadline in enumerate(deadlines):
-                    delay = deadline - time.monotonic()
-                    if delay > 0:
-                        time.sleep(delay)
+                for index, deadline_ns in enumerate(deadlines_ns):
+                    delay_s = (deadline_ns - time.monotonic_ns()) / 1e9
+                    if delay_s > 0:
+                        time.sleep(delay_s)
                     stamp = session.next_stamp()
-                    actual = time.monotonic()
+                    # rclpy publish() returns None; the first clock read after
+                    # the call returns is the observable publish boundary. All
+                    # boundaries here are CLOCK_MONOTONIC; the cloud header
+                    # stamp is kept separately and never stands in for them.
+                    call_start_ns = time.monotonic_ns()
                     publisher.publish(s2_rehearsal.cloud_message(stamp))
+                    publish_return_ns = time.monotonic_ns()
                     sent.append({
                         "index": index,
-                        "planned_s": deadline - origin,
-                        "actual_s": actual - origin,
+                        "planned_ns": deadline_ns,
+                        "planned_s": (deadline_ns - origin_ns) / 1e9,
+                        "call_start_mono_ns": call_start_ns,
+                        "publish_return_mono_ns": publish_return_ns,
+                        "actual_s": (call_start_ns - origin_ns) / 1e9,
                         "observation_id": str(stamp),
-                        "stamp_ns": stamp,
+                        "input_stamp_ns": stamp,
                     })
 
             sender = threading.Thread(target=publish)
             sender.start()
-            query_started = time.monotonic()
+            chains_started_ns = time.monotonic_ns()
             deadline = time.monotonic() + 8
             while len(sent) < 1 and time.monotonic() < deadline:
                 time.sleep(0.01)
@@ -1399,25 +1635,33 @@ class LiveCampaign:
             rows = []
             queries = []
             for index in range(WIRE_INPUTS):
+                q_started_ns = time.monotonic_ns()
                 wait_end = time.monotonic() + 8
                 while len(sent) <= index and time.monotonic() < wait_end:
                     time.sleep(0.01)
                 if len(sent) <= index:
                     raise TimeoutError("sender missed input %d" % index)
+                send_wait_ms = (time.monotonic_ns() - q_started_ns) / 1e6
                 item = sent[index]
                 last, terminal = _wait_integrated(session, item["observation_id"], 8)
+                events = terminal.get("receipt_events") or []
                 row = {
                     "input_id": "score-%d" % index,
                     "phase": "score",
-                    "publish_end_ns": item["stamp_ns"],
+                    "publish_planned_ns": item["planned_ns"],
+                    "publish_end_ns": item["publish_return_mono_ns"],
+                    "input_stamp_ns": item["input_stamp_ns"],
+                    "clock_domain": "CLOCK_MONOTONIC",
+                    "callback_enter_ns": events[0].get("callback_enter_ns") if events else None,
                     "disposition": terminal.get("disposition", "unknown"),
                     "receipt_received": terminal.get("receipt_received", False),
                     "receipt_status": terminal.get("receipt_status"),
                     "status_query": terminal.get("status_query"),
-                    "terminal_count": 1 if terminal.get("receipt_received") else 0,
+                    "terminal_count": terminal.get("terminal_count", len(events)),
                     "queue_age_ms": None,
                     "observed_revision": None,
                 }
+                row["receipt_problems"] = _receipt_event_problems(events, item["observation_id"])
                 receipt = _field(last, "receipt")
                 if receipt is not None:
                     row["queue_age_ms"] = _field(receipt, "queue_ms")
@@ -1441,13 +1685,24 @@ class LiveCampaign:
                     chain = {"identity_stable": False, "reasons": ["terminal_%s" % terminal.get("disposition")]}
                 (out / "o7").mkdir(parents=True, exist_ok=True)
                 (out / "o7" / ("chain-%d.json" % index)).write_text(json.dumps(chain, indent=2) + "\n")
+                if events:
+                    (out / "o7" / ("receipts-%d.json" % index)).write_text(
+                        json.dumps(events, indent=2) + "\n")
                 chains.append(chain)
                 identity = chain.get("identity") or [None, None, None]
+                q_ended_ns = time.monotonic_ns()
                 queries.append({
                     "query_id": "q-%d" % index,
                     "op": "wait_snapshot" if chain.get("wait_status") == "OK" else "status_query",
                     "status": chain.get("wait_status"),
-                    "latency_ms": (time.monotonic() - query_started) * 1000.0,
+                    # Per-request boundaries in CLOCK_MONOTONIC. latency_ms is
+                    # this request only; send_wait_ms is the share spent
+                    # waiting for the sender to reach this input.
+                    "started_mono_ns": q_started_ns,
+                    "ended_mono_ns": q_ended_ns,
+                    "latency_ms": (q_ended_ns - q_started_ns) / 1e6,
+                    "send_wait_ms": send_wait_ms,
+                    "chain_ms": chain.get("total_ms"),
                     "age_ms": None if chain.get("age_ns") is None else chain["age_ns"] / 1e6,
                     "covers_observation": chain.get("identity_stable") is True,
                     "expected_observation_id": item["observation_id"],
@@ -1458,8 +1713,22 @@ class LiveCampaign:
             sender.join(timeout=5)
             if sender.is_alive():
                 raise TimeoutError("sender thread did not finish")
-            query_s = time.monotonic() - query_started
-            interval = sent[1]["actual_s"] - sent[0]["actual_s"]
+            # Aggregate wall time of every query chain plus the join. This is
+            # NOT a single ROS round trip; per-request numbers are on each
+            # query row, and chains_wall_s keeps the old query_s name honest.
+            chains_wall_s = (time.monotonic_ns() - chains_started_ns) / 1e9
+            intervals_s = [
+                sent[index + 1]["actual_s"] - sent[index]["actual_s"]
+                for index in range(len(sent) - 1)]
+            interval = sent[-1]["actual_s"] - sent[0]["actual_s"] if len(sent) >= 2 else None
+            send_query_timeline = sorted(
+                [{"event": "publish_return", "mono_ns": item["publish_return_mono_ns"]}
+                 for item in sent]
+                + [{"event": "query_start", "mono_ns": query["started_mono_ns"]}
+                   for query in queries]
+                + [{"event": "query_end", "mono_ns": query["ended_mono_ns"]}
+                   for query in queries],
+                key=lambda event: event["mono_ns"])
             import yaml
             health = []
             sample_origin = time.monotonic()
@@ -1507,25 +1776,42 @@ class LiveCampaign:
             _write(out / "o8" / "verdict.json", o8_verdict)
             started["o7"] = len(rows)
             started["o8"] = len(o8["runs"])
+            # O8 wiring validity: two parseable health samples with distinct
+            # stamps and finite node counts, plus readable RSS. Missing
+            # samples, repeated timestamps, or an exited process keep the
+            # wiring from claiming it executed.
+            o8_valid = _o8_health_valid(health, rss)
             chains_ok = all(chain.get("identity_stable") is True for chain in chains)
             if not chains_ok:
                 _save_failure(out, "o7", "chain_not_stable",
-                              json.dumps([chain.get("reasons") for chain in chains])[-800:])
+                              {"chain_reasons": [chain.get("reasons") for chain in chains]},
+                              out / "o7")
+            receipt_rows_ok = all(not row.get("receipt_problems") for row in rows)
             sender_ok = (
                 len(sent) == WIRE_INPUTS
-                and abs(sent[1]["planned_s"] - sent[0]["planned_s"] - 0.5) < 1e-6
+                and all(item["publish_return_mono_ns"] is not None for item in sent)
+                and all(abs(step - spacing_s) < 1e-6 for step in
+                        (sent[index + 1]["planned_s"] - sent[index]["planned_s"]
+                         for index in range(len(sent) - 1)))
                 and sender_ident.get("id") not in (None, session.thread.ident))
             o7 = {
                 "stage": "o7",
                 "started": len(rows),
                 "judge": campaign,
                 "window_judge": window_verdict,
-                "executed": chains_ok and sender_ok and certification == "NOT_EVALUATED",
+                "executed": chains_ok and sender_ok and receipt_rows_ok
+                and certification == "NOT_EVALUATED",
                 "sender": {
                     "planned_s": [item["planned_s"] for item in sent],
                     "actual_s": [item["actual_s"] for item in sent],
                     "interval_s": interval,
-                    "query_s": query_s,
+                    "intervals_s": intervals_s,
+                    # chains_wall_s: both query chains plus the sender join in
+                    # wall time. query_s keeps the historical key, equal to it.
+                    "chains_wall_s": chains_wall_s,
+                    "query_s": chains_wall_s,
+                    "send_query_timeline": send_query_timeline,
+                    "clock_domain": "CLOCK_MONOTONIC",
                     "sender_thread": sender_ident.get("id"),
                     "spin_thread": session.thread.ident,
                 },
@@ -1534,8 +1820,10 @@ class LiveCampaign:
             }
             return [
                 o7,
-                {"stage": "o8", "started": 1, "judge": o8_verdict, "executed": o8_verdict.get("pass") is False
-                 and o8["official_duration_s"] == "not_run"},
+                {"stage": "o8", "started": 1, "judge": o8_verdict,
+                 "health_valid": o8_valid,
+                 "executed": o8_verdict.get("pass") is False
+                 and o8["official_duration_s"] == "not_run" and o8_valid},
             ]
         finally:
             if session is not None:
