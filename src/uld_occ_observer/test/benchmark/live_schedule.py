@@ -288,7 +288,10 @@ class LiveScheduleAdapter:
     def profile_frame(self, group, index, warmup, dest):
         key = group["id"]
         if key not in self._groups:
-            total = self.frame_limit or (contract.WARMUP_SAMPLES + contract.SCORED_SAMPLES)
+            # One extra frame: the after-update surface moment of scored
+            # sample i is the first surface call of frame i+1, so the last
+            # scored sample needs a successor document.
+            total = (self.frame_limit or (contract.WARMUP_SAMPLES + contract.SCORED_SAMPLES)) + 1
             import yaml
             spawn_ns = time.monotonic_ns()
             samples = self.profile.run_cumulative(group, total, Path(dest).parent / "cumulative")
@@ -579,7 +582,9 @@ class LiveScheduleAdapter:
         for received_ns, payload in run.session.health_events:
             relative = (received_ns - origin) / 1e9
             if -1.0 <= relative <= duration + 5.0:
-                times.append(round(relative, 6))
+                # Window convention: t=0 is the window open; a health sample
+                # received before it counts as the open sample, clamped to 0.
+                times.append(round(max(0.0, relative), 6))
         return sorted(times) if len(times) >= 2 else None
 
     def ros_drain(self, window, deadline=None):
@@ -640,6 +645,11 @@ class LiveScheduleAdapter:
             run.start_for_o8(count)
             self._stability = {"run_id": run_id, "run": run, "receipts": [], "stamps": []}
         run = self._stability["run"]
+        # The scheduler's clock advance is a no-op on the monotonic clock: the
+        # adapter itself paces the frames to the real window marks.
+        o8 = self.plan_o8
+        mark_s = (index + 1) * (float(o8["duration_s"]) / o8["saturation_frames"])
+        run.sleep_to(run.origin_ns + int(mark_s * 1e9), "o8-frame-%d" % index)
         frame = run.o8_frames[index % len(run.o8_frames)]
         stamp = run.session.next_stamp()
         message, _points = cloud_from_frame(frame)
@@ -693,6 +703,8 @@ class LiveScheduleAdapter:
         state = self._stability
         run = state["run"]
         session = run.session
+        seconds = float(self.plan_o8.get(
+            "no_input_s" if kind == "no_input" else "occlusion_s", 10.0))
         before = self._hold_probe(run)
         if kind == "occlusion":
             # A fully-outside cloud: real transport, nothing acceptable in it.
@@ -707,6 +719,8 @@ class LiveScheduleAdapter:
             message.header.stamp.sec = int(stamp // 1_000_000_000)
             message.header.stamp.nanosec = int(stamp % 1_000_000_000)
             run.publisher.publish(message)
+        # The hold spans real seconds; the scheduler's advance is a no-op here.
+        time.sleep(seconds)
         after = self._hold_probe(run)
         return {
             "kind": kind,
@@ -715,8 +729,7 @@ class LiveScheduleAdapter:
             "freshness_advanced": (before is not None and after is not None
                                    and after["last_integrated_stamp_ns"]
                                    > before["last_integrated_stamp_ns"]),
-            "duration_s": float(self.plan_o8.get(
-                "no_input_s" if kind == "no_input" else "occlusion_s", 10.0)),
+            "duration_s": seconds,
         }
 
     def _hold_probe(self, run):

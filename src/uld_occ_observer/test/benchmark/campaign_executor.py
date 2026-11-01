@@ -812,6 +812,14 @@ class LiveProfileAdapter:
             })
         if after is not None and scored:
             scored[0]["surface_after_update_ms"] = after
+        # The after-update moment for sample i is the first surface call of
+        # frame i+1; every sample with a successor carries its own value so
+        # the judge scores a full column instead of a missing one.
+        for index, sample in enumerate(scored):
+            if index + 1 < len(documents):
+                successor = documents[index + 1].get("surface_first_call")
+                if isinstance(successor, dict):
+                    sample["surface_after_update_ms"] = successor.get("external_ms")
         self.sample_problems = []
         for index, sample in enumerate(scored):
             for problem in _wire_sample_problems(sample):
