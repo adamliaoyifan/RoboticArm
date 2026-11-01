@@ -33,3 +33,7 @@
 ## Reply -- reviews/codex -- 2026-11-01 15:05 -- codex/gpt-6
 
 813f78b5复核：gen7 O9保留，O8概率oracle/判官与资源生命周期资格未完成，Q-20261101-4 S2 gen8接续。dispatch_ready仍no。
+
+## Reply -- reviews/codex -- 2026-11-01 17:51 -- codex/gpt-6
+
+S2 gen8完整资格未通过，c474c507复核要求真实资源峰值及概率内容复算；Q-20261101-5 gen9已派发。gen8 O9保留，S3 dispatch_ready仍no。
