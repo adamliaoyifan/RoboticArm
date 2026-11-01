@@ -251,6 +251,69 @@ def _gen6_binaries():
         pytest.fail("gen6 install missing: %s (build COMMANDS.sh first)" % missing)
 
 
+def test_resources_from_usage_is_never_a_default_pass():
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "benchmark"))
+    import live_schedule
+    # Unattributed: the judge must not evaluate the resource gate.
+    unattributed = live_schedule.resources_from_usage({
+        "read_view_bytes": 10, "cache_bytes": 10,
+        "certification": "NOT_EVALUATED", "attribution_complete": False,
+        "unmarked_allocations": True})
+    assert unattributed["attribution_complete"] is False
+    reasons, status = repair_s0_judge._resources(unattributed)
+    assert status == "not_evaluated" and "resource_missing" in reasons
+    # Attributed and over the limit: a hard fail, not a pass.
+    over = live_schedule.resources_from_usage({
+        "read_view_bytes": 600 * 1024 * 1024, "cache_bytes": 10,
+        "certification": "READ_VIEW_CACHE_ATTRIBUTED", "attribution_complete": True,
+        "unmarked_allocations": False})
+    assert over["attribution_complete"] is True
+    reasons, status = repair_s0_judge._resources(over)
+    assert status == "fail" and "resource_bytes" in reasons
+    # Attributed and inside the limit: the gate evaluates.
+    inside = live_schedule.resources_from_usage({
+        "read_view_bytes": 1024, "cache_bytes": 1024,
+        "certification": "READ_VIEW_CACHE_ATTRIBUTED", "attribution_complete": True,
+        "unmarked_allocations": False})
+    assert repair_s0_judge._resources(inside) == ([], "pass")
+    # A lying row that claims completeness without the product's certification
+    # string stays incomplete.
+    liar = live_schedule.resources_from_usage({
+        "read_view_bytes": 1024, "cache_bytes": 1024,
+        "certification": "NOT_EVALUATED", "attribution_complete": True,
+        "unmarked_allocations": False})
+    assert liar["attribution_complete"] is False
+
+
+def test_window_wall_deadline_maps_clock_domain():
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "benchmark"))
+    import live_schedule
+    adapter = SimpleNamespace(clock=SimpleNamespace(elapsed_s=100.0), domain=46)
+    run = live_schedule._WindowRun(adapter, {"id": "w", "kind": "normal", "input_hz": 2},
+                                   SimpleNamespace(), Path("/tmp"))
+    run.origin_ns = 1_000_000_000_000
+    run.clock_origin = 100.0
+    assert run.wall_deadline(100.0) == 1_000_000_000_000
+    assert run.wall_deadline(100.5) == 1_000_500_000_000
+    assert run.wall_deadline(101.0) == 1_001_000_000_000
+
+
+def test_cloud_from_frame_carries_every_point():
+    pytest.importorskip("rclpy")
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "benchmark"))
+    import live_schedule
+    frame = {"optical_frame": "d555_color_optical_frame",
+             "points_m": [[0.5, 0.25, 1.0], [-1.0, 2.0, 0.5], [3.5, -4.5, 2.5]]}
+    cloud, count = live_schedule.cloud_from_frame(frame)
+    assert count == 3
+    assert cloud.width == 3 and cloud.height == 1
+    assert cloud.point_step == 12 and len(cloud.data) == 36
+    assert [field.name for field in cloud.fields] == ["x", "y", "z"]
+    import struct
+    x, y, z = struct.unpack_from("<fff", bytes(cloud.data), 12)
+    assert (x, y, z) == (-1.0, 2.0, 0.5)
+
+
 def test_live_wire_reports_per_request_boundaries(tmp_path):
     """Live wiring smoke: per-request fields, real publish boundary, receipt events.
 
@@ -295,3 +358,40 @@ def test_live_wire_reports_per_request_boundaries(tmp_path):
                    for call in chain["service_calls"])
     o8_stage = next(item for item in wiring["stages"] if item["stage"] == "o8")
     assert o8_stage["executed"] is True and o8_stage["health_valid"] is True
+
+
+def test_live_stage_rehearsal_dispatches_the_scheduler(tmp_path):
+    """Live non-scored rehearsal through schedule() on the live adapter.
+
+    Small limits keep it short: two inputs and two queries per window exercise
+    session lifecycle, the independent sender, real receipt rows with callback
+    entry stamps, and per-window judges that must reject the short samples.
+    Needs /tmp/s2g6-install; deselect by node id when absent.
+    """
+    _gen6_binaries()
+    code = executor.main([
+        "--mode", "stage", "--stage", "o7", "--out", str(tmp_path),
+        "--cli", CLI, "--eval-native", EVAL, "--node", NODE,
+        "--geometry", str(FIXTURES / "geometry_chamfer.yaml"),
+        "--config", str(FIXTURES / "config_chamfer_r0p02.yaml"),
+        "--input-limit", "2",
+    ])
+    assert code == 0
+    summary = json.loads((tmp_path / "o7" / "campaign_verdict.json").read_text())
+    assert summary["pass"] is False        # short samples must stay rejected
+    window_files = sorted((tmp_path / "o7").glob("normal_*.json"))
+    assert window_files, "per-window artifacts were written"
+    artifact = json.loads(window_files[0].read_text())
+    for row in artifact["inputs"]:
+        assert row["callback_enter_ns"] is not None      # product-sourced
+        assert row["publish_end_ns"] != row["input_stamp_ns"]
+        assert row["terminal_count"] >= 0
+    for query in artifact["queries"]:
+        assert query["status"] == "OK"
+        assert query["latency_ms"] > 0
+        assert "acquire_ms" in query and "surface_ms" in query
+    send_log = next((tmp_path / "o7").glob("*/send_log.json"), None)
+    if send_log is not None:
+        log = json.loads(send_log.read_text())
+        assert log["sender_thread"] != log["spin_thread"]
+        assert all(item["publish_return_mono_ns"] for item in log["sent"])

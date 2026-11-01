@@ -27,6 +27,14 @@ def test_assembler_does_not_manufacture_healthy_observations():
         source = inspect.getsource(getattr(campaign_executor, name))
         assert "healthy_" not in source
         assert "_resources_ok" not in source
+    # gen6: the live adapter obeys the same no-healthy-factories rule.
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "benchmark"))
+    import live_schedule
+    for name in ("LiveScheduleAdapter", "_WindowRun", "resources_from_usage"):
+        source = inspect.getsource(getattr(live_schedule, name))
+        assert "healthy_" not in source
+        assert "_resources_ok" not in source
+        assert '"attribution_complete": True' not in source
     plan = _plan()
     window = _window(plan, "normal_b00_r0")
     rows = [{
@@ -293,48 +301,74 @@ def test_authorized_live_route_does_not_start_official_windows(tmp_path, monkeyp
     code = campaign_executor.main(["--mode", "stage", "--stage", "o5", "--out", str(tmp_path)])
     payload = json.loads(capsys.readouterr().out)
     assert code == 2
-    assert payload["adapter"] == "LiveCampaign"
+    assert payload["adapter"] == "LiveScheduleAdapter"
     assert payload["reason"] == "wiring_binaries_missing"
     assert payload["started"]["o5"] == 0
     assert payload["official_samples"] == "not_run"
     assert payload["formal_pass"] is False
 
 
-def test_live_stage_invokes_the_wiring_runner(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("ULD_OCC_S3_OPEN", "1")
-    monkeypatch.setenv("ULD_OCC_S2_CONFIRM_OFFICIAL", "1")
+def test_live_stage_dispatches_schedule_and_never_the_fixed_wiring(tmp_path, monkeypatch, capsys):
+    """gen6: the formal entry runs the scheduler on the live adapter.
+
+    The fixed two-frame wiring stays reachable only through --mode wire; the
+    stage entry must never fall back to it. A limited run is a non-scored
+    rehearsal that needs no S3; an unlimited run is the formal entry behind
+    both environment gates.
+    """
     monkeypatch.setenv("ULD_OCC_S2_ADAPTER", "live")
-    calls = {}
+    monkeypatch.delenv("ULD_OCC_S3_OPEN", raising=False)
+    calls = {"wire": 0, "schedule": []}
 
     def wire(self, plan, out):
-        calls["plan"] = plan
-        calls["out"] = out
+        calls["wire"] += 1
+        raise AssertionError("stage mode must not call the fixed wiring")
+
+    def schedule(plan, adapter, out_dir, **kwargs):
+        calls["schedule"].append(kwargs)
+        adapter.bind_plan(plan)
         return {
-            "adapter": "LiveCampaign",
-            "scoring": "non_scored",
-            "official_samples": "not_run",
-            "formal_pass": False,
-            "product_resource_certification": "NOT_EVALUATED",
-            "reason": "non_scored_wiring",
-            "started": {"o5": 2, "o6": 2, "o7": 2, "o8": 1},
-            "wiring_complete": True,
-            "short_samples_rejected": True,
+            "status": "scheduled", "official_samples": "not_run",
+            "product_resource_certification": "NOT_EVALUATED", "formal_pass": False,
+            "scoring": kwargs.get("scored") and "scored" or "non_scored",
+            "started": {"o5": 0, "o6": 0, "o7": 0, "o8": 0},
+            "stages": [], "runner": "schedule", "dispatched": True,
+            "adapter": "LiveScheduleAdapter", "overruns": [],
         }
 
     monkeypatch.setattr(campaign_executor.LiveCampaign, "wire", wire)
-    code = campaign_executor.main([
+    monkeypatch.setattr(campaign_executor, "schedule", schedule)
+    argv = [
         "--mode", "stage", "--stage", "all", "--out", str(tmp_path),
         "--cli", "/bin/true", "--eval-native", "/bin/true", "--node", "/bin/true",
         "--geometry", str(FIXTURES / "geometry_chamfer.yaml"),
         "--config", str(FIXTURES / "config_chamfer_r0p02.yaml"),
-    ])
+    ]
+    rehearsal = campaign_executor.main(argv + ["--frame-limit", "2", "--input-limit", "2"])
     payload = json.loads(capsys.readouterr().out)
-    assert code == 0
-    assert calls["out"] == str(tmp_path)
+    assert rehearsal == 0
+    assert calls["wire"] == 0
+    assert calls["schedule"][0]["scored"] is False
+    assert calls["schedule"][0]["frame_limit"] == 2
+    assert payload["scoring"] == "non_scored"
     assert payload["official_samples"] == "not_run"
-    assert payload["formal_pass"] is False
-    assert payload["started"]["o5"] == 2
-    assert payload["reason"] == "non_scored_wiring"
+
+    refused = campaign_executor.main(argv)
+    assert refused == 2
+    assert json.loads(capsys.readouterr().out)["reason"] == "s3_closed"
+
+    monkeypatch.setenv("ULD_OCC_S3_OPEN", "1")
+    refused_confirm = campaign_executor.main(argv)
+    assert refused_confirm == 2
+    assert json.loads(capsys.readouterr().out)["reason"] == "official_samples_not_authorized"
+
+    monkeypatch.setenv("ULD_OCC_S2_CONFIRM_OFFICIAL", "1")
+    formal = campaign_executor.main(argv)
+    payload = json.loads(capsys.readouterr().out)
+    assert formal == 0
+    assert calls["schedule"][-1]["scored"] is True
+    assert payload["adapter"] == "LiveScheduleAdapter"
+    assert calls["wire"] == 0
 
 
 def test_profile_launch_failure_is_saved(tmp_path):

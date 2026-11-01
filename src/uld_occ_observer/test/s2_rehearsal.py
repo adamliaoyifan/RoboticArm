@@ -33,6 +33,7 @@ from uld_occ_observer.msg import UpdateReceipt
 from uld_occ_observer.srv import (
     GetObservationStatus,
     GetResourceUsage,
+    GetSnapshot,
     IntegrateObservation,
     SetBehaviorHook,
     WaitSnapshot,
@@ -106,6 +107,9 @@ class Session:
         self.thread = threading.Thread(target=self.executor.spin, daemon=True)
         self.thread.start()
         self.health = []
+        # (time.monotonic_ns(), payload): health receive events with their
+        # CLOCK_MONOTONIC boundary, for window-relative health gap evidence.
+        self.health_events = []
         self.receipts = []
         # (time.monotonic_ns(), message): raw receipt events for counting and
         # duplicate detection. The receipts list stays for compatibility.
@@ -115,6 +119,7 @@ class Session:
         # Frozen plan §2B: the receipt ledger subscription depth is 1024.
         self.node.create_subscription(UpdateReceipt, "/uld_occ_observer/receipts", self._receipt, 1024)
         self.wait = self.node.create_client(WaitSnapshot, "/uld_occ_observer/wait_snapshot")
+        self.snapshot = self.node.create_client(GetSnapshot, "/uld_occ_observer/get_snapshot")
         self.status = self.node.create_client(GetObservationStatus, "/uld_occ_observer/get_observation_status")
         self.integrate = self.node.create_client(IntegrateObservation, "/uld_occ_observer/integrate_observation")
         self.resource = self.node.create_client(GetResourceUsage, "/uld_occ_observer/get_resource_usage")
@@ -125,6 +130,7 @@ class Session:
         self._last_stamp = 0
 
     def _health(self, message):
+        self.health_events.append((time.monotonic_ns(), message.data))
         self.health.append(message.data)
 
     def _receipt(self, message):

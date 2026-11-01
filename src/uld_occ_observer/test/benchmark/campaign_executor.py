@@ -1865,6 +1865,10 @@ def main(argv):
     parser.add_argument("--geometry")
     parser.add_argument("--config")
     parser.add_argument("--stage", choices=("o5", "o6", "o7", "o8", "all"))
+    parser.add_argument("--frame-limit", type=int,
+                        help="non-scored rehearsal: cap scored frames per group")
+    parser.add_argument("--input-limit", type=int,
+                        help="non-scored rehearsal: cap inputs/queries per window")
     parser.add_argument("--judge-file")
     parser.add_argument("--bundle")
     parser.add_argument("--o9-root")
@@ -1872,50 +1876,70 @@ def main(argv):
     fixtures = args.fixtures or "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_o6_o7_20261029/run01/fixtures"
     if args.mode == "stage":
         payload = _s3_refused(args.stage or "all")
-        if os.environ.get("ULD_OCC_S3_OPEN") != "1":
-            print(json.dumps(payload))
-            return 2
         adapter_name = os.environ.get("ULD_OCC_S2_ADAPTER", "live")
         selected = {"o5": "profile_cli_groups", "o6": "profile_cli_groups",
                     "o7": "ros_windows", "o8": "ros_stability", "all": "schedule"}
         payload["runner"] = selected.get(args.stage or "all", "schedule")
         payload["dispatched"] = True
-        if adapter_name == "live" and os.environ.get("ULD_OCC_S2_CONFIRM_OFFICIAL") != "1":
-            payload["reason"] = "official_samples_not_authorized"
-            payload["adapter"] = "LiveCampaign"
-            payload["started"] = {stage: 0 for stage in ("o5", "o6", "o7", "o8")}
-            print(json.dumps(payload))
-            return 2
+        stages = ("o5", "o6", "o7", "o8") if (args.stage or "all") == "all" else (args.stage,)
         if adapter_name == "live":
-            payload["adapter"] = "LiveCampaign"
+            payload["adapter"] = "LiveScheduleAdapter"
             payload["launch_boundary"] = "launch_process"
-            payload["official_samples"] = "not_run"
-            payload["formal_pass"] = False
-            payload["product_resource_certification"] = "NOT_EVALUATED"
             if not all((args.cli, args.eval_native, args.node, args.geometry, args.config)):
                 payload["reason"] = "wiring_binaries_missing"
                 payload["started"] = {stage: 0 for stage in ("o5", "o6", "o7", "o8")}
+                payload["formal_pass"] = False
                 print(json.dumps(payload))
                 return 2
+            rehearsal = args.frame_limit is not None or args.input_limit is not None
+            if not rehearsal:
+                # The formal entry keeps both gates: S3 open and an explicit
+                # official-samples confirmation. Neither is ever set by tooling.
+                if os.environ.get("ULD_OCC_S3_OPEN") != "1":
+                    payload["reason"] = "s3_closed"
+                    print(json.dumps(payload))
+                    return 2
+                if os.environ.get("ULD_OCC_S2_CONFIRM_OFFICIAL") != "1":
+                    payload["reason"] = "official_samples_not_authorized"
+                    print(json.dumps(payload))
+                    return 2
+            import live_schedule
             plan = campaign_entry.load_plan(fixtures)
-            wired = LiveCampaign(
-                args.cli, args.eval_native, args.node, args.geometry, args.config).wire(plan, args.out)
-            payload.update({
-                "reason": wired["reason"],
-                "started": wired["started"],
-                "scoring": wired["scoring"],
-                "formal_pass": wired["formal_pass"],
-                "wiring_complete": wired["wiring_complete"],
-                "short_samples_rejected": wired["short_samples_rejected"],
-            })
+            adapter = live_schedule.LiveScheduleAdapter(
+                args.cli, args.eval_native, args.node, args.geometry, args.config, args.out,
+                frame_limit=args.frame_limit, input_limit=args.input_limit)
+            adapter.bind_plan(plan)
+            try:
+                result = schedule(plan, adapter, args.out, stages=stages,
+                                  frame_limit=args.frame_limit, input_limit=args.input_limit,
+                                  scored=not rehearsal,
+                                  # A rehearsal exercises every stage on the live
+                                  # adapter; the O5 dependency gate itself is
+                                  # proven offline on the same schedule().
+                                  allow_incomplete_dependencies=rehearsal)
+                result["runner"] = payload["runner"]
+                result["dispatched"] = True
+                result["adapter"] = payload["adapter"]
+                result["overruns"] = adapter.overruns
+            finally:
+                adapter.close()
+            print(json.dumps({key: result[key] for key in (
+                "status", "official_samples", "product_resource_certification", "formal_pass",
+                "scoring", "started", "dispatched", "runner", "adapter")}))
+            if rehearsal:
+                # Short samples must fail the judges; a completed run is the
+                # pass condition for a non-scored rehearsal.
+                return 0 if result["status"] == "scheduled" else 1
+            failed = any(not item["judge"]["pass"] for item in result["stages"] if item.get("judge"))
+            return 1 if failed else 0
+        if os.environ.get("ULD_OCC_S3_OPEN") != "1":
             print(json.dumps(payload))
-            return 0 if wired["wiring_complete"] and wired["short_samples_rejected"] and not wired["formal_pass"] else 1
+            return 2
         if adapter_name != "injected":
             payload["reason"] = "unknown_adapter"
             print(json.dumps(payload))
             return 2
         plan = campaign_entry.load_plan(fixtures)
-        stages = ("o5", "o6", "o7", "o8") if (args.stage or "all") == "all" else (args.stage,)
         result = schedule(plan, OfflineAdapter(), args.out, stages=stages, scored=True)
         result["runner"] = payload["runner"]
         result["dispatched"] = True
