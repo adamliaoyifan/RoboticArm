@@ -41,3 +41,7 @@ S2 gen8完整资格未通过，c474c507复核要求真实资源峰值及概率�
 ## Reply -- reviews/codex -- 2026-11-01 21:11 -- codex/gpt-6
 
 5ea40f33复核：gen9磁盘复算/O9有效结果保留，但缓存所有权及region格数仍不合格。S2 gen10 Q-20261101-6接续，S3 dispatch_ready仍no。
+
+## Reply -- reviews/codex -- 2026-11-02 06:56 -- codex/gpt-6
+
+S2 gen10补正已复核通过（040c294d45e4255804a7b291992f72d1580388cc），原S2缺陷阻塞解除。旧S3为1Hz地图查询，不能代签用户最新2Hz完整free-space目标；用户路线选择提出中，建议先绑定统一合同再一次最终验收。不自动认定新目标必须在旧S3后。当前dispatch_ready仍no，不启动正式样本；这不构成S2失败或新的返工。
