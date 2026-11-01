@@ -1019,18 +1019,171 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         if not bool(getattr(pick_msg, "height_valid", False)):
             trial.fail_code = trial.fail_code or "DETECT_FULL_GEOMETRY_REQUIRED"
             return None, None
+        # [ST09-I] on the typed chain the slot comes from
+        # ComputePlacementV2 -> SelectPlacePathV2 and the place motion is
+        # the producer's certified route legs (see run_place_from_carry).
+        if getattr(self, "_typed", None) is not None:
+            return self._typed_place_slot(pick_msg, trial)
         # [ST09-I S5.7-5 legacy lock] the fixed floor-center slot is a
         # TEST FIXTURE of the pack-eval lineage. On the typed production
         # chain it is a named refusal — placement slots come from
         # ComputePlacementV2, and a fixture fallback must never mask a
         # placement failure.
-        if getattr(self, "_typed", None) is not None:
-            trial.fail_code = trial.fail_code or "FIXED_SLOT_TEST_ONLY"
-            trial.extras["slot_source"] = "test_fixture_refused"
-            return None, None
         slot, meta = self._fixed_slot(pick_msg)
         meta["slot_source"] = "test_fixture"
         return slot, meta
+
+    def _typed_place_slot(self, pick_msg, trial):
+        """Certified-route slot: ComputePlacementV2 -> SelectPlacePathV2.
+
+        Adapted from MotionOccDriver._frame_place_slot without the probe
+        loop: the pack chain executes the returned carry legs directly
+        (``run_place_from_carry``), so a certified route that is refused
+        fails the box with the producer's reason, never silently falls
+        back to a fixture slot.
+        """
+        import math as _math
+        from luggage_description.frame_contracts import ContractError
+        from luggage_description.frame_diagnostics import BoundaryContext
+        from luggage_description.ros_frame_bindings.poses import (
+            pose_from_message)
+        from luggage_description.scene_tf_config_utils import (
+            _local_point_to_base_link, _point_in_container_link,
+            container_opening_target_point_in_world,
+            container_usable_dimensions, xyz_world_to_base_link)
+        from luggage_msgs.msg import SlotSpec
+        from luggage_planning.grid_path_search import route_budget_s
+        from luggage_planning.typed_driver_adapter import (
+            container_transform_fields, tcp_record)
+
+        surface_msg = self._surface_v2_msg
+        if surface_msg is None:
+            trial.fail_code = trial.fail_code or "SURFACE_V2_MISSING"
+            return None, None
+        geometry_hash = str(surface_msg.geometry_hash or "")
+        box_wdh = [float(pick_msg.width), float(pick_msg.depth),
+                   float(pick_msg.height)]
+        self._frame_box_wdh = list(box_wdh)
+        request_id = self._frame_request_id("place")
+        try:
+            placement = self._typed.compute_placement(
+                request_id=request_id, box_wdh=box_wdh,
+                height_measured=True,
+                scene_revision=self._frame_scene_revision,
+                geometry_hash=geometry_hash,
+                expected_map_revision=int(surface_msg.map_revision),
+                # The route producer reorders by its own tiering, so hand
+                # it the deep feasible list, not a top-5 prefix.
+                max_candidates=2000)
+        except ContractError as error:
+            trial.fail_code = trial.fail_code or error.code
+            trial.extras["compute_placement"] = "%s: %s" % (
+                error.code, error.field)
+            return None, None
+        if placement is None or not placement.success:
+            trial.fail_code = trial.fail_code or (
+                getattr(placement, "reason_code", None) or "PLACEMENT_FAILED")
+            trial.extras["compute_placement"] = (
+                placement.message if placement else "timeout")
+            return None, None
+        trial.extras["compute_placement"] = placement.message
+        slot_messages = list(placement.candidates) or [placement.slot]
+        scores = list(placement.candidate_scores) or [0.0]
+        slot_request = str(slot_messages[0].identity.request_id or "")
+        if slot_request:
+            request_id = slot_request
+
+        grasp = getattr(self, "_frame_grasp", None)
+        if grasp is None:
+            trial.fail_code = trial.fail_code or "TYPED_PLACE_CONTEXT_MISSING"
+            return None, None
+        grasp = dict(grasp)
+        grasp["request_id"] = request_id
+        self._frame_grasp = grasp
+
+        # Door-portal carry TCP (map frame): the route's entry anchor.
+        world = container_opening_target_point_in_world(self._scene_config)
+        base = xyz_world_to_base_link(self._scene_config, world)
+        local = _point_in_container_link(base, self._scene_config)
+        portal = (local[0], local[1], max(float(local[2]) + 0.35, 0.80))
+        start_tcp = tcp_record(request_id, self._frame_scene_revision,
+                               portal, (1.0, 0.0, 0.0, 0.0))
+        live = getattr(self, "_last_joint_state", None) or {}
+        start_joints = [float(v) for v in (live.get("position")
+                                           or live.get("positions") or [])]
+        box_count = max(1, int(getattr(self._args, "max_boxes", 1) or 1))
+        select_timeout_s = route_budget_s(box_count) + 30.0
+        try:
+            selection = self._typed.select_place_path(
+                request_id=request_id, box_wdh=box_wdh,
+                slots=slot_messages, slot_scores=scores,
+                surface_message=surface_msg,
+                inner_size=list(
+                    container_usable_dimensions(self._scene_config)),
+                geometry_hash=geometry_hash,
+                map_revision=int(surface_msg.map_revision),
+                start_tcp=start_tcp,
+                start_joints=start_joints,
+                grasp=grasp,
+                container_transform=container_transform_fields(
+                    self._scene_config),
+                excluded_ids=(),
+                box_id=str(grasp.get("box_id") or ""),
+                generation=int(grasp.get("generation") or 0),
+                timeout_sec=select_timeout_s)
+        except ContractError as error:
+            trial.fail_code = trial.fail_code or error.code
+            trial.extras["selector_error"] = "%s: %s" % (
+                error.code, error.field)
+            return None, None
+        if selection is None or not selection.success:
+            trial.fail_code = trial.fail_code or (
+                getattr(selection, "reason_code", None)
+                or "PLANNING_ROUTE_REQUIRED")
+            trial.extras["selector_error"] = (
+                selection.reason_code if selection else "timeout")
+            return None, None
+
+        winner_index = int(selection.slot_index)
+        chosen = slot_messages[winner_index]
+        context = BoundaryContext(
+            "F13", "typed_driver_adapter", "place_smoke_driver", request_id,
+            self._frame_scene_revision, "container_link", "box_center",
+            "scene")
+        try:
+            record = pose_from_message(chosen, "slot", context)
+        except ContractError as error:
+            trial.fail_code = trial.fail_code or error.code
+            return None, None
+        self._frame_slot_record = record
+        self._selected_carry_v2 = list(selection.motion_segments)
+        self._selected_carry_v1 = list(selection.carry_segments)
+        self._selected_path = {
+            "method": str(selection.path_source),
+            "selection_id": str(selection.selection_id),
+            "path_hash": str(selection.path_hash),
+            "slot_index": winner_index,
+            "waypoint_frame": "world",
+            "waypoints": [
+                [float(pose.pose.position.x), float(pose.pose.position.y),
+                 float(pose.pose.position.z)]
+                for pose in selection.waypoint_poses],
+        }
+        trial.extras["path_source"] = str(selection.path_source)
+        trial.extras["selection_id"] = str(selection.selection_id)
+        trial.extras["slot_source"] = "certified_route"
+        base_xyz = _local_point_to_base_link(
+            list(record["position"]), self._scene_config)
+        yaw_container = 2.0 * _math.atan2(record["quaternion_xyzw"][2],
+                                          record["quaternion_xyzw"][3])
+        slot = SlotSpec()
+        slot.place_pose.position.x = float(base_xyz[0])
+        slot.place_pose.position.y = float(base_xyz[1])
+        slot.place_pose.position.z = float(base_xyz[2])
+        slot.place_pose.orientation.z = _math.sin(0.5 * yaw_container)
+        slot.place_pose.orientation.w = _math.cos(0.5 * yaw_container)
+        slot.width, slot.height, slot.depth = box_wdh[0], box_wdh[2], box_wdh[1]
+        return slot, self._slot_meta(slot)
 
     def _fixed_slot(self, box):
         height = float(box.height)
@@ -1801,12 +1954,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         return _decode_dump_image(best), ""
 
     def _capture_success_debug(self, trial, slot, slot_meta, pose_world):
-        """Camera at retreat pose, GT occupancy image, interior+box cloud."""
-        if not self._args.plan_only:
-            time.sleep(0.35)
-        color, color_err = self._latest_color(
-            min_stamp=(self.ros_now_sec() - 1.0) if not self._args.plan_only else None,
-            timeout=2.5 if not self._args.plan_only else 0.1)
+        """GT occupancy image, interior+box cloud, retreat-lift color frame.
+
+        The color frame is not captured here: run_place_from_carry stores
+        it right after the vertical retreat lift, before the pull-back and
+        return legs carry the camera out of the container. Nothing is
+        captured after those legs.
+        """
+        color = getattr(self, "_retreat_lift_color", None)
+        color_err = getattr(
+            self, "_retreat_lift_color_err", "no retreat lift frame captured")
         size = None
         if slot is not None:
             size = [float(slot.width), float(slot.depth), float(slot.height)]
@@ -2522,6 +2679,20 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                     trial.segments_succeeded += 1
                 else:
                     return self._abort(trial, code, False, extra=extras)
+                # Capture the evidence frame at the retreat lift: the
+                # first retreat leg ends directly above the placed box,
+                # before the pull-back and return legs leave the
+                # container. One attempt only; no frame is captured
+                # after the post-release chain completes.
+                if (str(post_seg.name) == "retreat"
+                        and getattr(self, "_retreat_lift_color", None) is None
+                        and getattr(self, "_retreat_lift_color_err", None) is None
+                        and not self._args.plan_only):
+                    time.sleep(0.35)
+                    color, color_err = self._latest_color(
+                        min_stamp=self.ros_now_sec() - 1.0, timeout=2.5)
+                    self._retreat_lift_color = color
+                    self._retreat_lift_color_err = color_err
 
         pose_release, pose_drift, settle = self._poses_after_settle()
         trial.extras["settle"] = {

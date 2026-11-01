@@ -104,8 +104,10 @@ class PackEvalDriver(PlaceSmokeDriver):
         self._pending_placed = None
         self._surface_v2_msg = None
         if getattr(self, "_typed", None) is not None:
-            from rclpy.qos import (DurabilityPolicy, QoSProfile,
-                                   ReliabilityPolicy)
+            # NOTE: no function-local rclpy.qos import here — it would
+            # shadow the module-level QoSProfile for the WHOLE __init__
+            # scope and the latch subscription above would die with
+            # UnboundLocalError before ever reaching this branch.
             from luggage_msgs.msg import SurfaceContractV2
             transient = QoSProfile(
                 depth=1, reliability=ReliabilityPolicy.RELIABLE,
@@ -777,7 +779,18 @@ def merge_args(argv=None):
     pack.add_argument("--observe-pose", default="pickup_observe")
     pack.add_argument("--goto-timeout", type=float, default=60.0)
     pack.add_argument("--skip-graph-check", action="store_true")
+    pack.add_argument("--frame-runtime", action="store_true",
+                      help="Adopt the v2 runtime chain: place slots and "
+                           "motion come from ComputePlacementV2 -> "
+                           "SelectPlacePathV2 certified routes")
+    pack.add_argument("--frame-peer", default="pack_eval_driver")
     known, rest = pack.parse_known_args(argv)
+    # The shared place parser rejects unknown options, so strip the
+    # frame flags the same way motion_occ_eval_driver does.
+    local = argparse.ArgumentParser(add_help=False)
+    local.add_argument("--frame-runtime", action="store_true")
+    local.add_argument("--frame-peer", default="pack_eval_driver")
+    _frame_stripped, rest = local.parse_known_args(rest)
     smoke = parse_place_args([
         "--out", known.out,
         "--n", str(known.n if known.n is not None else known.max_boxes),
@@ -786,8 +799,11 @@ def merge_args(argv=None):
         "--payload", "vacuum",
         "--geometry-timeout", "25",
     ] + rest)
+    smoke.frame_runtime = bool(known.frame_runtime)
+    smoke.frame_peer = str(known.frame_peer)
     for key, value in vars(known).items():
-        setattr(smoke, key, value)
+        if key not in ("frame_runtime", "frame_peer"):
+            setattr(smoke, key, value)
     if smoke.n is not None and known.n is None:
         pass
     if known.n is not None:

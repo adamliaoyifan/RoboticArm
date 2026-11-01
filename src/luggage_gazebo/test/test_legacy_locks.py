@@ -30,9 +30,15 @@ class _FixtureDriver(object):
     def __init__(self, typed=True, scene=None):
         self._typed = SimpleNamespace() if typed else None
         self._scene_config = scene
+        self.typed_route_calls = []
 
     _place_slot_for = PlaceSmokeDriver._place_slot_for
     _container_zone = PlaceSmokeDriver._container_zone
+
+    def _typed_place_slot(self, pick_msg, trial):
+        self.typed_route_calls.append(pick_msg)
+        trial.extras["slot_source"] = "certified_route"
+        return None, None
 
     def suction_xyz(self):
         return (1.9, 0.0, 1.2), ""
@@ -43,16 +49,26 @@ class _FixtureDriver(object):
 
 class TestFixedSlotLock(unittest.TestCase):
 
-    def test_fixed_slot_refuses_on_typed_production_chain(self):
+    def test_typed_chain_routes_to_certified_place_slot(self):
+        # [2026-10-13 W1] the typed chain no longer refuses: the slot and
+        # the place motion come from ComputePlacementV2 -> SelectPlacePathV2
+        # (_typed_place_slot); the fixed fixture is unreachable on it.
+        trial = SimpleNamespace(fail_code="", extras={})
+        driver = _FixtureDriver(typed=True)
+        pick = SimpleNamespace(height_valid=True)
+        driver._place_slot_for(pick, None, trial)
+        self.assertEqual(driver.typed_route_calls, [pick])
+        self.assertEqual(trial.extras["slot_source"], "certified_route")
+        self.assertNotEqual(trial.fail_code, "FIXED_SLOT_TEST_ONLY")
+
+    def test_typed_chain_missing_height_still_refuses(self):
         trial = SimpleNamespace(fail_code="", extras={})
         driver = _FixtureDriver(typed=True)
         slot, meta = driver._place_slot_for(
-            SimpleNamespace(height_valid=True), None, trial)
+            SimpleNamespace(height_valid=False), None, trial)
         self.assertIsNone(slot)
-        self.assertIsNone(meta)
-        self.assertEqual(trial.fail_code, "FIXED_SLOT_TEST_ONLY")
-        self.assertEqual(trial.extras["slot_source"],
-                         "test_fixture_refused")
+        self.assertEqual(trial.fail_code, "DETECT_FULL_GEOMETRY_REQUIRED")
+        self.assertEqual(driver.typed_route_calls, [])
 
     def test_fixed_slot_stays_a_named_test_fixture_for_legacy(self):
         # Pack-eval lineage (no typed chain): the fixture still works
