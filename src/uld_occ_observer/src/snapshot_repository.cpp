@@ -135,6 +135,10 @@ void SnapshotRepository::release(const std::string& handle) {
   entries_.erase(handle);
 }
 void SnapshotRepository::set_ttl_for_test(std::chrono::milliseconds ttl) { ttl_ = ttl; }
+void SnapshotRepository::set_resource_scope_complete_for_test(bool complete) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  resource_scope_complete_ = complete;
+}
 void SnapshotRepository::account(const ResourceAccounts& accounts) {
   std::lock_guard<std::mutex> lock(mutex_);
   accounts_ = accounts;
@@ -183,16 +187,38 @@ ResourceUsage SnapshotRepository::usage() {
     }
   }
   const auto shared = static_cast<std::uint64_t>(unique.size()) * sizeof(CellBlock);
+  // Allocated-node estimate for one handle-directory entry: the map node plus
+  // its key string plus Entry (shared_ptr + time point). Capacity equals size
+  // for a std::map node, so this counts allocated capacity, not only live keys.
+  constexpr std::uint64_t kDirectoryNodeBytes =
+      48u + 2u * sizeof(void*) + sizeof(Entry) + sizeof(std::string) + 32u;
+  const auto directory_bytes = directories * kDirectoryNodeBytes;
+  // Queue/ledger/completion node estimates, same capacity-equals-size rule.
+  constexpr std::uint64_t kQueueNodeBytes = 64u + sizeof(void*);
+  const auto queue_bytes = accounts.entry_messages * kQueueNodeBytes;
+  constexpr std::uint64_t kCompletionNodeBytes = 64u + 2u * sizeof(void*);
+  const auto completion_bytes = accounts.completion_records * kCompletionNodeBytes;
+  const auto store_tree = store_.diagnostics().estimated_tree_bytes;
+  // The read-view/cache scope sum: shared + old-view blocks, directory nodes,
+  // surface caches, inflight responses, entry queue (payload + nodes), receipt
+  // ledger bytes (already node-inclusive via accounted_bytes), completions.
+  // Store tree bytes are reported separately and never enter this sum.
+  const auto read_view = shared + old_bytes + directory_bytes + surface + inflight
+      + queue_bytes + accounts.entry_payload_bytes + accounts.ledger_bytes + completion_bytes;
   std::lock_guard<std::mutex> lock(mutex_);
   block_peak_ = std::max(block_peak_, shared);
   directory_peak_ = std::max(directory_peak_, directories);
   surface_peak_ = std::max(surface_peak_, surface);
+  directory_bytes_peak_ = std::max(directory_bytes_peak_, directory_bytes);
+  read_view_peak_ = std::max(read_view_peak_, read_view);
   ResourceUsage usage;
   usage.shared_block_bytes = shared;
   usage.shared_block_bytes_peak = block_peak_;
   usage.old_view_block_bytes = old_bytes;
   usage.view_directory_entries = directories;
   usage.view_directory_entries_peak = directory_peak_;
+  usage.view_directory_bytes = directory_bytes;
+  usage.view_directory_bytes_peak = directory_bytes_peak_;
   usage.surface_cache_bytes = surface;
   usage.surface_cache_bytes_peak = surface_peak_;
   usage.inflight_response_bytes = inflight;
@@ -207,8 +233,28 @@ ResourceUsage SnapshotRepository::usage() {
   usage.receipt_ledger_bytes_peak = accounts.ledger_bytes_peak;
   usage.completion_records = accounts.completion_records;
   usage.completion_records_peak = accounts.completion_records_peak;
-  usage.uncovered_allocations = true;
-  usage.certification = "NOT_EVALUATED";
+  usage.store_tree_bytes = store_tree;
+  usage.read_view_bytes = read_view;
+  usage.read_view_bytes_peak = read_view_peak_;
+  if (resource_scope_complete_) {
+    // Every class of the read-view/cache scope is attributed above. This
+    // certifies that scope only; the out-of-scope classes stay listed and no
+    // broader resource claim is made.
+    usage.uncovered_allocations = false;
+    usage.certification = "READ_VIEW_CACHE_ATTRIBUTED";
+  } else {
+    usage.uncovered_allocations = true;
+    usage.certification = "NOT_EVALUATED";
+    usage.uncovered_classes = {
+        "octree_internal_nodes",
+        "std_map_directory_nodes",
+        "ledger_map_nodes",
+        "ingress_queue_nodes",
+        "completion_map_nodes",
+        "middleware_transport_buffers",
+        "tf_buffer",
+        "fingerprint_table"};
+  }
   return usage;
 }
 }  // namespace uld_occ_observer

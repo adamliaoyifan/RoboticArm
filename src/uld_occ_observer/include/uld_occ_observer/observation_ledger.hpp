@@ -18,6 +18,9 @@ class ObservationLedger {
     UpdateReceipt receipt;
     bool in_flight{true};
     double queue_ms{};
+    // Subscription callback entry (CLOCK_MONOTONIC ns), stamped once at
+    // admission and copied onto every sealed terminal for this id.
+    std::int64_t entered_ns{};
     std::chrono::steady_clock::time_point updated{};
   };
   struct Admit {
@@ -26,7 +29,7 @@ class ObservationLedger {
     std::string observation_id;
   };
   Admit admit(std::uint64_t epoch, const std::string& sensor_id, const std::string& observation_id,
-              std::chrono::steady_clock::time_point now);
+              std::chrono::steady_clock::time_point now, std::int64_t entered_ns = 0);
   void mark(std::uint64_t epoch, const std::string& sensor_id, const std::string& observation_id,
             const std::string& state, bool in_flight, std::chrono::steady_clock::time_point now);
   // Writes an existing in-flight record and returns. A missing or already terminal id

@@ -18,7 +18,8 @@ bool ObservationLedger::make_room(std::chrono::steady_clock::time_point now) {
 }
 ObservationLedger::Admit ObservationLedger::admit(std::uint64_t epoch, const std::string& sensor_id,
                                                   const std::string& observation_id,
-                                                  std::chrono::steady_clock::time_point now) {
+                                                  std::chrono::steady_clock::time_point now,
+                                                  std::int64_t entered_ns) {
   std::lock_guard<std::mutex> lock(mutex_);
   Admit result;
   result.observation_id = observation_id;
@@ -37,6 +38,7 @@ ObservationLedger::Admit ObservationLedger::admit(std::uint64_t epoch, const std
   record.state = "QUEUED";
   record.in_flight = true;
   record.updated = now;
+  record.entered_ns = entered_ns;
   record.receipt.sensor_id = sensor_id;
   record.receipt.observation_id = observation_id;
   records_[id] = std::move(record);
@@ -62,6 +64,10 @@ bool ObservationLedger::complete(std::uint64_t epoch, const std::string& sensor_
   auto record = records_.find(key(epoch, sensor_id, observation_id));
   if (record == records_.end() || !record->second.in_flight) return false;
   record->second.receipt = std::move(receipt);
+  // The entry moment is measured at admission, not at completion; it is
+  // stamped once here and never overwritten by later seals.
+  if (record->second.entered_ns != 0)
+    record->second.receipt.callback_enter_ns = record->second.entered_ns;
   record->second.state = record->second.receipt.status == "INTEGRATED" ? "COMPLETED" : "REJECTED";
   record->second.in_flight = false;
   record->second.queue_ms = queue_ms;

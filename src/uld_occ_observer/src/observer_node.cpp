@@ -152,16 +152,18 @@ class ObserverNode : public rclcpp::Node {
     return publish_message(ros_receipt(CompletedObservation{sealed.receipt, sealed.queue_ms}));
   }
   msg::UpdateReceipt publish_open(const std::string& sensor, const std::string& id,
-                                  const std::string& status, std::int64_t stamp) {
+                                  const std::string& status, std::int64_t stamp,
+                                  std::int64_t enter_ns = 0) {
     msg::UpdateReceipt receipt;
     receipt.status = status;
     receipt.sensor_id = sensor;
     receipt.observation_id = id;
     receipt.input_stamp_ns = stamp;
+    receipt.callback_enter_ns = enter_ns;
     return publish_message(receipt);
   }
   void reject_subscribed(std::uint64_t epoch, const std::string& id, const std::string& status,
-                         std::int64_t stamp, bool stored) {
+                         std::int64_t stamp, bool stored, std::int64_t enter_ns = 0) {
     ++adapter_rejected_;
     if (stored) {
       UpdateReceipt receipt;
@@ -169,6 +171,9 @@ class ObserverNode : public rclcpp::Node {
       receipt.sensor_id = sensor_id_;
       receipt.observation_id = id;
       receipt.input_stamp_ns = stamp;
+      const auto entered = enter_ns != 0 ? enter_ns
+          : ledger_entered(epoch, id);
+      if (entered != 0) receipt.callback_enter_ns = entered;
       const auto sealed = seal_inflight(ledger_, board_, epoch, sensor_id_, id, std::move(receipt),
                                         std::chrono::steady_clock::now());
       if (sealed.stored) {
@@ -178,21 +183,30 @@ class ObserverNode : public rclcpp::Node {
     } else if (status != "DUPLICATE") {
       note_unstored_rejection(board_, epoch, sensor_id_, id, status, stamp);
     }
-    publish_open(sensor_id_, id, status, stamp);
+    publish_open(sensor_id_, id, status, stamp, enter_ns);
+  }
+  // The admission entry stamp recorded for this id, if the ledger kept it.
+  std::int64_t ledger_entered(std::uint64_t epoch, const std::string& id) {
+    const auto record = ledger_.query(epoch, sensor_id_, id);
+    return record ? record->entered_ns : 0;
   }
   void on_cloud(const sensor_msgs::msg::PointCloud2& cloud) {
+    // First statement: the subscription callback entry moment, CLOCK_MONOTONIC.
+    const auto enter_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
     if (cloud.header.frame_id != optical_frame_) {
       ++adapter_rejected_;
-      publish_open("", "", "OPTICAL_FRAME_MISMATCH", rclcpp::Time(cloud.header.stamp).nanoseconds());
+      publish_open("", "", "OPTICAL_FRAME_MISMATCH", rclcpp::Time(cloud.header.stamp).nanoseconds(),
+                   enter_ns);
       return;
     }
     const auto stamp = rclcpp::Time(cloud.header.stamp).nanoseconds();
     const auto id = std::to_string(stamp);
     const auto epoch = store_->published_epoch();
     const auto now = std::chrono::steady_clock::now();
-    const auto admitted = ledger_.admit(epoch, sensor_id_, id, now);
+    const auto admitted = ledger_.admit(epoch, sensor_id_, id, now, enter_ns);
     if (!admitted.accepted) {
-      reject_subscribed(epoch, id, admitted.status, stamp, false);
+      reject_subscribed(epoch, id, admitted.status, stamp, false, enter_ns);
       return;
     }
     ObservationIngress::Item item;
@@ -203,7 +217,7 @@ class ObserverNode : public rclcpp::Node {
     item.payload_bytes = cloud.data.size();
     const auto queued = ingress_.try_admit(std::move(item));
     if (!queued.accepted) {
-      reject_subscribed(epoch, id, queued.status, stamp, true);
+      reject_subscribed(epoch, id, queued.status, stamp, true, enter_ns);
       return;
     }
     adapter_cv_.notify_one();

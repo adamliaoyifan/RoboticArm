@@ -14,6 +14,8 @@ struct UpdateReceipt {
   std::string status;
   std::string sensor_id, observation_id;
   std::int64_t input_stamp_ns{};
+  // Subscription callback entry in CLOCK_MONOTONIC ns; 0 = not recorded.
+  std::int64_t callback_enter_ns{};
   SnapshotIdentity identity;
   std::size_t raw_points{}, accepted_points{}, free_keys{}, hit_keys{};
   std::size_t changed_keys{}, occupancy_changed_keys{}, rebuilt_blocks{};

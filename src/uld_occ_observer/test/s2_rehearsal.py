@@ -347,9 +347,13 @@ def functional(session, binary, geometry, config, out, env, geometry_hash):
         session.check("independent sender keeps one terminal per id",
                       sender.is_alive() is False and unique == {"send-0", "send-1", "send-2"}, str(sorted(unique)))
         usage = session.call(session.resource, GetResourceUsage.Request(), 5)
-        session.check("resource certification stays not evaluated",
-                      usage.certification == "NOT_EVALUATED" and usage.uncovered_allocations
-                      and len(usage.uncovered_classes) > 0, usage.certification)
+        out_of_scope = {"middleware_transport_buffers", "tf_buffer", "fingerprint_table"}
+        session.check("resource certification is scoped read-view/cache attribution",
+                      usage.certification == "READ_VIEW_CACHE_ATTRIBUTED"
+                      and not usage.uncovered_allocations
+                      and set(usage.uncovered_classes) <= out_of_scope
+                      and usage.shared_block_bytes >= 0 and usage.surface_cache_bytes >= 0,
+                      "%s uncovered=%s" % (usage.certification, sorted(usage.uncovered_classes)))
     finally:
         node.stop()
     traced = capture_replay.certify_trace(trace_path)

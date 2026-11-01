@@ -317,9 +317,12 @@ def run_service(client, observer_factory):
                      first.status == "OK" and one.surface_cache_bytes > 0 and
                      two.surface_cache_bytes == one.surface_cache_bytes,
                      f"{one.surface_cache_bytes} -> {two.surface_cache_bytes}")
-        client.check("resource gate stays not evaluated",
-                     two.certification == "NOT_EVALUATED" and two.uncovered_allocations and
-                     len(two.uncovered_classes) > 0 and two.inflight_response_bytes == 0 and
+        client.check("resource certification is scoped read-view/cache attribution",
+                     two.certification == "READ_VIEW_CACHE_ATTRIBUTED" and
+                     not two.uncovered_allocations and
+                     set(two.uncovered_classes) <= {"middleware_transport_buffers", "tf_buffer",
+                                                    "fingerprint_table"} and
+                     two.inflight_response_bytes == 0 and
                      two.inflight_response_bytes_peak > 0,
                      f"{two.certification} peak={two.inflight_response_bytes_peak} classes={list(two.uncovered_classes)}")
         client.set_param("receipt_retention_ms", 200)

@@ -153,6 +153,30 @@ int main(int argc, char** argv) {
       } catch (const std::exception& error) { row["status"] = error.what(); failed = true; }
       struct rusage usage{}; getrusage(RUSAGE_SELF,&usage);
       row["process_peak_rss_kib"] = usage.ru_maxrss;  // peak, explicitly not current RSS
+      {
+        // Scoped attribution as reported by the repository. The runner copies
+        // this map verbatim into group artifacts; it never derives a resource
+        // verdict of its own.
+        const auto repo_usage = repo.usage();
+        YAML::Node resources;
+        resources["read_view_bytes"] = repo_usage.read_view_bytes;
+        resources["cache_bytes"] = repo_usage.surface_cache_bytes;
+        resources["attribution_complete"] =
+            repo_usage.certification == "READ_VIEW_CACHE_ATTRIBUTED";
+        resources["unmarked_allocations"] = repo_usage.uncovered_allocations;
+        resources["certification"] = repo_usage.certification;
+        resources["store_tree_bytes"] = repo_usage.store_tree_bytes;
+        resources["shared_block_bytes"] = repo_usage.shared_block_bytes;
+        resources["old_view_block_bytes"] = repo_usage.old_view_block_bytes;
+        resources["view_directory_bytes"] = repo_usage.view_directory_bytes;
+        resources["inflight_response_bytes"] = repo_usage.inflight_response_bytes;
+        resources["entry_queue_payload_bytes"] = repo_usage.entry_queue_payload_bytes;
+        resources["receipt_ledger_bytes"] = repo_usage.receipt_ledger_bytes;
+        YAML::Node uncovered(YAML::NodeType::Sequence);
+        for (const auto& name : repo_usage.uncovered_classes) uncovered.push_back(name);
+        resources["uncovered_classes"] = uncovered;
+        row["resource_usage"] = resources;
+      }
       row["sample_compute_ms"] = ms(sample_start,Clock::now());
       output << "---\n" << YAML::Dump(row) << '\n'; output.flush();
       if (!output) throw Error("OUTPUT_WRITE_FAILED");

@@ -65,7 +65,8 @@ msg::SnapshotIdentity ros_identity(const SnapshotIdentity& id) {
 msg::UpdateReceipt ros_receipt(const CompletedObservation& completed) {
   const auto& r = completed.receipt;
   msg::UpdateReceipt out; out.status = r.status;
-  out.sensor_id = r.sensor_id; out.observation_id = r.observation_id; out.input_stamp_ns = r.input_stamp_ns; out.identity = ros_identity(r.identity);
+  out.sensor_id = r.sensor_id; out.observation_id = r.observation_id; out.input_stamp_ns = r.input_stamp_ns;
+  out.callback_enter_ns = r.callback_enter_ns; out.identity = ros_identity(r.identity);
   out.raw_points = r.raw_points; out.accepted_points = r.accepted_points;
   out.free_keys = r.free_keys; out.hit_keys = r.hit_keys; out.changed_keys = r.changed_keys;
   out.occupancy_changed_keys = r.occupancy_changed_keys; out.rebuilt_blocks = r.rebuilt_blocks;

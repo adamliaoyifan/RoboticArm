@@ -57,6 +57,10 @@ class SnapshotRepository {
   InflightResponse begin_response(std::uint64_t bytes);
   void account(const ResourceAccounts& accounts);
   void set_ttl_for_test(std::chrono::milliseconds ttl);
+  // Test seam: models an attribution regression where a scope class fell out
+  // of the sums. Production never calls it; usage() then reports the full
+  // pre-attribution contract (NOT_EVALUATED with the class listed).
+  void set_resource_scope_complete_for_test(bool complete);
   static constexpr std::chrono::seconds kDefaultTtl{5};
  private:
   friend class InflightResponse;
@@ -71,8 +75,10 @@ class SnapshotRepository {
   std::vector<std::weak_ptr<const Snapshot>> readers_;
   std::uint64_t next_handle_{};
   std::chrono::milliseconds ttl_{kDefaultTtl};
-  std::uint64_t block_peak_{}, directory_peak_{}, surface_peak_{};
+  std::uint64_t block_peak_{}, directory_peak_{}, surface_peak_{},
+      directory_bytes_peak_{}, read_view_peak_{};
   std::uint64_t inflight_bytes_{}, inflight_peak_{};
-  ResourceAccounts accounts_{};
+  ResourceAccounts accounts_;
+  bool resource_scope_complete_{true};
 };
 }  // namespace uld_occ_observer

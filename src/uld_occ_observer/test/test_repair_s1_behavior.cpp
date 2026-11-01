@@ -121,14 +121,27 @@ void test_reset_ttl_pressure_and_bytes(const ObserverConfiguration& cfg) {
   }
   expect(acquired == 8 && pressure, "ninth handle is pressure");
   const auto baseline = limited.usage();
-  expect(baseline.uncovered_allocations, "map and octree bytes stay uncovered");
+  expect(!baseline.uncovered_allocations
+             && baseline.certification == "READ_VIEW_CACHE_ATTRIBUTED",
+         "the read-view/cache scope is fully attributed");
+  expect(baseline.view_directory_bytes >= baseline.view_directory_entries * 48u,
+         "directory nodes are counted as allocated capacity");
+  expect(baseline.read_view_bytes >= baseline.shared_block_bytes + baseline.surface_cache_bytes,
+         "the read-view sum covers blocks, directory, and cache");
+  expect(baseline.store_tree_bytes > 0, "store tree bytes are reported separately");
+  limited.set_resource_scope_complete_for_test(false);
+  const auto regressed = limited.usage();
+  expect(regressed.uncovered_allocations && regressed.certification == "NOT_EVALUATED"
+             && !regressed.uncovered_classes.empty(),
+         "a class dropped from the sums returns the report to NOT_EVALUATED");
+  limited.set_resource_scope_complete_for_test(true);
   expect(baseline.shared_block_bytes > 0, "shared blocks are counted once");
   (void)second;
 }
 void test_ledger_ingress_and_wait() {
   ObservationLedger ledger;
   const auto now = std::chrono::steady_clock::now();
-  const auto admitted = ledger.admit(1, "cam0", "frame-1", now);
+  const auto admitted = ledger.admit(1, "cam0", "frame-1", now, 123456789);
   expect(admitted.accepted && admitted.observation_id == "frame-1", "ledger admits the caller id");
   expect(!ledger.admit(1, "cam0", "frame-1", now).accepted, "duplicate id is not admitted again");
   UpdateReceipt receipt;
@@ -137,6 +150,8 @@ void test_ledger_ingress_and_wait() {
   receipt.identity.observed_revision = 5;
   receipt.identity.map_revision = 3;
   ledger.complete(1, "cam0", "frame-1", receipt, now);
+  expect(ledger.query(1, "cam0", "frame-1")->receipt.callback_enter_ns == 123456789,
+         "completion carries the callback entry stamped at admission");
   const auto found = ledger.query(1, "cam0", "frame-1");
   expect(found && found->state == "COMPLETED" && found->receipt.identity.observed_revision == 5,
          "terminal is stored before a caller would publish");
@@ -245,9 +260,13 @@ void test_resource_ownership(const ObserverConfiguration& cfg) {
   expect(retained.surface_cache_bytes >= held->surface_cache_allocated_bytes(),
          "live reader cache must remain attributed after reset and release");
   expect(readable.cells.size() == 8, "live reader still sees the pre-reset cells");
-  expect(retained.certification == "NOT_EVALUATED" && retained.uncovered_allocations,
-         "partial resource sums stay not evaluated");
-  expect(!retained.uncovered_classes.empty(), "uncovered classes are listed");
+  expect(retained.certification == "READ_VIEW_CACHE_ATTRIBUTED" && !retained.uncovered_allocations,
+         "the scoped attribution stays complete across reset and release");
+  expect(!retained.uncovered_classes.empty(), "out-of-scope classes stay listed");
+  for (const auto& name : retained.uncovered_classes)
+    expect(name == "middleware_transport_buffers" || name == "tf_buffer"
+               || name == "fingerprint_table",
+           "only declared out-of-scope classes remain uncovered");
   held.reset();
   cache.reset();
   const auto released = repo.usage();
@@ -300,7 +319,7 @@ void test_terminal_seal_and_bounds() {
   missing.status = "INTEGRATED";
   expect(!ledger.complete(1, "cam0", "absent", missing, now), "complete does not insert an unknown id");
   expect(!ledger.query(1, "cam0", "absent"), "an unknown id stays unseen");
-  expect(ledger.admit(1, "cam0", "once", now).accepted, "seal admit");
+  expect(ledger.admit(1, "cam0", "once", now, 42).accepted, "seal admit");
   UpdateReceipt queued;
   queued.status = "QUEUE_FULL";
   queued.sensor_id = "cam0";
@@ -309,6 +328,8 @@ void test_terminal_seal_and_bounds() {
   const auto sealed = seal_inflight(ledger, board, 1, "cam0", "once", queued, now, 1.5);
   expect(sealed.stored && sealed.state == "REJECTED" && sealed.receipt.status == "QUEUE_FULL",
          "seal stores the rejection before a caller publishes");
+  expect(sealed.receipt.callback_enter_ns == 42 && sealed.receipt.input_stamp_ns == 42,
+         "the sealed rejection carries the entry stamp and keeps the cloud stamp separate");
   UpdateReceipt later;
   later.status = "INTEGRATED";
   later.identity.observed_revision = 9;
@@ -316,8 +337,9 @@ void test_terminal_seal_and_bounds() {
          "a second seal does not overwrite the terminal");
   const auto stored = ledger.query(1, "cam0", "once");
   expect(stored && stored->state == "REJECTED" && stored->receipt.status == "QUEUE_FULL" &&
-             stored->receipt.input_stamp_ns == 42 && stored->queue_ms == 1.5,
-         "query returns the sealed receipt");
+             stored->receipt.input_stamp_ns == 42 && stored->queue_ms == 1.5 &&
+             stored->receipt.callback_enter_ns == 42,
+         "query returns the sealed receipt with its entry stamp intact");
   SnapshotWaitBoard::Request wait;
   wait.expected_epoch = 1;
   wait.sensor_id = "cam0";

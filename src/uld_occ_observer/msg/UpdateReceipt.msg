@@ -2,6 +2,10 @@ string status
 string sensor_id
 string observation_id
 int64 input_stamp_ns
+# Subscription callback entry in CLOCK_MONOTONIC ns (steady_clock). 0 = not
+# recorded (service-mode integration). Distinct from input_stamp_ns, which is
+# the cloud header stamp in the ROS clock domain.
+int64 callback_enter_ns
 uld_occ_observer/SnapshotIdentity identity
 uint64 raw_points
 uint64 accepted_points

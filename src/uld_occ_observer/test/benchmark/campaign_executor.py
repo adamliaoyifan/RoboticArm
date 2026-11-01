@@ -1799,8 +1799,11 @@ class LiveCampaign:
                 "started": len(rows),
                 "judge": campaign,
                 "window_judge": window_verdict,
+                # The resource service must have answered with a declared
+                # value; which scope it certifies is the product's statement,
+                # not something this wiring run evaluates.
                 "executed": chains_ok and sender_ok and receipt_rows_ok
-                and certification == "NOT_EVALUATED",
+                and certification in ("NOT_EVALUATED", "READ_VIEW_CACHE_ATTRIBUTED"),
                 "sender": {
                     "planned_s": [item["planned_s"] for item in sent],
                     "actual_s": [item["actual_s"] for item in sent],

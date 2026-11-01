@@ -379,7 +379,7 @@ def test_materialize_and_live_smokes_stay_non_scored(tmp_path):
     assert chain["age_within_2s"] is True
     assert ros["stages"][0]["judge"]["pass"] is False
     assert ros["sender_thread"] != ros["spin_thread"]
-    assert ros["resource_certification"] == "NOT_EVALUATED"
+    assert ros["resource_certification"] in ("NOT_EVALUATED", "READ_VIEW_CACHE_ATTRIBUTED")
     assert ros["dependency_gate"] == "skipped_non_scored"
 
 
@@ -404,7 +404,7 @@ def test_live_campaign_wiring_stays_non_scored(tmp_path):
     assert by_stage["o7"]["judge"]["pass"] is False
     assert by_stage["o8"]["judge"]["pass"] is False
     assert by_stage["o7"]["chains_stable"] is True
-    assert by_stage["o7"]["resource_certification"] == "NOT_EVALUATED"
+    assert by_stage["o7"]["resource_certification"] in ("NOT_EVALUATED", "READ_VIEW_CACHE_ATTRIBUTED")
     assert by_stage["o7"]["sender"]["sender_thread"] != by_stage["o7"]["sender"]["spin_thread"]
     assert by_stage["o7"]["sender"]["planned_s"] == pytest.approx([0.0, 0.5])
     # gen6: the aggregate is labeled as both chains plus join, and per-request
