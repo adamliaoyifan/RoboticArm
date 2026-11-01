@@ -994,7 +994,7 @@ def healthy_o8():
         if kind == "occlusion":
             after_occl = dict(probe("b"))
             after_occl["probe_mono_ns"] = 3
-            after_occl["surface_hash"] = "surface-after"
+            after_occl["surface_hash"] = "surface-b"  # region-filtered: unchanged
             after_occl["identity"] = {"epoch": 1, "map_revision": 3,
                                       "observed_revision": 3,
                                       "last_integrated_stamp_ns": 1700000001000000000}
@@ -1007,7 +1007,7 @@ def healthy_o8():
                 "input_accepted": True,
                 "occluder_receipt": {"status": "COMPLETED", "changed_keys": 700},
                 "region_probability_unchanged": True,
-                "surface_geometry_unchanged": False,
+                "surface_geometry_unchanged": True,
                 "freshness_advanced": True,
             })
             row["probe_after"] = after_occl

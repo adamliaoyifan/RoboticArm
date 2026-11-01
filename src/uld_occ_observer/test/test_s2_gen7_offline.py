@@ -585,7 +585,9 @@ def test_live_holds_all_three_kinds_measured_complete(tmp_path):
             if kind == "occlusion":
                 assert row["input_accepted"] is True
                 assert row["region_probability_unchanged"] is True
-                assert row["surface_geometry_unchanged"] is False
+                # The oracle-region surface summary also stays put: the
+                # occluder's own cells sit below the oracle bound.
+                assert row["surface_geometry_unchanged"] is True
             elif kind == "duplicate_id":
                 assert row["duplicate_rejected"] is True
                 assert row["probability_unchanged"] is True
