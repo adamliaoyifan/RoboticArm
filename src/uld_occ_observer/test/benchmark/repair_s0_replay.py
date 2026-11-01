@@ -42,6 +42,7 @@ def segment_view(case):
             "health_times_s": case.get("health_times_s"),
             "resources": case.get("resources"),
             "in_flight_after_drain": case.get("in_flight_after_drain"),
+            "continuity": case.get("continuity"),
             "legacy_immediate_first": case.get("legacy_immediate_first"),
             "planned_input_ids": case.get("planned_input_ids"),
             "planned_query_ids": case.get("planned_query_ids"),

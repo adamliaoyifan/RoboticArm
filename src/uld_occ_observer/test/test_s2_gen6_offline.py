@@ -197,16 +197,30 @@ def test_failure_manifest_is_computed_from_disk(tmp_path):
     bundle = executor._save_failure(out, "o5", "RuntimeError", {"error": "boom"})
     manifest = json.loads((bundle / "manifest.json").read_text())
     assert manifest["capture_complete"] is False          # cli.log is still missing
-    assert manifest["missing"] == ["cumulative/cli.log"]
-    assert manifest["replay_possible"] is True            # hashed input frames are persisted
-    assert manifest["replay_inputs"] == ["o5/cumulative/manifest.yaml"]
-    assert all("sha256" in entry for entry in manifest["files"])
+    assert "cumulative/cli.log" in manifest["missing"]
+    # gen7: the referenced input itself is absent, so it is listed too and the
+    # manifest is not replay material despite having hashed frame entries.
+    assert any("f000.yaml" in item for item in manifest["missing"])
+    assert manifest["replay_possible"] is False
+    assert manifest["input_problems"]
 
     (stage / "cli.log").write_text("log\n")
+    (stage / "f000.yaml").write_text(
+        "sensor_id: cam0\nobservation_id: c-f0\noptical_frame: d555_color_optical_frame\n"
+        "clock_domain: ros\ngeometry_hash: h\nepoch: 1\nstamp_ns: 1000000000\n"
+        "points_m:\n- [0.1, 0.1, 1.0]\ntransform:\n  stamp_ns: 1000000000\n"
+        "  translation: [0, 0, 0]\n  rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1]\n")
+    import hashlib
+    digest = hashlib.sha256((stage / "f000.yaml").read_bytes()).hexdigest()
+    (stage / "manifest.yaml").write_text(json.dumps({
+        "case_id": "c", "frames": [{"path": "f000.yaml", "sha256": digest, "warmup": False}]}))
     bundle = executor._save_failure(out, "o5", "RuntimeError", {"error": "boom"})
     manifest = json.loads((bundle / "manifest.json").read_text())
     assert manifest["capture_complete"] is True
     assert manifest["missing"] == []
+    assert manifest["replay_possible"] is True            # a verified input frame is persisted
+    assert manifest["replay_inputs"] == ["o5/cumulative/manifest.yaml"]
+    assert all("sha256" in entry for entry in manifest["files"])
 
 
 def test_failure_manifest_bounds_details_without_hiding_them(tmp_path):

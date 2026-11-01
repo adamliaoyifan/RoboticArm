@@ -38,6 +38,13 @@ O7_WINDOWS = 9
 O8_RUNS = 3
 O8_HOLD_S = 10.0
 O8_HOLDS = 3
+# gen7: the saturation check is its own frame pass with per-frame receipts,
+# RSS medians come from real timestamped windows, and the duplicate-id replay
+# is judged as its own hold kind instead of standing in for occlusion.
+O8_SATURATION_FRAMES = 30
+O8_RSS_WINDOW_S = 60.0
+O8_HEALTH_MIN_SAMPLES = 30
+O8_HOLD_KINDS = ("no_input", "occlusion", "duplicate_id")
 O9_PAIRS = 30
 O9_RATIO = 1.10
 O8_RSS_GROWTH = 0.05

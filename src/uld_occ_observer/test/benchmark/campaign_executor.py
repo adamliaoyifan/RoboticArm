@@ -288,22 +288,60 @@ class OfflineAdapter:
 
     def stability_run(self, run_id):
         medians = [1000, 1000, 2000] if self.rss_growth else [1000, 1000, 1040]
+        frames = contract.O8_SATURATION_FRAMES
         return {
             "run_id": run_id,
+            "saturation_frames_expected": frames,
+            "saturation_frames_verified": frames,
+            "saturation_receipts": [
+                {"index": index, "observation_id": "sat-%d" % index, "events": 1,
+                 "status": "COMPLETED", "disposition": "integrated",
+                 "changed_keys": 0, "rebuilt_blocks": 0}
+                for index in range(frames)],
             "saturation_probability_keys": 0,
             "saturation_geometry_blocks": 0,
             "node_count_stable": self.node_stable,
+            "node_health_times_s": [round(60.0 + index * 0.5, 3)
+                                    for index in range(240)],
+            "node_health_count": 240,
             "rss_median_kib": medians,
+            "rss_window_counts": [30, 30, 30],
+            "rss_sample_times_ns": [1_000_000_000 * index for index in range(90)],
         }
 
     def hold(self, run_id, kind, repeat):
         self.hold_calls.append((run_id, kind, repeat, self.hold_ok))
-        return {
+        row = {
             "kind": kind,
-            "probability_unchanged": self.hold_ok is True,
-            "freshness_advanced": False,
             "duration_s": 10,
         }
+        if kind == "occlusion":
+            row["occlusion_input"] = {
+                "shape": "plane", "plane_uld_x_m": -0.62, "plane_max_cell_x": 7,
+                "oracle_min_cell_x": 9, "point_count": 10,
+                "points_sha256": "offline", "rays_file": "offline",
+                "y_range_m": [-0.85, 0.52], "z_range_m": [0.75, 1.85],
+                "sensor_uld_origin_m": [-1.15, 0.0, 1.2],
+            }
+            row["input_accepted"] = self.hold_ok is True
+            row["occluder_receipt"] = {
+                "status": "COMPLETED" if self.hold_ok is True else "REJECTED",
+                "changed_keys": 700 if self.hold_ok is True else None,
+            }
+            row["region_probability_unchanged"] = self.hold_ok is True
+            row["freshness_advanced"] = True if self.hold_ok is True else None
+        elif kind == "duplicate_id":
+            row["duplicate_receipt"] = {
+                "status": "COMPLETED", "disposition":
+                    "rejected" if self.hold_ok is True else "integrated",
+            }
+            row["duplicate_rejected"] = self.hold_ok is True
+            row["probability_unchanged"] = self.hold_ok is True
+            row["freshness_advanced"] = False
+        else:
+            row["probability_unchanged"] = self.hold_ok is True
+            row["freshness_advanced"] = False
+        return row
 
 
 def _profile_jobs(plan, stage):
@@ -342,7 +380,7 @@ def _assemble_group(group, samples, stage):
     return artifact
 
 
-def _assemble_window(window, rows, queries, health, inflight):
+def _assemble_window(window, rows, queries, health, inflight, continuity=None):
     """Copy adapter rows and queries. This does not invent a healthy window."""
     artifact = {
         "id": window["id"],
@@ -362,6 +400,8 @@ def _assemble_window(window, rows, queries, health, inflight):
     else:
         artifact["gate"] = "o7_recovery"
         artifact["planned_query_ids"] = ["q-%d" % index for index in range(window["queries"])]
+        if continuity is not None:
+            artifact["continuity"] = continuity
     return artifact
 
 
@@ -542,7 +582,10 @@ def _run_ros(plan, adapter, out, budget_s, input_limit):
         collect_at = origin + float(window["duration_s"])
         rows = [adapter.ros_collect(window, index, _input_id(window, index), collect_at) for index in sent]
         health = adapter.ros_health(window)
-        artifact = _assemble_window(window, rows, queries, health, inflight)
+        continuity = None
+        if hasattr(adapter, "ros_continuity"):
+            continuity = adapter.ros_continuity(window)
+        artifact = _assemble_window(window, rows, queries, health, inflight, continuity)
         _write(out / "o7" / ("%s.json" % window["id"]), artifact)
         if window["kind"] == "normal":
             verdict = repair_s0_judge.judge_o7_normal(artifact)
@@ -599,7 +642,8 @@ def _run_stability(plan, adapter, out, budget_s):
     if not budget_hit:
         for kind, repeats, seconds in (
                 ("no_input", item["no_input_repeats"], item["no_input_s"]),
-                ("occlusion", item["occlusion_repeats"], item["occlusion_s"])):
+                ("occlusion", item["occlusion_repeats"], item["occlusion_s"]),
+                ("duplicate_id", item.get("duplicate_id_repeats", 0), item["no_input_s"])):
             for repeat in range(repeats):
                 if not _advance(adapter.clock, budget_s, seconds):
                     budget_hit = True
@@ -1356,14 +1400,76 @@ _FAILURE_EXPECTED = {
 }
 
 
+def _verify_replay_manifest(out, relative_path):
+    """Verify every input a replay manifest references.
+
+    An input counts only when the file exists, its real sha256 equals the
+    declared one, the frame carries identity (sensor/observation) and a
+    transform, and the frame set is a contiguous f000..fNNN prefix. A manifest
+    that references a nonexistent file or a fake hash is not replay material,
+    however complete the surrounding filenames look.
+    """
+    import yaml
+    manifest_path = Path(out) / relative_path
+    try:
+        document = yaml.safe_load(manifest_path.read_text())
+    except Exception:
+        return {"ok": False, "problems": ["manifest_unparseable"], "verified": 0, "frames": 0}
+    frames = document.get("frames") if isinstance(document, dict) else None
+    if not isinstance(frames, list) or not frames:
+        return {"ok": False, "problems": ["manifest_no_frames"], "verified": 0, "frames": 0}
+    problems = []
+    verified = 0
+    names = []
+    for entry in frames:
+        name = entry.get("path") if isinstance(entry, dict) else None
+        declared = entry.get("sha256") if isinstance(entry, dict) else None
+        if not isinstance(name, str) or not isinstance(declared, str):
+            problems.append("frame_fields")
+            continue
+        names.append(name)
+        frame_path = manifest_path.parent / name
+        if not frame_path.is_file():
+            problems.append("input_missing:%s" % name)
+            continue
+        import capture_replay
+        if capture_replay.sha256_file(frame_path) != declared:
+            problems.append("input_sha_mismatch:%s" % name)
+            continue
+        try:
+            frame = yaml.safe_load(frame_path.read_text())
+        except Exception:
+            problems.append("input_unreadable:%s" % name)
+            continue
+        if not isinstance(frame, dict) or not frame.get("observation_id") \
+                or not frame.get("sensor_id"):
+            problems.append("input_identity:%s" % name)
+            continue
+        if not isinstance(frame.get("transform"), dict):
+            problems.append("input_tf:%s" % name)
+            continue
+        verified += 1
+    # Contiguous complete prefix: f000, f001, ... with no gaps.
+    import re
+    numbers = sorted(int(match.group(1)) for name in names
+                     for match in [re.fullmatch(r"f(\d{3})\.yaml", Path(name).name)]
+                     if match)
+    if numbers != list(range(len(numbers))):
+        problems.append("input_prefix_gaps")
+    return {"ok": not problems, "problems": problems, "verified": verified,
+            "frames": len(frames)}
+
+
 def _save_failure(out, stage, reason, details, stage_dir=None):
     """Persist the failure bundle before teardown.
 
     Nothing here is asserted: capture_complete is computed from the files that
-    are actually on disk (with trace integrity), replay_possible requires a
-    persisted manifest whose frames carry hashes, and every file gets a sha256.
-    Callers must invoke this before tearing sessions or observer processes so
-    the inventory reflects what the failed run really captured.
+    are actually on disk (with trace integrity and every referenced input
+    present at its declared hash), replay_possible requires a manifest whose
+    frames all verify (existence, sha256, identity, TF, complete prefix), and
+    every file gets a sha256. Callers must invoke this before tearing sessions
+    or observer processes so the inventory reflects what the failed run really
+    captured.
     """
     import capture_replay
     out = Path(out)
@@ -1389,23 +1495,29 @@ def _save_failure(out, stage, reason, details, stage_dir=None):
     present = {entry["path"] for entry in inventory}
     missing = [name for name in _FAILURE_EXPECTED.get(stage, ())
                if not any(path == name or path.endswith("/" + name) for path in present)]
-    capture_complete = not missing and all(
-        not entry.get("trace_errors") for entry in inventory if "trace_errors" in entry)
     replay_possible = False
     replay_inputs = []
+    input_problems = []
     for entry in inventory:
-        document = None
-        if entry["path"].endswith("manifest.yaml"):
-            try:
-                import yaml
-                document = yaml.safe_load((out / entry["path"]).read_text())
-            except Exception:
-                document = None
-        if isinstance(document, dict) and isinstance(document.get("frames"), list) and document["frames"]:
-            if all(isinstance(item, dict) and isinstance(item.get("sha256"), str)
-                   for item in document["frames"]):
-                replay_possible = True
-                replay_inputs.append(entry["path"])
+        if not entry["path"].endswith("manifest.yaml"):
+            continue
+        verdict = _verify_replay_manifest(out, entry["path"])
+        if verdict["ok"]:
+            replay_possible = True
+            replay_inputs.append(entry["path"])
+        else:
+            input_problems.append({"manifest": entry["path"],
+                                   "problems": verdict["problems"]})
+            for problem in verdict["problems"]:
+                token = problem.split(":", 1)
+                if token[0] in ("input_missing", "input_sha_mismatch",
+                                "input_unreadable", "input_identity", "input_tf"):
+                    missing.append("%s!%s" % (entry["path"], token[1] if len(token) > 1 else ""))
+    # Any referenced input that does not verify (missing file, wrong hash, no
+    # identity or TF, broken prefix) makes the capture incomplete: the bundle
+    # does not honestly contain what a replay needs.
+    capture_complete = not missing and not input_problems and all(
+        not entry.get("trace_errors") for entry in inventory if "trace_errors" in entry)
     bounded = {"text": str(details), "truncated": False}
     if len(bounded["text"]) > 8000:
         bounded = {"text": bounded["text"][:8000], "truncated": True}
@@ -1418,6 +1530,7 @@ def _save_failure(out, stage, reason, details, stage_dir=None):
         "replay_possible": replay_possible,
         "missing": missing,
         "replay_inputs": replay_inputs,
+        "input_problems": input_problems,
         "file_count": len(inventory),
         "files": inventory,
     }
@@ -1917,6 +2030,7 @@ def main(argv):
                 args.cli, args.eval_native, args.node, args.geometry, args.config, args.out,
                 frame_limit=args.frame_limit, input_limit=args.input_limit)
             adapter.bind_plan(plan)
+            result = None
             try:
                 result = schedule(plan, adapter, args.out, stages=stages,
                                   frame_limit=args.frame_limit, input_limit=args.input_limit,
@@ -1929,6 +2043,21 @@ def main(argv):
                 result["dispatched"] = True
                 result["adapter"] = payload["adapter"]
                 result["overruns"] = adapter.overruns
+            except Exception as exc:
+                # The failure bundle is written while the sessions, observer
+                # processes, and partial artifacts still exist: teardown comes
+                # after the inventory, never before.
+                import traceback
+                details = traceback.format_exc()
+                for stage in stages:
+                    _save_failure(args.out, stage, "%s:%s" % (type(exc).__name__, exc),
+                                  details)
+                payload["reason"] = "stage_exception:%s" % type(exc).__name__
+                payload["started"] = {stage: 0 for stage in ("o5", "o6", "o7", "o8")}
+                payload["formal_pass"] = False
+                adapter.close()
+                print(json.dumps(payload))
+                return 3
             finally:
                 adapter.close()
             print(json.dumps({key: result[key] for key in (

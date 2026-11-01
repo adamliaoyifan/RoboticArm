@@ -204,11 +204,12 @@ def o8_plan(groups):
         "ray_group": "o8_fixed_%s" % group_id,
         "ray_seed": seed,
         "stamp_step_ns": 1000000000,
-        "saturation_frames": 30,
         "no_input_s": contract.O8_HOLD_S,
         "no_input_repeats": contract.O8_HOLDS,
         "occlusion_s": contract.O8_HOLD_S,
         "occlusion_repeats": contract.O8_HOLDS,
+        "duplicate_id_repeats": contract.O8_HOLDS,
+        "saturation_frames": contract.O8_SATURATION_FRAMES,
         "rss_growth_limit": contract.O8_RSS_GROWTH,
     }
 

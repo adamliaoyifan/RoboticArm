@@ -22,6 +22,41 @@ import repair_s0_judge
 
 _CLOUD_TOPIC = "/s2_g6_sched_cloud"
 
+# O8 occlusion input, in ULD/container coordinates. The sensor sits outside
+# the -x end of the container (optical origin maps to ULD (-1.15, 0, 1.20),
+# looking along +x). A plane of valid depth-range points at x = -0.62 sits
+# between the entrance wall (-0.745) and the interior region the fixed rays
+# map (from -0.58 = cell 8 on): every occluder ray ends at the plane, so no
+# ray crosses into the old region. Cell 6 at 2 cm resolution is the plane
+# slab; the oracle region starts at cell 9, leaving cells 7-8 as margin.
+# y stays below the chamfer cut on +y (floor_y 0.55, wall_z 0.9).
+_OCCLUDER_X_M = -0.62
+_OCCLUDER_MAX_CELL_X = 7          # inclusive bound of cells the plane may touch
+_OCCLUDER_Y = (-0.85, 0.52)
+_OCCLUDER_Z = (0.75, 1.85)
+_OCCLUDER_STEP_M = 0.03
+_ORACLE_MIN_CELL_X = 9
+_SENSOR_POSE_ULD = (-1.15, 0.0, 1.20)
+
+
+def occluder_points():
+    """Dense plane points in the OPTICAL frame (depth axis = optical z).
+
+    ULD (x, y, z) -> optical (-y, 1.20 - z, x + 1.15). The plane's depth is
+    0.53 m, inside the fixture's valid band [0.52, 6.0].
+    """
+    y0, y1 = _OCCLUDER_Y
+    z0, z1 = _OCCLUDER_Z
+    count_y = int((y1 - y0) / _OCCLUDER_STEP_M) + 1
+    count_z = int((z1 - z0) / _OCCLUDER_STEP_M) + 1
+    points = []
+    for iy in range(count_y):
+        for iz in range(count_z):
+            y = y0 + iy * _OCCLUDER_STEP_M
+            z = z0 + iz * _OCCLUDER_STEP_M
+            points.append((-y, _SENSOR_POSE_ULD[2] - z, _OCCLUDER_X_M - _SENSOR_POSE_ULD[0]))
+    return points
+
 
 def resources_from_usage(usage):
     """Map a CLI resource_usage row onto the judge's resources dict.
@@ -45,6 +80,48 @@ def resources_from_usage(usage):
         "certification": certification,
         "store_tree_bytes": usage.get("store_tree_bytes"),
         "uncovered_classes": list(usage.get("uncovered_classes") or []),
+    }
+
+
+def _peak_resources_from_documents(documents):
+    """Run-covering resource peak, not the last row's current value.
+
+    Byte counters that the product reports per row are scanned across every
+    document; a class missing from any row keeps its observed maximum and a
+    class missing everywhere stays missing (the judge rejects it). Peaks the
+    product reports directly (read_view_bytes_peak and friends) are carried
+    alongside; the scalar fields stay the observed maxima so the judge sees
+    conservative numbers.
+    """
+    rows = [row.get("resource_usage") for row in documents
+            if isinstance(row.get("resource_usage"), dict)]
+    if not rows:
+        return None
+    def peak(key):
+        values = [row.get(key) for row in rows if isinstance(row.get(key), int)]
+        return max(values) if values else None
+    certifications = {row.get("certification") for row in rows}
+    complete = all(
+        row.get("certification") == "READ_VIEW_CACHE_ATTRIBUTED"
+        and row.get("attribution_complete") is True for row in rows)
+    uncovered = []
+    for row in rows:
+        for name in row.get("uncovered_classes") or []:
+            if name not in uncovered:
+                uncovered.append(name)
+    return {
+        "read_view_bytes": peak("read_view_bytes"),
+        "cache_bytes": peak("cache_bytes"),
+        "read_view_bytes_peak": peak("read_view_bytes_peak"),
+        "cache_bytes_peak": peak("cache_bytes_peak"),
+        "store_tree_bytes": peak("store_tree_bytes"),
+        "attribution_complete": complete,
+        "unmarked_allocations": any(row.get("unmarked_allocations") for row in rows),
+        "certification": ("READ_VIEW_CACHE_ATTRIBUTED"
+                          if certifications == {"READ_VIEW_CACHE_ATTRIBUTED"}
+                          else sorted(str(item) for item in certifications)[0]),
+        "uncovered_classes": uncovered,
+        "rows_scanned": len(rows),
     }
 
 
@@ -101,6 +178,42 @@ def _emit_frames(eval_native, geometry, config, group, count, dest, group_name=N
     if len(frames) < count:
         raise RuntimeError("generator wrote %d frames" % len(frames))
     return frames
+
+
+def publish_occluder(session, publisher, points):
+    """Publish the occluder plane once and return its terminal receipt."""
+    from sensor_msgs.msg import PointCloud2, PointField
+    stamp = session.next_stamp()
+    cloud = PointCloud2()
+    cloud.header.frame_id = "d555_color_optical_frame"
+    cloud.header.stamp.sec = int(stamp // 1_000_000_000)
+    cloud.header.stamp.nanosec = int(stamp % 1_000_000_000)
+    cloud.height = 1
+    cloud.width = len(points)
+    cloud.is_bigendian = False
+    cloud.point_step = 12
+    cloud.row_step = 12 * len(points)
+    for offset, name in enumerate("xyz"):
+        field = PointField()
+        field.name = name
+        field.offset = offset * 4
+        field.datatype = PointField.FLOAT32
+        field.count = 1
+        cloud.fields.append(field)
+    cloud.data = _pack_cloud(points)
+    publisher.publish(cloud)
+    observation = str(stamp)
+    last, terminal = executor._wait_integrated(session, observation, 10.0)
+    events = executor._receipt_events(session, observation)
+    receipt = executor._field(last, "receipt")
+    return {
+        "observation_id": observation,
+        "events": len(events),
+        "status": executor._field(last, "status"),
+        "disposition": terminal["disposition"],
+        "changed_keys": executor._field(receipt, "changed_keys"),
+        "rebuilt_blocks": executor._field(receipt, "rebuilt_blocks"),
+    }
 
 
 class _WindowRun:
@@ -161,7 +274,10 @@ class _WindowRun:
     def _sample_rss(self):
         while not self._rss_stop.is_set():
             if self.observer is not None:
-                self.rss_samples.append(executor._rss_kib(self.observer.proc.pid))
+                # Timestamped so window statistics bucket by real sample time,
+                # never by splitting the array into equal shares.
+                self.rss_samples.append(
+                    (time.monotonic_ns(), executor._rss_kib(self.observer.proc.pid)))
             self._rss_stop.wait(2.0)
 
     def start(self, input_count):
@@ -179,6 +295,61 @@ class _WindowRun:
             for index in range(input_count)]
         self._sender = threading.Thread(target=self._publish_all, daemon=True)
         self._sender.start()
+
+    def continue_as(self, window, input_count):
+        """Continue the SAME observer, session, and map into a new window.
+
+        The recovery window must measure the overloaded node draining back to
+        service, not a freshly started one: no new observer process, no map
+        reset. The returned continuity record pins the process identity and
+        the boundary stamps so the artifact proves the reuse.
+        """
+        group = self.adapter._window_group(window)
+        previous_id = self.window["id"]
+        if self._sender is not None:
+            self._sender.join(timeout=30)
+            self._sender = None
+        boundary_ns = time.monotonic_ns()
+        revision = self._identity_snapshot()
+        self.window = window
+        self.group = group
+        self._frames = _emit_frames(
+            self.adapter.eval_native, self.adapter.group_geometry(group),
+            self.adapter.group_config(group),
+            group, input_count, self.out / "windows" / window["id"])
+        self.origin_ns = time.monotonic_ns()
+        self.clock_origin = self.adapter.clock.elapsed_s
+        self._deadlines = [
+            self.origin_ns + int(round(index / float(window["input_hz"]) * 1e9))
+            for index in range(input_count)]
+        self._sender = threading.Thread(target=self._publish_all, daemon=True)
+        self._sender.start()
+        return {
+            "reused_observer": True,
+            "observer_pid": self.observer.proc.pid if self.observer is not None else None,
+            "overload_window": previous_id,
+            "recovery_window": window["id"],
+            "drain_boundary_mono_ns": getattr(self, "drain_deadline_mono_ns", None),
+            "recovery_origin_mono_ns": self.origin_ns,
+            "epoch": None if revision is None else revision[0],
+            "observed_revision_at_recovery_open": None if revision is None else revision[2],
+            "continuation_gap_s": (self.origin_ns - boundary_ns) / 1e9,
+        }
+
+    def _identity_snapshot(self):
+        """(epoch, map_revision, observed_revision) of the current map, or None."""
+        try:
+            from uld_occ_observer.srv import GetSnapshot
+            request = GetSnapshot.Request()
+            request.expected_epoch = 1
+            request.max_age_ms = 300000
+            request.allow_stale = True
+            lease = self.session.call(self.session.snapshot, request, 5)
+            if lease.status != "OK":
+                return None
+            return executor._identity_tuple(executor._field(lease, "identity"))
+        except Exception:
+            return None
 
     def start_for_o8(self, frame_count):
         """O8: same session, no sender thread — frames publish in pace."""
@@ -281,6 +452,7 @@ class LiveScheduleAdapter:
         self._groups = {}
         self._window = None
         self._stability = None
+        self._continuity = None
         self.overruns = []
         self.previous_domain = os.environ.get("ROS_DOMAIN_ID")
 
@@ -288,18 +460,23 @@ class LiveScheduleAdapter:
     def profile_frame(self, group, index, warmup, dest):
         key = group["id"]
         if key not in self._groups:
-            # One extra frame: the after-update surface moment of scored
-            # sample i is the first surface call of frame i+1, so the last
-            # scored sample needs a successor document.
-            total = (self.frame_limit or (contract.WARMUP_SAMPLES + contract.SCORED_SAMPLES)) + 1
+            # The cumulative run emits warmup rows first, then the scored rows,
+            # plus one successor: the after-update surface moment of scored
+            # sample i is the first surface call of frame i+1. The scheduler's
+            # formal indices are exactly the row indices: warmup rows 0..2,
+            # scored rows 3..32. A limited rehearsal still emits the warmup
+            # rows so index alignment is identical to the formal run.
+            total = contract.WARMUP_SAMPLES + (self.frame_limit or contract.SCORED_SAMPLES) + 1
             import yaml
             spawn_ns = time.monotonic_ns()
             samples = self.profile.run_cumulative(group, total, Path(dest).parent / "cumulative")
             documents = list(yaml.safe_load_all(
                 (Path(dest).parent / "cumulative" / "samples.yaml").read_text()))
             first_row_ns = int(documents[0].get("monotonic_start_ns") or 0)
-            resources = resources_from_usage(documents[-1].get("resource_usage"))
-            rss = documents[-1].get("process_peak_rss_kib")
+            resources = _peak_resources_from_documents(documents)
+            # Cumulative-process peak RSS over the whole run, never overwritten
+            # by a cold-start single-frame process below.
+            rss = max((int(row.get("process_peak_rss_kib") or 0) for row in documents), default=0)
             self._groups[key] = {
                 "samples": samples,
                 "warm_init_s": max(0.0, (first_row_ns - spawn_ns) / 1e9) if first_row_ns else None,
@@ -309,7 +486,10 @@ class LiveScheduleAdapter:
                 "sample_problems": list(getattr(self.profile, "sample_problems", None) or []),
             }
         cached = self._groups[key]
-        offset = index if index < contract.WARMUP_SAMPLES else index - contract.WARMUP_SAMPLES
+        # Formal scored indices are 3..32 and must select rows 3..32 of the
+        # cumulative run: the three warmup rows are never rescored and the
+        # last three scored rows are never dropped.
+        offset = index
         if warmup:
             sample = dict(cached["samples"][offset])
             sample["warm_init_s"] = cached["warm_init_s"]
@@ -318,7 +498,8 @@ class LiveScheduleAdapter:
         cold = self._cold_start(group, offset, Path(dest))
         sample = dict(cached["samples"][offset])
         sample["init_s"] = cold["init_s"]
-        sample["rss_kib"] = cold["rss_kib"]
+        sample["rss_kib"] = cached["rss_kib"]
+        sample["cold_start_rss_kib"] = cold["rss_kib"]
         sample["warm_init_s"] = cached["warm_init_s"]
         if cached["resources"] is not None:
             sample["resources"] = cached["resources"]
@@ -369,14 +550,26 @@ class LiveScheduleAdapter:
     # ------------------------------------------------------------------- O7
     def ros_send(self, window, index, input_id, deadline=None, actual=None):
         if self._window is None or self._window.window["id"] != window["id"]:
-            if self._window is not None:
-                self._finish_window()
-            group = self._window_group(window)
             count = window["inputs"] if self.input_limit is None else min(
                 window["inputs"], self.input_limit)
-            self._window = _WindowRun(self, window, group, self.out / "o7" / window["id"])
-            self._window.start(count)
+            if (self._window is not None and self._window.window["kind"] == "overload"
+                    and window["kind"] == "recovery"):
+                # The recovery window continues the overloaded node: same
+                # observer process, same map, no restart between drain and
+                # recovery. The continuity record lands in the artifact.
+                self._continuity = self._window.continue_as(window, count)
+            else:
+                if self._window is not None:
+                    self._finish_window()
+                group = self._window_group(window)
+                self._window = _WindowRun(self, window, group, self.out / "o7" / window["id"])
+                self._window.start(count)
         # The sender thread owns the deadline; this call only fixes the plan.
+        return None
+
+    def ros_continuity(self, window):
+        if window["kind"] == "recovery":
+            return getattr(self, "_continuity", None)
         return None
 
     def _window_group(self, window):
@@ -389,43 +582,49 @@ class LiveScheduleAdapter:
         run.sleep_to(wall_ns, "query-%d" % index)
         started_ns = time.monotonic_ns()
         # The query may be due at window open, racing the first publish; wait
-        # briefly for the sender to register its target before querying.
-        first_deadline = time.monotonic() + 2.0
-        while not run.real_ids and time.monotonic() < first_deadline:
-            time.sleep(0.01)
+        # briefly for the sender to register THIS window's first target. A
+        # continued window still carries the previous window's ids, so the
+        # wait is for the specific logical id, not for any id at all.
         recovery_first = window["kind"] == "recovery" and index == 0
         if recovery_first:
-            # Started with the first send; the wait covers the target input.
-            target = run.real_ids.get(executor._input_id(window, 0))
+            first_logical = executor._input_id(window, 0)
+            first_deadline = time.monotonic() + 2.0
+            while first_logical not in run.real_ids and time.monotonic() < first_deadline:
+                time.sleep(0.01)
+            target = run.real_ids.get(first_logical)
             result = self._wait_chain(run, target, started_ns)
             result["op"] = "wait_snapshot"
-            result["expected_observation_id"] = executor._input_id(window, 0)
+            result["expected_observation_id"] = first_logical
             result["target_observation_id"] = target
-        elif window["kind"] == "recovery":
+        else:
+            # Normal windows and recovery queries 1..29 use the original
+            # immediate acquire chain; a deferred WaitSnapshot would hide the
+            # acquisition latency these gates measure.
             result = self._immediate_query(run, started_ns)
             result["op"] = "immediate"
             result["expected_observation_id"] = None
-        else:
-            target = self._latest_integrated_id(run)
-            result = self._wait_chain(run, target, started_ns)
-            result["op"] = "wait_snapshot"
-            result["expected_observation_id"] = None
-            result["target_observation_id"] = target
         result["query_id"] = "q-%d" % index
         return result
 
-    def _latest_integrated_id(self, run):
-        for record in reversed(run.sent):
-            logical = record["input_id"]
-            real = run.real_ids.get(logical)
-            if real is None:
-                continue
-            status = run.session.query(1, real)
-            if executor._field(status, "status") == "COMPLETED":
-                return real
-        return run.real_ids.get(run.sent[0]["input_id"]) if run.sent else None
-
     def _wait_chain(self, run, target, started_ns):
+        if target is None:
+            # The sender never registered the target id: an honest timeout,
+            # never a synthesized wait over a null observation.
+            return {
+                "status": "TIMEOUT",
+                "started_mono_ns": started_ns,
+                "ended_mono_ns": time.monotonic_ns(),
+                "latency_ms": (time.monotonic_ns() - started_ns) / 1e6,
+                "age_ms": None,
+                "covers_observation": False,
+                "acquire_ms": None,
+                "roi_ms": None,
+                "surface_ms": None,
+                "epoch": None,
+                "observed_revision": None,
+                "content_hash": "",
+                "chain_total_ms": None,
+            }
         expected = {
             "epoch": 1,
             "sensor_id": "cam0",
@@ -460,6 +659,15 @@ class LiveScheduleAdapter:
         request.max_age_ms = 30000
         acquire_started_ns = time.monotonic_ns()
         lease = session.call(session.snapshot, request, 5)
+        if lease.status == "NO_DATA":
+            # Query 0 races the window's first integrate on a store that has
+            # never published: wait for the first input to reach terminal
+            # (bounded), then acquire once more. The wait lands inside this
+            # request's latency, never hidden. Later queries see a live map.
+            first = run.sent[0]["observation_id"] if run.sent else None
+            if first:
+                self._await_terminal(run, [first], timeout_s=2.0)
+            lease = session.call(session.snapshot, request, 5)
         acquire_ms = (time.monotonic_ns() - acquire_started_ns) / 1e6
         identity = executor._identity_tuple(executor._field(lease, "identity"))
         handle = lease.handle or ""
@@ -592,21 +800,23 @@ class LiveScheduleAdapter:
         deadline_wall = run.wall_deadline(deadline if deadline is not None
                                           else run.clock_origin)
         run.sleep_to(deadline_wall, "drain")
+        # The drain window is fixed: one status pass exactly at the deadline,
+        # no top-up waiting afterwards. Whatever is still in flight is the
+        # honest observation the overload judge evaluates.
+        run.drain_deadline_mono_ns = deadline_wall
         remaining_ids = []
         for logical, real in run.real_ids.items():
             status = run.session.query(1, real)
             state = executor._field(status, "status")
             if state not in ("COMPLETED", "REJECTED", "EXPIRED"):
                 remaining_ids.append(logical)
-        deadline_wait = time.monotonic() + 30
-        while remaining_ids and time.monotonic() < deadline_wait:
-            time.sleep(0.5)
-            still = []
-            for logical in remaining_ids:
-                state = executor._field(run.session.query(1, run.real_ids[logical]), "status")
-                if state not in ("COMPLETED", "REJECTED", "EXPIRED"):
-                    still.append(logical)
-            remaining_ids = still
+        run.drain_record = {
+            "window": window["id"],
+            "drain_deadline_mono_ns": deadline_wall,
+            "observed_mono_ns": time.monotonic_ns(),
+            "in_flight": len(remaining_ids),
+            "in_flight_ids": remaining_ids,
+        }
         return len(remaining_ids)
 
     def _finish_window(self):
@@ -617,9 +827,14 @@ class LiveScheduleAdapter:
             "window": run.window["id"],
             "sender_thread": run.sender_ident,
             "spin_thread": run.session.thread.ident if run.session else None,
+            "observer_pid": run.observer.proc.pid if run.observer is not None else None,
             "sent": run.sent,
             "overruns": [item for item in self.overruns if item.get("window") == run.window["id"]],
         }
+        if getattr(run, "drain_record", None) is not None:
+            payload["drain"] = run.drain_record
+        if getattr(self, "_continuity", None) is not None:
+            payload["continuity"] = self._continuity
         executor._write(run.out / "send_log.json", payload)
         run.stop()
         if self.previous_domain is None:
@@ -662,87 +877,208 @@ class LiveScheduleAdapter:
     def stability_run(self, run_id):
         state = self._stability
         run = state["run"]
-        # Saturation: the changed/rebuilt counters of the late receipts.
-        changed_keys = 0
-        rebuilt = 0
-        for observation in state["stamps"][-5:]:
-            events = executor._receipt_events(run.session, observation)
-            if not events:
-                continue
-            status = run.session.query(1, observation)
-            receipt = executor._field(status, "receipt")
-            changed_keys = max(changed_keys, int(executor._field(receipt, "changed_keys") or 0))
-            rebuilt = max(rebuilt, int(executor._field(receipt, "rebuilt_blocks") or 0))
-        # Node stability over the post-warmup window and three 60 s RSS medians.
         import statistics
+        import yaml
+        # The saturation check is its own 30-frame pass, after the paced
+        # window: every frame gets a fresh stamp, must reach a matched
+        # terminal receipt, and is verified frame by frame for zero change.
+        # A frame without a successful terminal receipt is recorded as such
+        # and never silently skipped.
+        self._await_terminal(run, state["stamps"], timeout_s=30.0)
+        saturation_frames = int(self.plan_o8["saturation_frames"])
+        receipts = []
+        for index in range(saturation_frames):
+            stamp = run.session.next_stamp()
+            frame = run.o8_frames[0]
+            message, _points = cloud_from_frame(frame)
+            message.header.stamp.sec = int(stamp // 1_000_000_000)
+            message.header.stamp.nanosec = int(stamp % 1_000_000_000)
+            run.publisher.publish(message)
+            observation = str(stamp)
+            last, terminal = self._wait_terminal(run, observation, timeout_s=10.0)
+            events = executor._receipt_events(run.session, observation)
+            receipt = executor._field(last, "receipt")
+            entry = {
+                "index": index,
+                "observation_id": observation,
+                "events": len(events),
+                "status": executor._field(last, "status"),
+                "disposition": terminal["disposition"],
+                "changed_keys": executor._field(receipt, "changed_keys"),
+                "rebuilt_blocks": executor._field(receipt, "rebuilt_blocks"),
+                "queue_ms": executor._field(receipt, "queue_ms"),
+                "total_ms": executor._field(receipt, "total_ms"),
+                "callback_enter_ns": events[0].get("callback_enter_ns") if events else None,
+            }
+            receipts.append(entry)
+        changed_values = [entry["changed_keys"] for entry in receipts]
+        rebuilt_values = [entry["rebuilt_blocks"] for entry in receipts]
+        changed_keys = max((int(value) for value in changed_values
+                            if isinstance(value, (int, float))), default=0)
+        rebuilt = max((int(value) for value in rebuilt_values
+                       if isinstance(value, (int, float))), default=0)
+        # Node stability over the post-warmup window, with the sample times
+        # saved: a single lucky sample must not certify stability.
         warmup_s = float(self.plan_o8["warmup_s"])
         duration_s = float(self.plan_o8["duration_s"])
         origin = run.origin_ns
         nodes = []
+        node_times = []
         for received_ns, payload in run.session.health_events:
-            import yaml
             loaded = yaml.safe_load(payload)
             if not isinstance(loaded, dict) or "tree_nodes" not in loaded:
                 continue
             relative = (received_ns - origin) / 1e9
             if warmup_s <= relative <= duration_s:
                 nodes.append(int(loaded["tree_nodes"]))
-        rss = run.rss_samples
-        thirds = [rss[index:index + max(1, len(rss) // 3)] for index in
-                  range(0, len(rss), max(1, len(rss) // 3))][:3] if rss else []
-        medians = [int(statistics.median([sample for sample in third if sample is not None]))
-                   for third in thirds if third]
-        return {
+                node_times.append(round(relative, 3))
+        # Three real 60 s RSS windows over the run, bucketed by sample time.
+        window_s = contract.O8_RSS_WINDOW_S
+        windows = []
+        counts = []
+        for start in (0, window_s, 2 * window_s):
+            bucket = [value for mark_ns, value in run.rss_samples
+                      if isinstance(value, int)
+                      and start <= (mark_ns - origin) / 1e9 < start + window_s]
+            windows.append(int(statistics.median(bucket)) if bucket else None)
+            counts.append(len(bucket))
+        row = {
             "run_id": run_id,
+            "saturation_frames_expected": saturation_frames,
+            "saturation_frames_verified": sum(
+                1 for entry in receipts
+                if entry["events"] and entry["status"] == "COMPLETED"
+                and isinstance(entry["changed_keys"], int)
+                and isinstance(entry["rebuilt_blocks"], int)),
+            "saturation_receipts": receipts,
             "saturation_probability_keys": changed_keys,
             "saturation_geometry_blocks": rebuilt,
             "node_count_stable": bool(nodes) and len(set(nodes)) == 1,
-            "rss_median_kib": medians,
+            "node_health_times_s": sorted(node_times),
+            "node_health_count": len(nodes),
+            "rss_median_kib": windows,
+            "rss_window_counts": counts,
+            "rss_sample_times_ns": [mark_ns for mark_ns, _value in run.rss_samples],
         }
+        executor._write(run.out / ("saturation-%s.json" % run_id), row)
+        return row
+
+    def _wait_terminal(self, run, observation_id, timeout_s=10.0):
+        """Status + interpreted disposition once this id reaches a terminal state."""
+        last, terminal = executor._wait_integrated(run.session, observation_id, timeout_s)
+        return last, terminal
 
     def hold(self, run_id, kind, repeat):
         state = self._stability
         run = state["run"]
         session = run.session
         seconds = float(self.plan_o8.get(
-            "no_input_s" if kind == "no_input" else "occlusion_s", 10.0))
+            "no_input_s" if kind != "occlusion" else "occlusion_s", 10.0))
         # A hold starts from a quiescent map: wait for every stability frame
         # to reach a terminal state, otherwise a straggler integration moves
-        # the map during the "no input" hold.
+        # the map during the hold.
         self._await_terminal(run, state["stamps"])
         before = self._hold_probe(run)
-        if kind == "occlusion":
-            # Occlusion input: the same cloud identity replayed, which the
-            # observer rejects at the ledger (duplicates never re-update the
-            # map). Real transport, nothing accepted — an all-outside cloud
-            # does not work: its rays still cross the container and integrate.
-            if not getattr(run, "occlusion_stamp", None):
-                run.occlusion_stamp = state["stamps"][-1] if state["stamps"] else None
-            if run.occlusion_stamp:
-                stamp = int(run.occlusion_stamp)
-                frame = run.o8_frames[0]
-                message, _points = cloud_from_frame(frame)
-                message.header.stamp.sec = int(stamp // 1_000_000_000)
-                message.header.stamp.nanosec = int(stamp % 1_000_000_000)
-                run.publisher.publish(message)
-        # The hold spans real seconds; the scheduler's advance is a no-op here.
-        time.sleep(seconds)
-        after = self._hold_probe(run)
-        return {
+        row = {
             "kind": kind,
-            "probability_unchanged": (
+            "duration_s": seconds,
+            "probe_before": before,
+            "probe_after": None,
+        }
+        if kind == "occlusion":
+            # Real geometric blocking: a plane of valid points between the
+            # sensor and the mapped interior. Every occluder ray ends at the
+            # plane, so no ray crosses into the old region; the wall itself
+            # integrates (accepted new data) while the old region beyond the
+            # plane must keep its probabilities. The rays and the oracle
+            # definition are saved with the hold.
+            points = occluder_points()
+            occluder_receipt = self._publish_occluder(run, points)
+            time.sleep(seconds)
+            after = self._hold_probe(run)
+            row["occlusion_input"] = {
+                "shape": "plane",
+                "plane_uld_x_m": _OCCLUDER_X_M,
+                "plane_max_cell_x": _OCCLUDER_MAX_CELL_X,
+                "y_range_m": list(_OCCLUDER_Y),
+                "z_range_m": list(_OCCLUDER_Z),
+                "point_count": len(points),
+                "points_sha256": executor._content_sha256(points),
+                "rays_file": "occlusion-rays-%d.json" % repeat,
+                "oracle_min_cell_x": _ORACLE_MIN_CELL_X,
+                "sensor_uld_origin_m": [-1.15, 0.0, 1.2],
+            }
+            executor._write(run.out / ("occlusion-rays-%d.json" % repeat),
+                            {"repeat": repeat, "origin_uld_m": [-1.15, 0.0, 1.2],
+                             "plane_uld_x_m": _OCCLUDER_X_M,
+                             "points_optical_m": points})
+            row["occluder_receipt"] = occluder_receipt
+            row["input_accepted"] = (
+                occluder_receipt is not None
+                and occluder_receipt.get("status") == "COMPLETED")
+            row["region_probability_unchanged"] = (
                 before is not None and after is not None
                 and before.get("content_hash") is not None
-                and before.get("content_hash") == after.get("content_hash")),
-            "freshness_advanced": (
+                and before.get("content_hash") == after.get("content_hash"))
+            row["freshness_advanced"] = self._freshness_advanced(before, after)
+        elif kind == "duplicate_id":
+            # Dedup check, separate from occlusion: the same cloud identity
+            # replayed. The duplicate is rejected unstored at admission, so
+            # the ledger keeps the original record and only the receipt
+            # stream shows the DUPLICATE; the map and the freshness (the
+            # stamp is identical) must not move.
+            stamp = state["stamps"][-1] if state["stamps"] else None
+            duplicate_receipt = None
+            if stamp:
+                events_before = len(executor._receipt_events(run.session, stamp))
+                frame = run.o8_frames[0]
+                message, _points = cloud_from_frame(frame)
+                stamp_ns = int(stamp)
+                message.header.stamp.sec = stamp_ns // 1_000_000_000
+                message.header.stamp.nanosec = stamp_ns % 1_000_000_000
+                run.publisher.publish(message)
+                time.sleep(1.0)
+                events = executor._receipt_events(run.session, stamp)
+                duplicate_receipt = {
+                    "observation_id": stamp,
+                    "events_before": events_before,
+                    "events": len(events),
+                    "duplicate_event": any(
+                        event.get("status") == "DUPLICATE" for event in events),
+                    "new_events": len(events) - events_before,
+                }
+            time.sleep(seconds)
+            after = self._hold_probe(run)
+            row["duplicate_receipt"] = duplicate_receipt
+            row["duplicate_rejected"] = (
+                duplicate_receipt is not None
+                and duplicate_receipt.get("duplicate_event") is True)
+            row["probability_unchanged"] = (
                 before is not None and after is not None
-                and before.get("last_integrated_stamp_ns") is not None
-                and (after.get("last_integrated_stamp_ns") or -1)
-                > before["last_integrated_stamp_ns"]),
-            "probe_before": before,
-            "probe_after": after,
-            "duration_s": seconds,
-        }
+                and before.get("content_hash") is not None
+                and before.get("content_hash") == after.get("content_hash"))
+            row["freshness_advanced"] = self._freshness_advanced(before, after)
+        else:
+            time.sleep(seconds)
+            after = self._hold_probe(run)
+            row["probability_unchanged"] = (
+                before is not None and after is not None
+                and before.get("content_hash") is not None
+                and before.get("content_hash") == after.get("content_hash"))
+            row["freshness_advanced"] = self._freshness_advanced(before, after)
+        row["probe_after"] = after
+        executor._write(run.out / ("hold-%s-%d.json" % (kind, repeat)), row)
+        return row
+
+    def _freshness_advanced(self, before, after):
+        return (
+            before is not None and after is not None
+            and before.get("last_integrated_stamp_ns") is not None
+            and (after.get("last_integrated_stamp_ns") or -1)
+            > before["last_integrated_stamp_ns"])
+
+    def _publish_occluder(self, run, points):
+        return publish_occluder(run.session, run.publisher, points)
 
     def _await_terminal(self, run, observation_ids, timeout_s=30.0):
         pending = [item for item in observation_ids if item]
@@ -759,9 +1095,15 @@ class LiveScheduleAdapter:
         return not pending
 
     def _hold_probe(self, run):
+        """Old-region oracle: surface columns at and beyond the occluder margin.
+
+        The columns' (x, y, counts, occupancy, top z) rows for x >= the oracle
+        bound are hashed; the bounds and column count are saved with the hash
+        so the region the hash covers is explicit.
+        """
         session = run.session
         try:
-            from uld_occ_observer.srv import GetSnapshot, ReadCells, ReleaseSnapshot
+            from uld_occ_observer.srv import GetSnapshot, ReadSurface, ReleaseSnapshot
             request = GetSnapshot.Request()
             request.expected_epoch = 1
             # A hold deliberately ages the map for tens of seconds: the probe
@@ -770,25 +1112,47 @@ class LiveScheduleAdapter:
             request.allow_stale = True
             lease = session.call(session.snapshot, request, 5)
             if lease.status != "OK":
-                return None
+                return {"error": "snapshot_%s" % lease.status}
             identity = executor._identity_tuple(executor._field(lease, "identity"))
-            roi = session.node.create_client(ReadCells, "/uld_occ_observer/read_cells")
-            session.wait_service(roi, timeout=5)
-            cell_request = ReadCells.Request()
-            cell_request.handle = lease.handle
-            cell_request.begin = [0, 0, 0]
-            cell_request.end = [16, 16, 16]
-            cell_request.cursor = 0
-            cell_request.limit = 4096
-            page = session.call(roi, cell_request, 5)
-            states = [int(item) for item in list(page.states or [])]
+            surface = session.node.create_client(ReadSurface, "/uld_occ_observer/read_surface")
+            session.wait_service(surface, timeout=5)
+            cursor = 0
+            columns = []
+            while True:
+                page_request = ReadSurface.Request()
+                page_request.handle = lease.handle
+                page_request.cursor = int(cursor)
+                page_request.limit = 512
+                page = session.call(surface, page_request, 5)
+                xs = executor._field(page, "x")
+                if xs is None:
+                    break
+                fields = {name: executor._field(page, name) for name in
+                          ("y", "active_count", "known_count", "has_occupied", "top_z")}
+                if any(fields[name] is None for name in fields):
+                    return {"error": "surface_page_missing_fields"}
+                for index, x in enumerate(xs):
+                    if int(x) < _ORACLE_MIN_CELL_X:
+                        continue
+                    columns.append([
+                        int(x), int(fields["y"][index]),
+                        int(fields["active_count"][index]),
+                        int(fields["known_count"][index]),
+                        bool(fields["has_occupied"][index]),
+                        float(fields["top_z"][index]),
+                    ])
+                if page.status != "OK" or page.done:
+                    break
+                cursor = int(page.next_cursor)
             release = session.node.create_client(ReleaseSnapshot, "/uld_occ_observer/release_snapshot")
             session.wait_service(release, timeout=5)
             release_request = ReleaseSnapshot.Request()
             release_request.handle = lease.handle
             session.call(release, release_request, 5)
             return {
-                "content_hash": executor._content_sha256([states]),
+                "content_hash": executor._content_sha256(sorted(columns)),
+                "columns": len(columns),
+                "oracle_min_cell_x": _ORACLE_MIN_CELL_X,
                 "last_integrated_stamp_ns": identity[3] if len(identity) > 3 else None,
             }
         except Exception as exc:
@@ -812,6 +1176,9 @@ class LiveScheduleAdapter:
             os.environ["ROS_DOMAIN_ID"] = self.previous_domain
         # Mirror the wiring path: leave rclpy down so the next live entry
         # initializes under its own domain instead of inheriting this one.
-        import rclpy
+        try:
+            import rclpy
+        except ImportError:
+            return
         if rclpy.ok():
             rclpy.shutdown()

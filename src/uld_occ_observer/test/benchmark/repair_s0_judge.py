@@ -278,6 +278,28 @@ def judge_o7_recovery(case):
     reasons, rows = judge_inputs(case["inputs"], contract.RECOVERY_INPUTS, "recovery")
     _match_ids(reasons, [row.get("input_id") for row in rows], case.get("planned_input_ids"),
                "duplicate_input_id", "missing_frame", "unknown_input")
+    # The recovery window must be the overloaded node continuing after the
+    # fixed drain, not a fresh observer. Process identity and boundary stamps
+    # prove it; a restart cannot sign this gate.
+    continuity = case.get("continuity")
+    if not isinstance(continuity, dict) or continuity.get("reused_observer") is not True:
+        _add(reasons, "continuity_missing")
+    else:
+        pid = continuity.get("observer_pid")
+        epoch = continuity.get("epoch")
+        revision = continuity.get("observed_revision_at_recovery_open")
+        drain = continuity.get("drain_boundary_mono_ns")
+        origin = continuity.get("recovery_origin_mono_ns")
+        for name, value in (("observer_pid", pid), ("epoch", epoch),
+                            ("observed_revision_at_recovery_open", revision),
+                            ("drain_boundary_mono_ns", drain),
+                            ("recovery_origin_mono_ns", origin)):
+            if not isinstance(value, int) or isinstance(value, bool):
+                _add(reasons, "continuity_missing")
+                break
+        if all(isinstance(value, int) and not isinstance(value, bool)
+               for value in (drain, origin)) and origin < drain:
+            _add(reasons, "continuity_boundary")
     queries = case.get("queries") or []
     _match_ids(reasons, [item.get("query_id") for item in queries], case.get("planned_query_ids"),
                "duplicate_query_id", "missing_query", "unknown_query")
@@ -433,8 +455,67 @@ def _rss_medians(reasons, run):
         return
     if _sample_problems(reasons, medians):
         return
+    # Medians must come from real timestamped windows: an empty window has no
+    # median, and a window count of zero means the span was never covered.
+    counts = run.get("rss_window_counts")
+    if not isinstance(counts, list) or len(counts) != 3:
+        _add(reasons, "missing_observation")
+    elif any(not isinstance(count, int) or isinstance(count, bool) or count < 1
+             for count in counts):
+        _add(reasons, "rss_span")
     if medians[1] <= 0 or (medians[2] - medians[1]) / medians[1] > contract.O8_RSS_GROWTH:
         _add(reasons, "rss_growth")
+
+
+def _judge_saturation_run(reasons, run):
+    """Every saturation frame needs a matched successful terminal receipt."""
+    expected = run.get("saturation_frames_expected", contract.O8_SATURATION_FRAMES)
+    receipts = run.get("saturation_receipts")
+    if not isinstance(receipts, list) or len(receipts) != expected:
+        _add(reasons, "saturation_frames")
+        return
+    for entry in receipts:
+        if not isinstance(entry, dict):
+            _add(reasons, "missing_observation")
+            continue
+        events = entry.get("events")
+        if not isinstance(events, int) or isinstance(events, bool) or events < 1:
+            _add(reasons, "saturation_receipt_missing")
+            continue
+        if entry.get("status") != "COMPLETED":
+            _add(reasons, "saturation_receipt_rejected")
+        changed = entry.get("changed_keys")
+        rebuilt = entry.get("rebuilt_blocks")
+        changed_problem = _number_problem(changed) if changed is not None else "missing_observation"
+        rebuilt_problem = _number_problem(rebuilt) if rebuilt is not None else "missing_observation"
+        if changed_problem:
+            _add(reasons, "saturation_count_missing" if changed_problem == "missing_observation"
+                 else changed_problem)
+        elif changed != 0:
+            _add(reasons, "saturation_keys")
+        if rebuilt_problem:
+            _add(reasons, "saturation_count_missing" if rebuilt_problem == "missing_observation"
+                 else rebuilt_problem)
+        elif rebuilt != 0:
+            _add(reasons, "saturation_blocks")
+
+
+def _judge_node_stability(reasons, run):
+    if "node_count_stable" not in run:
+        _add(reasons, "missing_observation")
+        return
+    times = run.get("node_health_times_s")
+    if not isinstance(times, list) or len(times) < contract.O8_HEALTH_MIN_SAMPLES:
+        # A single lucky sample cannot certify stability: the post-warmup
+        # window must actually be covered.
+        _add(reasons, "node_health_span")
+        return
+    if _sample_problems(reasons, times):
+        return
+    if times[0] > 5.0 + getattr(contract, "O8_RSS_WINDOW_S", 60.0):
+        _add(reasons, "node_health_span")
+    if run["node_count_stable"] is not True:
+        _add(reasons, "node_count")
 
 
 def judge_o8(case):
@@ -459,30 +540,59 @@ def judge_o8(case):
                     _add(reasons, problem)
                 elif run[key] != 0:
                     _add(reasons, fail_code)
-        if "node_count_stable" not in run:
-            _add(reasons, "missing_observation")
-        elif run["node_count_stable"] is not True:
-            _add(reasons, "node_count")
+        _judge_saturation_run(reasons, run)
+        _judge_node_stability(reasons, run)
         _rss_medians(reasons, run)
     holds = case.get("holds") if isinstance(case.get("holds"), list) else None
     if holds is None:
         _add(reasons, "missing_observation")
         holds = []
-    elif sum(item.get("kind") == "no_input" for item in holds if isinstance(item, dict)) != contract.O8_HOLDS \
-            or sum(item.get("kind") == "occlusion" for item in holds if isinstance(item, dict)) != contract.O8_HOLDS:
-        _add(reasons, "hold_count")
+    else:
+        for kind in contract.O8_HOLD_KINDS:
+            if sum(item.get("kind") == kind for item in holds
+                   if isinstance(item, dict)) != contract.O8_HOLDS:
+                _add(reasons, "hold_count")
     for hold in holds:
         if not isinstance(hold, dict):
             _add(reasons, "missing_observation")
             continue
-        if "probability_unchanged" not in hold:
-            _add(reasons, "missing_observation")
-        elif hold["probability_unchanged"] is not True:
-            _add(reasons, "probability")
-        if "freshness_advanced" not in hold:
-            _add(reasons, "missing_observation")
-        elif hold["freshness_advanced"] is not False:
-            _add(reasons, "freshness")
+        kind = hold.get("kind")
+        if kind == "occlusion":
+            # A real blocking input: accepted new data whose rays never cross
+            # the old region. The region oracle must be recorded and unchanged;
+            # freshness may legitimately advance (the occluder is new data).
+            record = hold.get("occlusion_input")
+            if not isinstance(record, dict) or not isinstance(
+                    record.get("points_sha256"), str) or not record.get("point_count"):
+                _add(reasons, "occlusion_input_missing")
+            else:
+                oracle = record.get("oracle_min_cell_x")
+                plane = record.get("plane_max_cell_x")
+                if not isinstance(oracle, int) or not isinstance(plane, int) \
+                        or oracle <= plane:
+                    _add(reasons, "occlusion_geometry")
+            if hold.get("input_accepted") is not True:
+                _add(reasons, "occlusion_not_accepted")
+            changed = hold.get("occluder_receipt", {}).get("changed_keys") \
+                if isinstance(hold.get("occluder_receipt"), dict) else None
+            if not isinstance(changed, int) or isinstance(changed, bool) or changed <= 0:
+                _add(reasons, "occlusion_no_effect")
+            if hold.get("region_probability_unchanged") is not True:
+                _add(reasons, "probability")
+        else:
+            # no_input and duplicate_id: nothing may be accepted, so the map
+            # must not move and freshness must not advance. The duplicate
+            # replay additionally must be rejected at the ledger.
+            if "probability_unchanged" not in hold:
+                _add(reasons, "missing_observation")
+            elif hold["probability_unchanged"] is not True:
+                _add(reasons, "probability")
+            if "freshness_advanced" not in hold:
+                _add(reasons, "missing_observation")
+            elif hold["freshness_advanced"] is not False:
+                _add(reasons, "freshness")
+            if kind == "duplicate_id" and hold.get("duplicate_rejected") is not True:
+                _add(reasons, "duplicate_not_rejected")
     return _result(reasons)
 
 
@@ -683,6 +793,16 @@ def healthy_o7_recovery():
         "queries": queries,
         "planned_input_ids": [row["input_id"] for row in inputs],
         "planned_query_ids": [row["query_id"] for row in queries],
+        "continuity": {
+            "reused_observer": True,
+            "observer_pid": 4242,
+            "overload_window": "overload",
+            "recovery_window": "recovery",
+            "drain_boundary_mono_ns": 10_000_000_000,
+            "recovery_origin_mono_ns": 10_050_000_000,
+            "epoch": 1,
+            "observed_revision_at_recovery_open": 600,
+        },
         "legacy_immediate_first": {"status": "STALE", "age_ms": 30400.0, "contract": "get_snapshot"},
     }
 
@@ -709,16 +829,57 @@ def healthy_latency_group(group_id, cloud, parameters=None):
 
 
 def healthy_o8():
-    return {
-        "gate": "o8",
-        "runs": [{
+    def run(run_index):
+        frames = contract.O8_SATURATION_FRAMES
+        return {
+            "run_id": "o8_r%d" % run_index,
+            "saturation_frames_expected": frames,
+            "saturation_frames_verified": frames,
+            "saturation_receipts": [
+                {"index": index, "observation_id": "sat-%d-%d" % (run_index, index),
+                 "events": 1, "status": "COMPLETED", "disposition": "integrated",
+                 "changed_keys": 0, "rebuilt_blocks": 0}
+                for index in range(frames)],
             "saturation_probability_keys": 0,
             "saturation_geometry_blocks": 0,
             "node_count_stable": True,
+            "node_health_times_s": [round(60.0 + index * 0.5, 3)
+                                    for index in range(240)],
+            "node_health_count": 240,
             "rss_median_kib": [1000, 1000, 1040],
-        } for _ in range(contract.O8_RUNS)],
-        "holds": [{"kind": kind, "probability_unchanged": True, "freshness_advanced": False}
-                  for kind in ("no_input", "occlusion") for _ in range(contract.O8_HOLDS)],
+            "rss_window_counts": [30, 30, 30],
+            "rss_sample_times_ns": [1_000_000_000 * index for index in range(90)],
+        }
+
+    def hold(kind):
+        row = {"kind": kind, "duration_s": 10}
+        if kind == "occlusion":
+            row.update({
+                "occlusion_input": {"shape": "plane", "plane_uld_x_m": -0.62,
+                                    "plane_max_cell_x": 7, "oracle_min_cell_x": 9,
+                                    "point_count": 1700, "points_sha256": "fixture",
+                                    "rays_file": "fixture"},
+                "input_accepted": True,
+                "occluder_receipt": {"status": "COMPLETED", "changed_keys": 700},
+                "region_probability_unchanged": True,
+                "freshness_advanced": True,
+            })
+        elif kind == "duplicate_id":
+            row.update({
+                "duplicate_receipt": {"status": "COMPLETED", "disposition": "rejected"},
+                "duplicate_rejected": True,
+                "probability_unchanged": True,
+                "freshness_advanced": False,
+            })
+        else:
+            row.update({"probability_unchanged": True, "freshness_advanced": False})
+        return row
+
+    return {
+        "gate": "o8",
+        "runs": [run(index) for index in range(contract.O8_RUNS)],
+        "holds": [hold(kind) for kind in contract.O8_HOLD_KINDS
+                  for _ in range(contract.O8_HOLDS)],
     }
 
 
