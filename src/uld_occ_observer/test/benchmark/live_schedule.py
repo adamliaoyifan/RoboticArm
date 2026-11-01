@@ -764,7 +764,10 @@ class LiveScheduleAdapter:
             from uld_occ_observer.srv import GetSnapshot, ReadCells, ReleaseSnapshot
             request = GetSnapshot.Request()
             request.expected_epoch = 1
-            request.max_age_ms = 30000
+            # A hold deliberately ages the map for tens of seconds: the probe
+            # reads the stale-but-consistent snapshot instead of refusing it.
+            request.max_age_ms = 300000
+            request.allow_stale = True
             lease = session.call(session.snapshot, request, 5)
             if lease.status != "OK":
                 return None
