@@ -134,11 +134,13 @@ def _health_times(duration):
 
 
 def _protocol_resources():
-    """Offline protocol fixture. The assembler never builds this."""
     return {
-        "rss_kib": 100000,
         "read_view_bytes": 1024,
         "cache_bytes": 1024,
+        "read_view_bytes_peak": 2048,
+        "cache_bytes_peak": 2048,
+        "read_view_cache_bytes_peak": 4096,
+        "store_tree_bytes": 65536,
         "attribution_complete": True,
         "unmarked_allocations": False,
     }
@@ -317,17 +319,31 @@ class OfflineAdapter:
         }
 
     def _offline_probe(self, marker):
+        import base64
+        import hashlib
+        import struct as _struct
+        cells = 8
+        states = bytes([0, 1, 2, 3, 0, 1, 2, 3])
+        odds = [-0.9, -0.4, 0.4, 0.9, 0.0, 0.0, 0.0, 0.0]
+        odds_bytes = _struct.pack("<%df" % cells, *odds)
         return {
-            "states_hash": "states-%s" % marker,
-            "log_odds_hash": "odds-%s" % marker,
-            "cells": 483516,
+            "cells": cells,
+            "region": {"begin": contract.O8_ORACLE_REGION["begin"],
+                       "end": contract.O8_ORACLE_REGION["end"],
+                       "shape": [75, 99, 74], "resolution_m": 0.02},
+            "content": {
+                "states_b64": base64.b64encode(states).decode(),
+                "odds_b64": base64.b64encode(odds_bytes).decode(),
+                "states_sha256": hashlib.sha256(states).hexdigest(),
+                "odds_sha256": hashlib.sha256(odds_bytes).hexdigest(),
+                "content_sha256": contract.probe_content_sha256(states, odds_bytes),
+            },
             "surface_hash": "surface-%s" % marker,
             "surface_columns": 6534,
-            "region": {"begin": [9, 0, 0], "end": [75, 99, 74]},
             "identity": {"epoch": 1, "map_revision": 2, "observed_revision": 2,
                          "last_integrated_stamp_ns": 1000},
             "release": "OK",
-            "pages": 8,
+            "pages": 1,
             "pages_done": True,
             "probe_mono_ns": 1,
             "duration_ms": 100.0,
@@ -685,7 +701,8 @@ def _run_stability(plan, adapter, out, budget_s):
                     holds.append(observed)
             if budget_hit:
                 break
-    artifact = {"gate": "o8", "runs": runs, "holds": holds}
+    artifact = {"gate": "o8", "runs": runs, "holds": holds,
+                "artifact_dir": str(out / "o8")}
     verdict = repair_s0_judge.judge_o8(artifact)
     _write(out / "o8" / "runs.json", artifact)
     _write(out / "o8" / "verdict.json", verdict)

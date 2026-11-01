@@ -58,23 +58,37 @@ def occluder_points():
     return points
 
 
-def _probability_unchanged(before, after):
-    """Voxel-level comparison: complete states AND log-odds over the region.
+def run_id_dir(run):
+    """The run's directory name under the o8 artifact root."""
+    return str(run.out.relative_to(run.out.parent).name)
 
-    Both probes must be error-free, cover the same non-empty cell count, and
-    carry both hashes. The surface geometry hash is deliberately NOT part of
-    this: sub-threshold log-odds changes leave the surface summary alone.
+
+def _probability_unchanged(before, after):
+    """Voxel-level comparison: lossless states AND log-odds over the region.
+
+    Both probes must be error-free and released cleanly, cover the same
+    non-empty cell count over the same region, and their states and odds
+    payloads (recomputable from the saved content files) must match
+    separately. The surface geometry hash is deliberately NOT part of this:
+    sub-threshold log-odds changes leave the surface summary alone.
     """
     if not isinstance(before, dict) or not isinstance(after, dict):
         return False
     if "error" in before or "error" in after:
         return False
+    if before.get("release") != "OK" or after.get("release") != "OK":
+        return False
     cells_before, cells_after = before.get("cells"), after.get("cells")
     if not isinstance(cells_before, int) or cells_before <= 0 or cells_before != cells_after:
         return False
-    return (isinstance(before.get("states_hash"), str)
-            and before.get("states_hash") == after.get("states_hash")
-            and before.get("log_odds_hash") == after.get("log_odds_hash"))
+    if before.get("region") != after.get("region"):
+        return False
+    left = before.get("content") or {}
+    right = after.get("content") or {}
+    for key in ("states_sha256", "odds_sha256"):
+        if not isinstance(left.get(key), str) or left.get(key) != right.get(key):
+            return False
+    return True
 
 
 def _surface_unchanged(before, after):
@@ -99,7 +113,7 @@ def resources_from_usage(usage):
     read_view = usage.get("read_view_bytes")
     cache = usage.get("cache_bytes")
     certification = usage.get("certification")
-    return {
+    result = {
         "read_view_bytes": read_view,
         "cache_bytes": cache,
         "attribution_complete": (
@@ -110,25 +124,58 @@ def resources_from_usage(usage):
         "store_tree_bytes": usage.get("store_tree_bytes"),
         "uncovered_classes": list(usage.get("uncovered_classes") or []),
     }
+    # The occupancy peaks gate alongside the live sums: a candidate that
+    # peaked over the limit between samples must not pass on a small sampled
+    # current value. Mapping is verbatim; the judge does the gating.
+    for key in ("read_view_bytes_peak", "cache_bytes_peak",
+                "read_view_cache_bytes_peak"):
+        if key in usage:
+            result[key] = usage.get(key)
+    return result
+
+
+_RESOURCE_KEYS = (
+    "read_view_bytes", "cache_bytes",
+    "read_view_bytes_peak", "cache_bytes_peak", "read_view_cache_bytes_peak",
+    "store_tree_bytes",
+)
+
+
+def _resource_reduction(rows, key):
+    """Reduce one resource key across rows WITHOUT filtering bad values.
+
+    A row that is missing the key, or carries a bool/NaN/Inf/negative
+    number, poisons the reduction: the bad value itself is returned so the
+    judge fails on it. A maximum is only taken over rows that all carry a
+    valid non-negative integer.
+    """
+    values = []
+    for row in rows:
+        value = row.get(key, None)
+        if value is None:
+            return None  # missing in this row: never silently skipped
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return value
+        if isinstance(value, float):
+            return value  # NaN/Inf survive to the judge's numeric check
+        if value < 0:
+            return value
+        values.append(value)
+    return max(values) if values else None
 
 
 def _peak_resources_from_documents(documents):
-    """Run-covering resource peak, not the last row's current value.
+    """Run-covering resource reduction across every document.
 
-    Byte counters that the product reports per row are scanned across every
-    document; a class missing from any row keeps its observed maximum and a
-    class missing everywhere stays missing (the judge rejects it). Peaks the
-    product reports directly (read_view_bytes_peak and friends) are carried
-    alongside; the scalar fields stay the observed maxima so the judge sees
-    conservative numbers.
+    Live byte counters and the occupancy peaks are reduced per key over ALL
+    rows; any row missing a key or carrying a bad value poisons that key (the
+    judge rejects it) instead of disappearing from the statistic.
     """
     rows = [row.get("resource_usage") for row in documents
             if isinstance(row.get("resource_usage"), dict)]
     if not rows:
         return None
-    def peak(key):
-        values = [row.get(key) for row in rows if isinstance(row.get(key), int)]
-        return max(values) if values else None
+    reduction = {key: _resource_reduction(rows, key) for key in _RESOURCE_KEYS}
     certifications = {row.get("certification") for row in rows}
     complete = all(
         row.get("certification") == "READ_VIEW_CACHE_ATTRIBUTED"
@@ -138,12 +185,7 @@ def _peak_resources_from_documents(documents):
         for name in row.get("uncovered_classes") or []:
             if name not in uncovered:
                 uncovered.append(name)
-    return {
-        "read_view_bytes": peak("read_view_bytes"),
-        "cache_bytes": peak("cache_bytes"),
-        "read_view_bytes_peak": peak("read_view_bytes_peak"),
-        "cache_bytes_peak": peak("cache_bytes_peak"),
-        "store_tree_bytes": peak("store_tree_bytes"),
+    result = {
         "attribution_complete": complete,
         "unmarked_allocations": any(row.get("unmarked_allocations") for row in rows),
         "certification": ("READ_VIEW_CACHE_ATTRIBUTED"
@@ -152,6 +194,8 @@ def _peak_resources_from_documents(documents):
         "uncovered_classes": uncovered,
         "rows_scanned": len(rows),
     }
+    result.update(reduction)
+    return result
 
 
 def _pack_cloud(points):
@@ -1030,7 +1074,8 @@ class LiveScheduleAdapter:
         # the map during the hold.
         self._await_terminal(run, state["stamps"])
         hold_started_ns = time.monotonic_ns()
-        before = self._hold_probe(run)
+        label = "%s-%d" % (kind, repeat)
+        before = self._hold_probe(run, save_label="%s-before" % label)
         row = {
             "kind": kind,
             "duration_s": seconds,
@@ -1048,7 +1093,7 @@ class LiveScheduleAdapter:
             points = occluder_points()
             occluder_receipt = self._publish_occluder(run, points)
             time.sleep(seconds)
-            after = self._hold_probe(run)
+            after = self._hold_probe(run, save_label="%s-after" % label)
             row["occlusion_input"] = {
                 "shape": "plane",
                 "plane_uld_x_m": _OCCLUDER_X_M,
@@ -1099,7 +1144,7 @@ class LiveScheduleAdapter:
                     "new_events": len(events) - events_before,
                 }
             time.sleep(seconds)
-            after = self._hold_probe(run)
+            after = self._hold_probe(run, save_label="%s-after" % label)
             row["duplicate_receipt"] = duplicate_receipt
             row["duplicate_rejected"] = (
                 duplicate_receipt is not None
@@ -1109,7 +1154,7 @@ class LiveScheduleAdapter:
             row["freshness_advanced"] = self._freshness_advanced(before, after)
         else:
             time.sleep(seconds)
-            after = self._hold_probe(run)
+            after = self._hold_probe(run, save_label="%s-after" % label)
             row["probability_unchanged"] = _probability_unchanged(before, after)
             row["surface_geometry_unchanged"] = _surface_unchanged(before, after)
             row["freshness_advanced"] = self._freshness_advanced(before, after)
@@ -1180,137 +1225,183 @@ class LiveScheduleAdapter:
         self._oracle_region_cache = region
         return region
 
-    def _hold_probe(self, run):
+    def _hold_probe(self, run, save_label=None):
         """Old-region probability oracle: complete voxel states + log-odds.
 
         One lease pages the WHOLE explicit region (every cell including
         unknown and out-of-domain ones) plus the full surface as a secondary
-        geometric summary. Any page error, empty-before-done page, repeated
-        cursor, identity mismatch, or failed release is an error — never a
-        small clean hash that would compare equal to another error.
+        geometric summary. States and float32 log-odds are kept LOSSLESS
+        (raw bytes, never rounded); with save_label the payload is persisted
+        under probe-content/ with per-file sha256 references so an
+        independent recheck can recompute everything. Every page carries the
+        lease identity; any page error, empty-before-done page, repeated
+        cursor, identity mismatch, or failed release is an error — and the
+        lease is released on every path, with the release result recorded.
         """
+        try:
+            outcome = self._probe_body(run, save_label)
+        except Exception as exc:
+            outcome = {"error": "%s:%s" % (type(exc).__name__, str(exc)[:160])}
+        finally:
+            outcome["release"] = self._probe_release()
+        if "error" not in outcome and outcome.get("release") != "OK":
+            return {"error": "release_%s" % outcome["release"],
+                    "release": outcome["release"]}
+        return outcome
+
+    def _probe_release(self):
+        """Release the probe lease; called on every path (finally)."""
+        state = getattr(self, "_probe_lease", None)
+        if state is None:
+            return "not_acquired"
+        try:
+            from uld_occ_observer.srv import ReleaseSnapshot
+            request = ReleaseSnapshot.Request()
+            request.handle = state["handle"]
+            return state["session"].call(state["client"], request, 5).status
+        except Exception as exc:
+            return "release_exception:%s" % type(exc).__name__
+        finally:
+            self._probe_lease = None
+
+    def _probe_body(self, run, save_label):
+        import hashlib
+        from array import array
         session = run.session
         region = self._oracle_region(run)
         if "error" in region:
             return dict(region)
-        try:
-            from uld_occ_observer.srv import GetSnapshot, ReadCells, ReadSurface, ReleaseSnapshot
-            started_ns = time.monotonic_ns()
-            request = GetSnapshot.Request()
-            request.expected_epoch = 1
-            # A hold deliberately ages the map for tens of seconds: the probe
-            # reads the stale-but-consistent snapshot instead of refusing it.
-            request.max_age_ms = 300000
-            request.allow_stale = True
-            lease = session.call(session.snapshot, request, 5)
-            if lease.status != "OK":
-                return {"error": "snapshot_%s" % lease.status}
-            identity = executor._identity_tuple(executor._field(lease, "identity"))
-            cells = session.node.create_client(ReadCells, "/uld_occ_observer/read_cells")
-            surface = session.node.create_client(ReadSurface, "/uld_occ_observer/read_surface")
-            release_client = session.node.create_client(
-                ReleaseSnapshot, "/uld_occ_observer/release_snapshot")
-            for client in (cells, surface, release_client):
-                session.wait_service(client, timeout=5)
-            seen_cursors = set()
-            states = []
-            log_odds = []
-            cursor = 0
-            pages = 0
-            while True:
-                page_request = ReadCells.Request()
-                page_request.handle = lease.handle
-                page_request.begin = list(region["begin"])
-                page_request.end = list(region["end"])
-                page_request.cursor = int(cursor)
-                page_request.limit = 65536
-                page = session.call(cells, page_request, 10)
-                if page.status != "OK":
-                    return {"error": "cells_page_%s" % page.status}
-                if int(cursor) in seen_cursors:
-                    return {"error": "cells_page_repeat_cursor"}
-                seen_cursors.add(int(cursor))
-                page_states = list(page.states or [])
-                page_odds = list(page.log_odds or [])
-                if len(page_states) != len(page_odds):
-                    return {"error": "cells_page_field_mismatch"}
-                pages += 1
-                states.extend(page_states)
-                log_odds.extend(round(float(value), 6) for value in page_odds)
-                if page.done:
-                    break
-                if not page_states:
-                    return {"error": "cells_page_empty_before_done"}
-                cursor = int(page.next_cursor)
-            # Secondary geometric summary: full-grid surface columns filtered
-            # to the same region.
-            columns = []
-            total_columns = 0
-            surface_cursor = 0
-            surface_pages = 0
-            while True:
-                page_request = ReadSurface.Request()
-                page_request.handle = lease.handle
-                page_request.cursor = int(surface_cursor)
-                page_request.limit = 512
-                page = session.call(surface, page_request, 10)
-                if page.status != "OK":
-                    return {"error": "surface_page_%s" % page.status}
-                xs = executor._field(page, "x")
-                fields = {name: executor._field(page, name) for name in
-                          ("y", "active_count", "known_count", "has_occupied", "top_z")}
-                if xs is None or any(fields[name] is None for name in fields):
-                    return {"error": "surface_page_missing_fields"}
-                total_columns += len(xs)
-                for index, x in enumerate(xs):
-                    if int(x) < _ORACLE_MIN_CELL_X:
-                        continue
-                    columns.append([
-                        int(x), int(fields["y"][index]),
-                        int(fields["active_count"][index]),
-                        int(fields["known_count"][index]),
-                        bool(fields["has_occupied"][index]),
-                        float(fields["top_z"][index]),
-                    ])
-                surface_pages += 1
-                if page.done:
-                    break
-                if not xs:
-                    return {"error": "surface_page_empty_before_done"}
-                surface_cursor = int(page.next_cursor)
-            release_request = ReleaseSnapshot.Request()
-            release_request.handle = lease.handle
-            release_status = session.call(release_client, release_request, 5).status
-            if release_status != "OK":
-                return {"error": "release_%s" % release_status}
-            if len(states) != region["cells"]:
-                return {"error": "cells_incomplete:%d/%d" % (len(states), region["cells"])}
-            # Shape cross-check: the full-grid surface must carry exactly
-            # shape.x*shape.y columns, or the derived bounds are wrong.
-            shape = region["shape"]
-            if total_columns != shape[0] * shape[1]:
-                return {"error": "shape_mismatch:%d/%d"
-                        % (total_columns, shape[0] * shape[1])}
-            return {
-                "states_hash": executor._content_sha256(states),
-                "log_odds_hash": executor._content_sha256(log_odds),
-                "cells": len(states),
-                "surface_hash": executor._content_sha256(sorted(columns)),
-                "surface_columns": len(columns),
-                "region": {"begin": region["begin"], "end": region["end"],
-                           "shape": region["shape"], "resolution_m": region["resolution_m"]},
-                "identity": {"epoch": identity[0], "map_revision": identity[1],
-                             "observed_revision": identity[2],
-                             "last_integrated_stamp_ns": identity[3] if len(identity) > 3 else None},
-                "release": release_status,
-                "pages": pages,
-                "pages_done": True,
-                "probe_mono_ns": started_ns,
-                "duration_ms": (time.monotonic_ns() - started_ns) / 1e6,
-                "last_integrated_stamp_ns": identity[3] if len(identity) > 3 else None,
-            }
-        except Exception as exc:
-            return {"error": "%s:%s" % (type(exc).__name__, str(exc)[:160])}
+        from uld_occ_observer.srv import GetSnapshot, ReadCells, ReadSurface, ReleaseSnapshot
+        started_ns = time.monotonic_ns()
+        request = GetSnapshot.Request()
+        request.expected_epoch = 1
+        # A hold deliberately ages the map for tens of seconds: the probe
+        # reads the stale-but-consistent snapshot instead of refusing it.
+        request.max_age_ms = 300000
+        request.allow_stale = True
+        lease = session.call(session.snapshot, request, 5)
+        if lease.status != "OK":
+            return {"error": "snapshot_%s" % lease.status}
+        release_client = session.node.create_client(
+            ReleaseSnapshot, "/uld_occ_observer/release_snapshot")
+        session.wait_service(release_client, timeout=5)
+        self._probe_lease = {"session": session, "client": release_client,
+                             "handle": lease.handle}
+        identity = executor._identity_tuple(executor._field(lease, "identity"))
+        cells = session.node.create_client(ReadCells, "/uld_occ_observer/read_cells")
+        surface = session.node.create_client(ReadSurface, "/uld_occ_observer/read_surface")
+        for client in (cells, surface):
+            session.wait_service(client, timeout=5)
+        seen_cursors = set()
+        states = bytearray()
+        odds = bytearray()
+        cursor = 0
+        pages = 0
+        while True:
+            page_request = ReadCells.Request()
+            page_request.handle = lease.handle
+            page_request.begin = list(region["begin"])
+            page_request.end = list(region["end"])
+            page_request.cursor = int(cursor)
+            page_request.limit = 65536
+            page = session.call(cells, page_request, 10)
+            if page.status != "OK":
+                return {"error": "cells_page_%s" % page.status}
+            if int(cursor) in seen_cursors:
+                return {"error": "cells_page_repeat_cursor"}
+            seen_cursors.add(int(cursor))
+            page_identity = executor._identity_tuple(executor._field(page, "identity"))
+            if page_identity[:3] != identity[:3]:
+                return {"error": "cells_page_identity_mismatch"}
+            page_states = bytes(page.states or [])
+            page_odds = array("f", page.log_odds or [])
+            if len(page_states) != len(page_odds):
+                return {"error": "cells_page_field_mismatch"}
+            pages += 1
+            states.extend(page_states)
+            odds.extend(page_odds.tobytes())
+            if page.done:
+                break
+            if not page_states:
+                return {"error": "cells_page_empty_before_done"}
+            cursor = int(page.next_cursor)
+        # Secondary geometric summary: full-grid surface columns filtered to
+        # the same region, with per-page identity and cursor checks.
+        columns = []
+        total_columns = 0
+        surface_cursors = set()
+        surface_cursor = 0
+        while True:
+            page_request = ReadSurface.Request()
+            page_request.handle = lease.handle
+            page_request.cursor = int(surface_cursor)
+            page_request.limit = 512
+            page = session.call(surface, page_request, 10)
+            if page.status != "OK":
+                return {"error": "surface_page_%s" % page.status}
+            if int(surface_cursor) in surface_cursors:
+                return {"error": "surface_page_repeat_cursor"}
+            surface_cursors.add(int(surface_cursor))
+            page_identity = executor._identity_tuple(executor._field(page, "identity"))
+            if page_identity[:3] != identity[:3]:
+                return {"error": "surface_page_identity_mismatch"}
+            xs = executor._field(page, "x")
+            fields = {name: executor._field(page, name) for name in
+                      ("y", "active_count", "known_count", "has_occupied", "top_z")}
+            if xs is None or any(fields[name] is None for name in fields):
+                return {"error": "surface_page_missing_fields"}
+            total_columns += len(xs)
+            for index, x in enumerate(xs):
+                if int(x) < _ORACLE_MIN_CELL_X:
+                    continue
+                columns.append([
+                    int(x), int(fields["y"][index]),
+                    int(fields["active_count"][index]),
+                    int(fields["known_count"][index]),
+                    bool(fields["has_occupied"][index]),
+                    float(fields["top_z"][index]),
+                ])
+            if page.done:
+                break
+            if not xs:
+                return {"error": "surface_page_empty_before_done"}
+            surface_cursor = int(page.next_cursor)
+        shape = region["shape"]
+        if total_columns != shape[0] * shape[1]:
+            return {"error": "shape_mismatch:%d/%d"
+                    % (total_columns, shape[0] * shape[1])}
+        if len(states) != region["cells"]:
+            return {"error": "cells_incomplete:%d/%d" % (len(states), region["cells"])}
+        content = {
+            "states_sha256": hashlib.sha256(states).hexdigest(),
+            "odds_sha256": hashlib.sha256(odds).hexdigest(),
+            "content_sha256": contract.probe_content_sha256(bytes(states), bytes(odds)),
+        }
+        if save_label is not None:
+            folder = run.out / "probe-content"
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / ("%s.states.bin" % save_label)).write_bytes(bytes(states))
+            (folder / ("%s.odds.bin" % save_label)).write_bytes(bytes(odds))
+            # Reference relative to the o8 artifact root so the judge
+            # resolves it inside its own probe-content directory.
+            content["states_file"] = "%s/probe-content/%s.states.bin" % (run_id_dir(run), save_label)
+            content["odds_file"] = "%s/probe-content/%s.odds.bin" % (run_id_dir(run), save_label)
+        return {
+            "cells": len(states),
+            "region": {"begin": region["begin"], "end": region["end"],
+                       "shape": region["shape"], "resolution_m": region["resolution_m"]},
+            "content": content,
+            "surface_hash": executor._content_sha256(sorted(columns)),
+            "surface_columns": len(columns),
+            "identity": {"epoch": identity[0], "map_revision": identity[1],
+                         "observed_revision": identity[2],
+                         "last_integrated_stamp_ns": identity[3] if len(identity) > 3 else None},
+            "pages": pages,
+            "pages_done": True,
+            "probe_mono_ns": started_ns,
+            "duration_ms": (time.monotonic_ns() - started_ns) / 1e6,
+            "last_integrated_stamp_ns": identity[3] if len(identity) > 3 else None,
+        }
 
     # ------------------------------------------------------------- lifecycle
     def bind_plan(self, plan):

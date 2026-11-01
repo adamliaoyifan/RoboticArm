@@ -141,18 +141,32 @@ def _resources(resources):
     complete = resources.get("attribution_complete") is True and resources.get("unmarked_allocations") is False
     read_view = resources.get("read_view_bytes")
     cache = resources.get("cache_bytes")
+    peak_combined = resources.get("read_view_cache_bytes_peak")
     if not complete or "read_view_bytes" not in resources or "cache_bytes" not in resources:
         return ["resource_missing"], "not_evaluated"
-    for value in (read_view, cache):
+    # The occupancy peaks are required: without them a transient between
+    # samples is invisible and the gate says nothing.
+    if "read_view_cache_bytes_peak" not in resources:
+        return ["resource_peak_missing"], "not_evaluated"
+    for value in (read_view, cache, peak_combined):
         problem = _number_problem(value)
         if problem == "missing_observation":
             return ["missing_observation"], "not_evaluated"
         if problem:
             return [problem], "fail"
-    if isinstance(read_view, bool) or isinstance(cache, bool) or not isinstance(read_view, int) or not isinstance(cache, int):
+    if any(isinstance(value, bool) or not isinstance(value, int)
+           for value in (read_view, cache, peak_combined)):
         return ["bad_type"], "fail"
-    if read_view < 0 or cache < 0 or read_view + cache > contract.READ_VIEW_CACHE_LIMIT_BYTES:
+    if read_view < 0 or cache < 0 or peak_combined < 0:
         return ["resource_bytes"], "fail"
+    if read_view + cache > contract.READ_VIEW_CACHE_LIMIT_BYTES:
+        return ["resource_bytes"], "fail"
+    # The same-instant occupancy peak gates exactly like the live sum: a
+    # 1 GiB transient over a 2 KiB sampled current value fails here.
+    if peak_combined > contract.READ_VIEW_CACHE_LIMIT_BYTES:
+        return ["resource_peak"], "fail"
+    if peak_combined < read_view + cache:
+        return ["resource_peak_inconsistent"], "fail"
     return [], "pass"
 
 
@@ -588,23 +602,108 @@ def _judge_node_stability(reasons, run):
         _add(reasons, "node_count")
 
 
-def _verify_probability_from_probes(reasons, hold, flag_name):
-    """Recompute the probability verdict from the probe hashes themselves.
+def _load_probe_content(probe, artifact_dir):
+    """Independently recompute a probe's evidence from its saved content.
 
-    The adapter's flag is a convenience; the gate compares the recorded voxel
-    states and log-odds hashes directly, so a forged flag over changed
-    probabilities cannot pass.
+    Returns (states_bytes, odds_bytes, problems). The payload comes from the
+    referenced lossless files (verified against their declared sha256) or
+    from inline base64; the canonical content hash is recomputed from the
+    bytes, never taken from the artifact's own string.
     """
-    before = hold.get("probe_before")
-    after = hold.get("probe_after")
-    if not isinstance(before, dict) or not isinstance(after, dict):
-        return  # probe_incomplete already recorded
-    unchanged = (
-        isinstance(before.get("states_hash"), str)
-        and before.get("states_hash") == after.get("states_hash")
-        and before.get("log_odds_hash") == after.get("log_odds_hash"))
-    if unchanged is not (hold.get(flag_name) is True):
-        _add(reasons, "probability")
+    import base64
+    import hashlib
+    from pathlib import Path
+    problems = []
+    content = probe.get("content")
+    if not isinstance(content, dict):
+        return None, None, ["content_missing"]
+    states = odds = None
+    if isinstance(content.get("states_b64"), str) and isinstance(content.get("odds_b64"), str):
+        try:
+            states = base64.b64decode(content["states_b64"], validate=True)
+            odds = base64.b64decode(content["odds_b64"], validate=True)
+        except Exception:
+            return None, None, ["content_unreadable"]
+    elif isinstance(content.get("states_file"), str) and isinstance(content.get("odds_file"), str):
+        if artifact_dir is None:
+            return None, None, ["content_file_unresolved"]
+        base = Path(artifact_dir).resolve()
+        states_path = (base / content["states_file"]).resolve()
+        odds_path = (base / content["odds_file"]).resolve()
+        # The references must stay inside the artifact, under a probe-content
+        # directory of one of the runs.
+        for resolved in (states_path, odds_path):
+            if base not in resolved.parents or resolved.parent.name != "probe-content":
+                return None, None, ["content_path_escape"]
+        try:
+            states = states_path.read_bytes()
+            odds = odds_path.read_bytes()
+        except OSError:
+            return None, None, ["content_file_missing"]
+    else:
+        return None, None, ["content_missing"]
+    # The per-payload shas are verified from the decoded bytes themselves,
+    # for inline and file-backed content alike.
+    for payload, key in ((states, "states_sha256"), (odds, "odds_sha256")):
+        declared = content.get(key)
+        actual = hashlib.sha256(payload).hexdigest()
+        if not isinstance(declared, str) or declared != actual:
+            problems.append("content_sha_mismatch:%s" % key)
+    if problems:
+        return None, None, problems
+    recomputed = contract.probe_content_sha256(states, odds)
+    if content.get("content_sha256") != recomputed:
+        problems.append("content_hash_mismatch")
+    return states, odds, problems
+
+
+def _verify_probe_content(reasons, hold, artifact_dir):
+    """Full fail-closed verification of one hold's probability evidence."""
+    import math
+    from array import array
+    problems = []
+    expected_region = contract.O8_ORACLE_REGION
+    probes = {}
+    for name in ("probe_before", "probe_after"):
+        probe = hold.get(name)
+        if not isinstance(probe, dict):
+            problems.append("probe_incomplete")
+            continue
+        region = probe.get("region")
+        if not isinstance(region, dict) or \
+                region.get("begin") != expected_region["begin"] or \
+                region.get("end") != expected_region["end"]:
+            problems.append("oracle_region")
+        cells = probe.get("cells")
+        if not isinstance(cells, int) or isinstance(cells, bool) or cells <= 0:
+            problems.append("oracle_empty")
+            probes[name] = None
+            continue
+        states, odds, load_problems = _load_probe_content(probe, artifact_dir)
+        problems.extend(load_problems)
+        if states is None:
+            probes[name] = None
+            continue
+        if len(states) != cells or len(odds) != 4 * cells:
+            problems.append("content_length_mismatch")
+            probes[name] = None
+            continue
+        state_values = list(states)
+        if any(value > 3 for value in state_values):
+            problems.append("content_state_domain")
+        odds_values = array("f")
+        odds_values.frombytes(odds)
+        if any(not math.isfinite(value) for value in odds_values):
+            problems.append("nonfinite_value")
+        probes[name] = (bytes(states), odds)
+    if problems:
+        for problem in problems:
+            _add(reasons, problem)
+        return
+    if probes.get("probe_before") is None or probes.get("probe_after") is None:
+        return None
+    # The probability verdict is computed from the decoded content.
+    return probes["probe_before"], probes["probe_after"]
 
 
 def judge_o8(case):
@@ -646,12 +745,15 @@ def judge_o8(case):
             _add(reasons, "missing_observation")
             continue
         kind = hold.get("kind")
-        # Measured hold duration: a hold that did not actually span the
-        # contract seconds proves nothing, whatever the flags say.
+        # Measured hold duration: numeric, finite, non-negative, and at
+        # least the contract seconds with no tolerance豁免.
         measured = hold.get("duration_measured_s")
         required = contract.O8_HOLD_S
-        if not isinstance(measured, (int, float)) or isinstance(measured, bool) \
-                or measured < required - 1.0:
+        measured_problem = _number_problem(measured) if measured is not None else "missing_observation"
+        if measured_problem:
+            _add(reasons, "hold_duration" if measured_problem == "missing_observation"
+                 else measured_problem)
+        elif measured < required:
             _add(reasons, "hold_duration")
         # Both probes must be complete reads of a non-empty oracle: error
         # probes, empty regions, or a failed release cannot compare equal.
@@ -663,6 +765,17 @@ def judge_o8(case):
                 _add(reasons, "oracle_empty")
             elif probe.get("release") != "OK" or probe.get("pages_done") is not True:
                 _add(reasons, "probe_incomplete")
+        # Independently recompute the content: region, lengths, state domain,
+        # finite odds, file shas, and the canonical content hash. The verdict
+        # comes from the decoded bytes, never from the declared strings.
+        decoded = _verify_probe_content(reasons, hold, case.get("artifact_dir"))
+        if decoded is not None:
+            (before_states, before_odds), (after_states, after_odds) = decoded
+            unchanged = before_states == after_states and before_odds == after_odds
+            flag_name = ("region_probability_unchanged" if hold.get("kind") == "occlusion"
+                         else "probability_unchanged")
+            if unchanged is not (hold.get(flag_name) is True):
+                _add(reasons, "probability")
         if kind == "occlusion":
             # A real blocking input: accepted new data whose rays never cross
             # the old region. The probability oracle must be recorded and
@@ -686,7 +799,6 @@ def judge_o8(case):
                 _add(reasons, "occlusion_no_effect")
             if hold.get("region_probability_unchanged") is not True:
                 _add(reasons, "probability")
-            _verify_probability_from_probes(reasons, hold, "region_probability_unchanged")
         else:
             # no_input and duplicate_id: nothing may be accepted, so the map
             # must not move and freshness must not advance. The duplicate
@@ -695,7 +807,6 @@ def judge_o8(case):
                 _add(reasons, "missing_observation")
             elif hold["probability_unchanged"] is not True:
                 _add(reasons, "probability")
-            _verify_probability_from_probes(reasons, hold, "probability_unchanged")
             if "freshness_advanced" not in hold:
                 _add(reasons, "missing_observation")
             elif hold["freshness_advanced"] is not False:
@@ -859,6 +970,9 @@ def _resources_ok():
         "rss_kib": 100000,
         "read_view_bytes": 1024,
         "cache_bytes": 1024,
+        "read_view_bytes_peak": 2048,
+        "cache_bytes_peak": 2048,
+        "read_view_cache_bytes_peak": 3072,
         "attribution_complete": True,
         "unmarked_allocations": False,
     }
@@ -966,18 +1080,39 @@ def healthy_o8():
                             for index in range(90)],
         }
 
-    def probe(marker):
+    import base64
+    import hashlib
+    import struct as _struct
+
+    def probe(marker, flip_odds=False):
+        # A compact but real payload: every state class once, finite odds.
+        cells = 8
+        states = bytes([0, 1, 2, 3, 0, 1, 2, 3])
+        odds = list(_struct.unpack("<%df" % cells,
+                                   _struct.pack("<%df" % cells,
+                                               *[-0.9, -0.4, 0.4, 0.9, 0, 0, 0, 0])))
+        if flip_odds:
+            odds[5] = odds[5] + 1e-6
+        odds_bytes = _struct.pack("<%df" % cells, *odds)
+        content = {
+            "states_b64": base64.b64encode(states).decode(),
+            "odds_b64": base64.b64encode(odds_bytes).decode(),
+            "states_sha256": hashlib.sha256(states).hexdigest(),
+            "odds_sha256": hashlib.sha256(odds_bytes).hexdigest(),
+            "content_sha256": contract.probe_content_sha256(states, odds_bytes),
+        }
         return {
-            "states_hash": "states-%s" % marker,
-            "log_odds_hash": "odds-%s" % marker,
-            "cells": 483516,
+            "cells": cells,
+            "region": {"begin": contract.O8_ORACLE_REGION["begin"],
+                       "end": contract.O8_ORACLE_REGION["end"],
+                       "shape": [75, 99, 74], "resolution_m": 0.02},
+            "content": content,
             "surface_hash": "surface-%s" % marker,
             "surface_columns": 6534,
-            "region": {"begin": [9, 0, 0], "end": [75, 99, 74]},
             "identity": {"epoch": 1, "map_revision": 2, "observed_revision": 2,
                          "last_integrated_stamp_ns": 1700000000000000000},
             "release": "OK",
-            "pages": 8,
+            "pages": 1,
             "pages_done": True,
             "probe_mono_ns": 1,
             "duration_ms": 120.0,

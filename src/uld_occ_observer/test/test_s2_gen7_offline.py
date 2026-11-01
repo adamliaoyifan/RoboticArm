@@ -518,27 +518,33 @@ def test_live_occluder_blocks_without_touching_the_old_region(tmp_path):
             adapter.stability_frame("occl-check", index)
         run = adapter._stability["run"]
         adapter._await_terminal(run, adapter._stability["stamps"], timeout_s=30.0)
-        before = adapter._hold_probe(run)
+        before = adapter._hold_probe(run, save_label="occl-before")
         assert "error" not in before, before
         assert before["cells"] > 400000, before.get("cells")
         assert before["release"] == "OK" and before["pages_done"] is True
         assert before["region"]["begin"] == [live_schedule._ORACLE_MIN_CELL_X, 0, 0]
+        assert before["region"]["end"] == [75, 99, 74]
+        # Lossless content persisted with per-file sha references.
+        content_dir = run.out / "probe-content"
+        assert (content_dir / "occl-before.states.bin").stat().st_size == before["cells"]
+        assert (content_dir / "occl-before.odds.bin").stat().st_size == 4 * before["cells"]
         # The occluder: valid input, accepted, integrates new cells.
         receipt = live_schedule.publish_occluder(run.session, run.publisher,
                                                  live_schedule.occluder_points())
         assert receipt["status"] == "COMPLETED", receipt
         assert receipt["disposition"] == "integrated", receipt
         assert isinstance(receipt["changed_keys"], int) and receipt["changed_keys"] > 0, receipt
-        after = adapter._hold_probe(run)
+        after = adapter._hold_probe(run, save_label="occl-after")
         assert "error" not in after, after
-        # Voxel probabilities (states + log-odds) over the old region are
-        # identical; the surface geometry summary is secondary.
-        assert after["states_hash"] == before["states_hash"]
-        assert after["log_odds_hash"] == before["log_odds_hash"]
+        # Voxel probabilities (states + log-odds, lossless) over the old
+        # region are identical; the surface geometry summary is secondary.
+        assert after["content"]["states_sha256"] == before["content"]["states_sha256"]
+        assert after["content"]["odds_sha256"] == before["content"]["odds_sha256"]
+        assert after["content"]["content_sha256"] == before["content"]["content_sha256"]
         assert after["cells"] == before["cells"]
         assert after["last_integrated_stamp_ns"] > before["last_integrated_stamp_ns"]
         # Duplicate identity: unstored DUPLICATE receipt, map and freshness unmoved.
-        duplicate_before = adapter._hold_probe(run)
+        duplicate_before = adapter._hold_probe(run, save_label="dup-before")
         stamp = int(adapter._stability["stamps"][-1])
         events_before = len(executor._receipt_events(run.session, str(stamp)))
         frame = run.o8_frames[0]
@@ -550,9 +556,9 @@ def test_live_occluder_blocks_without_touching_the_old_region(tmp_path):
         events = executor._receipt_events(run.session, str(stamp))
         assert any(event.get("status") == "DUPLICATE" for event in events), events
         assert len(events) == events_before + 1
-        duplicate_after = adapter._hold_probe(run)
-        assert duplicate_after["states_hash"] == duplicate_before["states_hash"]
-        assert duplicate_after["log_odds_hash"] == duplicate_before["log_odds_hash"]
+        duplicate_after = adapter._hold_probe(run, save_label="dup-after")
+        assert duplicate_after["content"]["states_sha256"] == duplicate_before["content"]["states_sha256"]
+        assert duplicate_after["content"]["odds_sha256"] == duplicate_before["content"]["odds_sha256"]
         assert duplicate_after["last_integrated_stamp_ns"] == \
             duplicate_before["last_integrated_stamp_ns"]
     finally:
@@ -578,10 +584,11 @@ def test_live_holds_all_three_kinds_measured_complete(tmp_path):
             adapter.stability_frame("holds-check", index)
         for kind in contract.O8_HOLD_KINDS:
             row = adapter.hold("holds-check", kind, 0)
-            assert row["duration_measured_s"] >= row["duration_s"] - 1.0, row
+            assert row["duration_measured_s"] >= row["duration_s"], row
             for probe in (row["probe_before"], row["probe_after"]):
                 assert "error" not in probe, (kind, probe)
                 assert probe["cells"] > 400000 and probe["release"] == "OK"
+                assert probe["region"]["begin"] == contract.O8_ORACLE_REGION["begin"]
             if kind == "occlusion":
                 assert row["input_accepted"] is True
                 assert row["region_probability_unchanged"] is True

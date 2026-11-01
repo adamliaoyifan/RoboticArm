@@ -45,6 +45,11 @@ O8_SATURATION_FRAMES = 30
 O8_RSS_WINDOW_S = 60.0
 O8_HEALTH_MIN_SAMPLES = 30
 O8_HOLD_KINDS = ("no_input", "occlusion", "duplicate_id")
+# gen9: the probability oracle's old region, frozen with the 2 cm chamfer
+# fixture grid the O8 ray group pins (shape 75x99x74, oracle beyond the
+# occluder margin at cell 9). Probes must read exactly this region.
+O8_ORACLE_REGION = {"begin": [9, 0, 0], "end": [75, 99, 74]}
+O8_ORACLE_CELLS = 66 * 99 * 74
 O9_PAIRS = 30
 O9_RATIO = 1.10
 O8_RSS_GROWTH = 0.05
@@ -85,6 +90,22 @@ SCHEMA_V3 = "occ_octomap_repair_s0_v3"
 PUBLISH_FIELDS_V3 = PUBLISH_FIELDS + ("publish_planned_ns", "input_stamp_ns", "clock_domain")
 INTEGRATE_FIELDS_V3 = INTEGRATE_FIELDS + ("receipt_problems",)
 QUERY_FIELDS_V3 = QUERY_FIELDS + ("started_mono_ns", "ended_mono_ns")
+
+
+def probe_content_sha256(states_bytes, odds_bytes):
+    """Canonical content hash over the lossless probe payload.
+
+    One implementation shared by the adapter (which records it) and the judge
+    (which recomputes it from the saved content); raw state bytes and raw
+    float32 log-odds bytes, never rounded.
+    """
+    import hashlib
+    digest = hashlib.sha256()
+    digest.update(b"states:")
+    digest.update(states_bytes)
+    digest.update(b"log_odds:")
+    digest.update(odds_bytes)
+    return digest.hexdigest()
 
 
 def gate_table():

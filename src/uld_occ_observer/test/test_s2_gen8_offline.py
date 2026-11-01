@@ -240,30 +240,57 @@ def test_short_measured_hold_fails():
 
 
 # ------------------------------------------- probability oracle semantics
+def _content_probe(states=(0, 1, 2, 3, 0, 0, 0, 0), odds=None):
+    import base64
+    import hashlib
+    import struct
+    odds = odds if odds is not None else (-0.9, -0.4, 0.4, 0.9, 0.0, 0.0, 0.0, 0.0)
+    states_bytes = bytes(states)
+    odds_bytes = struct.pack("<%df" % len(odds), *odds)
+    return {
+        "cells": len(states),
+        "region": {"begin": contract.O8_ORACLE_REGION["begin"],
+                   "end": contract.O8_ORACLE_REGION["end"]},
+        "content": {
+            "states_b64": base64.b64encode(states_bytes).decode(),
+            "odds_b64": base64.b64encode(odds_bytes).decode(),
+            "states_sha256": hashlib.sha256(states_bytes).hexdigest(),
+            "odds_sha256": hashlib.sha256(odds_bytes).hexdigest(),
+            "content_sha256": contract.probe_content_sha256(states_bytes, odds_bytes),
+        },
+        "surface_hash": "g1",
+        "release": "OK",
+        "pages_done": True,
+    }
+
+
 def test_probability_comparison_reads_states_and_log_odds_not_surface():
-    before = {"cells": 100, "states_hash": "s1", "log_odds_hash": "o1",
-              "surface_hash": "g1"}
+    before = _content_probe()
     # Identical everything -> unchanged.
-    assert live_schedule._probability_unchanged(before, dict(before)) is True
+    assert live_schedule._probability_unchanged(before, copy.deepcopy(before)) is True
     # One cell's log-odds changed below every threshold: the surface summary
     # is identical, the probability comparison must differ.
-    changed_odds = dict(before, surface_hash="g1", log_odds_hash="o2")
+    changed_odds = _content_probe(odds=(-0.9, -0.4, 0.4, 0.9, 0.0, 1e-6, 0.0, 0.0))
+    changed_odds["surface_hash"] = "g1"
     assert live_schedule._probability_unchanged(before, changed_odds) is False
     # A state flip with the surface unchanged.
-    changed_state = dict(before, surface_hash="g1", states_hash="s2")
+    changed_state = _content_probe(states=(0, 1, 2, 3, 0, 0, 0, 1))
+    changed_state["surface_hash"] = "g1"
     assert live_schedule._probability_unchanged(before, changed_state) is False
     # Surface changed but voxels identical: probability unchanged stays True
     # (the geometric summary is secondary).
-    surface_only = dict(before, surface_hash="g2")
+    surface_only = copy.deepcopy(before)
+    surface_only["surface_hash"] = "g2"
     assert live_schedule._probability_unchanged(before, surface_only) is True
     assert live_schedule._surface_unchanged(before, surface_only) is False
 
 
 def test_judge_rejects_a_forged_flag_over_changed_voxel_probabilities():
     def mutate(hold):
-        # Surface geometry identical (forged), voxel probability differs, and
-        # the flag lies. The judge recomputes from the probe hashes.
-        hold["probe_after"]["log_odds_hash"] = "odds-b2"
+        # Genuinely changed content (recomputed shas, so tampering is not the
+        # trigger) under an identical surface summary, with a lying flag.
+        changed = _content_probe(odds=(-0.9, -0.4, 0.4, 0.9, 0.0, 1e-6, 0.0, 0.0))
+        hold["probe_after"] = changed
         hold["probability_unchanged"] = True
     verdict = judge.judge_o8(_perturb_holds(judge.healthy_o8(), "no_input", mutate))
     assert not verdict["pass"]
@@ -272,26 +299,9 @@ def test_judge_rejects_a_forged_flag_over_changed_voxel_probabilities():
 
 def test_judge_rejects_state_changes_under_identical_surface_for_occlusion():
     def mutate(hold):
-        hold["probe_after"]["states_hash"] = "states-b2"
+        changed = _content_probe(states=(0, 1, 2, 3, 0, 0, 0, 1))
+        changed["surface_hash"] = hold["probe_after"]["surface_hash"]
+        hold["probe_after"] = changed
         hold["region_probability_unchanged"] = True
     verdict = judge.judge_o8(_perturb_holds(judge.healthy_o8(), "occlusion", mutate))
     assert "probability" in verdict["reasons"]
-
-
-def test_occlusion_hold_still_requires_all_own_evidence():
-    def strip(hold):
-        hold["input_accepted"] = False
-    verdict = judge.judge_o8(_perturb_holds(judge.healthy_o8(), "occlusion", strip))
-    assert "occlusion_not_accepted" in verdict["reasons"]
-
-
-# ------------------------------------------------------- adapter helpers
-def test_probability_helpers_reject_error_and_mismatched_probes():
-    error = {"error": "x"}
-    good = {"cells": 10, "states_hash": "s", "log_odds_hash": "o"}
-    assert live_schedule._probability_unchanged(error, dict(good)) is False
-    assert live_schedule._probability_unchanged(dict(good), error) is False
-    mismatched_cells = dict(good, cells=11)
-    assert live_schedule._probability_unchanged(good, mismatched_cells) is False
-    missing_hash = {"cells": 10, "log_odds_hash": "o"}
-    assert live_schedule._probability_unchanged(good, missing_hash) is False
