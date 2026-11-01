@@ -256,8 +256,8 @@ def test_one_cell_after_probe_rejects():
 def test_missing_content_and_files_reject(tmp_path):
     def strip_inline(hold):
         content = hold["probe_after"]["content"]
-        content.pop("states_b64", None)
-        content.pop("odds_b64", None)
+        for key in ("states_b64", "odds_b64", "states_zb64", "odds_zb64"):
+            content.pop(key, None)
         content["states_file"] = "o8_r2/probe-content/gone.states.bin"
         content["odds_file"] = "o8_r2/probe-content/gone.odds.bin"
     case = copy.deepcopy(judge.healthy_o8())
@@ -285,8 +285,8 @@ def test_content_path_escape_rejects(tmp_path):
     for hold in case["holds"]:
         if hold["kind"] == "no_input":
             content = hold["probe_after"]["content"]
-            content.pop("states_b64", None)
-            content.pop("odds_b64", None)
+            for key in ("states_b64", "odds_b64", "states_zb64", "odds_zb64"):
+                content.pop(key, None)
             content["states_file"] = "../probe-content/escape.states.bin"
             content["odds_file"] = "../probe-content/escape.odds.bin"
     case["artifact_dir"] = str(tmp_path)
@@ -298,52 +298,136 @@ def test_nonfinite_or_out_of_domain_content_rejects():
     import base64
     import hashlib
     import struct
-    nan_odds = struct.pack("<8f", -0.9, -0.4, 0.4, 0.9, 0.0, 0.0, float("nan"), 0.0)
-    states = bytes([0, 1, 2, 3, 0, 0, 0, 0])
-    def mutate(hold):
-        content = hold["probe_after"]["content"]
-        content["odds_b64"] = base64.b64encode(nan_odds).decode()
-        content["odds_sha256"] = hashlib.sha256(nan_odds).hexdigest()
-        content["content_sha256"] = contract.probe_content_sha256(states, nan_odds)
-    verdict = judge.judge_o8(_perturb_holds(judge.healthy_o8(), "no_input", mutate))
-    assert "nonfinite_value" in verdict["reasons"]
+    import zlib
 
-    bad_states = bytes([0, 1, 2, 9, 0, 0, 0, 0])
+    def payload_of(probe, key):
+        return zlib.decompress(base64.b64decode(probe["content"][key]))
+
+    def rewrite(probe, states=None, odds=None):
+        states_bytes = states if states is not None else payload_of(probe, "states_zb64")
+        odds_bytes = odds if odds is not None else payload_of(probe, "odds_zb64")
+        content = probe["content"]
+        content["states_zb64"] = base64.b64encode(zlib.compress(states_bytes)).decode()
+        content["odds_zb64"] = base64.b64encode(zlib.compress(odds_bytes)).decode()
+        content["states_sha256"] = hashlib.sha256(states_bytes).hexdigest()
+        content["odds_sha256"] = hashlib.sha256(odds_bytes).hexdigest()
+        content["content_sha256"] = contract.probe_content_sha256(states_bytes, odds_bytes)
+
+    healthy = judge.healthy_o8()["holds"][0]["probe_before"]
+
+    def odds_with(index, value):
+        raw = bytearray(payload_of(healthy, "odds_zb64"))
+        struct.pack_into("<f", raw, 4 * index, value)
+        return bytes(raw)
+
+    def states_with(index, value):
+        raw = bytearray(payload_of(healthy, "states_zb64"))
+        raw[index] = value
+        return bytes(raw)
+
+    def mutate_odds(hold):
+        rewrite(hold["probe_after"], odds=odds_with(5, float("nan")))
+    verdict = judge.judge_o8(_perturb_holds(judge.healthy_o8(), "no_input", mutate_odds))
+    assert "nonfinite_value" in verdict["reasons"], verdict["reasons"]
+
     def mutate_states(hold):
-        content = hold["probe_after"]["content"]
-        content["states_b64"] = base64.b64encode(bad_states).decode()
-        content["states_sha256"] = hashlib.sha256(bad_states).hexdigest()
-        content["content_sha256"] = contract.probe_content_sha256(
-            bad_states, struct.pack("<8f", *(-0.9, -0.4, 0.4, 0.9, 0, 0, 0, 0)))
+        rewrite(hold["probe_after"], states=states_with(7, 9))
     verdict = judge.judge_o8(_perturb_holds(judge.healthy_o8(), "no_input", mutate_states))
-    assert "content_state_domain" in verdict["reasons"]
-
+    assert "content_state_domain" in verdict["reasons"], verdict["reasons"]
 
 def test_file_backed_content_recomputes(tmp_path):
     """File-referenced content (the real artifact's shape) verifies through
-    the same path: sha, decode, canonical hash, and before/after equality."""
+    the same path: file sha, decode, canonical hash, region cell count, and
+    before/after equality -- at the full frozen-region size."""
     import base64
     import hashlib
     import struct
-    states = bytes([0, 1, 2, 3, 0, 1, 2, 3])
-    odds = struct.pack("<8f", -0.9, -0.4, 0.4, 0.9, 0, 0, 0, 0)
+    import zlib
+    hold = judge.healthy_o8()["holds"][0]
+    payload = hold["probe_before"]["content"]
+    states = zlib.decompress(base64.b64decode(payload["states_zb64"]))
+    odds = zlib.decompress(base64.b64decode(payload["odds_zb64"]))
+    assert len(states) == contract.O8_ORACLE_CELLS
     folder = tmp_path / "o8_r2" / "probe-content"
     folder.mkdir(parents=True)
     (folder / "f.states.bin").write_bytes(states)
     (folder / "f.odds.bin").write_bytes(odds)
     case = copy.deepcopy(judge.healthy_o8())
     case["artifact_dir"] = str(tmp_path)
-    for hold in case["holds"]:
-        if hold["kind"] == "no_input":
+    for item in case["holds"]:
+        if item["kind"] == "no_input":
             for name in ("probe_before", "probe_after"):
-                content = hold[name]["content"]
-                content.pop("states_b64", None)
-                content.pop("odds_b64", None)
+                content = item[name]["content"]
+                for key in ("states_b64", "odds_b64", "states_zb64", "odds_zb64"):
+                    content.pop(key, None)
                 content["states_file"] = "o8_r2/probe-content/f.states.bin"
                 content["odds_file"] = "o8_r2/probe-content/f.odds.bin"
     verdict = judge.judge_o8(case)
     assert verdict["pass"], verdict["reasons"]
-    # Tamper the file: sha mismatch.
-    (folder / "f.odds.bin").write_bytes(odds[:-1] + bytes([1]))
+    # Tamper the file: sha mismatch against the decoded bytes.
+    tampered = odds[:-4] + struct.pack("<f", 0.5)
+    (folder / "f.odds.bin").write_bytes(tampered)
     verdict = judge.judge_o8(case)
     assert "content_sha_mismatch:odds_sha256" in verdict["reasons"]
+
+
+def test_one_cell_claiming_the_full_region_rejects():
+    """The review's counterexample: 1-cell content labeled as the full
+    region with legitimate SHAs must fail on the region-derived count."""
+    import base64
+    import hashlib
+    import struct
+
+    def mutate(hold):
+        for name in ("probe_before", "probe_after"):
+            probe = hold[name]
+            states = bytes([0])
+            odds = struct.pack("<f", 0.0)
+            probe["cells"] = 1
+            probe["content"] = {
+                "states_b64": base64.b64encode(states).decode(),
+                "odds_b64": base64.b64encode(odds).decode(),
+                "states_sha256": hashlib.sha256(states).hexdigest(),
+                "odds_sha256": hashlib.sha256(odds).hexdigest(),
+                "content_sha256": contract.probe_content_sha256(states, odds),
+            }
+            probe["region"] = {"begin": contract.O8_ORACLE_REGION["begin"],
+                               "end": contract.O8_ORACLE_REGION["end"]}
+    verdict = judge.judge_o8(_perturb_holds(judge.healthy_o8(), "no_input", mutate))
+    assert not verdict["pass"]
+    assert "oracle_cell_count" in verdict["reasons"]
+    assert "content_length_mismatch" in verdict["reasons"]
+
+
+import pytest as _pytest
+
+
+@_pytest.mark.parametrize("delta", [-1, 1])
+def test_off_by_one_cell_count_rejects(delta):
+    import base64
+    import hashlib
+    import struct
+    import zlib
+
+    def mutate(hold):
+        payload = hold["probe_after"]["content"]
+        states = bytearray(zlib.decompress(base64.b64decode(payload["states_zb64"])))
+        odds = bytearray(zlib.decompress(base64.b64decode(payload["odds_zb64"])))
+        if delta < 0:
+            states.pop()
+            odds = odds[:-4]
+        else:
+            states.append(0)
+            odds.extend(struct.pack("<f", 0.0))
+        states = bytes(states)
+        odds = bytes(odds)
+        payload["states_zb64"] = base64.b64encode(zlib.compress(states)).decode()
+        payload["odds_zb64"] = base64.b64encode(zlib.compress(odds)).decode()
+        payload["states_sha256"] = hashlib.sha256(states).hexdigest()
+        payload["odds_sha256"] = hashlib.sha256(odds).hexdigest()
+        payload["content_sha256"] = contract.probe_content_sha256(states, odds)
+        hold["probe_after"]["cells"] = len(states)
+
+    verdict = judge.judge_o8(_perturb_holds(judge.healthy_o8(), "no_input", mutate))
+    assert "oracle_cell_count" in verdict["reasons"] or \
+        "content_length_mismatch" in verdict["reasons"]

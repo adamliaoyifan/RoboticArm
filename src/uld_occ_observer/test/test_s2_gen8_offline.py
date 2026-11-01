@@ -285,23 +285,42 @@ def test_probability_comparison_reads_states_and_log_odds_not_surface():
     assert live_schedule._surface_unchanged(before, surface_only) is False
 
 
+def _flip_fixture_probe(probe, cell_index, *, odds_value=None, state_value=None):
+    """Rewrite a fixture probe's compressed payload with ONE cell changed."""
+    import base64
+    import hashlib
+    import struct
+    import zlib
+    payload = probe["content"]
+    states = bytearray(zlib.decompress(base64.b64decode(payload["states_zb64"])))
+    odds = bytearray(zlib.decompress(base64.b64decode(payload["odds_zb64"])))
+    if odds_value is not None:
+        struct.pack_into("<f", odds, 4 * cell_index, odds_value)
+    if state_value is not None:
+        states[cell_index] = state_value
+    states = bytes(states)
+    odds = bytes(odds)
+    payload["states_zb64"] = base64.b64encode(zlib.compress(states)).decode()
+    payload["odds_zb64"] = base64.b64encode(zlib.compress(odds)).decode()
+    payload["states_sha256"] = hashlib.sha256(states).hexdigest()
+    payload["odds_sha256"] = hashlib.sha256(odds).hexdigest()
+    payload["content_sha256"] = contract.probe_content_sha256(states, odds)
+
+
 def test_judge_rejects_a_forged_flag_over_changed_voxel_probabilities():
     def mutate(hold):
-        # Genuinely changed content (recomputed shas, so tampering is not the
-        # trigger) under an identical surface summary, with a lying flag.
-        changed = _content_probe(odds=(-0.9, -0.4, 0.4, 0.9, 0.0, 1e-6, 0.0, 0.0))
-        hold["probe_after"] = changed
+        # Genuinely changed content at the full region size (recomputed
+        # shas, so tampering is not the trigger) with a lying flag.
+        _flip_fixture_probe(hold["probe_after"], 5, odds_value=1e-6)
         hold["probability_unchanged"] = True
     verdict = judge.judge_o8(_perturb_holds(judge.healthy_o8(), "no_input", mutate))
     assert not verdict["pass"]
-    assert "probability" in verdict["reasons"]
+    assert "probability" in verdict["reasons"], verdict["reasons"]
 
 
 def test_judge_rejects_state_changes_under_identical_surface_for_occlusion():
     def mutate(hold):
-        changed = _content_probe(states=(0, 1, 2, 3, 0, 0, 0, 1))
-        changed["surface_hash"] = hold["probe_after"]["surface_hash"]
-        hold["probe_after"] = changed
+        _flip_fixture_probe(hold["probe_after"], 7, state_value=1)
         hold["region_probability_unchanged"] = True
     verdict = judge.judge_o8(_perturb_holds(judge.healthy_o8(), "occlusion", mutate))
-    assert "probability" in verdict["reasons"]
+    assert "probability" in verdict["reasons"], verdict["reasons"]

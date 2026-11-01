@@ -607,24 +607,42 @@ def _load_probe_content(probe, artifact_dir):
 
     Returns (states_bytes, odds_bytes, problems). The payload comes from the
     referenced lossless files (verified against their declared sha256) or
-    from inline base64; the canonical content hash is recomputed from the
-    bytes, never taken from the artifact's own string.
+    from inline base64 (raw or zlib-compressed); the canonical content hash
+    is recomputed from the bytes, never taken from the artifact's own string.
     """
     import base64
     import hashlib
+    import zlib
     from pathlib import Path
     problems = []
     content = probe.get("content")
     if not isinstance(content, dict):
         return None, None, ["content_missing"]
-    states = odds = None
-    if isinstance(content.get("states_b64"), str) and isinstance(content.get("odds_b64"), str):
-        try:
-            states = base64.b64decode(content["states_b64"], validate=True)
-            odds = base64.b64decode(content["odds_b64"], validate=True)
-        except Exception:
-            return None, None, ["content_unreadable"]
-    elif isinstance(content.get("states_file"), str) and isinstance(content.get("odds_file"), str):
+
+    def _decode(*keys):
+        for key in keys:
+            if key not in content:
+                continue
+            raw = content.get(key)
+            if not isinstance(raw, str):
+                return None
+            try:
+                payload = base64.b64decode(raw, validate=True)
+            except Exception:
+                return None
+            if key.endswith("_zb64"):
+                try:
+                    return zlib.decompress(payload)
+                except Exception:
+                    return None
+            return payload
+        return None
+
+    states = _decode("states_b64", "states_zb64")
+    odds = _decode("odds_b64", "odds_zb64")
+    if states is None and odds is None and (
+            isinstance(content.get("states_file"), str)
+            and isinstance(content.get("odds_file"), str)):
         if artifact_dir is None:
             return None, None, ["content_file_unresolved"]
         base = Path(artifact_dir).resolve()
@@ -640,7 +658,9 @@ def _load_probe_content(probe, artifact_dir):
             odds = odds_path.read_bytes()
         except OSError:
             return None, None, ["content_file_missing"]
-    else:
+    elif states is None or odds is None:
+        if states is None and odds is None:
+            return None, None, ["content_missing"]
         return None, None, ["content_missing"]
     # The per-payload shas are verified from the decoded bytes themselves,
     # for inline and file-backed content alike.
@@ -663,6 +683,10 @@ def _verify_probe_content(reasons, hold, artifact_dir):
     from array import array
     problems = []
     expected_region = contract.O8_ORACLE_REGION
+    # The region alone fixes the required cell count: a probe may not claim
+    # the full region while carrying fewer (or more) cells, whatever its
+    # self-reported count says.
+    expected_cells = contract.O8_ORACLE_CELLS
     probes = {}
     for name in ("probe_before", "probe_after"):
         probe = hold.get(name)
@@ -679,12 +703,14 @@ def _verify_probe_content(reasons, hold, artifact_dir):
             problems.append("oracle_empty")
             probes[name] = None
             continue
+        if cells != expected_cells:
+            problems.append("oracle_cell_count")
         states, odds, load_problems = _load_probe_content(probe, artifact_dir)
         problems.extend(load_problems)
         if states is None:
             probes[name] = None
             continue
-        if len(states) != cells or len(odds) != 4 * cells:
+        if len(states) != expected_cells or len(odds) != 4 * expected_cells:
             problems.append("content_length_mismatch")
             probes[name] = None
             continue
@@ -1083,20 +1109,25 @@ def healthy_o8():
     import base64
     import hashlib
     import struct as _struct
+    import zlib
 
     def probe(marker, flip_odds=False):
-        # A compact but real payload: every state class once, finite odds.
-        cells = 8
-        states = bytes([0, 1, 2, 3, 0, 1, 2, 3])
-        odds = list(_struct.unpack("<%df" % cells,
-                                   _struct.pack("<%df" % cells,
-                                               *[-0.9, -0.4, 0.4, 0.9, 0, 0, 0, 0])))
+        # The full frozen region: every cell present (mostly unknown, a few
+        # marked states), lossless, zlib-compressed inline so the fixture
+        # stays small while carrying the real payload.
+        cells = contract.O8_ORACLE_CELLS
+        states = bytearray(cells)
+        for offset, value in ((0, 1), (1, 2), (2, 3), (cells - 1, 1)):
+            states[offset] = value
+        states = bytes(states)
+        odds = [0.0] * cells
+        odds[0], odds[1], odds[2] = -0.9, 0.4, 0.9
         if flip_odds:
-            odds[5] = odds[5] + 1e-6
+            odds[5] = 1e-6
         odds_bytes = _struct.pack("<%df" % cells, *odds)
         content = {
-            "states_b64": base64.b64encode(states).decode(),
-            "odds_b64": base64.b64encode(odds_bytes).decode(),
+            "states_zb64": base64.b64encode(zlib.compress(states)).decode(),
+            "odds_zb64": base64.b64encode(zlib.compress(odds_bytes)).decode(),
             "states_sha256": hashlib.sha256(states).hexdigest(),
             "odds_sha256": hashlib.sha256(odds_bytes).hexdigest(),
             "content_sha256": contract.probe_content_sha256(states, odds_bytes),
@@ -1112,7 +1143,7 @@ def healthy_o8():
             "identity": {"epoch": 1, "map_revision": 2, "observed_revision": 2,
                          "last_integrated_stamp_ns": 1700000000000000000},
             "release": "OK",
-            "pages": 1,
+            "pages": 8,
             "pages_done": True,
             "probe_mono_ns": 1,
             "duration_ms": 120.0,

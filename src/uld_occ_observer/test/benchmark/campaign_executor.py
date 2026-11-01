@@ -322,9 +322,14 @@ class OfflineAdapter:
         import base64
         import hashlib
         import struct as _struct
-        cells = 8
-        states = bytes([0, 1, 2, 3, 0, 1, 2, 3])
-        odds = [-0.9, -0.4, 0.4, 0.9, 0.0, 0.0, 0.0, 0.0]
+        import zlib
+        cells = contract.O8_ORACLE_CELLS
+        states = bytearray(cells)
+        for offset, value in ((0, 1), (1, 2), (2, 3)):
+            states[offset] = value
+        states = bytes(states)
+        odds = [0.0] * cells
+        odds[0], odds[1], odds[2] = -0.9, 0.4, 0.9
         odds_bytes = _struct.pack("<%df" % cells, *odds)
         return {
             "cells": cells,
@@ -332,8 +337,8 @@ class OfflineAdapter:
                        "end": contract.O8_ORACLE_REGION["end"],
                        "shape": [75, 99, 74], "resolution_m": 0.02},
             "content": {
-                "states_b64": base64.b64encode(states).decode(),
-                "odds_b64": base64.b64encode(odds_bytes).decode(),
+                "states_zb64": base64.b64encode(zlib.compress(states)).decode(),
+                "odds_zb64": base64.b64encode(zlib.compress(odds_bytes)).decode(),
                 "states_sha256": hashlib.sha256(states).hexdigest(),
                 "odds_sha256": hashlib.sha256(odds_bytes).hexdigest(),
                 "content_sha256": contract.probe_content_sha256(states, odds_bytes),
@@ -343,7 +348,7 @@ class OfflineAdapter:
             "identity": {"epoch": 1, "map_revision": 2, "observed_revision": 2,
                          "last_integrated_stamp_ns": 1000},
             "release": "OK",
-            "pages": 1,
+            "pages": 8,
             "pages_done": True,
             "probe_mono_ns": 1,
             "duration_ms": 100.0,
