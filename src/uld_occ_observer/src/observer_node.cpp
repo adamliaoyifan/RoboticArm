@@ -583,8 +583,7 @@ class ObserverNode : public rclcpp::Node {
         response->read_view_bytes_peak = usage.read_view_bytes_peak;
         response->cache_bytes = usage.cache_bytes;
         response->cache_bytes_peak = usage.cache_bytes_peak;
-        response->read_view_alloc_bytes = usage.read_view_alloc_bytes;
-        response->cache_alloc_bytes = usage.cache_alloc_bytes;
+        response->read_view_cache_bytes_peak = usage.read_view_cache_bytes_peak;
         response->entry_queue_allocated_bytes = accounts.entry_queue_allocated_bytes;
         response->store_tree_bytes = usage.store_tree_bytes;
         response->uncovered_allocations = usage.uncovered_allocations;

@@ -34,6 +34,7 @@ void SnapshotWaitBoard::note_completion(const Completion& completion) {
   trim_unlocked();
   peak_ = std::max(peak_, completions_.size());
   byte_peak_ = std::max(byte_peak_, accounted_bytes_unlocked());
+  AllocationTotals::instance().set("completion_board", accounted_bytes_unlocked());
 }
 std::optional<SnapshotWaitBoard::Outcome> SnapshotWaitBoard::poll(
     const Request& request, std::chrono::steady_clock::time_point now, std::int64_t now_ns,
@@ -76,6 +77,7 @@ void SnapshotWaitBoard::drop_other_epochs(std::uint64_t epoch) {
   order_.erase(std::remove_if(order_.begin(), order_.end(), [&](const std::string& id) {
     return !completions_.count(id);
   }), order_.end());
+  AllocationTotals::instance().set("completion_board", accounted_bytes_unlocked());
 }
 std::size_t SnapshotWaitBoard::size() const {
   std::lock_guard<std::mutex> lock(mutex_);

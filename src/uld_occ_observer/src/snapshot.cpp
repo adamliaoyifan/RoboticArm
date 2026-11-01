@@ -6,6 +6,20 @@
 #include <string>
 
 namespace uld_occ_observer {
+SurfaceCache::~SurfaceCache() {
+  auto& totals = AllocationTotals::instance();
+  totals.subtract("surface_caches", sizeof(SurfaceCache) + kControlBlockBytes);
+  if (value)
+    totals.subtract("surface_caches",
+                    value->capacity() * static_cast<std::uint64_t>(sizeof(SurfaceColumn)));
+}
+Snapshot::~Snapshot() {
+  auto& totals = AllocationTotals::instance();
+  totals.subtract("snapshot_objects", sizeof(Snapshot) + kControlBlockBytes);
+  totals.subtract("block_directory_nodes",
+                  static_cast<std::uint64_t>(blocks_.size())
+                      * map_node_bytes<BlockRegistry::value_type>());
+}
 Snapshot::Snapshot(SnapshotIdentity identity, std::shared_ptr<const UldDomain> domain,
                    BlockRegistry blocks, std::shared_ptr<SurfaceCache> surface_cache)
     : identity_(std::move(identity)), domain_(std::move(domain)), blocks_(std::move(blocks)),
@@ -165,14 +179,18 @@ std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface(SurfaceProfi
       }
     });
   }
+  // Occupancy accounting: a rebuild swaps the buffer — the old capacity is
+  // released and the new one acquired, so both directions are tracked.
+  {
+    auto& totals = AllocationTotals::instance();
+    if (surface_cache_->value)
+      totals.subtract("surface_caches",
+          surface_cache_->value->capacity()
+              * static_cast<std::uint64_t>(sizeof(SurfaceColumn)));
+    totals.add("surface_caches",
+               output->capacity() * static_cast<std::uint64_t>(sizeof(SurfaceColumn)));
+  }
   surface_cache_->value = output;
-  // Allocation-lifecycle accounting: the column buffer at its allocated
-  // capacity, counted once per cache build (the object itself was counted at
-  // construction). A cache built and dropped between two samples still
-  // raises this total.
-  AllocationTotals::instance().add(
-      "surface_caches",
-      output->capacity() * static_cast<std::uint64_t>(sizeof(SurfaceColumn)));
   if (profile) {
     profile->scanned_cells = scanned;
     profile->output_columns = output->size();

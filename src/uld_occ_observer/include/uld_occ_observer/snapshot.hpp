@@ -1,4 +1,5 @@
 #pragma once
+#include "uld_occ_observer/resource_usage.hpp"
 #include "uld_occ_observer/geometry.hpp"
 #include "uld_occ_observer/profiling.hpp"
 #include <array>
@@ -23,6 +24,12 @@ inline constexpr int kBlockCells = kBlockEdge * kBlockEdge * kBlockEdge;
 // touch the arrays or the count.
 class CellBlock {
  public:
+  // Occupancy accounting: each object (with its shared control block) is
+  // released exactly once, wherever its last owner drops it.
+  ~CellBlock() {
+    AllocationTotals::instance().subtract(
+        "block_allocations", sizeof(CellBlock) + kControlBlockBytes);
+  }
   bool read(std::uint16_t offset, CellValue& value) const;
   // True only when this offset was unknown. A later probability change returns false.
   bool write(std::uint16_t offset, CellValue value);
@@ -56,6 +63,7 @@ struct SurfaceColumn {
 };
 
 struct SurfaceCache {
+  ~SurfaceCache();
   std::mutex mutex;
   std::shared_ptr<const std::vector<SurfaceColumn>> value;
 };
@@ -77,6 +85,7 @@ class Snapshot {
   const SurfaceCache* surface_cache() const;
   std::uint64_t known_entry_count() const;
   static CellIndex block_index(CellIndex index);
+  ~Snapshot();
  private:
   const SnapshotIdentity identity_;
   const std::shared_ptr<const UldDomain> domain_;

@@ -25,34 +25,94 @@ inline std::uint64_t map_node_bytes() {
   return kMapNodeOverhead + sizeof(Pair);
 }
 
-// Process-wide allocation totals raised at the allocation sites themselves.
-// Totals are monotone: they count every allocation ever made for a class, so
-// an object created and released between two usage() samples still raises the
-// recorded total. This is the allocation-lifecycle peak; the live ownership
-// walk in SnapshotRepository::usage() is the sampled current value.
+// Process-wide occupancy tracker. Every allocation site raises the class
+// live level and every release lowers it, so peak(class) is the true
+// max-over-time of simultaneously live bytes — not cumulative traffic. The
+// same-instant composite peak over the read-view/cache scopes is maintained
+// on every change (never a sum of per-class peaks measured at different
+// times). Cumulative flow is kept separately and is never used by a gate.
 class AllocationTotals {
  public:
   static AllocationTotals& instance() {
     static AllocationTotals totals;
     return totals;
   }
-  void add(const char* name, std::uint64_t bytes) {
-    if (bytes == 0) return;
+  void add(const char* name, std::uint64_t bytes) { change(name, bytes); }
+  void subtract(const char* name, std::uint64_t bytes) { change(name, -static_cast<std::int64_t>(bytes)); }
+  // Containers that report their whole current level at a mutation.
+  void set(const char* name, std::uint64_t level) {
     std::lock_guard<std::mutex> lock(mutex_);
-    totals_[name] += bytes;
+    const std::int64_t delta = static_cast<std::int64_t>(level)
+        - static_cast<std::int64_t>(live_[name]);
+    apply(name, delta);
+    flow_[name] += delta > 0 ? static_cast<std::uint64_t>(delta) : 0;
   }
-  std::uint64_t total(const char* name) const {
+  std::uint64_t live(const char* name) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    const auto found = totals_.find(name);
-    return found == totals_.end() ? 0 : found->second;
+    return live_.count(name) ? live_.at(name) : 0;
+  }
+  std::uint64_t peak(const char* name) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return peak_.count(name) ? peak_.at(name) : 0;
+  }
+  std::uint64_t flow(const char* name) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return flow_.count(name) ? flow_.at(name) : 0;
+  }
+  // Same-instant composite peaks over the declared scopes.
+  std::uint64_t read_view_peak() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return read_view_peak_;
+  }
+  std::uint64_t cache_peak() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return cache_peak_;
+  }
+  std::uint64_t combined_peak() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return combined_peak_;
   }
   void reset_for_test() {
     std::lock_guard<std::mutex> lock(mutex_);
-    totals_.clear();
+    live_.clear(); peak_.clear(); flow_.clear();
+    read_view_live_ = 0; cache_live_ = 0;
+    read_view_peak_ = 0; cache_peak_ = 0; combined_peak_ = 0;
   }
  private:
+  static bool in_read_view(const std::string& name) {
+    return name == "block_allocations" || name == "block_directory_nodes"
+        || name == "snapshot_objects" || name == "handle_directory_nodes"
+        || name == "entry_queue_retained" || name == "entry_queue_payload"
+        || name == "receipt_ledger" || name == "completion_board"
+        || name == "inflight_responses" || name == "reader_tracking";
+  }
+  static bool in_cache(const std::string& name) { return name == "surface_caches"; }
+  void change(const char* name, std::int64_t delta) {
+    if (delta == 0) return;
+    std::lock_guard<std::mutex> lock(mutex_);
+    apply(name, delta);
+    if (delta > 0) flow_[name] += static_cast<std::uint64_t>(delta);
+  }
+  void apply(const std::string& name, std::int64_t delta) {
+    std::int64_t next = static_cast<std::int64_t>(live_[name]) + delta;
+    if (next < 0) next = 0;  // a release we did not observe an alloc for
+    live_[name] = static_cast<std::uint64_t>(next);
+    if (live_[name] > peak_[name]) peak_[name] = live_[name];
+    if (in_read_view(name)) {
+      read_view_live_ = read_view_live_ + delta > 0 ? read_view_live_ + delta : 0;
+      if (read_view_live_ > read_view_peak_) read_view_peak_ = read_view_live_;
+    }
+    if (in_cache(name)) {
+      cache_live_ = cache_live_ + delta > 0 ? cache_live_ + delta : 0;
+      if (cache_live_ > cache_peak_) cache_peak_ = cache_live_;
+    }
+    const std::uint64_t combined = read_view_live_ + cache_live_;
+    if (combined > combined_peak_) combined_peak_ = combined;
+  }
   mutable std::mutex mutex_;
-  std::map<std::string, std::uint64_t> totals_;
+  std::map<std::string, std::uint64_t> live_, peak_, flow_;
+  std::uint64_t read_view_live_{}, cache_live_{};
+  std::uint64_t read_view_peak_{}, cache_peak_{}, combined_peak_{};
 };
 
 // Counts are ownership sums. Two scopes are declared:
@@ -72,14 +132,12 @@ class AllocationTotals {
 // A partially attributed scope keeps certification NOT_EVALUATED; a populated
 // counter is never by itself a resource-gate pass.
 //
-// Peak semantics (split deliberately):
-//  - lifecycle peaks (inflight, entry queue, ledger, completions, handle
-//    directory) are updated on the allocation/free path itself, so they bound
-//    transients that fall between two samples;
-//  - observed peaks (blocks, block directories, surface caches, the read-view
-//    sum) are high-water marks of every usage() observation. A store-block
-//    allocation and its reclamation between two queries is not claimed to be
-//    captured by them.
+// Peak semantics: the *_peak fields and class_peaks are occupancy peaks from
+// the allocation/release tracker — max over time of simultaneously live
+// bytes, decremented at every release, so transients between two usage()
+// samples are captured. read_view_cache_bytes_peak is the same-instant sum
+// over both scopes. class_flows keeps cumulative allocation traffic for
+// audit only; no gate consumes it.
 struct ResourceUsage {
   std::uint64_t shared_block_bytes{};
   std::uint64_t shared_block_bytes_peak{};
@@ -118,11 +176,14 @@ struct ResourceUsage {
   std::uint64_t read_view_bytes_peak{};
   std::uint64_t cache_bytes{};
   std::uint64_t cache_bytes_peak{};
-  // Allocation-lifecycle totals (monotone, raised at the allocation sites):
-  // an object allocated and released between two samples still raises these.
-  std::uint64_t read_view_alloc_bytes{};
-  std::uint64_t cache_alloc_bytes{};
-  std::map<std::string, std::uint64_t> class_alloc_totals{};
+  // True occupancy peaks: max over time of simultaneously live bytes, from
+  // the allocation/release tracker. read_view_cache_bytes_peak is the
+  // same-instant sum over both scopes (never per-class peaks added across
+  // different times). Cumulative flow lives in class_flows and is never used
+  // by a gate.
+  std::uint64_t read_view_cache_bytes_peak{};
+  std::map<std::string, std::uint64_t> class_peaks{};
+  std::map<std::string, std::uint64_t> class_flows{};
   // Per-class ownership sums for this scope; keys match node_bytes_basis().
   std::map<std::string, std::uint64_t> class_bytes{};
   // "class" -> "container type and node-size derivation" for every class in

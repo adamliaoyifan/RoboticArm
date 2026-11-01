@@ -44,6 +44,7 @@ class InflightResponse {
 class SnapshotRepository {
  public:
   explicit SnapshotRepository(ObservationStore& store) : store_(store) {}
+  ~SnapshotRepository();
   SnapshotLease acquire(std::int64_t now_ns, std::int64_t max_age_ns,
       bool allow_stale = false, std::uint64_t expected_epoch = 0,
       std::optional<std::uint64_t> expected_revision = std::nullopt);

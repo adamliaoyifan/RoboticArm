@@ -1,4 +1,5 @@
 #include "uld_occ_observer/observer.hpp"
+#include "uld_occ_observer/resource_usage.hpp"
 #include "uld_occ_observer/interface_trace.hpp"
 #include "uld_occ_observer/block_storage.hpp"
 #include <openssl/evp.h>
@@ -224,6 +225,12 @@ Diagnostics ObservationStore::diagnostics() const {
 std::uint64_t ObservationStore::reset(std::uint64_t expected_epoch) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (epoch_ != expected_epoch) throw Error("EPOCH_MISMATCH");
+  // Occupancy accounting: the registry nodes are released here; the blocks
+  // they referenced release themselves wherever their last owner drops.
+  AllocationTotals::instance().subtract(
+      "block_directory_nodes",
+      static_cast<std::uint64_t>(blocks_.size())
+          * map_node_bytes<BlockRegistry::value_type>());
   grid_.reset();
   ++epoch_; map_revision_ = observed_revision_ = 0; last_integrated_stamp_ns_ = 0;
   published_epoch_.store(epoch_, std::memory_order_release);

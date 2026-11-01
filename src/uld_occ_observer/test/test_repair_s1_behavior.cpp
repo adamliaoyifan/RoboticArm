@@ -456,9 +456,10 @@ void test_resource_ownership(const ObserverConfiguration& cfg) {
            "SSO strings add no heap bytes");
   }
 
-  // Inter-sample lifecycle: caches built and old views dropped entirely
-  // between two usage() calls still raise the allocation totals while the
-  // live sums return to the current state.
+  // Occupancy peaks from the tracker: reuse adds nothing; sequential
+  // create/release across revisions grows the cumulative flow but never the
+  // peak; concurrency raises the peak; a multi-handle share never doubles;
+  // the composite peak bounds the same-instant live sum.
   {
     AllocationTotals::instance().reset_for_test();
     ObservationStore lifecycle(cfg.geometry, cfg.resolution, cfg.depth,
@@ -466,37 +467,84 @@ void test_resource_ownership(const ObserverConfiguration& cfg) {
     expect(lifecycle.integrate(observation(cfg, "l1", 1000000000)).status == "INTEGRATED",
            "lifecycle seed");
     SnapshotRepository lifecycle_repo(lifecycle);
-    {
+    // Reuse: N views on one revision share the cached snapshot and cache.
+    std::uint64_t cache_bytes_first = 0;
+    for (int repeat = 0; repeat < 5; ++repeat) {
       const auto lease = lifecycle_repo.acquire(2000000000, 5000000000, true);
       auto view = lifecycle_repo.get(lease.handle);
       view->surface();
+      if (repeat == 0) cache_bytes_first = lifecycle_repo.usage().cache_bytes;
       lifecycle_repo.release(lease.handle);
       view.reset();
-    }  // cache created and dropped with no usage() call in between
-    expect(lifecycle.integrate(observation(cfg, "l2", 3000000000)).status == "INTEGRATED",
-           "lifecycle second");
-    {
-      // A second snapshot (and its cache) is created by the next acquire and
-      // then dropped, still without a usage() sample in between.
-      const auto lease = lifecycle_repo.acquire(3000000000, 5000000000, true);
+    }
+    const auto reused = lifecycle_repo.usage();
+    expect(reused.class_flows.at("surface_caches")
+               <= cache_bytes_first + cache_bytes_first,
+           "five views on one revision allocate at most one cache (plus the spare object)");
+    // Sequential across revisions: five fresh caches, one at a time (with at
+    // most a hand-off overlap), flow grows with N, the peak does not.
+    std::int64_t stamp = 3000000000;
+    for (int repeat = 0; repeat < 5; ++repeat) {
+      const std::string revision_id = std::string("rev-") + std::to_string(repeat);
+      auto revision = observation(cfg, revision_id, stamp);
+      // A distinct cell per revision: a changed map publishes a fresh
+      // snapshot (and its own cache) instead of sharing the old one.
+      revision.points_m[0] = {0, 0, 1.0 + 0.05 * repeat};
+      expect(lifecycle.integrate(revision).status == "INTEGRATED",
+             "lifecycle revision");
+      const auto lease = lifecycle_repo.acquire(stamp + 1000000, 5000000000, true);
       auto view = lifecycle_repo.get(lease.handle);
       view->surface();
       lifecycle_repo.release(lease.handle);
       view.reset();
+      stamp += 1000000000;
     }
-    const auto after = lifecycle_repo.usage();
-    expect(after.cache_alloc_bytes >= after.cache_bytes,
-           "allocation totals bound the live cache bytes");
-    // The dropped cache plus the current snapshot's registry nodes and object
-    // were all allocated even though a sample never observed them.
-    expect(after.class_alloc_totals.at("surface_caches")
-               >= 2 * (sizeof(SurfaceCache) + kControlBlockBytes),
-           "a cache built and dropped between samples still raises its total");
-    expect(after.class_alloc_totals.at("snapshot_objects")
-               >= 2 * (sizeof(Snapshot) + kControlBlockBytes),
-           "snapshot objects allocated between samples still raise their total");
-    expect(after.read_view_alloc_bytes >= after.read_view_bytes,
-           "read-view allocation total bounds the live sum");
+    const auto sequential = lifecycle_repo.usage();
+    expect(sequential.class_flows.at("surface_caches") >= 5 * cache_bytes_first,
+           "five sequential caches accumulate flow");
+    expect(sequential.cache_bytes_peak <= 2 * cache_bytes_first + sizeof(Snapshot) + kControlBlockBytes,
+           "sequential create/release never holds more than a hand-off overlap");
+    expect(sequential.class_peaks.at("snapshot_objects")
+               >= sizeof(Snapshot) + kControlBlockBytes,
+           "snapshot objects appear in the occupancy peak");
+    // Concurrency raises the peak: hold one cached view while a new revision
+    // builds its own cache, then verify a shared handle adds nothing.
+    std::uint64_t concurrent_peak = 0;
+    {
+      const auto held = lifecycle_repo.acquire(stamp, 5000000000, true);
+      auto held_view = lifecycle_repo.get(held.handle);
+      held_view->surface();
+      auto concurrent_revision = observation(cfg, "cc", stamp + 500000000);
+      concurrent_revision.points_m[0] = {0, 0, 1.35};
+      expect(lifecycle.integrate(concurrent_revision).status == "INTEGRATED",
+             "lifecycle concurrent revision");
+      const auto lease = lifecycle_repo.acquire(stamp + 600000000, 5000000000, true);
+      auto view = lifecycle_repo.get(lease.handle);
+      view->surface();
+      const auto both = lifecycle_repo.usage();
+      concurrent_peak = both.read_view_cache_bytes_peak;
+      expect(both.cache_bytes >= 2 * cache_bytes_first - 2 * (sizeof(SurfaceCache) + kControlBlockBytes),
+             "two concurrent caches are live simultaneously");
+      expect(both.read_view_cache_bytes_peak >= both.read_view_bytes + both.cache_bytes - SnapshotRepository::handle_node_bytes() * 4,
+             "the composite peak bounds the same-instant live sum");
+      const auto extra = lifecycle_repo.acquire(stamp + 700000000, 5000000000, true);
+      const auto shared = lifecycle_repo.usage();
+      expect(shared.read_view_cache_bytes_peak - concurrent_peak
+                 <= 2 * SnapshotRepository::handle_node_bytes(),
+             "a second handle on the same snapshot adds at most its node");
+      lifecycle_repo.release(extra.handle);
+      lifecycle_repo.release(lease.handle);
+      lifecycle_repo.release(held.handle);
+      view.reset();
+      held_view.reset();
+    }
+    const auto settled = lifecycle_repo.usage();
+    expect(settled.class_peaks.at("surface_caches") >= 2 * cache_bytes_first
+               - 2 * (sizeof(SurfaceCache) + kControlBlockBytes),
+           "the concurrent two-cache instant raised the cache peak");
+    expect(settled.class_peaks.at("surface_caches")
+               >= sequential.class_peaks.at("surface_caches"),
+           "peaks never decrease");
   }
 
   // Ingress retained capacity: chunks are never freed on pop, so an empty

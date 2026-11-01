@@ -44,6 +44,7 @@ ObservationLedger::Admit ObservationLedger::admit(std::uint64_t epoch, const std
   record.receipt.observation_id = observation_id;
   records_[id] = std::move(record);
   peak_ = std::max(peak_, records_.size());
+  AllocationTotals::instance().set("receipt_ledger", accounted_bytes_unlocked());
   result.accepted = true;
   result.status = "QUEUED";
   return result;
@@ -75,6 +76,7 @@ bool ObservationLedger::complete(std::uint64_t epoch, const std::string& sensor_
   record->second.updated = now;
   peak_ = std::max(peak_, records_.size());
   byte_peak_ = std::max(byte_peak_, accounted_bytes_unlocked());
+  AllocationTotals::instance().set("receipt_ledger", byte_peak_ == 0 ? 0 : accounted_bytes_unlocked());
   return true;
 }
 std::optional<ObservationLedger::Record> ObservationLedger::query(
@@ -89,7 +91,8 @@ void ObservationLedger::expire(std::chrono::steady_clock::time_point now) {
   for (auto& record : records_) {
     if (!record.second.in_flight && now - record.second.updated >= retention_)
       record.second.state = "EXPIRED";
-  }
+    AllocationTotals::instance().set("receipt_ledger", accounted_bytes_unlocked());
+}
 }
 void ObservationLedger::set_retention(std::chrono::milliseconds retention) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -100,7 +103,8 @@ void ObservationLedger::drop_terminal_other_epochs(std::uint64_t epoch) {
   for (auto it = records_.begin(); it != records_.end();) {
     if (!it->second.in_flight && it->second.epoch != epoch) it = records_.erase(it);
     else ++it;
-  }
+    AllocationTotals::instance().set("receipt_ledger", accounted_bytes_unlocked());
+}
 }
 std::uint64_t ObservationLedger::accounted_bytes_unlocked() const {
   std::uint64_t bytes = 0;

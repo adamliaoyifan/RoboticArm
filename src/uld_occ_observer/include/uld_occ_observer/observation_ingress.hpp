@@ -37,6 +37,7 @@ class ObservationIngress {
   // per-message estimate.
   std::uint64_t allocated_bytes() const;
  private:
+  void report_levels_locked();
   mutable std::mutex mutex_;
   std::deque<Item> queue_;
   std::size_t peak_{};

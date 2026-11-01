@@ -40,12 +40,23 @@ void SnapshotRepository::adjust_inflight(std::int64_t delta) {
     inflight_bytes_ = decrease >= inflight_bytes_ ? 0 : inflight_bytes_ - decrease;
   }
   inflight_peak_ = std::max(inflight_peak_, inflight_bytes_);
+  // Occupancy accounting: route the delta so the composite peak sees
+  // same-instant inflight bytes.
+  if (delta > 0)
+    AllocationTotals::instance().add("inflight_responses",
+                                     static_cast<std::uint64_t>(delta));
+  else
+    AllocationTotals::instance().subtract(
+        "inflight_responses", static_cast<std::uint64_t>(-delta));
 }
 void SnapshotRepository::expire_unlocked(Clock::time_point now, std::uint64_t epoch) {
   for (auto it = entries_.begin(); it != entries_.end();) {
-    if (it->second.expires <= now || it->second.snapshot->identity().epoch != epoch)
+    const bool will_erase = it->second.expires <= now
+        || it->second.snapshot->identity().epoch != epoch;
+    if (will_erase) {
+      AllocationTotals::instance().subtract("handle_directory_nodes", handle_node_bytes());
       it = entries_.erase(it);
-    else ++it;
+    } else ++it;
   }
 }
 void SnapshotRepository::track_unlocked(const std::shared_ptr<const Snapshot>& snapshot) {
@@ -53,6 +64,10 @@ void SnapshotRepository::track_unlocked(const std::shared_ptr<const Snapshot>& s
   readers_.erase(std::remove_if(readers_.begin(), readers_.end(),
       [](const std::weak_ptr<const Snapshot>& reader) { return reader.expired(); }), readers_.end());
   readers_.push_back(snapshot);
+  // Retained weak-slot capacity of the reader vector.
+  AllocationTotals::instance().set(
+      "reader_tracking",
+      static_cast<std::uint64_t>(readers_.capacity()) * 2 * sizeof(void*));
 }
 SnapshotLease SnapshotRepository::acquire(std::int64_t now_ns, std::int64_t max_age_ns,
     bool allow_stale, std::uint64_t expected_epoch,
@@ -140,7 +155,14 @@ std::shared_ptr<const Snapshot> SnapshotRepository::get(const std::string& handl
 }
 void SnapshotRepository::release(const std::string& handle) {
   std::lock_guard<std::mutex> lock(mutex_);
-  entries_.erase(handle);
+  if (entries_.erase(handle) != 0)
+    AllocationTotals::instance().subtract("handle_directory_nodes", handle_node_bytes());
+}
+SnapshotRepository::~SnapshotRepository() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  AllocationTotals::instance().subtract(
+      "handle_directory_nodes",
+      static_cast<std::uint64_t>(entries_.size()) * handle_node_bytes());
 }
 void SnapshotRepository::note_handle_directory_unlocked(std::int64_t delta) {
   // A high-water mark: only opens raise it, so erase passes nothing. The live
@@ -261,6 +283,8 @@ ResourceUsage SnapshotRepository::usage() {
   directory_bytes_peak_ = std::max(directory_bytes_peak_, directory_bytes);
   read_view_peak_ = std::max(read_view_peak_, read_view);
   cache_peak_ = std::max(cache_peak_, surface);
+  // Occupancy peaks come from the allocation/release tracker, not from these
+  // observations (a transient between samples is still counted there).
   ResourceUsage usage;
   usage.shared_block_bytes = block_bytes;
   usage.shared_block_bytes_peak = block_peak_;
@@ -289,23 +313,31 @@ ResourceUsage SnapshotRepository::usage() {
   usage.read_view_bytes_peak = read_view_peak_;
   usage.cache_bytes = surface;
   usage.cache_bytes_peak = cache_peak_;
-  // Allocation-lifecycle totals from the allocation sites: monotone over
-  // every allocation ever made, so inter-sample create/release still shows.
+  // Occupancy peaks and cumulative flow from the tracker; flow is audit
+  // only and never consumed by a gate.
   auto& totals = AllocationTotals::instance();
-  usage.class_alloc_totals = {
-      {"block_allocations", totals.total("block_allocations")},
-      {"block_directory_nodes", totals.total("block_directory_nodes")},
-      {"snapshot_objects", totals.total("snapshot_objects")},
-      {"handle_directory_nodes", totals.total("handle_directory_nodes")},
-      {"surface_caches", totals.total("surface_caches")},
+  usage.read_view_cache_bytes_peak = totals.combined_peak();
+  usage.read_view_bytes_peak = totals.read_view_peak();
+  usage.cache_bytes_peak = totals.cache_peak();
+  usage.class_peaks = {
+      {"block_allocations", totals.peak("block_allocations")},
+      {"block_directory_nodes", totals.peak("block_directory_nodes")},
+      {"snapshot_objects", totals.peak("snapshot_objects")},
+      {"handle_directory_nodes", totals.peak("handle_directory_nodes")},
+      {"surface_caches", totals.peak("surface_caches")},
+      {"inflight_responses", totals.peak("inflight_responses")},
+      {"entry_queue_retained", totals.peak("entry_queue_retained")},
+      {"entry_queue_payload", totals.peak("entry_queue_payload")},
+      {"receipt_ledger", totals.peak("receipt_ledger")},
+      {"completion_board", totals.peak("completion_board")},
   };
-  usage.read_view_alloc_bytes = usage.class_alloc_totals["block_allocations"]
-      + usage.class_alloc_totals["block_directory_nodes"]
-      + usage.class_alloc_totals["snapshot_objects"]
-      + usage.class_alloc_totals["handle_directory_nodes"]
-      + accounts.entry_queue_allocated_bytes + accounts.ledger_bytes_peak
-      + accounts.completion_bytes_peak;
-  usage.cache_alloc_bytes = usage.class_alloc_totals["surface_caches"];
+  usage.class_flows = {
+      {"block_allocations", totals.flow("block_allocations")},
+      {"block_directory_nodes", totals.flow("block_directory_nodes")},
+      {"snapshot_objects", totals.flow("snapshot_objects")},
+      {"handle_directory_nodes", totals.flow("handle_directory_nodes")},
+      {"surface_caches", totals.flow("surface_caches")},
+  };
   usage.class_bytes = {
       {"block_allocations", block_bytes},
       {"block_directory_nodes", block_directory_bytes},

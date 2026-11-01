@@ -1,4 +1,5 @@
 #include "uld_occ_observer/observation_ingress.hpp"
+#include "uld_occ_observer/resource_usage.hpp"
 
 namespace uld_occ_observer {
 ObservationIngress::Result ObservationIngress::try_admit(Item item) {
@@ -13,6 +14,7 @@ ObservationIngress::Result ObservationIngress::try_admit(Item item) {
   payload_peak_ = std::max(payload_peak_, queued_payload_);
   queue_.push_back(std::move(item));
   peak_ = std::max(peak_, queue_.size());
+  report_levels_locked();
   result.accepted = true;
   result.status = "QUEUED";
   return result;
@@ -23,6 +25,7 @@ std::optional<ObservationIngress::Item> ObservationIngress::try_pop() {
   Item item = std::move(queue_.front());
   queue_.pop_front();
   queued_payload_ = item.payload_bytes >= queued_payload_ ? 0 : queued_payload_ - item.payload_bytes;
+  report_levels_locked();
   return item;
 }
 std::size_t ObservationIngress::size() const {
@@ -40,6 +43,16 @@ std::uint64_t ObservationIngress::payload_bytes() const {
 std::uint64_t ObservationIngress::payload_peak() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return payload_peak_;
+}
+void ObservationIngress::report_levels_locked() {
+  auto& totals = AllocationTotals::instance();
+  totals.set("entry_queue_payload", queued_payload_);
+  constexpr std::size_t kChunkBytes = 512;
+  constexpr std::size_t per_chunk =
+      sizeof(Item) < kChunkBytes ? kChunkBytes / sizeof(Item) : 1;
+  const std::size_t chunks = peak_ / per_chunk + 2;
+  totals.set("entry_queue_retained",
+             static_cast<std::uint64_t>(chunks) * (per_chunk * sizeof(Item)));
 }
 std::uint64_t ObservationIngress::allocated_bytes() const {
   std::lock_guard<std::mutex> lock(mutex_);

@@ -23,8 +23,7 @@ uint64 read_view_bytes
 uint64 read_view_bytes_peak
 uint64 cache_bytes
 uint64 cache_bytes_peak
-uint64 read_view_alloc_bytes
-uint64 cache_alloc_bytes
+uint64 read_view_cache_bytes_peak
 uint64 entry_queue_allocated_bytes
 uint64 view_directory_bytes
 uint64 view_directory_bytes_peak
