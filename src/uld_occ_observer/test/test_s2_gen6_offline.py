@@ -280,6 +280,7 @@ def test_resources_from_usage_is_never_a_default_pass():
     # Attributed and over the limit: a hard fail, not a pass.
     over = live_schedule.resources_from_usage({
         "read_view_bytes": 600 * 1024 * 1024, "cache_bytes": 10,
+        "read_view_cache_bytes_peak": 600 * 1024 * 1024 + 10,
         "certification": "READ_VIEW_CACHE_ATTRIBUTED", "attribution_complete": True,
         "unmarked_allocations": False})
     assert over["attribution_complete"] is True
@@ -288,6 +289,7 @@ def test_resources_from_usage_is_never_a_default_pass():
     # Attributed and inside the limit: the gate evaluates.
     inside = live_schedule.resources_from_usage({
         "read_view_bytes": 1024, "cache_bytes": 1024,
+        "read_view_cache_bytes_peak": 2048,
         "certification": "READ_VIEW_CACHE_ATTRIBUTED", "attribution_complete": True,
         "unmarked_allocations": False})
     assert repair_s0_judge._resources(inside) == ([], "pass")

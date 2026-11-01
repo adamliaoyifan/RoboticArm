@@ -602,9 +602,13 @@ def test_live_holds_all_three_kinds_measured_complete(tmp_path):
             else:
                 assert row["probability_unchanged"] is True
                 assert row["freshness_advanced"] is False
-        verdict = judge.judge_o8({"gate": "o8", "runs": [], "holds": [
-            adapter.hold("holds-check", kind, repeat)
-            for kind in contract.O8_HOLD_KINDS for repeat in range(contract.O8_HOLDS)]})
+        run = adapter._stability["run"]
+        verdict = judge.judge_o8({
+            "gate": "o8", "runs": [],
+            "artifact_dir": str(run.out.parent),
+            "holds": [adapter.hold("holds-check", kind, repeat)
+                      for kind in contract.O8_HOLD_KINDS
+                      for repeat in range(contract.O8_HOLDS)]})
         # With zero runs the judge fails on run_count, but the hold section
         # must contribute no hold/probe/probability reasons of its own.
         hold_codes = {code for code in verdict["reasons"]
