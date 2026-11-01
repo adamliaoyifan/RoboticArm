@@ -1,0 +1,65 @@
+{
+  "candidate": "03334c0b",
+  "kind": "offline injected; saved owner artifact healthy control",
+  "healthy_o8": {
+    "pass": true,
+    "status": "pass",
+    "reasons": []
+  },
+  "nan_duration": {
+    "pass": true,
+    "status": "pass",
+    "reasons": []
+  },
+  "inf_duration": {
+    "pass": true,
+    "status": "pass",
+    "reasons": []
+  },
+  "missing_log_odds_hash": {
+    "pass": true,
+    "status": "pass",
+    "reasons": []
+  },
+  "different_probe_region": {
+    "pass": true,
+    "status": "pass",
+    "reasons": []
+  },
+  "one_GiB_peak_with_small_current": {
+    "adapter": {
+      "read_view_bytes": 1024,
+      "cache_bytes": 1024,
+      "read_view_bytes_peak": 1073741824,
+      "cache_bytes_peak": 1024,
+      "store_tree_bytes": null,
+      "attribution_complete": true,
+      "unmarked_allocations": false,
+      "certification": "READ_VIEW_CACHE_ATTRIBUTED",
+      "uncovered_classes": [],
+      "rows_scanned": 1
+    },
+    "judge": [
+      [],
+      "pass"
+    ]
+  },
+  "nan_resource_row_dropped": {
+    "adapter": {
+      "read_view_bytes": 1024,
+      "cache_bytes": 1024,
+      "read_view_bytes_peak": 1073741824,
+      "cache_bytes_peak": 1024,
+      "store_tree_bytes": null,
+      "attribution_complete": true,
+      "unmarked_allocations": false,
+      "certification": "READ_VIEW_CACHE_ATTRIBUTED",
+      "uncovered_classes": [],
+      "rows_scanned": 2
+    },
+    "judge": [
+      [],
+      "pass"
+    ]
+  }
+}
