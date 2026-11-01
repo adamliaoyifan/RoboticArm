@@ -1,0 +1,48 @@
+# Site poses for the deploy_update cell (scene_tf_deploy_update.yaml,
+# yaw180 pedestal layout). Stamped per the sim_deploy convention:
+# scene_revision = md5(scene_tf_deploy_update.yaml), SRDF static,
+# urdf_sha256 deliberately empty (spawn-joint separation, see sim_deploy).
+
+schema: luggage.site_poses.sim/1
+
+identity:
+  scene_revision: 413055f4740a733fb8ef18867db86adb
+  joint_names: [elfin_joint1, elfin_joint2, elfin_joint3,
+                elfin_joint4, elfin_joint5, elfin_joint6]
+  urdf_sha256: ""
+  srdf_sha256: 3cfac36d96bc9c815b0d2b9b9cdd321719198541e8a7f25343a439863506936d
+
+poses:
+  pickup_observe_sim:
+    valid: true
+    calibration_status: synthetic
+    # Corridor-external observe for the deploy_update cell: the example's
+    # observe [3.5702,...] lands inside the escape-margin corridor and the
+    # v2 boot admission refuses (EXIT_ROUTE_UNAVAILABLE). These values
+    # verified by the baseline session attempt 11 (zone=outside_container,
+    # hold ok). Source: robot_poses.yaml.example pickup_observe group.
+    values: [1.8806, -1.7736, -1.0491, 4.4439, 1.7721, 1.8473]
+    tolerance: 0.15
+    acquisition_stamp_ns: 1791865524000000000
+    scene_revision_at_capture: 413055f4740a733fb8ef18867db86adb
+    provenance:
+      source: synthetic_fixture
+
+  portal_observe_sim:
+    valid: true
+    calibration_status: synthetic
+    # Portal exit view; values from robot_poses.sim_deploy.yaml (old
+    # deploy cell) — the sim schema freezes the PAIR; cell-specific
+    # tuning happens if the exit route ever rejects them.
+    values: [0.7412, -1.8043, -1.0461, -1.8668, 1.5749, -2.4370]
+    tolerance: 0.15
+    acquisition_stamp_ns: 1791040663401734400
+    scene_revision_at_capture: 413055f4740a733fb8ef18867db86adb
+    provenance:
+      source: synthetic_fixture
+
+defaults:
+  observe_pose: pickup_observe_sim
+
+meta:
+  name: robot_poses_sim_deploy_update_v1

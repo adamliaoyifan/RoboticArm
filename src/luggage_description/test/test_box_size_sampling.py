@@ -67,7 +67,8 @@ class TestSizeRange(unittest.TestCase):
         config = dict(CATALOG)
         config.pop("size_range")
         ranges = UTILS.box_size_range(config)
-        self.assertAlmostEqual(ranges[0][0], 0.55)
+        # inch20 (2026-10-12 campaign entry) is the new narrowest width.
+        self.assertAlmostEqual(ranges[0][0], 0.35)
         self.assertAlmostEqual(ranges[0][1], 0.80)
 
 
@@ -119,7 +120,11 @@ class TestMassModel(unittest.TestCase):
 class TestCatalogSpawnSampling(unittest.TestCase):
     def test_catalog_mode_only_hits_three_sizes(self):
         entries = UTILS.box_catalog_entries(CATALOG)
-        catalog_sizes = {tuple(e["size"]) for e in entries}
+        # Sequence-only entries (weight 0, e.g. the 2026-10-12 campaign's
+        # inch tiers) are outside the random mix by design: the catalog
+        # mode's contract covers the WEIGHTED entries.
+        weighted = [e for e in entries if float(e.get("weight", 1.0)) > 0.0]
+        catalog_sizes = {tuple(e["size"]) for e in weighted}
         self.assertEqual(catalog_sizes, set(REFERENCE_SIZES.values()))
         rng = random.Random(13)
         seen = set()
@@ -129,6 +134,20 @@ class TestCatalogSpawnSampling(unittest.TestCase):
             self.assertFalse(generated)
             seen.add(tuple(size))
         self.assertEqual(seen, catalog_sizes)
+
+    def test_inch_campaign_entries_are_sequence_only(self):
+        entries = UTILS.box_catalog_entries(CATALOG)
+        by_id = {e["id"]: e for e in entries}
+        expected = {
+            "inch20": [0.35, 0.53, 0.22],
+            "inch28": [0.45, 0.73, 0.30],
+            "inch30": [0.47, 0.78, 0.32],
+            "inch32": [0.50, 0.83, 0.34],
+        }
+        for name, size in expected.items():
+            self.assertIn(name, by_id)
+            self.assertEqual(by_id[name]["weight"], 0.0)
+            self.assertEqual(by_id[name]["size"], size)
 
     def test_catalog_mode_is_default(self):
         entries = UTILS.box_catalog_entries(CATALOG)

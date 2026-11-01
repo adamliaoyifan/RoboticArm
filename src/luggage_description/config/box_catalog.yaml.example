@@ -9,9 +9,10 @@ yaw_range: [-3.14159265, 3.14159265]
 #   suitcase_loafbrr  — wheeled hard-shell (CC0)
 #   suitcase_vintage  — canvas vintage (CC BY-SA 2.5)
 # Per-entry `visual` selects the family. Spawn size_mode defaults to catalog:
-# pick one of the three rows (small/medium/large). Mesh spawn then loads
-# model://suitcase_<visual>_{small,medium,large} (visual=collision, no runtime
-# scale). size_mode: continuous remains an opt-in for box-visual experiments.
+# pick one of the three weighted rows (small/medium/large). Inch campaign
+# rows (weight 0) are sequence-only. Mesh spawn then loads the matching
+# pre-scaled model:// URI (visual=collision, no runtime scale).
+# size_mode: continuous remains an opt-in for box-visual experiments.
 #
 # size_range / mass_model still describe the continuous envelope and the
 # density fit through these three reference masses (atlases, opt-in sampling).
@@ -48,6 +49,49 @@ box_catalog:
     weight: 0.35
     mass_kg: 8.0
     allowed_yaws: [0.0, 1.5708]
+  - id: inch20
+    # 2026-10-12 yaw180 campaign sequence. model MUST name the sized mesh
+    # tier (suitcase_visual.INCH_SIZE_TIERS) or the spawner's mesh
+    # observable GT gate rejects the size.
+    model: suitcase_loafbrr_inch20
+    visual: suitcase_loafbrr
+    size: [0.35, 0.53, 0.22]
+    weight: 0.0
+    mass_kg: 5.67
+    allowed_yaws: [0.0, 1.5708]
+    yaw_mode: discrete
+  - id: inch28
+    # 28 in. checked case. Standing H = round(28*2.54)+2 cm; lying spawn
+    # (W, H, D) continues the inch20-26 1 cm series. Web band: SafariBags
+    # 71x46x30 cm, Chinese chart 47x78x28 cm.
+    model: suitcase_loafbrr_inch28
+    visual: suitcase_loafbrr
+    size: [0.45, 0.73, 0.30]
+    weight: 0.0
+    mass_kg: 16.35
+    allowed_yaws: [0.0, 1.5708]
+    yaw_mode: discrete
+  - id: inch30
+    # 30 in. checked case. Standing H = round(30*2.54)+2 cm. Web band:
+    # Amazon Basics 78x53x32 cm, Rimowa Limbo 77x51x26.5 cm.
+    model: suitcase_loafbrr_inch30
+    visual: suitcase_loafbrr
+    size: [0.47, 0.78, 0.32]
+    weight: 0.0
+    mass_kg: 20.49
+    allowed_yaws: [0.0, 1.5708]
+    yaw_mode: discrete
+  - id: inch32
+    # 32 in. checked case. Standing H = round(32*2.54)+2 cm. Web band:
+    # SafariBags extra-large 81x51x36 cm, Chinese chart 53x88x30 cm.
+    # Mass clamped to the vacuum-rated 23 kg payload.
+    model: suitcase_loafbrr_inch32
+    visual: suitcase_loafbrr
+    size: [0.50, 0.83, 0.34]
+    weight: 0.0
+    mass_kg: 23.0
+    allowed_yaws: [0.0, 1.5708]
+    yaw_mode: discrete
   - id: standard
     model: suitcase_standard
     visual: suitcase_loafbrr

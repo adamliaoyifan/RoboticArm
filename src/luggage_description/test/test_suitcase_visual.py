@@ -14,6 +14,7 @@ from luggage_description.scene_tf_config_utils import (
 )
 from luggage_description.suitcase_visual import (
     DEFAULT_MODEL_VISUAL,
+    INCH_SIZE_TIERS,
     SIZE_TIERS,
     VISUAL_LOAFBRR,
     VISUAL_VINTAGE,
@@ -54,6 +55,9 @@ class TestVisualSelection(unittest.TestCase):
         self.assertEqual(visual_id_for_entry(by_id["carryon"]), VISUAL_LOAFBRR)
         self.assertEqual(visual_id_for_entry(by_id["standard"]), VISUAL_LOAFBRR)
         self.assertEqual(visual_id_for_entry(by_id["large"]), VISUAL_LOAFBRR)
+        self.assertEqual(visual_id_for_entry(by_id["inch28"]), VISUAL_LOAFBRR)
+        self.assertEqual(visual_id_for_entry(by_id["inch30"]), VISUAL_LOAFBRR)
+        self.assertEqual(visual_id_for_entry(by_id["inch32"]), VISUAL_LOAFBRR)
 
     def test_falls_back_from_model_name(self):
         self.assertEqual(
@@ -356,7 +360,42 @@ class TestSizedPickupAssets(unittest.TestCase):
         self.assertEqual(size_tier_name([0.55, 0.40, 0.25]), "small")
         self.assertEqual(size_tier_name([0.70, 0.45, 0.28]), "medium")
         self.assertEqual(size_tier_name([0.80, 0.50, 0.32]), "large")
+        self.assertEqual(size_tier_name([0.45, 0.73, 0.30]), "inch28")
+        self.assertEqual(size_tier_name([0.47, 0.78, 0.32]), "inch30")
+        self.assertEqual(size_tier_name([0.50, 0.83, 0.34]), "inch32")
         self.assertIsNone(size_tier_name([0.61, 0.44, 0.27]))
+
+    def test_inch_loafbrr_aabb_matches_catalog(self):
+        wanted = ("inch28", "inch30", "inch32")
+        by_tier = {item[0]: item[1] for item in INCH_SIZE_TIERS}
+        for tier in wanted:
+            stl = sized_stl_path(VISUAL_LOAFBRR, tier, GAZEBO_MODELS)
+            sdf_path = os.path.join(
+                GAZEBO_MODELS, sized_model_name(VISUAL_LOAFBRR, tier),
+                "model.sdf")
+            self.assertTrue(os.path.isfile(stl), stl)
+            self.assertTrue(os.path.isfile(sdf_path), sdf_path)
+            mins, maxs = _stl_aabb(stl)
+            size = by_tier[tier]
+            for axis in range(3):
+                self.assertAlmostEqual(
+                    maxs[axis] - mins[axis], size[axis], places=3)
+            root = ET.parse(sdf_path).getroot()
+            vis_uri = root.find(".//visual/geometry/mesh/uri").text
+            col_uri = root.find(".//collision/geometry/mesh/uri").text
+            self.assertEqual(vis_uri, sized_mesh_uri(VISUAL_LOAFBRR, tier))
+            self.assertEqual(col_uri, vis_uri)
+
+    def test_inch_pickup_sdf_shares_stl(self):
+        xml = pickup_visual_sdf(
+            "pickup_box_inch28", [0.45, 0.73, 0.30], 16.35, VISUAL_LOAFBRR,
+            visual_kind="mesh")
+        root = ET.fromstring(xml)
+        vis_uri = root.find(".//visual/geometry/mesh/uri").text
+        col_uri = root.find(".//collision/geometry/mesh/uri").text
+        self.assertEqual(vis_uri, sized_mesh_uri(VISUAL_LOAFBRR, "inch28"))
+        self.assertEqual(col_uri, vis_uri)
+        self.assertTrue(vis_uri.endswith("suitcase.stl"))
 
 
 

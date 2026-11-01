@@ -64,6 +64,28 @@ SIZE_TIERS = (
     ("large", (0.80, 0.50, 0.32), 23.0, "large"),
 )
 
+# Lying inch sizes. Standing height_cm = round(inch * 2.54) + 2, which
+# reproduces the 20-26 series (53, 58, 63, 68). Width/depth continue that
+# 1 cm grid: width +2/+3 cm and depth +2 cm per 2-inch step. Retail
+# 28/30/32 in. cases sit in this band (SafariBags 28 in. 71x46x30 cm and
+# 32 in. 81x51x36 cm; Amazon 30 in. 78x53x32 cm; Chinese 28/32 in. charts
+# 47x78x28 and 53x88x30 cm). Lying spawn size is (X, Y, Z) = (width,
+# standing height, depth). Masses follow the catalog affine density,
+# clamped to the 2..23 kg band. Sized model dirs suitcase_loafbrr_inchXX
+# carry the STLs (visual and collision share the mesh, as inch20-26).
+INCH_SIZE_TIERS = (
+    ("inch20", (0.35, 0.53, 0.22), 5.67, "inch20"),
+    ("inch22", (0.37, 0.58, 0.24), 7.41, "inch22"),
+    ("inch24", (0.40, 0.63, 0.26), 9.70, "inch24"),
+    ("inch26", (0.42, 0.68, 0.28), 12.20, "inch26"),
+    ("inch28", (0.45, 0.73, 0.30), 16.35, "inch28"),
+    ("inch30", (0.47, 0.78, 0.32), 20.49, "inch30"),
+    ("inch32", (0.50, 0.83, 0.34), 23.0, "inch32"),
+)
+INCH_TIER_NAMES = frozenset(item[0] for item in INCH_SIZE_TIERS)
+
+ALL_SIZE_TIERS = SIZE_TIERS + INCH_SIZE_TIERS
+
 SIZED_MANIFEST_NAME = "sized_suitcases.json"
 
 
@@ -99,10 +121,10 @@ def sized_visual_mesh_uri(visual_id, tier):
 
 
 def size_tier_name(size, atol=1e-3):
-    """Return small/medium/large if *size* matches a catalog tier, else None."""
+    """Return the tier name if *size* matches a catalog tier, else None."""
     if size is None or len(size) < 3:
         return None
-    for name, spec, _mass, _catalog_id in SIZE_TIERS:
+    for name, spec, _mass, _catalog_id in ALL_SIZE_TIERS:
         if all(abs(float(size[i]) - float(spec[i])) <= atol for i in range(3)):
             return name
     return None
@@ -432,7 +454,22 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
     if tier is None:
         raise ValueError(
             "mesh pickup visual requires a catalog size "
-            "(small/medium/large), got %s" % (list(size),))
+            "(small/medium/large or inch20..inch32), got %s" % (list(size),))
+    # Inch campaign models share the pre-scaled STL for visual and
+    # collision (no per-tier DAE). small/medium/large keep the textured DAE.
+    if tier in INCH_TIER_NAMES:
+        stl_uri = sized_mesh_uri(visual_id, tier)
+        return suitcase_sdf(
+            model_name, size, mass_kg, visual_id,
+            mesh_uri_override=stl_uri,
+            collision_uri_override=stl_uri,
+            mesh_already_scaled=True,
+            visual_kind="mesh",
+            static=bool(static),
+            use_mesh_material=False,
+            contact_topic=contact_topic,
+            collide_bitmask=collide_bitmask,
+        )
     return suitcase_sdf(
         model_name, size, mass_kg, visual_id,
         mesh_uri_override=sized_visual_mesh_uri(visual_id, tier),
@@ -674,6 +711,58 @@ def _copy_texture_assets(visual_id, model_dir, models_root, scale):
     with open(dest_dae, "w", encoding="utf-8") as handle:
         handle.write(patched)
     return dest_dae
+
+
+def write_inch_suitcase_models(models_root, tiers=None):
+    """Write loafbrr inch-tier models (STL visual+collision, scale 1 1 1).
+
+    Matches ``suitcase_loafbrr_inch20`` packaging. Does not rewrite the
+    six small/medium/large ``sized_suitcases.json`` manifest. Spawn must
+    not call this.
+    """
+    visual_id = VISUAL_LOAFBRR
+    src = source_stl_path(visual_id, models_root)
+    if not os.path.isfile(src):
+        raise IOError("missing unit STL: %s" % src)
+    wanted = None if tiers is None else set(str(name) for name in tiers)
+    records = {}
+    for tier, size, mass_kg, catalog_id in INCH_SIZE_TIERS:
+        if wanted is not None and tier not in wanted:
+            continue
+        name = sized_model_name(visual_id, tier)
+        dest_stl = sized_stl_path(visual_id, tier, models_root)
+        write_scaled_stl(src, dest_stl, size)
+        model_dir = os.path.join(models_root, name)
+        os.makedirs(os.path.join(model_dir, "meshes"), exist_ok=True)
+        measure = mesh_top_footprint(dest_stl)
+        sdf = suitcase_sdf(
+            name, size, mass_kg, visual_id,
+            mesh_uri_override=sized_mesh_uri(visual_id, tier),
+            collision_uri_override=sized_mesh_uri(visual_id, tier),
+            mesh_already_scaled=True,
+            visual_kind="mesh",
+            use_mesh_material=False,
+        )
+        with open(os.path.join(model_dir, "model.sdf"), "w") as handle:
+            handle.write(sdf)
+        with open(os.path.join(model_dir, "model.config"), "w") as handle:
+            handle.write(_model_config_xml(
+                name,
+                "Pre-scaled %s %s suitcase. Visual and collision share "
+                "this STL (scale 1 1 1)." % (visual_id, tier),
+            ))
+        records[name] = {
+            "visual_id": visual_id,
+            "tier": tier,
+            "catalog_id": catalog_id,
+            "size": [float(v) for v in size],
+            "measure_size": [float(v) for v in measure],
+            "mass_kg": float(mass_kg),
+            "uri": sized_mesh_uri(visual_id, tier),
+            "visual_uri": sized_mesh_uri(visual_id, tier),
+            "collision_uri": sized_mesh_uri(visual_id, tier),
+        }
+    return records
 
 
 def write_sized_suitcase_models(models_root):
