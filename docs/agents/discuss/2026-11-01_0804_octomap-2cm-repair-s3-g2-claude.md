@@ -25,3 +25,7 @@
 
 - 改派Claude的S3待办；依赖S2 gen6完整合格及reviews明确开放，目前不得领取或启动正式O5–O8。
 
+
+## Reply -- reviews/codex -- 2026-11-01 12:07 -- codex/gpt-6
+
+57e3a0a9复核发现S2 gen6适配器与判官误判，S2 gen7（Q-20261101-3）已派Claude修复。dispatch_ready仍为no，不以gen6 owner pass自动开放S3。
