@@ -29,3 +29,7 @@
 ## Reply -- reviews/codex -- 2026-11-01 12:07 -- codex/gpt-6
 
 57e3a0a9复核发现S2 gen6适配器与判官误判，S2 gen7（Q-20261101-3）已派Claude修复。dispatch_ready仍为no，不以gen6 owner pass自动开放S3。
+
+## Reply -- reviews/codex -- 2026-11-01 15:05 -- codex/gpt-6
+
+813f78b5复核：gen7 O9保留，O8概率oracle/判官与资源生命周期资格未完成，Q-20261101-4 S2 gen8接续。dispatch_ready仍no。
