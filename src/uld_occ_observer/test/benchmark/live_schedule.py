@@ -637,12 +637,13 @@ class LiveScheduleAdapter:
             group = next(item for item in self.plan_groups if item["id"] == base_id)
             run = _WindowRun(self, {"id": "o8-%s" % run_id, "kind": "o8", "input_hz": 1},
                              group, self.out / "o8" / run_id)
-            count = o8["saturation_frames"]
+            # 固定射线: one emitted frame under the ray group's own seed,
+            # republished with incrementing stamps for the whole run.
             run.o8_frames = _emit_frames(
                 self.eval_native, self.group_geometry(group), self.group_config(group),
-                group, count, run.out / "rays",
+                group, 1, run.out / "rays",
                 group_name=o8["ray_group"])
-            run.start_for_o8(count)
+            run.start_for_o8(o8["saturation_frames"])
             self._stability = {"run_id": run_id, "run": run, "receipts": [], "stamps": []}
         run = self._stability["run"]
         # The scheduler's clock advance is a no-op on the monotonic clock: the
@@ -650,7 +651,7 @@ class LiveScheduleAdapter:
         o8 = self.plan_o8
         mark_s = (index + 1) * (float(o8["duration_s"]) / o8["saturation_frames"])
         run.sleep_to(run.origin_ns + int(mark_s * 1e9), "o8-frame-%d" % index)
-        frame = run.o8_frames[index % len(run.o8_frames)]
+        frame = run.o8_frames[0]
         stamp = run.session.next_stamp()
         message, _points = cloud_from_frame(frame)
         message.header.stamp.sec = int(stamp // 1_000_000_000)
@@ -705,6 +706,10 @@ class LiveScheduleAdapter:
         session = run.session
         seconds = float(self.plan_o8.get(
             "no_input_s" if kind == "no_input" else "occlusion_s", 10.0))
+        # A hold starts from a quiescent map: wait for every stability frame
+        # to reach a terminal state, otherwise a straggler integration moves
+        # the map during the "no input" hold.
+        self._await_terminal(run, state["stamps"])
         before = self._hold_probe(run)
         if kind == "occlusion":
             # A fully-outside cloud: real transport, nothing acceptable in it.
@@ -731,6 +736,20 @@ class LiveScheduleAdapter:
                                    > before["last_integrated_stamp_ns"]),
             "duration_s": seconds,
         }
+
+    def _await_terminal(self, run, observation_ids, timeout_s=30.0):
+        pending = [item for item in observation_ids if item]
+        deadline = time.monotonic() + timeout_s
+        while pending and time.monotonic() < deadline:
+            still = []
+            for observation in pending:
+                state = executor._field(run.session.query(1, observation), "status")
+                if state not in ("COMPLETED", "REJECTED", "EXPIRED"):
+                    still.append(observation)
+            pending = still
+            if pending:
+                time.sleep(0.2)
+        return not pending
 
     def _hold_probe(self, run):
         session = run.session
