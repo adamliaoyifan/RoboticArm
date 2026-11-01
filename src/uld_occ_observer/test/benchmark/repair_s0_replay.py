@@ -16,15 +16,28 @@ def _present(row, fields):
     return {key: row[key] for key in fields if key in row}
 
 
+def _ledger_schema(inputs):
+    """The ledger version is what the rows carry, never an upgrade of them."""
+    if inputs and all(
+            key in inputs[0] for key in ("publish_planned_ns", "input_stamp_ns", "clock_domain")):
+        return contract.SCHEMA_V3
+    return contract.SCHEMA
+
+
 def segment_view(case):
     """Project a case into the four acceptance boundaries."""
     inputs = case.get("inputs") or []
+    schema = _ledger_schema(inputs)
+    publish_fields = contract.PUBLISH_FIELDS_V3 if schema == contract.SCHEMA_V3 else contract.PUBLISH_FIELDS
+    integrate_fields = (contract.INTEGRATE_FIELDS_V3 if schema == contract.SCHEMA_V3
+                        else contract.INTEGRATE_FIELDS)
+    query_fields = contract.QUERY_FIELDS_V3 if schema == contract.SCHEMA_V3 else contract.QUERY_FIELDS
     return {
-        "schema": contract.SCHEMA,
+        "schema": schema,
         "gate": case["gate"],
-        "publish_to_callback": [_present(row, contract.PUBLISH_FIELDS) for row in inputs],
-        "integrate_to_receipt": [_present(row, contract.INTEGRATE_FIELDS) for row in inputs],
-        "query_chain": [_present(row, contract.QUERY_FIELDS) for row in case.get("queries") or []],
+        "publish_to_callback": [_present(row, publish_fields) for row in inputs],
+        "integrate_to_receipt": [_present(row, integrate_fields) for row in inputs],
+        "query_chain": [_present(row, query_fields) for row in case.get("queries") or []],
         "resource_and_recovery": {
             "health_times_s": case.get("health_times_s"),
             "resources": case.get("resources"),
@@ -67,13 +80,20 @@ def case_from_segments(segments):
     for name in ("publish_to_callback", "integrate_to_receipt", "query_chain", "resource_and_recovery"):
         if name not in segments:
             missing.append(name)
-    if missing or "gate" not in segments or segments.get("schema") not in (contract.SCHEMA, contract.SCHEMA_V1):
+    schema = segments.get("schema")
+    if missing or "gate" not in segments or schema not in (
+            contract.SCHEMA_V3, contract.SCHEMA, contract.SCHEMA_V1):
         return None, missing or ["schema"]
+    # Field requirements follow the ledger's own version; a v2 file that
+    # predates the monotonic boundary fields is not failed for lacking them.
+    publish_fields = contract.PUBLISH_FIELDS_V3 if schema == contract.SCHEMA_V3 else contract.PUBLISH_FIELDS
+    integrate_fields = (contract.INTEGRATE_FIELDS_V3 if schema == contract.SCHEMA_V3
+                        else contract.INTEGRATE_FIELDS)
     publish = segments["publish_to_callback"]
     integrate = segments["integrate_to_receipt"]
     queries = segments["query_chain"]
-    extra = _missing_fields(publish, contract.PUBLISH_FIELDS)
-    extra += _missing_fields(integrate, contract.INTEGRATE_FIELDS)
+    extra = _missing_fields(publish, publish_fields)
+    extra += _missing_fields(integrate, integrate_fields)
     extra += _missing_fields(queries, ("query_id",))
     if extra or not isinstance(publish, list) or not isinstance(integrate, list) or not isinstance(queries, list):
         return None, extra or ["segment_type"]

@@ -128,6 +128,9 @@ class _WindowRun:
 
     def _open_session(self):
         """Fresh observer process and client session for this window."""
+        parent = str(Path(__file__).resolve().parents[1])
+        if parent not in sys.path:
+            sys.path.insert(0, parent)
         import s2_rehearsal
         import rclpy
         from sensor_msgs.msg import PointCloud2
@@ -167,7 +170,7 @@ class _WindowRun:
         config = self.group["config_file"]
         self._frames = _emit_frames(
             self.adapter.eval_native, geometry, config, self.group, input_count,
-            self.out / "emitted")
+            self.out)
         time.sleep(0.3)
         self.origin_ns = time.monotonic_ns()
         self.clock_origin = self.adapter.clock.elapsed_s
@@ -324,7 +327,7 @@ class LiveScheduleAdapter:
         run.mkdir(parents=True, exist_ok=True)
         frames = _emit_frames(
             self.eval_native, self.group_geometry(group), self.group_config(group),
-            group, 1, run / "emitted")
+            group, 1, run)
         import capture_replay
         manifest = {
             "case_id": "cold-%s-%03d" % (group["id"], offset),
@@ -765,3 +768,8 @@ class LiveScheduleAdapter:
             os.environ.pop("ROS_DOMAIN_ID", None)
         else:
             os.environ["ROS_DOMAIN_ID"] = self.previous_domain
+        # Mirror the wiring path: leave rclpy down so the next live entry
+        # initializes under its own domain instead of inheriting this one.
+        import rclpy
+        if rclpy.ok():
+            rclpy.shutdown()

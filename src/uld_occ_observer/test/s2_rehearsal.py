@@ -362,7 +362,16 @@ def functional(session, binary, geometry, config, out, env, geometry_hash):
                       "%s uncovered=%s" % (usage.certification, sorted(usage.uncovered_classes)))
     finally:
         node.stop()
-    traced = capture_replay.certify_trace(trace_path)
+    # The functional flow performs exactly these service integrates, in this
+    # order, under the s2-functional run id: the expected operation set is
+    # known here and supplied to the certifier — a trace is never certified
+    # against nothing.
+    expected_operations = []
+    for name in ("recover-1", "send-0", "send-1", "send-2"):
+        expected_operations.append({"event": "integrate_start", "request_id": name, "status": ""})
+        expected_operations.append({"event": "integrate_end", "request_id": name, "status": "INTEGRATED"})
+    traced = capture_replay.certify_trace(
+        trace_path, {"operations": expected_operations, "run_id": "s2-functional"})
     session.check("live trace is complete and is not by itself a replay",
                   traced["capture_complete"] is True and traced["replay_possible"] is False, str(traced))
     stripped = Path(out) / "trace_without_footer.jsonl"

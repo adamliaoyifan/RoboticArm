@@ -422,8 +422,11 @@ def test_live_blocked_query_does_not_push_the_sender(tmp_path):
     os.environ["ROS_DOMAIN_ID"] = "45"
     env = os.environ.copy()
     env["ROS_DOMAIN_ID"] = "45"
-    if not rclpy.ok():
-        rclpy.init()
+    # A previous live entry may have left rclpy up on another domain; the
+    # context reads the domain once at init, so force a fresh one here.
+    if rclpy.ok():
+        rclpy.shutdown()
+    rclpy.init()
     try:
         session = s2_rehearsal.Session()
         observer = s2_rehearsal.start_observer(
@@ -493,6 +496,9 @@ def test_live_blocked_query_does_not_push_the_sender(tmp_path):
             session.close()
         if observer is not None:
             observer.stop()
+        import rclpy
+        if rclpy.ok():
+            rclpy.shutdown()
         if previous is None:
             os.environ.pop("ROS_DOMAIN_ID", None)
         else:

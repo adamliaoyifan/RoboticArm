@@ -70,6 +70,14 @@ QUERY_FIELDS_V1 = (
 QUERY_FIELDS = QUERY_FIELDS_V1 + ("epoch", "observed_revision", "content_hash")
 # v1 ledgers are judged as stored. Replay does not invent epoch, content, or plan ids.
 # A v1 ledger that lacks those fields is not_evaluated. It is not rewritten into v2.
+SCHEMA_V3 = "occ_octomap_repair_s0_v3"
+# v3 adds the CLOCK_MONOTONIC publish boundary: the planned deadline, the real
+# publish return, and the cloud header stamp in its own field (never standing
+# in for the boundary), plus per-request query start/end and receipt problems.
+# v2/v1 ledgers are judged as stored and never rewritten into v3.
+PUBLISH_FIELDS_V3 = PUBLISH_FIELDS + ("publish_planned_ns", "input_stamp_ns", "clock_domain")
+INTEGRATE_FIELDS_V3 = INTEGRATE_FIELDS + ("receipt_problems",)
+QUERY_FIELDS_V3 = QUERY_FIELDS + ("started_mono_ns", "ended_mono_ns")
 
 
 def gate_table():
