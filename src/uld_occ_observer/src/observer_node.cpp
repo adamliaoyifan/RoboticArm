@@ -552,6 +552,8 @@ class ObserverNode : public rclcpp::Node {
         accounts.ledger_bytes_peak = ledger_.accounted_bytes_peak();
         accounts.completion_records = board_.size();
         accounts.completion_records_peak = board_.peak();
+        accounts.completion_bytes = board_.accounted_bytes();
+        accounts.completion_bytes_peak = board_.accounted_bytes_peak();
         repository_->account(accounts);
         const auto usage = repository_->usage();
         response->status = "OK";
@@ -560,6 +562,8 @@ class ObserverNode : public rclcpp::Node {
         response->old_view_block_bytes = usage.old_view_block_bytes;
         response->view_directory_entries = usage.view_directory_entries;
         response->view_directory_entries_peak = usage.view_directory_entries_peak;
+        response->view_directory_bytes = usage.view_directory_bytes;
+        response->view_directory_bytes_peak = usage.view_directory_bytes_peak;
         response->surface_cache_bytes = usage.surface_cache_bytes;
         response->surface_cache_bytes_peak = usage.surface_cache_bytes_peak;
         response->inflight_response_bytes = usage.inflight_response_bytes;
@@ -574,6 +578,11 @@ class ObserverNode : public rclcpp::Node {
         response->receipt_ledger_bytes_peak = usage.receipt_ledger_bytes_peak;
         response->completion_records = usage.completion_records;
         response->completion_records_peak = usage.completion_records_peak;
+        response->read_view_bytes = usage.read_view_bytes;
+        response->read_view_bytes_peak = usage.read_view_bytes_peak;
+        response->cache_bytes = usage.cache_bytes;
+        response->cache_bytes_peak = usage.cache_bytes_peak;
+        response->store_tree_bytes = usage.store_tree_bytes;
         response->uncovered_allocations = usage.uncovered_allocations;
         response->certification = usage.certification;
         response->uncovered_classes = usage.uncovered_classes;

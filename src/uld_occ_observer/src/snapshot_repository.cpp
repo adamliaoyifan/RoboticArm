@@ -1,4 +1,6 @@
 #include "uld_occ_observer/snapshot_repository.hpp"
+#include "uld_occ_observer/observation_ingress.hpp"
+#include "uld_occ_observer/snapshot_wait_board.hpp"
 #include <algorithm>
 #include <set>
 
@@ -84,6 +86,7 @@ SnapshotLease SnapshotRepository::acquire(std::int64_t now_ns, std::int64_t max_
   if (entries_.size() >= 8 || revisions.size() > 2) throw Error("SNAPSHOT_PRESSURE");
   const auto handle = std::to_string(identity.epoch) + ":" + std::to_string(++next_handle_);
   entries_.emplace(handle, Entry{selected, now + ttl_});
+  note_handle_directory_unlocked(+1);
   track_unlocked(selected);
   return {handle, identity, age, age > max_age_ns};
 }
@@ -118,6 +121,7 @@ std::optional<SnapshotLease> SnapshotRepository::try_acquire(
   if (entries_.size() >= 8 || revisions.size() > 2) throw Error("SNAPSHOT_PRESSURE");
   const auto handle = std::to_string(identity.epoch) + ":" + std::to_string(++next_handle_);
   entries_.emplace(handle, Entry{selected, now + ttl_});
+  note_handle_directory_unlocked(+1);
   track_unlocked(selected);
   return SnapshotLease{handle, identity, age, age > max_age_ns};
 }
@@ -134,7 +138,21 @@ void SnapshotRepository::release(const std::string& handle) {
   std::lock_guard<std::mutex> lock(mutex_);
   entries_.erase(handle);
 }
+void SnapshotRepository::note_handle_directory_unlocked(std::int64_t delta) {
+  // A high-water mark: only opens raise it, so erase passes nothing. The live
+  // count stays entries_.size().
+  if (delta > 0)
+    handle_directory_peak_ = std::max<std::uint64_t>(handle_directory_peak_, entries_.size());
+}
 void SnapshotRepository::set_ttl_for_test(std::chrono::milliseconds ttl) { ttl_ = ttl; }
+std::uint64_t SnapshotRepository::handle_node_bytes() {
+  constexpr std::uint64_t kMapNodeOverhead = 8u + 3u * sizeof(void*);
+  return kMapNodeOverhead + sizeof(std::map<std::string, Entry>::value_type);
+}
+std::uint64_t SnapshotRepository::block_node_bytes() {
+  constexpr std::uint64_t kMapNodeOverhead = 8u + 3u * sizeof(void*);
+  return kMapNodeOverhead + sizeof(BlockRegistry::value_type);
+}
 void SnapshotRepository::set_resource_scope_complete_for_test(bool complete) {
   std::lock_guard<std::mutex> lock(mutex_);
   resource_scope_complete_ = complete;
@@ -146,11 +164,13 @@ void SnapshotRepository::account(const ResourceAccounts& accounts) {
 ResourceUsage SnapshotRepository::usage() {
   std::vector<std::shared_ptr<const CellBlock>> store_blocks;
   store_.collect_blocks(store_blocks);
-  const auto store_directories = store_.directory_entries();
+  const auto store_directory_count = store_.directory_entries();
   const auto retained = store_.retained_snapshot();
   std::vector<std::shared_ptr<const Snapshot>> views;
   std::uint64_t inflight = 0;
   std::uint64_t inflight_peak = 0;
+  std::uint64_t handle_entries = 0;
+  std::uint64_t handle_peak = 0;
   ResourceAccounts accounts;
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -163,21 +183,34 @@ ResourceUsage SnapshotRepository::usage() {
     if (retained) views.push_back(retained);
     inflight = inflight_bytes_;
     inflight_peak = inflight_peak_;
+    handle_entries = entries_.size();
+    handle_peak = handle_directory_peak_;
     accounts = accounts_;
   }
+  // Node sizes derive from the actual container types, not from a shared
+  // constant: a std::map node is the red-black overhead (color+padding plus
+  // parent/left/right = 32 B on LP64) plus the padded pair payload. Capacity
+  // equals size for a map node, so entries*node is the allocated capacity.
+  const auto block_node = block_node_bytes();
+  const auto handle_node = handle_node_bytes();
+  // The bounded ingress deque: chunk amortization plus the block map share,
+  // per element, on top of the item itself.
+  const auto queue_node = sizeof(ObservationIngress::Item) + 2u * sizeof(void*);
   std::set<const CellBlock*> current;
   for (const auto& block : store_blocks) if (block) current.insert(block.get());
   std::set<const CellBlock*> unique = current;
   std::set<const Snapshot*> seen_snapshots;
   std::set<const SurfaceCache*> seen_caches;
-  std::uint64_t directories = store_directories;
+  std::uint64_t view_directory_count = 0;
   std::uint64_t surface = 0;
   std::uint64_t old_bytes = 0;
   for (const auto& snapshot : views) {
     if (!snapshot || !seen_snapshots.insert(snapshot.get()).second) continue;
-    directories += snapshot->directory_entries();
+    view_directory_count += snapshot->directory_entries();
     if (const auto* cache = snapshot->surface_cache()) {
-      if (seen_caches.insert(cache).second) surface += snapshot->surface_cache_allocated_bytes();
+      // Cache object plus its column buffer at allocated capacity.
+      if (seen_caches.insert(cache).second)
+        surface += sizeof(SurfaceCache) + snapshot->surface_cache_allocated_bytes();
     }
     std::vector<std::shared_ptr<const CellBlock>> owned;
     snapshot->collect_blocks(owned);
@@ -186,37 +219,38 @@ ResourceUsage SnapshotRepository::usage() {
       if (!current.count(block.get())) old_bytes += sizeof(CellBlock);
     }
   }
-  const auto shared = static_cast<std::uint64_t>(unique.size()) * sizeof(CellBlock);
-  // Allocated-node estimate for one handle-directory entry: the map node plus
-  // its key string plus Entry (shared_ptr + time point). Capacity equals size
-  // for a std::map node, so this counts allocated capacity, not only live keys.
-  constexpr std::uint64_t kDirectoryNodeBytes =
-      48u + 2u * sizeof(void*) + sizeof(Entry) + sizeof(std::string) + 32u;
-  const auto directory_bytes = directories * kDirectoryNodeBytes;
-  // Queue/ledger/completion node estimates, same capacity-equals-size rule.
-  constexpr std::uint64_t kQueueNodeBytes = 64u + sizeof(void*);
-  const auto queue_bytes = accounts.entry_messages * kQueueNodeBytes;
-  constexpr std::uint64_t kCompletionNodeBytes = 64u + 2u * sizeof(void*);
-  const auto completion_bytes = accounts.completion_records * kCompletionNodeBytes;
+  // Unique-ownership block sum: every live block exactly once, whether it is
+  // current, view-exclusive, or shared. old_bytes is the view-exclusive share
+  // of the same set and never adds to it again.
+  const auto block_bytes = static_cast<std::uint64_t>(unique.size()) * sizeof(CellBlock);
+  const auto block_directory_bytes = (store_directory_count + view_directory_count) * block_node;
+  const auto handle_bytes = handle_entries * handle_node;
+  const auto queue_bytes = accounts.entry_messages * queue_node;
   const auto store_tree = store_.diagnostics().estimated_tree_bytes;
-  // The read-view/cache scope sum: shared + old-view blocks, directory nodes,
-  // surface caches, inflight responses, entry queue (payload + nodes), receipt
-  // ledger bytes (already node-inclusive via accounted_bytes), completions.
-  // Store tree bytes are reported separately and never enter this sum.
-  const auto read_view = shared + old_bytes + directory_bytes + surface + inflight
+  // Completion bytes come from the owning board's own node-inclusive account;
+  // the ledger likewise reports its accounted bytes. Neither is re-estimated.
+  const auto completion_bytes = accounts.completion_bytes;
+  // Scope sums. read_view excludes surface caches; cache is exactly the
+  // caches. read_view + cache counts every in-scope byte once: blocks are not
+  // re-added via old_bytes and caches are not in both sums.
+  const auto read_view = block_bytes + block_directory_bytes + handle_bytes + inflight
       + queue_bytes + accounts.entry_payload_bytes + accounts.ledger_bytes + completion_bytes;
+  const auto directories = store_directory_count + view_directory_count + handle_entries;
+  const auto directory_bytes = block_directory_bytes + handle_bytes;
   std::lock_guard<std::mutex> lock(mutex_);
-  block_peak_ = std::max(block_peak_, shared);
+  block_peak_ = std::max(block_peak_, block_bytes);
   directory_peak_ = std::max(directory_peak_, directories);
   surface_peak_ = std::max(surface_peak_, surface);
   directory_bytes_peak_ = std::max(directory_bytes_peak_, directory_bytes);
   read_view_peak_ = std::max(read_view_peak_, read_view);
+  cache_peak_ = std::max(cache_peak_, surface);
   ResourceUsage usage;
-  usage.shared_block_bytes = shared;
+  usage.shared_block_bytes = block_bytes;
   usage.shared_block_bytes_peak = block_peak_;
   usage.old_view_block_bytes = old_bytes;
   usage.view_directory_entries = directories;
   usage.view_directory_entries_peak = directory_peak_;
+  usage.handle_directory_entries_peak = handle_peak;
   usage.view_directory_bytes = directory_bytes;
   usage.view_directory_bytes_peak = directory_bytes_peak_;
   usage.surface_cache_bytes = surface;
@@ -236,21 +270,56 @@ ResourceUsage SnapshotRepository::usage() {
   usage.store_tree_bytes = store_tree;
   usage.read_view_bytes = read_view;
   usage.read_view_bytes_peak = read_view_peak_;
+  usage.cache_bytes = surface;
+  usage.cache_bytes_peak = cache_peak_;
+  usage.class_bytes = {
+      {"block_allocations", block_bytes},
+      {"block_directory_nodes", block_directory_bytes},
+      {"handle_directory_nodes", handle_bytes},
+      {"surface_caches", surface},
+      {"inflight_responses", inflight},
+      {"entry_queue_nodes", queue_bytes},
+      {"entry_queue_payload", accounts.entry_payload_bytes},
+      {"receipt_ledger", accounts.ledger_bytes},
+      {"completion_board", completion_bytes},
+  };
+  usage.class_basis = {
+      {"block_allocations", "live CellBlock count x sizeof(CellBlock), unique ownership"},
+      {"block_directory_nodes",
+       "(store + view registry entries) x (32 + sizeof(BlockRegistry::value_type))"},
+      {"handle_directory_nodes",
+       "open handles x (32 + sizeof(pair<const string, Entry)); handle keys are "
+       "SSO-sized (<16 bytes) so no key heap"},
+      {"surface_caches",
+       "unique SurfaceCache objects x sizeof(SurfaceCache) + column buffer capacity"},
+      {"inflight_responses", "live response payload bytes, lifecycle-tracked"},
+      {"entry_queue_nodes",
+       "queued messages x (sizeof(ObservationIngress::Item) + 2 pointers)"},
+      {"entry_queue_payload", "queued point-cloud payload bytes, lifecycle-tracked"},
+      {"receipt_ledger", "ledger accounted bytes (node-inclusive, from the ledger)"},
+      {"completion_board", "wait-board accounted bytes (node-inclusive, from the board)"},
+  };
   if (resource_scope_complete_) {
     // Every class of the read-view/cache scope is attributed above. This
     // certifies that scope only; the out-of-scope classes stay listed and no
-    // broader resource claim is made.
+    // broader resource claim is made. Block/directory/cache/read-view peaks
+    // are observed high-water marks of usage() calls, not allocation
+    // lifecycle proofs; inflight, queue, ledger, board, and handle-directory
+    // peaks are lifecycle-tracked at the mutation site.
     usage.uncovered_allocations = false;
     usage.certification = "READ_VIEW_CACHE_ATTRIBUTED";
   } else {
     usage.uncovered_allocations = true;
     usage.certification = "NOT_EVALUATED";
     usage.uncovered_classes = {
-        "octree_internal_nodes",
-        "std_map_directory_nodes",
-        "ledger_map_nodes",
-        "ingress_queue_nodes",
-        "completion_map_nodes",
+        "block_allocations",
+        "block_directory_nodes",
+        "handle_directory_nodes",
+        "surface_caches",
+        "inflight_responses",
+        "entry_queue_nodes",
+        "receipt_ledger",
+        "completion_board",
         "middleware_transport_buffers",
         "tf_buffer",
         "fingerprint_table"};

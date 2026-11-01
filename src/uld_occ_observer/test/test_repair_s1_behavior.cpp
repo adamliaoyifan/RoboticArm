@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
+#include <set>
 #include <thread>
 
 using namespace uld_occ_observer;
@@ -124,10 +125,15 @@ void test_reset_ttl_pressure_and_bytes(const ObserverConfiguration& cfg) {
   expect(!baseline.uncovered_allocations
              && baseline.certification == "READ_VIEW_CACHE_ATTRIBUTED",
          "the read-view/cache scope is fully attributed");
-  expect(baseline.view_directory_bytes >= baseline.view_directory_entries * 48u,
+  expect(baseline.view_directory_bytes
+             >= baseline.view_directory_entries * SnapshotRepository::block_node_bytes(),
          "directory nodes are counted as allocated capacity");
-  expect(baseline.read_view_bytes >= baseline.shared_block_bytes + baseline.surface_cache_bytes,
-         "the read-view sum covers blocks, directory, and cache");
+  expect(baseline.read_view_bytes
+             >= baseline.shared_block_bytes + baseline.view_directory_bytes,
+         "the read-view sum covers blocks and directories");
+  expect(baseline.cache_bytes == baseline.surface_cache_bytes
+             && baseline.read_view_bytes + baseline.cache_bytes <= baseline.read_view_bytes_peak + baseline.cache_bytes_peak,
+         "the cache scope is separate from the read-view sum and peaks are recorded");
   expect(baseline.store_tree_bytes > 0, "store tree bytes are reported separately");
   limited.set_resource_scope_complete_for_test(false);
   const auto regressed = limited.usage();
@@ -240,14 +246,53 @@ void test_resource_ownership(const ObserverConfiguration& cfg) {
   auto held = repo.get(first.handle);
   auto cache = held->surface();
   const auto one = repo.usage();
-  const auto directories = one.view_directory_entries;
   const auto second = repo.acquire(2000000000, 5000000000, true);
   const bool same = repo.get(second.handle).get() == held.get();
   const auto two = repo.usage();
   expect(same && one.surface_cache_bytes > 0 && two.surface_cache_bytes == one.surface_cache_bytes,
          "same cache must be counted once for two handles");
-  expect(two.view_directory_entries == directories, "same snapshot directory is counted once");
+  expect(two.class_bytes.at("block_directory_nodes") == one.class_bytes.at("block_directory_nodes"),
+         "same snapshot block directory is counted once");
   expect(two.shared_block_bytes == one.shared_block_bytes, "same blocks stay deduplicated");
+  expect(two.class_bytes.at("handle_directory_nodes") - one.class_bytes.at("handle_directory_nodes")
+             == SnapshotRepository::handle_node_bytes(),
+         "a second open handle adds exactly one handle node");
+  // Independent ownership ledger: every in-scope byte lands in exactly one
+  // class, the cache class is the whole cache scope, and the sums of the
+  // class table explain read_view + cache with nothing double counted.
+  std::uint64_t class_total = 0;
+  for (const auto& item : two.class_bytes) class_total += item.second;
+  expect(two.read_view_bytes + two.cache_bytes == class_total,
+         "read_view + cache equals the class table sum exactly once");
+  expect(two.cache_bytes == two.class_bytes.at("surface_caches"),
+         "the cache scope is exactly the surface cache class");
+  expect(two.old_view_block_bytes <= two.shared_block_bytes,
+         "old-view blocks are inside the unique block sum, never added again");
+  std::uint64_t independent_blocks = 0;
+  {
+    // Independent ownership walk: the live snapshot's blocks plus a fresh
+    // acquire of the same map, deduplicated by address, without reusing any
+    // repository arithmetic.
+    std::vector<std::shared_ptr<const CellBlock>> mine;
+    held->collect_blocks(mine);
+    std::set<const CellBlock*> unique;
+    for (const auto& block : mine) unique.insert(block.get());
+    const auto latest = repo.acquire(2000000000, 5000000000, true);
+    std::vector<std::shared_ptr<const CellBlock>> fresh;
+    repo.get(latest.handle)->collect_blocks(fresh);
+    for (const auto& block : fresh) unique.insert(block.get());
+    repo.release(latest.handle);
+    independent_blocks = unique.size();
+  }
+  expect(two.class_bytes.at("block_allocations") == independent_blocks * sizeof(CellBlock),
+         "independent block count times sizeof(CellBlock) matches the class sum");
+  expect(two.view_directory_entries
+             == held->directory_entries() + store.directory_entries() + 2,
+         "store + snapshot + open handles equals the directory entry count");
+  expect(two.class_bytes.at("block_directory_nodes")
+             == (held->directory_entries() + store.directory_entries())
+                    * SnapshotRepository::block_node_bytes(),
+         "independent registry count times the published node size matches");
   store.reset(1);
   repo.release(first.handle);
   repo.release(second.handle);
@@ -257,8 +302,8 @@ void test_resource_ownership(const ObserverConfiguration& cfg) {
   const auto readable = held->read_cells({0, 0, 0}, {2, 2, 2}, 0, 8);
   expect(!blocks.empty() && retained.shared_block_bytes >= blocks.size() * sizeof(CellBlock),
          "released handle with live reader must retain resource attribution");
-  expect(retained.surface_cache_bytes >= held->surface_cache_allocated_bytes(),
-         "live reader cache must remain attributed after reset and release");
+  expect(retained.surface_cache_bytes >= sizeof(SurfaceCache) + held->surface_cache_allocated_bytes(),
+         "live reader cache object and buffer remain attributed after reset and release");
   expect(readable.cells.size() == 8, "live reader still sees the pre-reset cells");
   expect(retained.certification == "READ_VIEW_CACHE_ATTRIBUTED" && !retained.uncovered_allocations,
          "the scoped attribution stays complete across reset and release");
@@ -286,7 +331,8 @@ void test_resource_ownership(const ObserverConfiguration& cfg) {
   new_view->surface();
   const auto both = version_repo.usage();
   expect(old_view.get() != new_view.get(), "a changed map publishes a new snapshot");
-  expect(both.surface_cache_bytes >= old_usage.surface_cache_bytes + new_view->surface_cache_allocated_bytes()
+  expect(both.surface_cache_bytes >= old_usage.surface_cache_bytes
+             + sizeof(SurfaceCache) + new_view->surface_cache_allocated_bytes()
              || old_view->surface_cache() == new_view->surface_cache(),
          "two live versions count each distinct surface cache");
   expect(both.old_view_block_bytes > 0, "blocks retained only by the old version stay attributed");
@@ -294,10 +340,26 @@ void test_resource_ownership(const ObserverConfiguration& cfg) {
   version_repo.release(new_lease.handle);
   old_view.reset();
   const auto baseline = version_repo.usage();
-  expect(baseline.surface_cache_bytes == new_view->surface_cache_allocated_bytes(),
+  expect(baseline.surface_cache_bytes
+             == sizeof(SurfaceCache) + new_view->surface_cache_allocated_bytes(),
          "dropping the old reader leaves the current snapshot cache as the baseline");
   expect(baseline.old_view_block_bytes == 0, "old-version blocks leave with their last reader");
   new_view.reset();
+
+  // A handle directory that opens and closes entirely between two usage()
+  // samples still raises the recorded lifecycle peak.
+  SnapshotRepository transient(versions);
+  const auto before_burst = transient.usage();
+  {
+    const auto burst_a = transient.acquire(4000000000, 5000000000, true);
+    const auto burst_b = transient.acquire(4000000000, 5000000000, true);
+    transient.release(burst_a.handle);
+    transient.release(burst_b.handle);
+  }
+  const auto transient_usage = transient.usage();
+  expect(transient_usage.view_directory_entries == before_burst.view_directory_entries
+             && transient_usage.handle_directory_entries_peak >= 2,
+         "handles closed between samples leave the lifecycle directory peak");
 
   SnapshotRepository flights(versions);
   auto first_response = flights.begin_response(1000);

@@ -19,6 +19,13 @@ uint64 receipt_ledger_bytes
 uint64 receipt_ledger_bytes_peak
 uint64 completion_records
 uint64 completion_records_peak
+uint64 read_view_bytes
+uint64 read_view_bytes_peak
+uint64 cache_bytes
+uint64 cache_bytes_peak
+uint64 view_directory_bytes
+uint64 view_directory_bytes_peak
+uint64 store_tree_bytes
 bool uncovered_allocations
 string certification
 string[] uncovered_classes

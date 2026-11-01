@@ -160,7 +160,9 @@ int main(int argc, char** argv) {
         const auto repo_usage = repo.usage();
         YAML::Node resources;
         resources["read_view_bytes"] = repo_usage.read_view_bytes;
-        resources["cache_bytes"] = repo_usage.surface_cache_bytes;
+        resources["read_view_bytes_peak"] = repo_usage.read_view_bytes_peak;
+        resources["cache_bytes"] = repo_usage.cache_bytes;
+        resources["cache_bytes_peak"] = repo_usage.cache_bytes_peak;
         resources["attribution_complete"] =
             repo_usage.certification == "READ_VIEW_CACHE_ATTRIBUTED";
         resources["unmarked_allocations"] = repo_usage.uncovered_allocations;
@@ -172,6 +174,15 @@ int main(int argc, char** argv) {
         resources["inflight_response_bytes"] = repo_usage.inflight_response_bytes;
         resources["entry_queue_payload_bytes"] = repo_usage.entry_queue_payload_bytes;
         resources["receipt_ledger_bytes"] = repo_usage.receipt_ledger_bytes;
+        resources["completion_board_bytes"] =
+            repo_usage.class_bytes.count("completion_board")
+                ? repo_usage.class_bytes.at("completion_board") : 0;
+        YAML::Node classes(YAML::NodeType::Map);
+        for (const auto& item : repo_usage.class_bytes) classes[item.first] = item.second;
+        resources["class_bytes"] = classes;
+        YAML::Node basis(YAML::NodeType::Map);
+        for (const auto& item : repo_usage.class_basis) basis[item.first] = item.second;
+        resources["class_basis"] = basis;
         YAML::Node uncovered(YAML::NodeType::Sequence);
         for (const auto& name : repo_usage.uncovered_classes) uncovered.push_back(name);
         resources["uncovered_classes"] = uncovered;
