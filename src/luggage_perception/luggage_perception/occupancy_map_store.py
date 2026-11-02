@@ -35,7 +35,6 @@ pass a controllable one). No cross-restart continuity: a restart is a new
 epoch and retried pre-restart updates fail with ``EPOCH_MISMATCH``.
 """
 
-from copy import deepcopy
 import threading
 import time
 import uuid
@@ -69,6 +68,11 @@ from luggage_perception.occupancy_confirmation import PendingConfirmation
 from luggage_perception.occupancy_content_digest import (
     content_digest as _content_digest,
     norm_height as _norm_height,
+)
+from luggage_perception.occupancy_map_projection import (
+    committed_dict as _project_committed,
+    v1_surface_dict as _project_v1,
+    v2_record as _project_v2,
 )
 
 
@@ -419,103 +423,17 @@ class OccupancyMapStore(object):
         reach the snapshot.
         """
         s = snapshot if snapshot is not None else self._snapshot
-        return {
-            "frame": "container_local",
-            "map_revision": s.identity.revision,
-            "geometry_hash": s.geometry_hash,
-            "geometry_descriptor": deepcopy(self._mapper.geometry_descriptor),
-            "resolution": s.resolution,
-            "nx": s.nx,
-            "ny": s.ny,
-            "inner_size": list(s.inner_size),
-            "floor_z": 0.0,
-            "origin_local": list(s.origin_local),
-            "center_base": list(s.center_base),
-            "yaw": s.yaw,
-            "height": [list(row) for row in s.height],
-            "clearance": [list(row) for row in s.clearance],
-            "state": [list(row) for row in s.state],
-            "known_ratio": list(s.known_ratio),
-            "confidence": [list(row) for row in s.confidence],
-            "semantic_label": [list(row) for row in s.semantic_label],
-            # Single-source identity + provenance:
-            "epoch": s.identity.epoch,
-            "content_digest": s.identity.content_digest,
-            "commit_revision": s.identity.revision,
-            "acquisition_stamp_ns": s.acquisition_stamp_ns,
-            "map_source": s.map_source,
-            "placed_count": s.placed_count,
-            "cargo_observed": s.cargo_observed,
-            "occupancy_confirmed": s.occupancy_confirmed,
-            "change_event": s.change_event,
-            "change_token": s.change_token,
-            "last_settle": _thaw_json(s.last_settle),
-            "pending_changes": [
-                {"token": token, "event": event, "stamp_ns": stamp_ns,
-                 "confirmable": confirmable, "box_id": box_id}
-                for token, event, stamp_ns, confirmable, box_id
-                in s.pending_details],
-        }
+        return _project_v1(s, self._mapper.geometry_descriptor)
 
     def v2_record(self, scene_revision, request_id, snapshot=None):
         """The SurfaceContractV2 record (deterministic projection)."""
         s = snapshot if snapshot is not None else self._snapshot
-        record = {
-            "contract_version": 2,
-            "frame_id": "container_link",
-            "length_unit": "m",
-            "stamp_ns": 0,
-            "time_basis": "scene",
-            "scene_revision": str(scene_revision),
-            "request_id": str(request_id),
-            "kind": "surface",
-            "map_revision": s.identity.revision,
-            "geometry_hash": s.geometry_hash,
-            "epoch": s.identity.epoch,
-            "content_digest": s.identity.content_digest,
-            "occupancy_confirmed": s.occupancy_confirmed,
-            "change_event": s.change_event,
-            "height_datum": "container_origin",
-            "origin_xy_container": list(s.origin_local),
-            "resolution_m": s.resolution,
-            "floor_z_container": s.floor_z_container,
-            "ceiling_z_container": s.ceiling_z_container,
-            "surface_z_container": [list(row) for row in
-                                    s.surface_z_container],
-            "state": [list(row) for row in s.state],
-            "confidence": [list(row) for row in s.contract_confidence],
-        }
-        if s.height_above_floor:
-            record["height_above_floor"] = [list(row) for row in
-                                            s.height_above_floor]
-        return record
+        return _project_v2(s, scene_revision, request_id)
 
     def committed_dict(self, frame, container_in_world, snapshot=None):
         """The /committed ledger JSON payload (deterministic projection)."""
         s = snapshot if snapshot is not None else self._snapshot
-        boxes = []
-        for center, size, yaw, source, anchor in s.ledger_details:
-            box = {"center": list(center), "size": list(size),
-                   "yaw": yaw}
-            if source:
-                box["measured_source"] = source
-            if anchor is not None:
-                box["verify_anchor"] = {
-                    "request_id": anchor[0],
-                    "delta_m": anchor[1],
-                    "tolerance_m": anchor[2],
-                    "verify_source": anchor[3],
-                }
-            boxes.append(box)
-        return {
-            "frame": frame,
-            "container_in_world": container_in_world,
-            "boxes": boxes,
-            "map_revision": s.identity.revision,
-            "geometry_hash": s.geometry_hash,
-            "epoch": s.identity.epoch,
-            "content_digest": s.identity.content_digest,
-        }
+        return _project_committed(s, frame, container_in_world)
 
     # ------------------------------------------------------------------
     # The one mutating entry point
