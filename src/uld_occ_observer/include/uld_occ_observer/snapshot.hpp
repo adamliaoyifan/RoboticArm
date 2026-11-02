@@ -4,6 +4,7 @@
 #include "uld_occ_observer/profiling.hpp"
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <vector>
@@ -78,6 +79,12 @@ class Snapshot {
                       std::size_t limit) const;
   std::shared_ptr<const std::vector<SurfaceColumn>> surface(SurfaceProfile* profile = nullptr) const;
   std::shared_ptr<const Snapshot> with_identity(SnapshotIdentity identity) const;
+  const std::shared_ptr<const UldDomain>& domain() const { return domain_; }
+  // Walks every known cell with its grid index (the surface() walk, exposed
+  // for the free-space query's prefix sums). Defined in snapshot.cpp where
+  // block_storage.hpp's layout helpers are visible.
+  void for_each_known_cell(
+      const std::function<void(const CellIndex&, const CellValue&)>& visitor) const;
   std::size_t block_count() const { return blocks_.size(); }
   std::uint64_t directory_entries() const { return blocks_.size(); }
   void collect_blocks(std::vector<std::shared_ptr<const CellBlock>>& out) const;

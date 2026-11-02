@@ -341,6 +341,7 @@ ResourceUsage SnapshotRepository::usage() {
       {"entry_queue_payload", totals.peak("entry_queue_payload")},
       {"receipt_ledger", totals.peak("receipt_ledger")},
       {"completion_board", totals.peak("completion_board")},
+      {"query_scratch", totals.peak("query_scratch")},
   };
   usage.class_flows = {
       {"block_allocations", totals.flow("block_allocations")},
@@ -381,6 +382,9 @@ ResourceUsage SnapshotRepository::usage() {
       {"receipt_ledger", "ledger accounted bytes (map node + pair + heap strings)"},
       {"completion_board",
        "board accounted bytes (map nodes + pairs + heap strings + order deque chunks)"},
+      {"query_scratch",
+       "freespace query per-call prefix-sum buffers; RAII add/subtract, outside "
+       "the read-view/cache gate scope"},
   };
   if (resource_scope_complete_) {
     // Every class of the read-view/cache scope is attributed above. This

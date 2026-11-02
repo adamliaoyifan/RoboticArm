@@ -50,6 +50,14 @@ std::shared_ptr<const Snapshot> Snapshot::with_identity(SnapshotIdentity identit
 }
 
 CellIndex Snapshot::block_index(CellIndex i) { return BlockLayout::block_coordinate(i); }
+void Snapshot::for_each_known_cell(
+    const std::function<void(const CellIndex&, const CellValue&)>& visitor) const {
+  const BlockLayout layout(domain_->shape());
+  for (const auto& entry : blocks_)
+    entry.second->for_each_known([&](std::uint16_t offset, const CellValue& value) {
+      visitor(layout.cell_index(entry.first, offset), value);
+    });
+}
 void Snapshot::collect_blocks(std::vector<std::shared_ptr<const CellBlock>>& out) const {
   for (const auto& entry : blocks_) out.push_back(entry.second);
 }

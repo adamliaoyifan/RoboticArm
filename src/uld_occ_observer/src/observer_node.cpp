@@ -18,6 +18,8 @@
 #include "uld_occ_observer/srv/wait_snapshot.hpp"
 #include "uld_occ_observer/srv/get_resource_usage.hpp"
 #include "uld_occ_observer/srv/set_behavior_hook.hpp"
+#include "uld_occ_observer/srv/query_freespace.hpp"
+#include "uld_occ_observer/freespace_query.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <tf2_ros/buffer.h>
@@ -35,6 +37,28 @@
 #include <thread>
 
 namespace uld_occ_observer {
+// Lock order table (never acquire in a different order; documented per the
+// unified delivery contract §3). Acquirer -> what it protects:
+//   1. ObservationStore::mutex_ (writer lock, held by integrate/reset/restore
+//      across tree maintenance AND the snapshot publish boundary) -- the sole
+//      mutation authority; single worker thread.
+//   2. SnapshotRepository::mutex_ -- the handle directory and its peaks.
+//      NEVER taken while waiting for (1): acquire() copies the store snapshot
+//      BEFORE taking this lock; get() takes only this lock (published_epoch
+//      is atomic), so an existing lease reads while integrate holds (1).
+//   3. SurfaceCache::mutex_ -- first-build-once for the column cache; data
+//      reads afterwards use the immutable buffer's shared ownership.
+//   4. freespace query: NO lock. query_freespace() is a pure function of the
+//      immutable snapshot (per-call tracked scratch); pages never block (1).
+//   5. wait_mu_ -- the WaitSnapshot waiter list. Never held across store or
+//      repository waits; send_wait releases it before try_acquire.
+//   6. adapter_mu_ / ingress / ledger / board locks -- ingress admission and
+//      receipt bookkeeping only; never held while touching (1)-(4).
+// No lock is ever held across ROS serialization or network waits: responses
+// are filled into rclcpp response objects after the data copy, and publish()
+// happens outside every scope above. reset/TTL/release linearize at (2):
+// an erase never cancels a read that already copied snapshot ownership; a
+// read that started keeps its immutable view until the reader lets go.
 class ObserverNode : public rclcpp::Node {
  public:
   ObserverNode() : Node("uld_occ_observer", "/uld_occ_observer") {
@@ -488,6 +512,92 @@ class ObserverNode : public rclcpp::Node {
              std::shared_ptr<srv::ReleaseSnapshot::Response> response) {
         repository_->release(request->handle); response->status = "OK";
       });
+    freespace_ = service<srv::QueryFreespace>("query_freespace",
+      [this](const std::shared_ptr<srv::QueryFreespace::Request> request,
+             std::shared_ptr<srv::QueryFreespace::Response> response) {
+        InflightResponse inflight;
+        try {
+          const auto started = std::chrono::steady_clock::now();
+          const auto snapshot = repository_->get(request->handle);
+          response->repository_wait_ms = std::chrono::duration<double, std::milli>(
+              std::chrono::steady_clock::now() - started).count();
+          const auto& identity = snapshot->identity();
+          response->age_ns = now().nanoseconds() - identity.last_integrated_stamp_ns;
+          FreespaceRequest core_request;
+          core_request.box_length_m = request->box_length;
+          core_request.box_width_m = request->box_width;
+          core_request.box_height_m = request->box_height;
+          core_request.yaw_mode = request->yaw_mode;
+          core_request.cursor = request->cursor;
+          core_request.limit = request->limit;
+          const auto enumerated = std::chrono::steady_clock::now();
+          const PlacementPolicy policy;  // frozen contract values, echoed below
+          const auto page = query_freespace(*snapshot, core_request, policy);
+          response->enumerate_ms = std::chrono::duration<double, std::milli>(
+              std::chrono::steady_clock::now() - enumerated).count();
+          const auto fill_started = std::chrono::steady_clock::now();
+          const auto count = page.candidates.size();
+          response->cell_x.reserve(count); response->cell_y.reserve(count);
+          response->cell_z.reserve(count);
+          response->origin_x.reserve(count); response->origin_y.reserve(count);
+          response->origin_z.reserve(count);
+          response->yaw_deg.reserve(count); response->support_ratio.reserve(count);
+          response->support_kind.reserve(count);
+          response->verify_begin.reserve(3 * count); response->verify_end.reserve(3 * count);
+          for (const auto& candidate : page.candidates) {
+            response->cell_x.push_back(candidate.cell_x);
+            response->cell_y.push_back(candidate.cell_y);
+            response->cell_z.push_back(candidate.cell_z);
+            response->origin_x.push_back(candidate.origin_x);
+            response->origin_y.push_back(candidate.origin_y);
+            response->origin_z.push_back(candidate.origin_z);
+            response->yaw_deg.push_back(candidate.yaw_deg);
+            response->support_ratio.push_back(candidate.support_ratio);
+            response->support_kind.push_back(candidate.support_kind);
+            response->verify_begin.push_back(candidate.verify_begin[0]);
+            response->verify_begin.push_back(candidate.verify_begin[1]);
+            response->verify_begin.push_back(candidate.verify_begin[2]);
+            response->verify_end.push_back(candidate.verify_end[0]);
+            response->verify_end.push_back(candidate.verify_end[1]);
+            response->verify_end.push_back(candidate.verify_end[2]);
+          }
+          inflight = repository_->begin_response(
+              reserved_bytes(response->cell_x) + reserved_bytes(response->cell_y)
+              + reserved_bytes(response->cell_z) + reserved_bytes(response->origin_x)
+              + reserved_bytes(response->origin_y) + reserved_bytes(response->origin_z)
+              + reserved_bytes(response->yaw_deg) + reserved_bytes(response->support_ratio)
+              + reserved_bytes(response->support_kind) + reserved_bytes(response->verify_begin)
+              + reserved_bytes(response->verify_end));
+          response->response_fill_ms = std::chrono::duration<double, std::milli>(
+              std::chrono::steady_clock::now() - fill_started).count();
+          response->identity = ros_identity(identity);
+          response->next_cursor = page.next_cursor;
+          response->done = page.done;
+          response->grid_total = page.grid_total;
+          response->feasible_total = page.feasible_total;
+          response->rejected_out_of_domain = page.rejected_out_of_domain;
+          response->rejected_collision = page.rejected_collision;
+          response->rejected_clearance = page.rejected_clearance;
+          response->rejected_unknown = page.rejected_unknown;
+          response->rejected_support = page.rejected_support;
+          response->support_tol_m = policy.support_tol_m;
+          response->min_support_ratio = policy.min_support_ratio;
+          response->clearance_margin_m = policy.clearance_margin_m;
+          response->same_layer_clearance_m = policy.same_layer_clearance_m;
+          response->resolution = snapshot->domain()->resolution();
+          response->region_begin = {page.region_begin[0], page.region_begin[1],
+                                    page.region_begin[2]};
+          response->region_end = {page.region_end[0], page.region_end[1],
+                                  page.region_end[2]};
+          response->server_total_ms = std::chrono::duration<double, std::milli>(
+              std::chrono::steady_clock::now() - started).count();
+          // Semantic honesty: an empty tree has nothing observed (NO_DATA);
+          // observations with no fully known-free volume answer NO_KNOWN_FREE
+          // -- a legal result, never padded with unknown-as-free candidates.
+          response->status = snapshot->known_entry_count() == 0 ? "NO_DATA"
+              : page.feasible_total == 0 ? "NO_KNOWN_FREE" : "OK";
+        } catch (const std::exception& error) { response->status = error.what(); }
+      });
     reset_ = service<srv::ResetObservation>("reset_observation",
       [this](const std::shared_ptr<srv::ResetObservation::Request> request,
              std::shared_ptr<srv::ResetObservation::Response> response) {
@@ -723,7 +833,7 @@ class ObserverNode : public rclcpp::Node {
     health["known_cells"] = d.store.known_cells; health["integrated"] = d.store.integrated;
     health["rejected"] = d.store.rejected; health["duplicates"] = d.store.duplicates;
     health["capabilities"] = std::vector<std::string>{
-        "OBSERVE","RESET","QUERY","CHECKPOINT","RESTORE","STATUS","WAIT","RESOURCE"};
+        "OBSERVE","RESET","QUERY","FREESPACE","CHECKPOINT","RESTORE","STATUS","WAIT","RESOURCE"};
     std_msgs::msg::String message; message.data = YAML::Dump(health); health_pub_->publish(message);
   }
   ObserverConfiguration config_;
@@ -759,6 +869,7 @@ class ObserverNode : public rclcpp::Node {
   rclcpp::Service<srv::ReadCells>::SharedPtr cells_;
   rclcpp::Service<srv::ReadSurface>::SharedPtr surface_;
   rclcpp::Service<srv::ReleaseSnapshot>::SharedPtr release_;
+  rclcpp::Service<srv::QueryFreespace>::SharedPtr freespace_;
   rclcpp::Service<srv::ResetObservation>::SharedPtr reset_;
   rclcpp::Service<srv::CheckpointObservation>::SharedPtr checkpoint_;
   rclcpp::Service<srv::GetObservationStatus>::SharedPtr status_;
