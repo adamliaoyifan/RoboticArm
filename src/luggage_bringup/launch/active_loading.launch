@@ -260,21 +260,8 @@
 
   </group>
 
-  <node pkg="luggage_perception" type="cargo_volume_mapper_node.py" name="cargo_volume_mapper" output="screen">
-    <rosparam command="load" file="$(arg occupancy_fusion_config)"/>
-    <param name="motion_gate/enabled" value="$(arg motion_gate_enabled)"/>
-    <param name="motion_gate/velocity_threshold" value="$(arg motion_gate_velocity_threshold)"/>
-    <param name="occupancy/enabled" value="$(arg log_odds_enabled)"/>
-    <param name="voxel_resolution" value="$(arg voxel_resolution)"/>
-    <param name="publish_viz" value="true"/>
-    <param name="viz_frame_id" value="elfin_base_link"/>
-    <param name="viz_show_free" value="false"/>
-    <param name="viz_show_unknown" value="true"/>
-    <param name="depth_points_topic" value="$(eval '/camera/depth/points_robot_filtered' if arg('enable_urdf_self_filter') else '/camera/depth/points')"/>
-    <param name="self_filter/enabled" value="$(eval not arg('enable_urdf_self_filter'))"/>
-    <param name="self_filter_config" value="$(arg robot_self_filter_config)"/>
-    <param name="use_semantic_filter" value="$(arg enable_semantic)"/>
-  </node>
+  <!-- Retired ROS1 cargo map node. scripts/ros1_reference/cargo_volume_mapper_node.py
+       was removed. This launch does not start a cargo map node. -->
   <node pkg="luggage_perception" type="placed_pose_verifier_node.py"
         name="placed_pose_verifier" output="screen">
     <param name="cloud_topic"
