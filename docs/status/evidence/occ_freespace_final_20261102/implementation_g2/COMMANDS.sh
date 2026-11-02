@@ -154,7 +154,7 @@ def entry(path):
     path = pathlib.Path(path)
     return {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 bench = work / "src/uld_occ_observer/test/benchmark"
-typesupport = sorted((install / "lib").glob("libuld_occ_observer__rosidl_typesupport_cpp.so"))
+typesupport = sorted(install.glob("uld_occ_observer/lib/libuld_occ_observer__rosidl_typesupport_cpp.so"))
 if not typesupport:
     raise SystemExit("REFUSING: typesupport library missing from install")
 frames = sorted(frame_dir.glob("b*.yaml"))
