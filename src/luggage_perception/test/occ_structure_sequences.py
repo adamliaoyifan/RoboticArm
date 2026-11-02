@@ -425,7 +425,25 @@ def _handle_view(store, token, identity):
 
 
 def sequence_store():
-    """S1–S9. Each group has an initial read, a trigger, and a follow-up read."""
+    """S1–S9. Each group has an initial read, a trigger, and a follow-up read.
+
+    Reset rotates the epoch with uuid4. The oracle pins that generator so
+    two processes can compare the epoch relationship. Revision and content
+    digest stay un-normalized.
+    """
+    import luggage_perception.occupancy_map_store as store_mod
+
+    class _Hex(object):
+        def __init__(self, text):
+            self.hex = text
+
+    counter = {"n": 0}
+
+    def pinned_uuid4():
+        counter["n"] += 1
+        return _Hex("oracle-epoch-%d" % counter["n"])
+
+    store_mod.uuid.uuid4 = pinned_uuid4
     groups = {}
 
     def integrate(store, op, points, stamp_key):
