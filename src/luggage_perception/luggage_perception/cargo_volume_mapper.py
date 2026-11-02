@@ -868,12 +868,7 @@ class CargoVolumeMapper:
         misses.difference_update(hits)
         self._observe_voxels(misses)
         self._observe_voxels(hits)
-        for index in misses:
-            self._grid[index]=self._occupancy.apply_miss(index)
-            self._record_sensor_miss(index)
-            if self._grid[index]==FREE and self._source[index]!=SOURCE_GEOMETRY:
-                self._source[index]=SOURCE_NONE
-                self._labels[index]=0;self._instance_ids[index]=0
+        self._batch_miss_update(misses)
         for hit in hits.values():self.mark_occupied_world(*hit)
         if hits or misses:self._revision+=1
         return dict(rays=len(rays),hits=len(hits),free_voxels=len(misses),
