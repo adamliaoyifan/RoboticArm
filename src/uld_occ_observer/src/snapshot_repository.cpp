@@ -192,7 +192,7 @@ ResourceUsage SnapshotRepository::usage() {
   store_.collect_blocks(store_blocks);
   const auto store_directory_count = store_.directory_entries();
   const auto retained = store_.retained_snapshot();
-  std::vector<std::shared_ptr<const Snapshot>> views;
+  std::vector<std::shared_ptr<const Snapshot>> lease_views, client_views;
   std::uint64_t inflight = 0;
   std::uint64_t inflight_peak = 0;
   std::uint64_t handle_entries = 0;
@@ -203,10 +203,23 @@ ResourceUsage SnapshotRepository::usage() {
     expire_unlocked(Clock::now(), store_.published_epoch());
     readers_.erase(std::remove_if(readers_.begin(), readers_.end(),
         [](const std::weak_ptr<const Snapshot>& reader) { return reader.expired(); }), readers_.end());
-    for (const auto& entry : entries_) views.push_back(entry.second.snapshot);
-    for (const auto& reader : readers_)
-      if (auto snapshot = reader.lock()) views.push_back(std::move(snapshot));
-    if (retained) views.push_back(retained);
+    // Owner classification: a snapshot under an open handle is a LEASE view;
+    // a live reader weak_ptr whose snapshot is NOT in entries_ was released
+    // (or reset past) but an external holder still keeps it alive -- the
+    // CLIENT-HELD class. The store-retained snapshot is its own class, claimed
+    // after leases so a still-leased retained view attributes to the lease.
+    std::set<const Snapshot*> open;
+    for (const auto& entry : entries_) {
+      if (!entry.second.snapshot) continue;
+      lease_views.push_back(entry.second.snapshot);
+      open.insert(entry.second.snapshot.get());
+    }
+    for (const auto& reader : readers_) {
+      if (auto snapshot = reader.lock()) {
+        if (open.count(snapshot.get())) continue;
+        client_views.push_back(std::move(snapshot));
+      }
+    }
     inflight = inflight_bytes_;
     inflight_peak = inflight_peak_;
     handle_entries = entries_.size();
@@ -224,12 +237,19 @@ ResourceUsage SnapshotRepository::usage() {
   std::set<const CellBlock*> unique = current;
   std::set<const Snapshot*> seen_snapshots;
   std::set<const SurfaceCache*> seen_caches;
-  std::uint64_t view_directory_count = 0;
   std::uint64_t surface = 0;
   std::uint64_t old_bytes = 0;
-  for (const auto& snapshot : views) {
-    if (!snapshot || !seen_snapshots.insert(snapshot.get()).second) continue;
-    view_directory_count += snapshot->directory_entries();
+  // Per-origin view totals: directories and first-reached old-view blocks,
+  // claimed in the order lease -> retained -> client-held (the merge above is
+  // unchanged; only the attribution is new, so every frozen sum stays intact).
+  struct OriginTotals {
+    std::uint64_t directories = 0, old_blocks = 0;
+  };
+  OriginTotals lease_totals, retained_totals, client_totals;
+  auto walk_views = [&](const std::shared_ptr<const Snapshot>& snapshot,
+                        OriginTotals& totals) {
+    if (!snapshot || !seen_snapshots.insert(snapshot.get()).second) return;
+    totals.directories += snapshot->directory_entries();
     if (const auto* cache = snapshot->surface_cache()) {
       // Cache object (with its shared control block) plus the column buffer
       // at allocated capacity.
@@ -241,10 +261,18 @@ ResourceUsage SnapshotRepository::usage() {
     snapshot->collect_blocks(owned);
     for (const auto& block : owned) {
       if (!block || !unique.insert(block.get()).second) continue;
-      if (!current.count(block.get()))
-        old_bytes += sizeof(CellBlock) + kControlBlockBytes;
+      if (!current.count(block.get())) {
+        const auto bytes = sizeof(CellBlock) + kControlBlockBytes;
+        old_bytes += bytes;
+        totals.old_blocks += bytes;
+      }
     }
-  }
+  };
+  for (const auto& snapshot : lease_views) walk_views(snapshot, lease_totals);
+  if (retained) walk_views(retained, retained_totals);
+  for (const auto& snapshot : client_views) walk_views(snapshot, client_totals);
+  const auto view_directory_count = lease_totals.directories
+      + retained_totals.directories + client_totals.directories;
   // Externally held surface buffers: surface() hands the column vector to
   // callers, and a reader can outlive the cache and snapshot that built it.
   // The tracker counts those bytes (added at build, released by the
@@ -305,6 +333,13 @@ ResourceUsage SnapshotRepository::usage() {
   usage.handle_directory_entries_peak = handle_peak;
   usage.view_directory_bytes = directory_bytes;
   usage.view_directory_bytes_peak = directory_bytes_peak_;
+  usage.lease_view_block_bytes = lease_totals.old_blocks;
+  usage.retained_view_block_bytes = retained_totals.old_blocks;
+  usage.client_held_view_block_bytes = client_totals.old_blocks;
+  usage.lease_view_directory_entries = handle_entries + lease_totals.directories;
+  usage.retained_view_directory_entries = retained_totals.directories;
+  usage.client_held_view_directory_entries = client_totals.directories;
+  usage.external_surface_buffer_bytes = external_buffers;
   usage.surface_cache_bytes = surface;
   usage.surface_cache_bytes_peak = surface_peak_;
   usage.inflight_response_bytes = inflight;

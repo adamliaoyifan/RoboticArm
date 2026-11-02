@@ -152,6 +152,23 @@ struct ResourceUsage {
   std::uint64_t handle_directory_entries_peak{};
   std::uint64_t view_directory_bytes{};
   std::uint64_t view_directory_bytes_peak{};
+  // gen4 per-owner split of the view world: each view-attributable block and
+  // directory entry is claimed once, by the first class reaching it in the
+  // order lease -> retained -> client-held (blocks shared with the current
+  // map stay current). Splits are scalar observables only -- they never enter
+  // class_bytes, whose read_view+cache == class-sum identity stays intact.
+  // lease+retained+client_held block bytes == old_view_block_bytes;
+  // lease+retained+client_held directory entries + store directory count ==
+  // view_directory_entries (lease includes the open handle nodes).
+  std::uint64_t lease_view_block_bytes{};
+  std::uint64_t retained_view_block_bytes{};
+  std::uint64_t client_held_view_block_bytes{};
+  std::uint64_t lease_view_directory_entries{};
+  std::uint64_t retained_view_directory_entries{};
+  std::uint64_t client_held_view_directory_entries{};
+  // Surface column buffers held past their cache/snapshot (the external share
+  // already inside surface_cache_bytes; the buffer deleter subtracts them).
+  std::uint64_t external_surface_buffer_bytes{};
   std::uint64_t surface_cache_bytes{};
   std::uint64_t surface_cache_bytes_peak{};
   std::uint64_t inflight_response_bytes{};

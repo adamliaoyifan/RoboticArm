@@ -26,7 +26,8 @@ import freespace_judge as judge  # noqa: E402
 
 GEOMETRY_HASH = "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856"
 IDENTITY = {"epoch": 1, "map_revision": 5, "observed_revision": 9,
-            "geometry_hash": GEOMETRY_HASH, "last_integrated_stamp_ns": 10**9}
+            "geometry_hash": GEOMETRY_HASH, "last_integrated_stamp_ns": 10**9,
+            "config_digest": "c" * 64, "clock_domain": "steady_clock"}
 
 
 # --- the review's counterexamples, verbatim in spirit ------------------------
@@ -106,7 +107,8 @@ class FakeService:
         identity = S(**IDENTITY)
         if self.mode == "wrong_identity":
             identity = S(epoch=99, map_revision=99, observed_revision=99,
-                         geometry_hash="wrong", last_integrated_stamp_ns=0)
+                         geometry_hash="wrong", last_integrated_stamp_ns=0,
+                         config_digest="c" * 64, clock_domain="steady_clock")
         done = True
         next_cursor = self.feasible
         if self.mode == "cursor_stall":
@@ -118,6 +120,9 @@ class FakeService:
                  origin_z=[0.0] * count, yaw_deg=[0] * count,
                  support_ratio=[1.0] * count, support_kind=[2] * count,
                  verify_begin=[0, 0, 0] * count, verify_end=[15, 10, 10] * count,
+                 region_begin=[0, 0, 0], region_end=[64, 40, 24],
+                 repository_wait_ms=1.0, enumerate_ms=2.0,
+                 response_fill_ms=1.5, server_total_ms=5.0,
                  next_cursor=next_cursor, done=done, feasible_total=self.feasible)
 
 

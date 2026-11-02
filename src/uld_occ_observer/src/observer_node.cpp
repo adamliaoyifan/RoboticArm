@@ -675,6 +675,13 @@ class ObserverNode : public rclcpp::Node {
         response->view_directory_entries_peak = usage.view_directory_entries_peak;
         response->view_directory_bytes = usage.view_directory_bytes;
         response->view_directory_bytes_peak = usage.view_directory_bytes_peak;
+        response->lease_view_block_bytes = usage.lease_view_block_bytes;
+        response->retained_view_block_bytes = usage.retained_view_block_bytes;
+        response->client_held_view_block_bytes = usage.client_held_view_block_bytes;
+        response->lease_view_directory_entries = usage.lease_view_directory_entries;
+        response->retained_view_directory_entries = usage.retained_view_directory_entries;
+        response->client_held_view_directory_entries = usage.client_held_view_directory_entries;
+        response->external_surface_buffer_bytes = usage.external_surface_buffer_bytes;
         response->surface_cache_bytes = usage.surface_cache_bytes;
         response->surface_cache_bytes_peak = usage.surface_cache_bytes_peak;
         response->inflight_response_bytes = usage.inflight_response_bytes;

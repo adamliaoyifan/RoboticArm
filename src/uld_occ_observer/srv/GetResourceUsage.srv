@@ -27,6 +27,22 @@ uint64 read_view_cache_bytes_peak
 uint64 entry_queue_allocated_bytes
 uint64 view_directory_bytes
 uint64 view_directory_bytes_peak
+# Per-owner split of the view world (gen4). Every view-attributable block and
+# directory entry is claimed exactly once, by the FIRST owner class that
+# reaches it in the order lease -> retained -> client-held; blocks shared with
+# the current map stay current (shared_block_bytes - old_view_block_bytes).
+# Identities: the three view_block_bytes sum to old_view_block_bytes; the
+# three view_directory_entries plus the store block directory sum to
+# view_directory_entries (lease includes the open handle nodes).
+uint64 lease_view_block_bytes
+uint64 retained_view_block_bytes
+uint64 client_held_view_block_bytes
+uint64 lease_view_directory_entries
+uint64 retained_view_directory_entries
+uint64 client_held_view_directory_entries
+# Surface column buffers outliving their cache/snapshot (the external share of
+# surface_cache_bytes, released by the buffer deleter at the last owner).
+uint64 external_surface_buffer_bytes
 uint64 store_tree_bytes
 bool uncovered_allocations
 string certification

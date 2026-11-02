@@ -156,20 +156,31 @@ class Client:
 
     def _receipt(self, message):
         # Arrival time first: the input E2E clock runs publish -> terminal
-        # receipt OBSERVABLE, and the R timeline needs these stamps.
+        # receipt OBSERVABLE, and the R timeline needs these stamps. The
+        # product's own segment timers ride along (queue/preparation/
+        # preprocessing/fusion/total) so a slow input decomposes into its
+        # server-side stages instead of one opaque number.
         self.receipts.append({
             "arrival_mono_ns": time.monotonic_ns(),
             "status": message.status,
             "observation_id": message.observation_id,
             "input_stamp_ns": message.input_stamp_ns,
             "callback_enter_ns": message.callback_enter_ns,
+            "queue_ms": message.queue_ms,
+            "preparation_ms": message.preparation_ms,
+            "preprocessing_ms": message.preprocessing_ms,
+            "fusion_ms": message.fusion_ms,
+            "total_ms": message.total_ms,
             "epoch": message.identity.epoch,
             "map_revision": message.identity.map_revision,
             "observed_revision": message.identity.observed_revision,
         })
 
     def _health(self, message):
-        self.health.append(yaml.safe_load(message.data))
+        entry = yaml.safe_load(message.data)
+        if isinstance(entry, dict):
+            entry["arrival_mono_ns"] = time.monotonic_ns()
+        self.health.append(entry)
 
     def broadcast_tf(self, translation):
         self.tf_frame.transform.translation.x = float(translation[0])
@@ -205,12 +216,16 @@ def _page_all(client, handle, record, box, yaw_mode=2, request_timeout=10.0):
     arrays equal length, verify ranges 3n, page identity == lease identity on
     every page, cursor exactly min(cursor+limit, feasible_total) with a
     consistent done flag, and the candidate count == feasible_total. The
-    canonical digest is recomputed over the raw candidate stream."""
+    canonical digest is recomputed over the raw candidate stream. Each page's
+    server-side segments (repository wait / enumerate / response fill /
+    server total) and region bounds are kept in pages_detail so the judge can
+    reconcile counts and a slow chain can be decomposed (gen4)."""
     import hashlib
     cursor, done, pages = 0, False, 0
     digest = hashlib.sha256()
     feasible = None
     page = None
+    record["pages_detail"] = []
     while not done:
         page = client.call(client.freespace,
                            _freespace_request(handle, box, yaw_mode, cursor),
@@ -244,6 +259,15 @@ def _page_all(client, handle, record, box, yaw_mode=2, request_timeout=10.0):
                     int(page.cell_z[index]), int(page.support_kind[index]))
             record["candidates"].append(cell)
             digest.update(freespace_judge.canonical_candidate_bytes(*cell))
+        record["pages_detail"].append({
+            "count": count, "cursor": cursor, "next_cursor": page.next_cursor,
+            "done": page.done,
+            "region_begin": [int(value) for value in page.region_begin],
+            "region_end": [int(value) for value in page.region_end],
+            "repository_wait_ms": page.repository_wait_ms,
+            "enumerate_ms": page.enumerate_ms,
+            "response_fill_ms": page.response_fill_ms,
+            "server_total_ms": page.server_total_ms})
         cursor = page.next_cursor
         done = page.done
         pages += 1
@@ -270,22 +294,33 @@ def full_query(client, box, yaw_mode=2, max_age_ms=1000, request_timeout=10.0):
     record = {"status": "OK", "lease_identity": None, "pages": 0,
               "candidates": [], "feasible_total": None,
               "content_sha256": None, "release_status": None,
-              "page_status": None, "latency_ms": None}
+              "page_status": None, "latency_ms": None,
+              "acquire_ms": None, "pages_ms": None, "release_ms": None,
+              "client_candidate_bytes_est": None}
     handle = None
+    acquired = None
     try:
         lease = client.call(client.get_snapshot, _snapshot_request(max_age_ms),
                             request_timeout)
+        acquired = time.monotonic_ns()
+        record["acquire_ms"] = (acquired - started) / 1e6
         if lease.status != "OK":
             record["status"] = "ACQUIRE_%s" % lease.status
             return record
         handle = lease.handle
         record["lease_identity"] = _identity(lease.identity)
         record["age_ns"] = lease.age_ns
-        return _page_all(client, handle, record, box, yaw_mode, request_timeout)
+        _page_all(client, handle, record, box, yaw_mode, request_timeout)
+        record["pages_ms"] = (time.monotonic_ns() - acquired) / 1e6
+        # Honest client-side estimate of the deserialized arrays this
+        # process now holds (the node cannot see a foreign process's heap).
+        record["client_candidate_bytes_est"] = 5 * 8 * len(record["candidates"])
+        return record
     except TimeoutError as error:
         record["status"] = "QUERY_TIMEOUT:%s" % error
         return record
     finally:
+        release_started = time.monotonic_ns()
         if handle is not None:
             try:
                 response = client.call(client.release, _release_request(handle),
@@ -295,6 +330,8 @@ def full_query(client, box, yaw_mode=2, max_age_ms=1000, request_timeout=10.0):
                     record["release_fault"] = response.status
             except Exception as error:  # noqa: BLE001 - recorded, never raised past finally
                 record["release_status"] = "RELEASE_EXCEPTION:%r" % (error,)
+        if handle is not None:
+            record["release_ms"] = (time.monotonic_ns() - release_started) / 1e6
         record["latency_ms"] = (time.monotonic_ns() - started) / 1e6
 
 
@@ -305,17 +342,23 @@ def wait_chain(client, wait_response, box, request_timeout=10.0):
     record = {"status": "OK", "lease_identity": None, "pages": 0,
               "candidates": [], "feasible_total": None,
               "content_sha256": None, "release_status": None,
-              "page_status": None, "latency_ms": None}
+              "page_status": None, "latency_ms": None,
+              "acquire_ms": None, "pages_ms": None, "release_ms": None,
+              "client_candidate_bytes_est": None}
     started = time.monotonic_ns()
     handle = wait_response.handle
     try:
         record["lease_identity"] = _identity(wait_response.identity)
         record["age_ns"] = wait_response.age_ns
-        return _page_all(client, handle, record, box, 2, request_timeout)
+        _page_all(client, handle, record, box, 2, request_timeout)
+        record["pages_ms"] = (time.monotonic_ns() - started) / 1e6
+        record["client_candidate_bytes_est"] = 5 * 8 * len(record["candidates"])
+        return record
     except TimeoutError as error:
         record["status"] = "QUERY_TIMEOUT:%s" % error
         return record
     finally:
+        release_started = time.monotonic_ns()
         try:
             response = client.call(client.release, _release_request(handle),
                                    request_timeout)
@@ -324,6 +367,7 @@ def wait_chain(client, wait_response, box, request_timeout=10.0):
                 record["release_fault"] = response.status
         except Exception as error:  # noqa: BLE001 - recorded, never raised past finally
             record["release_status"] = "RELEASE_EXCEPTION:%r" % (error,)
+        record["release_ms"] = (time.monotonic_ns() - release_started) / 1e6
         record["latency_ms"] = (time.monotonic_ns() - started) / 1e6
 
 
@@ -356,7 +400,9 @@ def _identity(message):
     return {"epoch": message.epoch, "map_revision": message.map_revision,
             "observed_revision": message.observed_revision,
             "geometry_hash": message.geometry_hash,
-            "last_integrated_stamp_ns": message.last_integrated_stamp_ns}
+            "last_integrated_stamp_ns": message.last_integrated_stamp_ns,
+            "config_digest": message.config_digest,
+            "clock_domain": message.clock_domain}
 
 
 def readiness(client, frames):
@@ -383,6 +429,10 @@ def readiness(client, frames):
             if receipt["status"] == "INTEGRATED":
                 lease = client.call(client.get_snapshot, _snapshot_request(10_000))
                 if lease.status == "OK":
+                    # Stash the lease identity: the stage's identity binding
+                    # (epoch + geometry + config + clock) comes from a real
+                    # lease the map just vouched for, never from a guess.
+                    client.bound_identity = _identity(lease.identity)
                     client.call(client.release, _release_request(lease.handle))
                     return time.monotonic_ns()
         time.sleep(0.02)
@@ -581,6 +631,9 @@ def stage_p(client, frames, box_count, inputs, queries, out_dir, formal=False,
               "window_planned_s": inputs / contract.UPDATE_HZ}
     t0 = readiness(client, frames)
     base_stamp = int(time.time() * 1e9)  # stamps lag wall clock by design
+    health_mark = len(client.health)
+    window["identity_binding"] = _capture_binding(
+        client, getattr(client, "config_digest", ""))
     sender_records = []
     query_records = []
     errors = []
@@ -611,7 +664,7 @@ def stage_p(client, frames, box_count, inputs, queries, out_dir, formal=False,
         client, [record["input_id"] for record in sender_records])
     health_gaps = []
     last = None
-    for sample in client.health:
+    for sample in client.health[health_mark:]:
         stamp = sample.get("stamp_ns") if isinstance(sample, dict) else None
         if isinstance(stamp, int):
             if last is not None:
@@ -620,7 +673,16 @@ def stage_p(client, frames, box_count, inputs, queries, out_dir, formal=False,
     window.update({
         "sender": sender_records, "queries": query_records, "errors": errors,
         "input_timeline": timeline, "terminals": terminals, "pending": pending,
-        "health_samples": len(client.health),
+        # Raw window-scoped stamps with arrival times: the judge recomputes
+        # gaps from these; the self-reported aggregate stays as a diagnostic.
+        "health_series": [
+            {"stamp_ns": sample.get("stamp_ns"),
+             "arrival_mono_ns": sample.get("arrival_mono_ns"),
+             "epoch": sample.get("epoch")}
+            for sample in client.health[health_mark:]
+            if isinstance(sample, dict)
+            and isinstance(sample.get("stamp_ns"), int)],
+        "health_samples": len(client.health[health_mark:]),
         "health_gap_max_s": max(health_gaps) if health_gaps else None,
         "window_close_ms": (window_closed_ns - t0) / 1e6,
     })
@@ -642,6 +704,8 @@ def stage_r(client, frames, overload_inputs, drain_s, recovery_inputs, out_dir,
     epoch_before = _epoch_of(client)
     t0 = readiness(client, frames)
     base_stamp = int(time.time() * 1e9)
+    artifact["identity_binding"] = _capture_binding(
+        client, getattr(client, "config_digest", ""))
     overload_records = []
     query_records = []
     drain_query_records = []
@@ -835,26 +899,29 @@ def _acquire_real_lease(client, max_age_ms, deadline_s):
 
 
 def _ownership(client, max_samples=12, spacing_s=0.2, settle_s=0.0,
-               target=None):
-    """Adaptive ownership measurement: sample until the expected residual
-    appears (or the budget runs out) and keep EVERY sample. Mid-soak the
-    node transiently carries the integration path's old/new retained pair
-    and the parallel query stream's in-flight lease -- a single instant can
-    legitimately read one extra full view. The minimum over an adaptive
-    window is the round's own residual: a leaked handle survives every
-    sample and raises the minimum; a transient drops out."""
+               target=None, target_field="view_directory_entries"):
+    """Adaptive ownership measurement: sample the FULL resource snapshot
+    until the expected residual appears (or the budget runs out) and keep
+    EVERY sample with its timestamp. Mid-soak the node transiently carries
+    the integration path's old/new retained pair and the parallel query
+    stream's in-flight lease -- a single instant can legitimately read one
+    extra full view. The per-class minimum over an adaptive window is the
+    round's own residual: a leaked handle survives every sample and raises
+    the minimum; a transient drops out."""
     if settle_s:
         time.sleep(settle_s)
-    entries = []
-    fields = None
+    samples = []
     for _ in range(max_samples):
-        fields = _resource_fields(client.call(client.resource,
-                                              _resource_request()))
-        entries.append(fields["view_directory_entries"])
-        if target is not None and fields["view_directory_entries"] <= target:
+        samples.append(_resource_snapshot(
+            client.call(client.resource, _resource_request())))
+        if target is not None \
+                and samples[-1].get(target_field) <= target:
             break
         time.sleep(spacing_s)
-    fields["view_directory_entries_samples"] = entries
+    fields = dict(samples[-1])
+    fields["resource_samples"] = samples
+    fields["view_directory_entries_samples"] = [
+        sample["view_directory_entries"] for sample in samples]
     return fields
 
 
@@ -862,29 +929,65 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
             formal=False, node_pid=None):
     """The soak judged per record: EVERY input keeps its publish row and
     terminal receipt, EVERY query keeps its planned/started/ended and full
-    chain record, the read-release and reset rounds run DURING the loop on
-    their own absolute schedules (1000 reads spread over the scored window,
-    100 resets over the warmup), each round measuring ownership back to the
-    baseline. Reset rounds prove the real error path: a live lease, a
-    bogus-handle release that must fail, then the real lease released in a
-    finally -- never abandoned to TTL. RSS samples at 0.5 s."""
+    chain record. The ownership BASELINE is captured once the warmup churn
+    is over (resets done, map saturated); the 1000 read rounds -- each a
+    REAL acquire/read/release, refusals retried and listed, never counted --
+    reconcile every owner class back to that baseline; the 100 reset rounds
+    (warmup) hold a real lease ACROSS the reset, prove nothing but live
+    leases survive it, and reconcile back to their own pre-round state.
+    Health stamps and RSS samples run for the whole window."""
     artifact = {"stage": "l", "formal": formal, "planned_seconds": seconds,
                 "read_rounds": read_rounds, "reset_rounds": reset_rounds,
                 "frames_manifest": frames_manifest(frames)}
-    baseline = client.call(client.resource, _resource_request())
-    baseline_entries = baseline.view_directory_entries
+    baseline_pre_warmup = _resource_snapshot(
+        client.call(client.resource, _resource_request()))
     t0 = readiness(client, frames)
     t0_ns = time.monotonic_ns()
+    health_mark = len(client.health)
     base_stamp = int(time.time() * 1e9)
     warmup_s = contract.L_WARMUP_S if formal else min(10.0, seconds / 2.0)
     stop = threading.Event()
     input_records = []
     query_records = []
     read_rounds_results = []
+    read_failed_attempts = []
     reset_rounds_results = []
     send_errors = []
     rss_series = []
     lock = threading.Lock()
+    baseline_holder = {}
+    baseline_ready = threading.Event()
+
+    def capture_baseline():
+        # Post-warmup steady state: every later read round reconciles to
+        # THIS, and the scored-window identity binding comes from a fresh
+        # lease the refilled map vouches for.
+        target = t0_ns + int(warmup_s * 1e9)
+        now = time.monotonic_ns()
+        if now < target:
+            time.sleep((target - now) / 1e9)
+        time.sleep(1.0)
+        binding = None
+        try:
+            lease, _ = _acquire_real_lease(client, 10_000, 4.0)
+            if lease is not None:
+                identity = _identity(lease.identity)
+                binding = {"expected_epoch": identity["epoch"],
+                           "geometry_hash": identity["geometry_hash"],
+                           "config_digest": identity["config_digest"],
+                           "clock_domain": identity["clock_domain"],
+                           "captured_mono_ns": time.monotonic_ns()}
+                client.call(client.release, _release_request(lease.handle))
+        except Exception:  # noqa: BLE001 - fall back to the readiness binding
+            binding = None
+        if binding is None:
+            binding = _capture_binding(client,
+                                       getattr(client, "config_digest", ""))
+        baseline_holder.update(_ownership(
+            client, max_samples=12, target=0,
+            target_field="lease_view_directory_entries"))
+        baseline_holder["binding"] = binding
+        baseline_ready.set()
 
     def sustained():
         from sensor_msgs.msg import PointCloud2
@@ -930,7 +1033,10 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
             index += 1
 
     def reader():
+        if not baseline_ready.wait(timeout=warmup_s + 60):
+            return  # the baseline never landed; the missing rounds are honest
         scored_s = max(1.0, seconds - warmup_s)
+        retry_budget_s = 30.0
         for index in range(read_rounds):
             if stop.is_set():
                 break  # the run window closed; the count is then honest
@@ -939,8 +1045,24 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
             now = time.monotonic_ns()
             if now < deadline:
                 time.sleep((deadline - now) / 1e9)
-            record = full_query(client, contract.F_BOXES[0])
-            record["ownership_after"] = _ownership(client, target=baseline_entries)
+            # A REAL lease, retried past transient refusals: a failed
+            # attempt is listed, never counted as a lifecycle round.
+            record = None
+            attempt_deadline = time.monotonic() + retry_budget_s
+            while True:
+                record = full_query(client, contract.F_BOXES[0])
+                status = record.get("status") or ""
+                if not status.startswith("ACQUIRE_"):
+                    break
+                with lock:
+                    read_failed_attempts.append(
+                        {"round": index, "status": status,
+                         "t_mono_ns": time.monotonic_ns()})
+                if stop.is_set() or time.monotonic() >= attempt_deadline:
+                    break
+                time.sleep(0.2)
+            record["ownership_after"] = _ownership(
+                client, target=0, target_field="lease_view_directory_entries")
             with lock:
                 read_rounds_results.append(record)
 
@@ -955,24 +1077,30 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
             now = time.monotonic_ns()
             if now < deadline:
                 time.sleep((deadline - now) / 1e9)
-            record = {"index": index}
+            record = {"index": index,
+                      "started_mono_ns": time.monotonic_ns(),
+                      "ownership_before": _ownership(client, max_samples=4)}
             # The error-path round needs a REAL lease on the live map; retry
             # past the just-reset gap until the next input integrates. The
             # product's release is idempotent-OK by design (an unknown
             # handle is a no-op), so the OBSERVABLE error lifecycle is: hold
             # a lease ACROSS a reset, then release it explicitly in the
-            # finally -- never abandoned to TTL. Ownership returning to the
-            # baseline after the refill proves the handle did not linger.
+            # finally -- never abandoned to TTL. The per-owner split shows
+            # the reset dropping everything except live leases, and the
+            # round reconciling back to its own pre-round state.
             lease, acquire_status = _acquire_real_lease(client, 1000, 4.0)
             record["acquire_status"] = acquire_status
             try:
                 request = ResetObservation.Request()
                 request.expected_epoch = epoch
                 request.reset_id = "l_reset_%d" % index
+                record["reset_called_mono_ns"] = time.monotonic_ns()
                 response = client.call(client.reset, request)
                 record["reset_status"] = response.status
                 if response.status == "OK":
                     epoch = response.epoch
+                record["ownership_after_reset"] = _resource_snapshot(
+                    client.call(client.resource, _resource_request()))
             finally:
                 if lease is not None:
                     try:
@@ -982,8 +1110,9 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
                     except Exception as error:  # noqa: BLE001
                         record["real_release"] = "EXCEPTION:%r" % (error,)
             record["epoch"] = epoch
-            record["ownership_after"] = _ownership(client, settle_s=1.5,
-                                                   target=baseline_entries)
+            record["ownership_after"] = _ownership(
+                client, settle_s=1.5, max_samples=12, target=0,
+                target_field="lease_view_directory_entries")
             with lock:
                 reset_rounds_results.append(record)
 
@@ -993,7 +1122,8 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
                                "rss_kib": _rss_kib(node_pid)})
             stop.wait(0.5)
 
-    workers = [threading.Thread(target=sustained), threading.Thread(target=queries),
+    workers = [threading.Thread(target=capture_baseline),
+               threading.Thread(target=sustained), threading.Thread(target=queries),
                threading.Thread(target=reader), threading.Thread(target=resetter),
                threading.Thread(target=rss_sampler)]
     for worker in workers:
@@ -1010,13 +1140,26 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
     artifact["input_timeline"] = input_timeline
     artifact["query_records"] = query_records
     artifact["read_rounds_results"] = read_rounds_results
+    artifact["read_failed_attempts"] = read_failed_attempts
     artifact["reset_rounds_results"] = reset_rounds_results
     artifact["rss_series"] = rss_series
-    artifact["health_samples"] = len(client.health)
+    artifact["health_series"] = [
+        {"stamp_ns": sample.get("stamp_ns"),
+         "arrival_mono_ns": sample.get("arrival_mono_ns"),
+         "epoch": sample.get("epoch")}
+        for sample in client.health[health_mark:]
+        if isinstance(sample, dict)
+        and isinstance(sample.get("stamp_ns"), int)]
+    artifact["health_samples"] = len(client.health[health_mark:])
+    baseline = dict(baseline_holder)
+    binding = baseline.pop("binding", None)
+    if binding:
+        artifact["identity_binding"] = binding
+    artifact["baseline"] = baseline or baseline_pre_warmup
     # Stage end: every worker joined; let the last integration's transient
     # old-view tail drain, then measure adaptively back to the baseline.
-    after = _ownership(client, settle_s=0.6, target=baseline_entries)
-    artifact["baseline"] = _resource_fields(baseline)
+    after = _ownership(client, settle_s=0.6, target=0,
+                       target_field="lease_view_directory_entries")
     artifact["after"] = after
     (out_dir / "l.json").write_text(json.dumps(artifact, indent=1))
     return artifact
@@ -1027,10 +1170,43 @@ def _resource_request():
     return GetResourceUsage.Request()
 
 
-def _resource_fields(response):
-    return {"view_directory_entries": response.view_directory_entries,
-            "read_view_cache_bytes_peak": response.read_view_cache_bytes_peak,
-            "certification": response.certification}
+# Every scalar field of GetResourceUsage, captured whole: the per-owner
+# reconciliation (blocks / directories / caches / external buffers, shared
+# counted once) reads these -- never a single self-chosen count.
+RESOURCE_FIELDS = (
+    "view_directory_entries", "view_directory_entries_peak",
+    "view_directory_bytes", "view_directory_bytes_peak",
+    "shared_block_bytes", "shared_block_bytes_peak", "old_view_block_bytes",
+    "lease_view_block_bytes", "retained_view_block_bytes",
+    "client_held_view_block_bytes",
+    "lease_view_directory_entries", "retained_view_directory_entries",
+    "client_held_view_directory_entries",
+    "surface_cache_bytes", "surface_cache_bytes_peak",
+    "external_surface_buffer_bytes",
+    "inflight_response_bytes", "inflight_response_bytes_peak",
+    "read_view_bytes", "read_view_bytes_peak",
+    "cache_bytes", "cache_bytes_peak", "read_view_cache_bytes_peak",
+    "store_tree_bytes", "uncovered_allocations", "certification")
+
+
+def _resource_snapshot(response):
+    snapshot = {field: getattr(response, field) for field in RESOURCE_FIELDS}
+    snapshot["t_mono_ns"] = time.monotonic_ns()
+    return snapshot
+
+
+def _capture_binding(client, config_digest):
+    """The stage-start identity binding from the lease readiness vouched
+    (or, before any lease exists, from the latest health epoch)."""
+    identity = getattr(client, "bound_identity", None) or {}
+    epoch = identity.get("epoch")
+    if not isinstance(epoch, int):
+        epoch = _epoch_of(client)
+    return {"expected_epoch": epoch or 1,
+            "geometry_hash": identity.get("geometry_hash") or "",
+            "config_digest": identity.get("config_digest") or config_digest,
+            "clock_domain": identity.get("clock_domain") or "steady_clock",
+            "captured_mono_ns": time.monotonic_ns()}
 
 
 def main():
@@ -1073,6 +1249,9 @@ def main():
     node = NodeProcess(args.node, args.geometry, args.config,
                        out / "observer.log", "/freespace_campaign_cloud")
     client = Client("/freespace_campaign_cloud")
+    import hashlib
+    client.config_digest = hashlib.sha256(
+        Path(args.config).read_bytes()).hexdigest()
     results = {}
 
     def _failed(name):

@@ -589,6 +589,71 @@ void test_ttl_exception_and_concurrency(const ObserverConfiguration& cfg) {
       expect(results[worker] == results[0], "concurrent queries agree");
   }
 }
+void test_owner_class_split(const ObserverConfiguration& cfg) {
+  // gen4 per-owner attribution: the same bytes move lease -> client-held ->
+  // released as the last holder lets go, the split always sums to the merged
+  // fields, and nothing accumulates across 30 repetitions.
+  Scene scene(cfg);
+  const auto domain = scene.store.domain();
+  const int sx = domain->shape().x, sy = domain->shape().y;
+  const int x0 = sx / 4, y0 = sy / 4;
+  scene.sweep_box(cfg, x0, y0, x0 + 24, y0 + 24, 0, 9);
+  for (int rep = 0; rep < 30; ++rep) {
+    SnapshotRepository repository(scene.store);
+    const auto before = repository.usage();
+    expect(before.lease_view_block_bytes == 0 && before.client_held_view_block_bytes == 0
+               && before.old_view_block_bytes == 0,
+           "clean baseline has no view-exclusive blocks");
+    // Lease the current view, then flip FRESH free cells to occupied so the
+    // store deterministically rewrites those blocks and drops the leased
+    // copies from its current set (a converged re-sweep would change nothing:
+    // old-view bytes appear exactly on real divergence). The shared_ptr
+    // lives in this inner scope so its destructor is the LAST holder.
+    const int tile = rep % 16;
+    const int hit_z = rep < 16 ? 5 : 8;
+    std::vector<std::pair<int, int>> plane;
+    for (int x = x0 + (tile % 4) * 5; x < x0 + (tile % 4) * 5 + 5; ++x)
+      for (int y = y0 + (tile / 4) * 5; y < y0 + (tile / 4) * 5 + 5; ++y)
+        plane.emplace_back(x, y);
+    std::uint64_t leased_bytes = 0;
+    {
+      const auto lease = repository.acquire(scene.stamp + 1000000000,
+                                            3600000000000LL, true);
+      const auto held = repository.get(lease.handle);
+      scene.drop_hits(cfg, hit_z, plane);
+      const auto leased = repository.usage();
+      leased_bytes = leased.lease_view_block_bytes;
+      expect(leased.lease_view_block_bytes > 0, "leased old view carries block bytes");
+      expect(leased.lease_view_block_bytes + leased.retained_view_block_bytes
+                 + leased.client_held_view_block_bytes == leased.old_view_block_bytes,
+             "block split sums to old_view_block_bytes (lease held)");
+      expect(leased.lease_view_directory_entries + leased.retained_view_directory_entries
+                 + leased.client_held_view_directory_entries + scene.store.directory_entries()
+                 == leased.view_directory_entries,
+             "directory split sums to view_directory_entries (lease held)");
+      // Last holder: release the handle but keep the shared_ptr -- the bytes
+      // must move to the client-held class, still counted, never dropped.
+      repository.release(lease.handle);
+      const auto released = repository.usage();
+      expect(released.lease_view_block_bytes == 0, "no lease class after release");
+      expect(released.client_held_view_block_bytes == leased_bytes,
+             "bytes move to client-held while the last holder lives");
+      expect(released.lease_view_block_bytes + released.retained_view_block_bytes
+                 + released.client_held_view_block_bytes == released.old_view_block_bytes,
+             "block split sums to old_view_block_bytes (client held)");
+    }
+    // The final reference dropped with the scope: the class empties and the
+    // merged old-view bytes return to the baseline -- nothing lingers.
+    const auto baseline_old = before.old_view_block_bytes;
+    const auto settled = repository.usage();
+    expect(settled.client_held_view_block_bytes == 0 && settled.lease_view_block_bytes == 0,
+           "owner classes empty after the last holder drops");
+    expect(settled.old_view_block_bytes == baseline_old,
+           "old-view bytes return to the baseline after the last release");
+    expect(settled.external_surface_buffer_bytes <= settled.surface_cache_bytes,
+           "external surface share stays inside surface_cache_bytes");
+  }
+}
 }  // namespace
 
 int main() {
@@ -604,6 +669,7 @@ int main() {
   test_revision_and_epoch_identity(cfg);
   test_pressure_paths(cfg);
   test_ttl_exception_and_concurrency(cfg);
+  test_owner_class_split(cfg);
   if (failures) {
     std::cerr << failures << " freespace behavior failures\n";
     return 1;

@@ -33,6 +33,57 @@ def identity(epoch=1, revision=5, observed=9):
             "last_integrated_stamp_ns": 10**9}
 
 
+def binding(epoch=1):
+    """The stage-start identity binding the runner captures once and every
+    lease in the stage must echo (gen4 review case 3)."""
+    return {"expected_epoch": epoch, "geometry_hash": GEOMETRY_HASH,
+            "config_digest": "c" * 64, "clock_domain": "steady_clock",
+            "captured_mono_ns": T0}
+
+
+def health_series(count, step_s=0.5):
+    """Raw health stamps at the 2 Hz publisher cadence -- the judge
+    recomputes gaps from these, never from a self-reported maximum."""
+    return [{"stamp_ns": T0 + int(index * step_s * 1e9)}
+            for index in range(count)]
+
+
+def resource_snapshot(**overrides):
+    """A full GetResourceUsage snapshot with a consistent per-owner split
+    (splits sum to the merged fields, shared counted once)."""
+    snapshot = {
+        "view_directory_entries": 1, "view_directory_entries_peak": 2,
+        "view_directory_bytes": 64, "view_directory_bytes_peak": 128,
+        "shared_block_bytes": 502080, "shared_block_bytes_peak": 502080,
+        "old_view_block_bytes": 0,
+        "lease_view_block_bytes": 0, "retained_view_block_bytes": 0,
+        "client_held_view_block_bytes": 0,
+        "lease_view_directory_entries": 0,
+        "retained_view_directory_entries": 0,
+        "client_held_view_directory_entries": 0,
+        "surface_cache_bytes": 2048, "surface_cache_bytes_peak": 4096,
+        "external_surface_buffer_bytes": 0,
+        "read_view_bytes": 503296, "read_view_bytes_peak": 600000,
+        "cache_bytes": 2048, "cache_bytes_peak": 4096,
+        "read_view_cache_bytes_peak": 700000,
+        "inflight_response_bytes": 0, "inflight_response_bytes_peak": 4096,
+        "store_tree_bytes": 4 * 1024 * 1024,
+        "uncovered_allocations": False,
+        "certification": "READ_VIEW_CACHE_ATTRIBUTED"}
+    snapshot.update(overrides)
+    return snapshot
+
+
+def ownership_after(**overrides):
+    """A round's ownership measurement: every retained sample is a FULL
+    resource snapshot; the judge takes the per-class minimum back to the
+    baseline (gen4 review cases 6/7)."""
+    snapshot = resource_snapshot(**overrides)
+    return dict(snapshot,
+                resource_samples=[dict(snapshot) for _ in range(3)],
+                view_directory_entries_samples=[1, 2, 1])
+
+
 def input_row(index, *, status="INTEGRATED", count=1, e2e_ms=120.0,
               id_text=None, arrival=None):
     ident = id_text if id_text is not None else "in%06d" % index
@@ -59,6 +110,10 @@ def query_record(index, *, base=0, status="OK", candidates=3, lateness_ms=3.0,
             "planned_mono_ns": planned, "started_mono_ns": started,
             "ended_mono_ns": ended,
             "status": status, "pages": 1, "candidates": cells,
+            "pages_detail": [{"count": len(cells), "cursor": 0,
+                              "next_cursor": len(cells), "done": True,
+                              "region_begin": [0, 0, 0],
+                              "region_end": [64, 40, 24]}],
             "feasible_total": len(cells),
             "content_sha256": judge.candidate_digest(cells),
             "lease_identity": identity(epoch),
@@ -85,11 +140,13 @@ def full_p_window():
             "queries": contract.P_WINDOW_QUERIES,
             "update_hz": contract.UPDATE_HZ, "query_hz": contract.QUERY_HZ,
             "window_planned_s": 120.0,
+            "identity_binding": binding(),
             "frames_manifest": [{"name": "b5_%d.yaml" % i,
                                  "sha256": "a" * 64, "box_tag": 5}
                                 for i in range(6)],
             "sender": sender, "queries": queries, "errors": [],
             "input_timeline": timeline, "terminals": {}, "pending": [],
+            "health_series": health_series(240),
             "health_samples": 240, "health_gap_max_s": 0.5,
             "window_close_ms": 120_200.0}
 
@@ -142,6 +199,9 @@ def full_r_artifact():
             "receipt_arrival_mono_ns": arrival, "e2e_ms": 90.0})
     chain_cells = [(0, 1, 1, 3, 2), (90, 2, 2, 3, 1)]
     chain = {"status": "OK", "pages": 1, "candidates": chain_cells,
+             "pages_detail": [{"count": 2, "cursor": 0, "next_cursor": 2,
+                               "done": True, "region_begin": [0, 0, 0],
+                               "region_end": [64, 40, 24]}],
              "feasible_total": 2,
              "content_sha256": judge.candidate_digest(chain_cells),
              "lease_identity": identity(), "age_ns": 4 * 10**8,
@@ -153,6 +213,7 @@ def full_r_artifact():
             "overload_inputs": contract.R_OVERLOAD_INPUTS,
             "drain_s": contract.R_DRAIN_S,
             "recovery_inputs": contract.R_RECOVERY_INPUTS,
+            "identity_binding": binding(),
             "frames_manifest": [{"name": "b20_%d.yaml" % i,
                                  "sha256": "b" * 64, "box_tag": 20}
                                 for i in range(6)],
@@ -198,22 +259,42 @@ def full_l_artifact():
             "publish_mono_ns": publish, "receipt_status": "INTEGRATED",
             "receipt_count": 1, "callback_enter_ns": publish + 1_000_000,
             "receipt_arrival_mono_ns": arrival, "e2e_ms": 90.0})
-    queries = [query_record(i, base=T0) for i in range(total_queries)]
+    # 100 resets run inside the 600 s warmup (epoch 2..101); queries before
+    # the warmup end are not bound (epochs in flux), scored-window queries
+    # carry the final epoch the binding names.
+    final_epoch = contract.L_RESET_ROUNDS + 1
+    warmup_queries = int(contract.L_WARMUP_S * contract.QUERY_HZ)
+    queries = [query_record(i, base=T0, epoch=1 if i < warmup_queries
+                            else final_epoch)
+               for i in range(total_queries)]
     good_round = {"status": "OK", "release_status": "OK", "pages": 1,
-                  "candidates": [(0, 1, 1, 3, 2)], "feasible_total": 1,
+                  "candidates": [(0, 1, 1, 3, 2)],
+                  "pages_detail": [{"count": 1, "cursor": 0,
+                                    "next_cursor": 1, "done": True,
+                                    "region_begin": [0, 0, 0],
+                                    "region_end": [64, 40, 24]}],
+                  "feasible_total": 1,
                   "content_sha256": judge.candidate_digest([(0, 1, 1, 3, 2)]),
-                  "lease_identity": identity(), "latency_ms": 120.0,
+                  "lease_identity": identity(final_epoch), "latency_ms": 120.0,
                   "age_ns": 4 * 10**8, "page_status": "OK",
-                  "ownership_after": {"view_directory_entries": 1,
-                                      "view_directory_entries_samples": [1, 2, 1],
-                                      "read_view_cache_bytes": 1000,
-                                      "certification": "X"}}
+                  "ownership_after": ownership_after()}
     read_rounds = [dict(good_round) for _ in range(contract.L_READ_RELEASE_ROUNDS)]
-    reset_rounds = [{"index": i, "acquire_status": "OK",
+    reset_rounds = [{"index": i,
+                     "started_mono_ns": T0 + int(
+                         contract.L_WARMUP_S * (i + 1)
+                         / (contract.L_RESET_ROUNDS + 1) * 1e9),
+                     "acquire_status": "OK",
                      "real_release": "OK", "reset_status": "OK", "epoch": i + 2,
-                     "ownership_after": {"view_directory_entries": 1,
-                                         "view_directory_entries_samples": [1, 1, 1],
-                                         "read_view_cache_bytes": 1000}}
+                     "ownership_before": ownership_after(),
+                     # Right after the reset only LIVE leases survive (our
+                     # cross-reset lease sits in the lease class); the store
+                     # is empty and no retained/client old blocks remain.
+                     "ownership_after_reset": resource_snapshot(
+                         view_directory_entries=2, view_directory_bytes=192,
+                         old_view_block_bytes=125520,
+                         lease_view_block_bytes=125520,
+                         lease_view_directory_entries=2),
+                     "ownership_after": ownership_after()}
                     for i in range(contract.L_RESET_ROUNDS)]
     span = int(contract.L_DURATION_S * 1e9)
     rss = [{"t_mono_ns": T0 + int(i * 0.5e9), "rss_kib": 300_000}
@@ -223,6 +304,7 @@ def full_l_artifact():
             "planned_seconds": contract.L_DURATION_S,
             "read_rounds": contract.L_READ_RELEASE_ROUNDS,
             "reset_rounds": contract.L_RESET_ROUNDS,
+            "identity_binding": binding(final_epoch),
             "frames_manifest": [{"name": "b20_%d.yaml" % i,
                                  "sha256": "c" * 64, "box_tag": 20}
                                 for i in range(6)],
@@ -230,14 +312,13 @@ def full_l_artifact():
             "input_records": inputs, "input_timeline": timeline,
             "query_records": queries,
             "read_rounds_results": read_rounds,
+            "read_failed_attempts": [],
             "reset_rounds_results": reset_rounds,
-            "rss_series": rss, "health_samples": 7000,
-            "baseline": {"view_directory_entries": 1,
-                         "read_view_cache_bytes_peak": 10_000_000,
-                         "certification": "X"},
-            "after": {"view_directory_entries": 1,
-                      "read_view_cache_bytes_peak": 10_000_000,
-                      "certification": "X"}}
+            "rss_series": rss,
+            "health_series": health_series(int(contract.L_DURATION_S / 0.5)),
+            "health_samples": 7000,
+            "baseline": resource_snapshot(),
+            "after": ownership_after()}
 
 
 def test_full_formal_l_passes():
@@ -295,6 +376,28 @@ def _pick(records, position):
     if position == "last":
         return records[-1]
     return records[len(records) // 2]
+
+
+def _residual_entries(round_record, value=4):
+    """Lift the directory residual in the round's ownership measurement --
+    the owner-class directory field (where a lingering handle lives) AND
+    every retained sample (the judge reads the per-class minimum of the
+    samples, never a self-report)."""
+    ownership = round_record["ownership_after"]
+    ownership["view_directory_entries"] = value
+    ownership["lease_view_directory_entries"] = value
+    for sample in ownership["resource_samples"]:
+        sample["view_directory_entries"] = value
+        sample["lease_view_directory_entries"] = value
+
+
+def _residual_class(round_record, field, delta):
+    """Leave a byte residual in exactly one owner class, directory entries
+    still at baseline -- the gen4 review's 100 MiB cache-residue case."""
+    ownership = round_record["ownership_after"]
+    ownership[field] = ownership.get(field, 0) + delta
+    for sample in ownership["resource_samples"]:
+        sample[field] = sample.get(field, 0) + delta
 
 
 @pytest.mark.parametrize("position", POSITIONS)
@@ -375,9 +478,11 @@ def test_l_matrix_faults(position):
             content_sha256="0" * 64),
         "input_fault": lambda a: _pick(a["input_timeline"], position).update(
             receipt_count=2),
-        "read_ownership": lambda a: _pick(
-            a["read_rounds_results"], position)["ownership_after"].update(
-            view_directory_entries=4, view_directory_entries_samples=[4, 4, 4]),
+        "read_ownership": lambda a: _residual_entries(
+            _pick(a["read_rounds_results"], position)),
+        "read_cache_residual": lambda a: _residual_class(
+            _pick(a["read_rounds_results"], position),
+            "external_surface_buffer_bytes", 100 * 1024 * 1024),
         "read_status": lambda a: _pick(
             a["read_rounds_results"], position).update(status="STALE"),
         "reset_real_release": lambda a: _pick(
@@ -386,9 +491,8 @@ def test_l_matrix_faults(position):
             a["reset_rounds_results"], position).update(acquire_status="NO_DATA"),
         "reset_status_bad": lambda a: _pick(
             a["reset_rounds_results"], position).update(reset_status="EPOCH_MISMATCH"),
-        "reset_ownership": lambda a: _pick(
-            a["reset_rounds_results"], position)["ownership_after"].update(
-            view_directory_entries=9, view_directory_entries_samples=[9, 9, 9]),
+        "reset_ownership": lambda a: _residual_entries(
+            _pick(a["reset_rounds_results"], position), value=9),
         "rss_bad_sample": lambda a: _pick(a["rss_series"], position).update(
             rss_kib=-1),
         "rss_duplicate_time": lambda a: a["rss_series"].__setitem__(
