@@ -334,7 +334,7 @@ def readiness(client, frames):
             mark = len(client.receipts)
             next_retry = time.monotonic() + 2.0
         for receipt in client.receipts[mark:]:
-            if receipt.status == "INTEGRATED":
+            if receipt["status"] == "INTEGRATED":
                 lease = client.call(client.get_snapshot, _snapshot_request(10_000))
                 if lease.status == "OK":
                     client.call(client.release, _release_request(lease.handle))
@@ -466,6 +466,12 @@ def _rss_kib(pid):
         return int(re.search(r"VmRSS:\s+(\d+) kB", status).group(1))
     except (OSError, AttributeError):
         return None
+
+
+def _epoch_of(client):
+    if not client.health:
+        return None
+    return client.health[-1].get("epoch")
 
 
 def stage_p(client, frames, box_count, inputs, queries, out_dir, formal=False):

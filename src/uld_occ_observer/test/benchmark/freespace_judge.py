@@ -203,6 +203,10 @@ def judge_f_summary(summary):
 import math
 
 QUERY_SEMANTIC_OK = ("OK", "NO_KNOWN_FREE")
+# The receipts topic stamps a completed integration INTEGRATED; the status
+# service answers COMPLETED for the same id. Both are the one success
+# terminal; everything else is a rejection or a non-terminal state.
+INPUT_SUCCESS = ("INTEGRATED", "COMPLETED")
 QUERY_PRESSURE_OK = QUERY_SEMANTIC_OK + ("STALE", "SNAPSHOT_PRESSURE")
 
 
@@ -271,7 +275,7 @@ def judge_p_window(window):
         reasons.append("timeline_missing_rows")
     e2e = []
     for entry in timeline:
-        if entry.get("receipt_status") != "COMPLETED":
+        if entry.get("receipt_status") not in INPUT_SUCCESS:
             reasons.append("input_not_completed:%s" % entry.get("receipt_status"))
             continue
         if _bad_number(entry.get("e2e_ms")):
@@ -351,9 +355,10 @@ def judge_p_window(window):
             "inputs": len(sender), "queries": len(queries)}
 
 
-LEGAL_TERMINAL = ("COMPLETED", "REJECTED", "QUEUE_FULL", "DUPLICATE",
-                  "EPOCH_MISMATCH", "OPTICAL_FRAME_MISMATCH", "TF_STAMP_MISMATCH",
-                  "NO_VALID_POINTS", "OUT_OF_ORDER", "CONFLICT")
+LEGAL_TERMINAL = ("INTEGRATED", "COMPLETED", "REJECTED", "QUEUE_FULL",
+                  "DUPLICATE", "EPOCH_MISMATCH", "OPTICAL_FRAME_MISMATCH",
+                  "TF_STAMP_MISMATCH", "NO_VALID_POINTS", "OUT_OF_ORDER",
+                  "CONFLICT")
 
 
 def judge_r_stage(artifact):
@@ -378,7 +383,7 @@ def judge_r_stage(artifact):
     if not recovery:
         reasons.append("no_recovery_inputs")
     for entry in recovery_timeline:
-        if entry.get("receipt_status") != "COMPLETED":
+        if entry.get("receipt_status") not in INPUT_SUCCESS:
             reasons.append("recovery_not_completed:%s" % entry.get("receipt_status"))
             break
     if not isinstance(first.get("bound_id"), str) or not first.get("bound_id"):
