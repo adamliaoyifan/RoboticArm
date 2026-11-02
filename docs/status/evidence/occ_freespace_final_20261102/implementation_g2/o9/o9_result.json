@@ -1,0 +1,72 @@
+{
+  "verdict": {
+    "pass": true,
+    "status": "pass",
+    "reasons": [],
+    "injected_faults": [],
+    "performance_certified": true,
+    "gate": "o9",
+    "capture_certified": false
+  },
+  "ratios": {
+    "roi": 1.0104737655522076,
+    "integrate_30k": 1.0097012005849424,
+    "surface_first": 0.9794454412406409,
+    "freespace_full": 0.9980727266077841
+  },
+  "lock_wait_s": 3.0454248189926147e-06,
+  "failures": [],
+  "environment": {
+    "governor": "powersave",
+    "cpu_pinning": "none",
+    "logical_cpus": 32,
+    "client_executor_threads": 4,
+    "integrate_threads": 1,
+    "rmw": "rmw_fastrtps_cpp",
+    "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+    "python": "3.10.12",
+    "loadavg": [
+      "1.76",
+      "1.17",
+      "0.75"
+    ],
+    "cpu_freq_khz": "5419286",
+    "context_switches": "141553477156",
+    "logical_cpus_are_utilization": false
+  },
+  "frame_sha256": "2548ec3ec47233c976a724d2ee1eee01f153d5d2a9d395f5b5b09e4bc5579e34",
+  "frame_points": 30000,
+  "cli_sha256": "c702ed71739b33eb2a168ada50b8aba547941aef6c29a20bbacb7c913b092449",
+  "geometry_sha256": "c2912984be7de04c10ba1ec26a29cfb2d509d9fab2e4f7d27ba13183f99f5972",
+  "config_sha256": "c5c58ffc0f32ee73d15356fd074f722b8395dca4a8438e0f233f50c411fc9a6b",
+  "peak_rss_kib": 142688,
+  "fabricated_replay_possible": false,
+  "fabricated_executed": false,
+  "epoch_replay": {
+    "replay_possible": true,
+    "executed": true,
+    "file_reread_is_replay": false,
+    "fault_support": "whitelist",
+    "mismatches": [],
+    "observed": {
+      "executed": true,
+      "pid": 2322264,
+      "returncode": 0,
+      "status": "EPOCH_MISMATCH",
+      "reason": "EPOCH_MISMATCH",
+      "observation_id": "epoch-reject",
+      "epoch": 1,
+      "sensor_id": "cam0",
+      "tree_nodes": 0,
+      "content_sha256": null,
+      "tf": {
+        "present": true,
+        "stamp_ns": 1000000000
+      }
+    }
+  },
+  "latency_gate": true,
+  "capture_gate": true,
+  "performance_certified": false,
+  "qualification": "pass"
+}

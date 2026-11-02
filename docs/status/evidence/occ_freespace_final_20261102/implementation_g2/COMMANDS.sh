@@ -328,9 +328,11 @@ for name, files in stage_files.items():
 o9 = root / "o9" / "o9_result.json"
 if o9.is_file():
     result = json.loads(o9.read_text())
-    if not result.get("performance_certified"):
-        problems.append("o9_not_certified:%s"
-                        % (result.get("verdict") or {}).get("reasons"))
+    # The verdict block is the authoritative judge output; the top-level
+    # convenience flag is not the gate result.
+    verdict = result.get("verdict") or {}
+    if not verdict.get("performance_certified"):
+        problems.append("o9_not_certified:%s" % verdict.get("reasons"))
 else:
     problems.append("o9_result_missing")
 print(json.dumps({"problems": problems[:20], "total": len(problems)}, indent=1))

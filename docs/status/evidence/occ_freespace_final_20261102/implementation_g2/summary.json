@@ -1,0 +1,38 @@
+{
+ "artifacts": {
+  "ACCEPTANCE.json": "d069288525f2c8efe2aaf1a8890df13dd24de6adfe05960c26d5f954afef015a",
+  "COMMANDS.sh": "d4bdd020abde1ee3cc0f9c8e5467088590305ad842e23a12bfe839cc50683116",
+  "FINAL_REPORT.md": "1142a380f1e2c9ffd784db894cd86f4059f27ae76a29548693e1c37d2ac6b3ea",
+  "FREEZE.json": "7fce4cc1db165804859a1a8576ea910b3332c99933e6f467df1e687893111896"
+ },
+ "audit_counterexamples": "all rejected with healthy green controls",
+ "baseline": "6576650297518c35861349a702ce3869d10ff743",
+ "candidate": "ca28c885ce435dbda0453cf99ab0cc21e11c0b62",
+ "f_matrix": {
+  "passed": 360,
+  "total": 360
+ },
+ "formal_scoring": "not_started",
+ "gate": "occ_freespace_implement_gen2",
+ "judge_entry_recompute": "problems=[]",
+ "o9": {
+  "failures": [],
+  "performance_certified": true,
+  "ratios": {
+   "freespace_full": 0.9981,
+   "integrate_30k": 1.0097,
+   "roi": 1.0105,
+   "surface_first": 0.9794
+  },
+  "verdict_pass": true
+ },
+ "plan_revision": "8caa0d44a3c6ce3b8adec02c4bb7bf1dd612e451",
+ "repairs": "review fd84b8b5 groups 1-5",
+ "score_rehearsal": {
+  "certified": false,
+  "wiring_ok": true
+ },
+ "short_wiring": {
+  "wiring_ok": true
+ }
+}

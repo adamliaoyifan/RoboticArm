@@ -1,0 +1,51 @@
+{
+  "gate": "occ_freespace_implement_gen2",
+  "source": "docs/agents/reviews/2026-11-02_1112_occ-freespace-implementation-review.md (fd84b8b5), baseline 65766502; the five tool groups are existing-contract gaps, no new metrics",
+  "items": {
+    "1_judge_completeness": {
+      "status": "pass",
+      "evidence": [
+        "statuses, identities, release results, and numeric sanity checked in BOTH the rehearsal and formal paths; the review's three audit injections (240 INTERNAL_ERROR queries, 600 empty overload rows with no recovery and a NaN first-wait, zero-second zero-traffic L with a NaN cache peak) are permanent red tests",
+        "formal gates complete: per-ID exactly-one success terminal (receipts INTEGRATED / status COMPLETED both accepted as the one success), input E2E 350/500 ms, query 250/500 ms, scheduling 20/50 ms with the ten-fold relaxation removed, snapshot age <=1 s, health gap, window close within 0.5 s, real overload pressure, drain-deadline zero in-flight from real receipt times, same-epoch recovery, L 120-min duration, decile-median RSS growth <=5%, per-bucket sampling density (final partial bucket exempt)",
+        "healthy green controls: genuinely good formal P/R/L artifacts pass with reasons=[]"
+      ]
+    },
+    "2_full_query_and_lease": {
+      "status": "pass",
+      "evidence": [
+        "full_query releases the lease in a finally block (timeout path proven); materializes the FULL candidate list with the canonical digest shared with the O9 CLI",
+        "page identity must equal the lease identity; array lengths and verify 3n checked; cursor must advance to min(cursor+limit, feasible_total) with a consistent done flag; materialized count must equal feasible_total; release status recorded",
+        "fault injections named and closed: 1-of-100 short page, wrong identity, cursor stall, release failure, query timeout (lease still released)"
+      ]
+    },
+    "3_concurrent_scheduling_and_timeouts": {
+      "status": "pass",
+      "evidence": [
+        "R runs overload inputs and 2 Hz queries concurrently; the recovery's first input publish and first WaitSnapshot start at the same instant; the drain deadline is judged from real receipt times with the in-flight list preserved",
+        "L loops on absolute clocks (query latency never stretches the send period) and keeps full query records, the per-frame terminal timeline, and a 1 Hz raw RSS series off the node process; the client executor is explicitly 4 threads",
+        "input stamps advance one full period per scheduled input so the map age tracks the real schedule; terminal collection treats QUEUED/PROCESSING as non-terminal; the R timeline preserves publish/callback/receipt/wait times for TIMEOUT diagnosis"
+      ]
+    },
+    "4_runnable_score_freeze_replay": {
+      "status": "pass",
+      "evidence": [
+        "score is implemented and closed: the formal path runs P/H/R/L through the same campaign source and O8/O5/O6 through the established stage runner; OCC_FS_SCORE_REHEARSAL=1 bounded same-source path exercised end to end (campaign wiring_ok + bounded O8, never certified)",
+        "freeze records tools, static libs, typesupport, the consumer test, every input frame, fixtures by actual file bytes, and the command script; require_freeze verifies those bytes (self-reported descriptors never stand in); re-frozen after the judge-field fix so every SHA matches",
+        "the judge entry re-judges all 360 F cases and every stage artifact from their files and reads the authoritative O9 verdict (problems=[]); replay preserves exit codes; the verify entry negative-tests the guards (unauthorized score and a tampered SHA both refuse)"
+      ]
+    },
+    "5_o9_whole_chain_boundary": {
+      "status": "pass",
+      "evidence": [
+        "profile_cli clocks freespace_full from BEFORE the acquire (full chain acquire -> all pages -> release) with the acquire split recorded separately; re-frozen at ca28c885 and re-measured",
+        "o9/o9_result.json: verdict pass, performance_certified=true, failures=[], 30 AB/BA pairs, lock wait 3.0us; P95 ratios roi 1.0105 / integrate_30k 1.0097 / surface_first 0.9794 / freespace_full 0.9981 -- all <= 1.10; every pair's freespace candidate digest matches between ON and OFF"
+      ]
+    }
+  },
+  "formal_scoring": "not_started (score implemented, closed until OCTOMAP-2CM-REPAIR-S3 gen3)",
+  "official_windows": "not_run",
+  "unmeasured_performance": [
+    "formal P/R/L/O8/O5/O6; the bounded score rehearsal is same-source wiring proof only",
+    "first-recovery Wait <=2 s under a full 600-input drain remains a formal-R measurement; the short rehearsal preserves the timeline instead of blaming throughput"
+  ]
+}

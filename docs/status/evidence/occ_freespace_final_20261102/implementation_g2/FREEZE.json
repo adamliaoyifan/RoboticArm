@@ -1,0 +1,122 @@
+{
+ "base": "6576650297518c35861349a702ce3869d10ff743",
+ "binaries": {
+  "observer_cli": {
+   "path": "/tmp/observer-fsi-g2-core/observer_cli",
+   "sha256": "ba46b823e4b518a37e003340b653cc0da39446188fc382701c14e27a912f2561"
+  },
+  "observer_eval_native": {
+   "path": "/tmp/observer-fsi-g2-core/observer_eval_native",
+   "sha256": "14fd43827b1d7c7618ff403800d9790d586bba2268eb1b631524dbde160790a3"
+  },
+  "observer_freespace_behavior": {
+   "path": "/tmp/observer-fsi-g2-core/observer_freespace_behavior",
+   "sha256": "53ad4896691ddcf915cff1703bdaaa4df87a0947c98991ce3213314e1b16d01b"
+  },
+  "observer_node": {
+   "path": "/tmp/fsi-g2-install/uld_occ_observer/lib/uld_occ_observer/observer_node",
+   "sha256": "fb494cae7d2e7232995a3a73a86db7ac59552c31cb16ce4421b459f9a3d7f9f0"
+  },
+  "observer_profile_cli": {
+   "path": "/tmp/observer-fsi-g2-core/observer_profile_cli",
+   "sha256": "c702ed71739b33eb2a168ada50b8aba547941aef6c29a20bbacb7c913b092449"
+  },
+  "observer_repair_s1_behavior": {
+   "path": "/tmp/observer-fsi-g2-core/observer_repair_s1_behavior",
+   "sha256": "6da3b96bde52a7aafc5b3ecc0057c21cde3aa0e9c937d5af77b96f67f6ad41e3"
+  }
+ },
+ "commands": {
+  "path": "/tmp/elfin-occ-freespace-impl-g2/docs/status/evidence/occ_freespace_final_20261102/implementation_g2/COMMANDS.sh",
+  "sha256": "d4bdd020abde1ee3cc0f9c8e5467088590305ad842e23a12bfe839cc50683116"
+ },
+ "dirty": "",
+ "fixtures": {
+  "config": {
+   "path": "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_o6_o7_20261029/run01/fixtures/config_chamfer_r0p02.yaml",
+   "sha256": "c5c58ffc0f32ee73d15356fd074f722b8395dca4a8438e0f233f50c411fc9a6b"
+  },
+  "geometry": {
+   "path": "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_o6_o7_20261029/run01/fixtures/geometry_chamfer.yaml",
+   "sha256": "c2912984be7de04c10ba1ec26a29cfb2d509d9fab2e4f7d27ba13183f99f5972"
+  }
+ },
+ "head": "ca28c885ce435dbda0453cf99ab0cc21e11c0b62",
+ "inputs": {
+  "frame_b00_f000.yaml": {
+   "path": "/tmp/elfin-occ-freespace-impl-g2/docs/status/evidence/occ_freespace_final_20261102/implementation_g2/rehearsal/frames/b00_f000.yaml",
+   "sha256": "2548ec3ec47233c976a724d2ee1eee01f153d5d2a9d395f5b5b09e4bc5579e34"
+  },
+  "frame_b00_f001.yaml": {
+   "path": "/tmp/elfin-occ-freespace-impl-g2/docs/status/evidence/occ_freespace_final_20261102/implementation_g2/rehearsal/frames/b00_f001.yaml",
+   "sha256": "d0973652a4670046b3b7b03b88d731ae4ffa14b28a5985e497b6a3de2599d744"
+  },
+  "frame_b05_f000.yaml": {
+   "path": "/tmp/elfin-occ-freespace-impl-g2/docs/status/evidence/occ_freespace_final_20261102/implementation_g2/rehearsal/frames/b05_f000.yaml",
+   "sha256": "f91ee50b59596005499fdc16af013cbc474d3eeff7b82c66abe415c4500f91f7"
+  },
+  "frame_b05_f001.yaml": {
+   "path": "/tmp/elfin-occ-freespace-impl-g2/docs/status/evidence/occ_freespace_final_20261102/implementation_g2/rehearsal/frames/b05_f001.yaml",
+   "sha256": "77d897a141bc6f7a8b7fe77b16db0d49057571ec08c068c134b41906712b7d02"
+  },
+  "frame_b20_f000.yaml": {
+   "path": "/tmp/elfin-occ-freespace-impl-g2/docs/status/evidence/occ_freespace_final_20261102/implementation_g2/rehearsal/frames/b20_f000.yaml",
+   "sha256": "beefbed746ea5ec176363444248cf7543b7a42c11370aa1efdb38a7227e6e3ee"
+  },
+  "frame_b20_f001.yaml": {
+   "path": "/tmp/elfin-occ-freespace-impl-g2/docs/status/evidence/occ_freespace_final_20261102/implementation_g2/rehearsal/frames/b20_f001.yaml",
+   "sha256": "f105b84c389de080d87b79dc7ee1b09ed88f6822fb3a5de425b59e8df46823e8"
+  }
+ },
+ "plan_revision": "8caa0d44a3c6ce3b8adec02c4bb7bf1dd612e451",
+ "tools": {
+  "campaign_executor.py": {
+   "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/benchmark/campaign_executor.py",
+   "sha256": "76841142cf978e0249fdff6a2bc8de84cf55f31dec0c6b00bf88488dedbcdfe8"
+  },
+  "consumer_test": {
+   "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/test_occ_surface_bridge.py",
+   "sha256": "612bff407277439f05af301169ee21c842937ef09996ce010f44a3e455217969"
+  },
+  "freespace_campaign.py": {
+   "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/benchmark/freespace_campaign.py",
+   "sha256": "ff18c8e63059db7067b213321c41d0c46f480ef15e92f753aa71eed91027cec9"
+  },
+  "freespace_cases.py": {
+   "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/benchmark/freespace_cases.py",
+   "sha256": "311f0d2b5e41e6624d8b452456bfc1635c8242a80015d09dbca053e310fc10c0"
+  },
+  "freespace_contract.py": {
+   "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/benchmark/freespace_contract.py",
+   "sha256": "287271157ca727499a7d0270527685338af145a28729478e1da78ccf0b97fc3a"
+  },
+  "freespace_judge.py": {
+   "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/benchmark/freespace_judge.py",
+   "sha256": "7cf96ddbe3fd37bba40c83e00b0bfc6a1b2b66ad812a482c9c2df89a458b26f5"
+  },
+  "freespace_oracle.py": {
+   "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/benchmark/freespace_oracle.py",
+   "sha256": "91eaae234b60268cebc155d0dcf59f6120227eac661898a85896f65816b61050"
+  },
+  "observer_core_static": {
+   "path": "/tmp/observer-fsi-g2-core/libuld_occ_observer_core.a",
+   "sha256": "d97f20d7a96d4f4f4dbe794559ddc7c08b0f435e78118f4f24e48413d654cf75"
+  },
+  "observer_io_static": {
+   "path": "/tmp/observer-fsi-g2-core/libuld_occ_observer_io.a",
+   "sha256": "912ea21bb431163efc6fb4f3dda2ec3fc3c3602500bb5bb26c93aaa11e386220"
+  },
+  "repair_s0_judge.py": {
+   "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/benchmark/repair_s0_judge.py",
+   "sha256": "26290e2e936db78ce6f19badb11e08a36d965865537e2a6560ad384a91f16aa6"
+  },
+  "s2_o9.py": {
+   "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/s2_o9.py",
+   "sha256": "984978467342ee7afd0e4f030f3702d88e805305e5cb67a26795f45560346e3d"
+  },
+  "typesupport_cpp": {
+   "path": "/tmp/fsi-g2-install/uld_occ_observer/lib/libuld_occ_observer__rosidl_typesupport_cpp.so",
+   "sha256": "92ace4528876b874a7736a2848d81358533c43787773b6fac1c9113d6bc7fc01"
+  }
+ }
+}
