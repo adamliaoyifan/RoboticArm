@@ -1,0 +1,31 @@
+{
+  "all_240_queries_internal_error": {
+    "reasons": [],
+    "formal": true,
+    "inputs": 300,
+    "queries": 240
+  },
+  "overload_599_missing_no_recovery_nan_wait": {
+    "reasons": [],
+    "overload": 600
+  },
+  "zero_second_no_traffic_nan_peak": {
+    "reasons": [],
+    "rounds": 0
+  },
+  "one_of_100_wrong_identity_release_error": {
+    "status": "OK",
+    "identity": {
+      "epoch": 99,
+      "map_revision": 99,
+      "observed_revision": 99,
+      "geometry_hash": "wrong",
+      "last_integrated_stamp_ns": 0
+    },
+    "pages": 1,
+    "candidates": 1,
+    "feasible_total": 100,
+    "latency_ms": 0.004298
+  },
+  "query_timeout_released": false
+}

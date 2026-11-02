@@ -1,0 +1,26 @@
+{
+  "observer_cli": {
+    "path": "/tmp/observer-fsi-g1-core/observer_cli",
+    "match": true
+  },
+  "observer_eval_native": {
+    "path": "/tmp/observer-fsi-g1-core/observer_eval_native",
+    "match": true
+  },
+  "observer_freespace_behavior": {
+    "path": "/tmp/observer-fsi-g1-core/observer_freespace_behavior",
+    "match": true
+  },
+  "observer_node": {
+    "path": "/tmp/fsi-g1-install/uld_occ_observer/lib/uld_occ_observer/observer_node",
+    "match": true
+  },
+  "observer_profile_cli": {
+    "path": "/tmp/observer-fsi-g1-core/observer_profile_cli",
+    "match": true
+  },
+  "observer_repair_s1_behavior": {
+    "path": "/tmp/observer-fsi-g1-core/observer_repair_s1_behavior",
+    "match": true
+  }
+}
