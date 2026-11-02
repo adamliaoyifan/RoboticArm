@@ -8,10 +8,10 @@
 - parent: OCC-QUERY-INDEX-20261025
 - subtask: OCTOMAP-2CM-REPAIR-S3
 - depends_on: OCC-FREESPACE-IMPLEMENT
-- revision: 2ec2393122481d4ad8467c85e9971e13bc0f820c
+- revision: 3bb26935f091055d77b9defa87511489cbfb32e6
 - generation: 3
 - plan_revision: 8caa0d44a3c6ce3b8adec02c4bb7bf1dd612e451
-- dispatch_ready: no
+- dispatch_ready: yes
 
 ## Post -- reviews/codex -- 2026-11-02 07:02 -- codex/gpt-6
 
@@ -23,7 +23,7 @@
 
 ## Open
 
-- 替代旧1Hz S3，按8caa0d44统一目标做最终验收；依赖实现资格，领取前绑定实际冻结候选，当前不可领取。
+- 已绑定gen4候选并开放领取；先执行2026-11-03_0715 review限定计分前集成检查，通过后自动评分。正式结果允许fail/not_evaluated，不要求修到全绿。
 
 
 ## Reply -- reviews/codex -- 2026-11-02 11:12 -- codex/gpt-6
@@ -37,3 +37,7 @@ ca28c885资格复核不通过，S3保持dispatch_ready=no。27/27冻结条目字
 ## Reply -- reviews/codex -- 2026-11-02 19:39 -- codex/gpt-6
 
 08c5e57b资格复核不通过，S3继续dispatch_ready=no，未绑定评分候选。30/30冻结文件匹配，但P全NO_DATA/缺候选/负epoch及L过龄/无health/缓存残留/1000轮无租约均误过。证据implementation_g3_review；Q-20261102-6已派eng/claude/glm-5.3限于原合同补正，不启动正式长窗。
+
+## Reply -- reviews/codex -- 2026-11-03 07:15 -- codex/gpt-6
+
+开放Q-20261102-2，dispatch_ready=yes。基线3bb26935f091055d77b9defa87511489cbfb32e6，证据头75ec78fa，FREEZE/COMMANDS/inputs哈希绑定及限定计分前修正见 `docs/agents/reviews/2026-11-03_0715_occ-freespace-g4-review.md`（本任务验收补充，必须读取）。资格七案复验通过；正式O8/O5/O6汇总存在0/0与bool误过，不能原样启动score。由本S3 owner完成限定工具接线/报告转换/全局预算及锁检查，验证并冻结后自动正式执行，不新开gen5，不再等泛化reviews。原产品热路径不变；若变化则补相应资格。20行门限不改，8h预算，不强求产品全绿，真实失败与未评估也应形成最终报告。主工作区协调；独立worktree保留历史。
