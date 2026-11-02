@@ -516,6 +516,79 @@ void test_pressure_paths(const ObserverConfiguration& cfg) {
     expect(reopened, "handle capacity recovers after release");
   }
 }
+
+void test_ttl_exception_and_concurrency(const ObserverConfiguration& cfg) {
+  // C-gate classes: TTL expiry, error-path handle validity, and concurrent
+  // cache builds -- each repeated; queries never take the store lock.
+  Scene scene(cfg);
+  const auto domain = scene.store.domain();
+  const int sx = domain->shape().x, sy = domain->shape().y;
+  scene.sweep_box(cfg, sx / 4, sy / 4, sx / 4 + 24, sy / 4 + 24, 0, 9);
+  for (int rep = 0; rep < 30; ++rep) {
+    SnapshotRepository repository(scene.store);
+    repository.set_ttl_for_test(std::chrono::milliseconds(30));
+    const auto lease = repository.acquire(scene.stamp + 1000000000,
+                                          3600000000000LL, true);
+    bool expired = false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    try {
+      repository.get(lease.handle);
+    } catch (const Error& error) {
+      expired = std::string(error.what()) == "INVALID_OR_EXPIRED_HANDLE";
+    }
+    expect(expired, "TTL expires the handle");
+    bool invalid = false;
+    try {
+      repository.get("bogus-handle");
+    } catch (const Error& error) {
+      invalid = std::string(error.what()) == "INVALID_OR_EXPIRED_HANDLE";
+    }
+    expect(invalid, "unknown handle rejected");
+    FreespaceRequest request{0.30, 0.20, 0.20, 2, 0, 4096};
+    bool bad_page = false;
+    try {
+      query_freespace(*scene.store.snapshot(), request);
+      request.limit = 0;
+      query_freespace(*scene.store.snapshot(), request);
+    } catch (const Error& error) {
+      bad_page = std::string(error.what()) == "INVALID_PAGE_LIMIT";
+    }
+    expect(bad_page, "zero page limit rejected");
+  }
+  // Concurrent queries + surface first-builds answer identically and raise
+  // no failure; the SurfaceCache mutex builds the column buffer once.
+  const auto snapshot = scene.store.snapshot();
+  for (int rep = 0; rep < 6; ++rep) {
+    std::vector<std::vector<PlacementCandidate>> results(4);
+    std::vector<std::thread> workers;
+    std::atomic<int> failures_here{0};
+    for (int worker = 0; worker < 4; ++worker) {
+      workers.emplace_back([&, worker] {
+        try {
+          FreespaceRequest request{0.30, 0.20, 0.20, 2, 0, 65536};
+          std::size_t cursor = 0;
+          bool done = false;
+          while (!done) {
+            request.cursor = cursor;
+            const auto page = query_freespace(*snapshot, request);
+            results[worker].insert(results[worker].end(),
+                                    page.candidates.begin(), page.candidates.end());
+            cursor = page.next_cursor;
+            done = page.done;
+          }
+          SurfaceProfile profile;
+          snapshot->surface(&profile);
+        } catch (const std::exception&) {
+          ++failures_here;
+        }
+      });
+    }
+    for (auto& worker : workers) worker.join();
+    expect(failures_here.load() == 0, "concurrent query/surface without failure");
+    for (int worker = 1; worker < 4; ++worker)
+      expect(results[worker] == results[0], "concurrent queries agree");
+  }
+}
 }  // namespace
 
 int main() {
@@ -530,6 +603,7 @@ int main() {
   test_scratch_accounting(cfg);
   test_revision_and_epoch_identity(cfg);
   test_pressure_paths(cfg);
+  test_ttl_exception_and_concurrency(cfg);
   if (failures) {
     std::cerr << failures << " freespace behavior failures\n";
     return 1;

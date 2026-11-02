@@ -193,3 +193,157 @@ def judge_f_summary(summary):
     elif passed != total:
         reasons.append("matrix_failures_%d" % (total - passed))
     return reasons
+
+
+# --- P/R/L wiring judges (short rehearsals and formal runs share them) ----
+def _latency_problem(value):
+    problem = _number_problem(value)
+    if problem:
+        return problem
+    return None
+
+
+def judge_p_window(window):
+    """One P window: wiring invariants always; formal gates only when the
+    window carries formal counts (a short rehearsal must NOT certify)."""
+    reasons = []
+    if not isinstance(window, dict):
+        return {"reasons": ["window_missing"]}
+    if window.get("errors"):
+        reasons.append("thread_errors:%s" % window["errors"][:2])
+    sender = window.get("sender") or []
+    queries = window.get("queries") or []
+    if not sender or not queries:
+        reasons.append("missing_requests")
+        return {"reasons": reasons}
+    for record in sender:
+        for key in ("planned_mono_ns", "publish_mono_ns"):
+            if not isinstance(record.get(key), int):
+                reasons.append("sender_%s_missing" % key)
+    ids = [record["input_id"] for record in sender]
+    if len(set(ids)) != len(ids):
+        reasons.append("duplicate_input_id")
+    terminals = window.get("terminals") or {}
+    pending = window.get("pending") or []
+    if pending:
+        reasons.append("inputs_without_terminal:%d" % len(pending))
+    integrated = sum(1 for status in terminals.values() if status == "COMPLETED")
+    formal = bool(window.get("formal"))
+    if formal:
+        if len(sender) != contract.P_WINDOW_INPUTS or len(queries) != contract.P_WINDOW_QUERIES:
+            reasons.append("formal_counts")
+        if integrated != len(sender):
+            reasons.append("integrated_count_%d" % integrated)
+        latencies = []
+        for record in queries:
+            ended, planned = record.get("ended_mono_ns"), record.get("planned_mono_ns")
+            if not isinstance(ended, int) or not isinstance(planned, int):
+                reasons.append("query_boundary_missing")
+                continue
+            latencies.append((ended - planned) / 1e6)
+        for value in latencies:
+            if _latency_problem(value):
+                reasons.append("query_latency_bad_type")
+                break
+        if latencies:
+            ordered = sorted(latencies)
+            p95 = ordered[min(len(ordered) - 1, math.ceil(0.95 * len(ordered)) - 1)]
+            if p95 > contract.QUERY_FULL_P95_MS:
+                reasons.append("query_p95_%.0f" % p95)
+            if max(latencies) > contract.QUERY_FULL_MAX_MS:
+                reasons.append("query_max_%.0f" % max(latencies))
+        lateness = [(record["publish_mono_ns"] - record["planned_mono_ns"]) / 1e6
+                    for record in sender]
+        if lateness:
+            ordered = sorted(lateness)
+            p95 = ordered[min(len(ordered) - 1, math.ceil(0.95 * len(ordered)) - 1)]
+            if p95 > contract.SCHED_LATE_P95_MS * 10:  # sender thread only
+                reasons.append("sched_late_p95_%.0f" % p95)
+    else:
+        # Wiring rehearsal: every query answered a semantic status and the
+        # identity is present; no formal latency claim is made.
+        for record in queries:
+            if record.get("status") not in ("OK", "NO_KNOWN_FREE", "STALE",
+                                            "SNAPSHOT_PRESSURE"):
+                reasons.append("query_status_%s" % record.get("status"))
+                break
+            if record.get("status") in ("OK", "NO_KNOWN_FREE") \
+                    and not record.get("identity"):
+                reasons.append("query_identity_missing")
+                break
+        reasons.append("short_sample_not_formal")
+    return {"reasons": reasons, "formal": formal,
+            "inputs": len(sender), "queries": len(queries)}
+
+
+def judge_r_stage(artifact):
+    reasons = []
+    if not isinstance(artifact, dict):
+        return {"reasons": ["artifact_missing"]}
+    overload = artifact.get("overload") or []
+    if not overload:
+        reasons.append("no_overload_inputs")
+    pending = artifact.get("overload_pending") or []
+    if pending:
+        reasons.append("overload_pending_%d" % len(pending))
+    terminals = artifact.get("overload_terminals") or {}
+    statuses = set(terminals.values())
+    if not statuses:
+        reasons.append("no_overload_terminals")
+    first = artifact.get("first_wait") or {}
+    if not artifact.get("formal"):
+        if not isinstance(first.get("elapsed_ms"), float) or \
+                not first.get("bound_id"):
+            reasons.append("first_wait_shape_missing")
+    else:
+        if first.get("status") != "OK":
+            reasons.append("first_wait_%s" % first.get("status"))
+        elif first.get("elapsed_ms", 1e9) > contract.RECOVERY_FIRST_WAIT_S * 1000:
+            reasons.append("first_wait_%.0fms" % first.get("elapsed_ms", -1))
+    recovery_pending = artifact.get("recovery_pending") or []
+    if recovery_pending:
+        reasons.append("recovery_pending_%d" % len(recovery_pending))
+    epoch = artifact.get("epoch_after")
+    if not isinstance(epoch, int):
+        reasons.append("epoch_unknown")
+    if not artifact.get("formal"):
+        reasons.append("short_sample_not_formal")
+    else:
+        if len(overload) != contract.R_OVERLOAD_INPUTS:
+            reasons.append("overload_counts")
+        if not (statuses & {"COMPLETED", "REJECTED", "QUEUE_FULL", "DUPLICATE"}):
+            reasons.append("no_real_pressure")
+    return {"reasons": reasons, "overload": len(overload)}
+
+
+def judge_l_stage(artifact):
+    reasons = []
+    if not isinstance(artifact, dict):
+        return {"reasons": ["artifact_missing"]}
+    if artifact.get("query_errors"):
+        reasons.append("query_errors:%d" % len(artifact["query_errors"]))
+    rounds = artifact.get("read_rounds_results") or []
+    if len(rounds) != artifact.get("read_rounds", -1):
+        reasons.append("read_rounds_missing")
+    legal = ("OK", "NO_KNOWN_FREE", "STALE") if not artifact.get("formal") \
+        else ("OK", "NO_KNOWN_FREE")
+    for result in rounds:
+        if result.get("status") not in legal:
+            reasons.append("read_round_status_%s" % result.get("status"))
+            break
+    resets = artifact.get("reset_statuses") or []
+    if any(status != "OK" for status in resets):
+        reasons.append("reset_status_%s" % resets)
+    baseline = artifact.get("baseline") or {}
+    after = artifact.get("after") or {}
+    if not isinstance(baseline.get("view_directory_entries"), int) \
+            or not isinstance(after.get("view_directory_entries"), int):
+        reasons.append("resource_fields_missing")
+    elif after["view_directory_entries"] > 2:
+        reasons.append("handles_leaked_%d" % after["view_directory_entries"])
+    peak = after.get("read_view_cache_bytes_peak")
+    if isinstance(peak, int) and peak > contract.READ_VIEW_CACHE_LIMIT_BYTES:
+        reasons.append("cache_peak_over_limit")
+    if not artifact.get("formal"):
+        reasons.append("short_sample_not_formal")
+    return {"reasons": reasons, "rounds": len(rounds)}

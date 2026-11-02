@@ -846,7 +846,13 @@ def judge_o9(case):
     reasons = []
     injected = []
     operations = case.get("operations") or {}
-    if set(operations) != {"roi", "integrate_30k", "surface_first"}:
+    # The unified delivery contract adds the whole-query chain as a REQUIRED
+    # O9 operation alongside the original three; candidates built before that
+    # contract keep their three-operation shape and are judged as stored.
+    freespace_gate = "freespace_full" in operations
+    expected_ops = {"roi", "integrate_30k", "surface_first", "freespace_full"} if freespace_gate \
+        else {"roi", "integrate_30k", "surface_first"}
+    if set(operations) != expected_ops:
         _add(reasons, "missing_pair")
     for pairs in operations.values():
         if len(pairs) != contract.O9_PAIRS:

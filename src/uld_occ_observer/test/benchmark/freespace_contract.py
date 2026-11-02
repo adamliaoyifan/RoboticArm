@@ -44,6 +44,7 @@ L_WARMUP_S = 10 * 60.0
 L_INPUTS = 18000
 L_QUERIES = 14400
 L_RSS_LIMIT_KIB = 2 * 1024 * 1024
+READ_VIEW_CACHE_LIMIT_BYTES = 512 * 1024 * 1024  # same-instant read_view+cache peak
 L_RSS_GROWTH = 0.05              # last-10min median vs first-10min after warmup
 L_READ_RELEASE_ROUNDS = 1000
 L_RESET_ROUNDS = 100

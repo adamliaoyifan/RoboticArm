@@ -28,6 +28,9 @@ import repair_s0_judge as judge  # noqa: E402
 
 PAIRS = 30
 POINTS = 30000
+# Unified delivery contract §8.8: the whole-query chain is a REQUIRED O9
+# operation. One box size per run (alternating), both yaws in one request.
+FREESPACE_BOXES = ((0.30, 0.20, 0.20), (0.50, 0.30, 0.30))
 
 
 def sha256_file(path):
@@ -85,6 +88,9 @@ def sample_metrics(path):
         "integrate_30k": float(document["integrate_external_ms"]),
         "roi": float(document["roi_ms"]),
         "surface_first": float(first["external_ms"]),
+        "freespace_full": float(document["freespace_full_external_ms"]),
+        "freespace_content": document["freespace_content_sha256"],
+        "freespace_candidates": document.get("freespace_candidates"),
         "content": document["roi_surface_content_sha256"],
         "rss_kib": document.get("process_peak_rss_kib"),
     }
@@ -140,7 +146,8 @@ def main():
         geometry_hash = json.loads(geometry["descriptor_json"])["geometry_hash"]
         frame = emit_frame(args.eval_native, args.geometry, args.config, out)
         frame_sha = sha256_file(frame)
-        operations = {name: [] for name in ("roi", "integrate_30k", "surface_first")}
+        operations = {name: [] for name in
+                      ("roi", "integrate_30k", "surface_first", "freespace_full")}
         failures = []
         rss = []
         pair_count = args.pairs
@@ -160,6 +167,10 @@ def main():
                     "mode": "off",
                     "surface": True,
                     "state_digest": True,
+                    # Whole-query chain (acquire -> all pages -> release);
+                    # boxes alternate per pair, both yaws in one request.
+                    "freespace": {"box": list(FREESPACE_BOXES[index % 2]),
+                                  "yaw_mode": 2, "page_limit": 65536},
                     "frames": [{
                         "path": os.path.relpath(frame, run_dir),
                         "sha256": frame_sha,
@@ -195,7 +206,10 @@ def main():
                 for name in operations:
                     operations[name].append({"index": index, "order": order, "missing": True})
                 continue
-            mismatched = not contents.get("off") or contents.get("off") != contents.get("on")
+            freespace_same = measured["off"]["freespace_content"] == measured["on"]["freespace_content"] \
+                and measured["off"]["freespace_candidates"] == measured["on"]["freespace_candidates"]
+            mismatched = not contents.get("off") or contents.get("off") != contents.get("on") \
+                or not freespace_same
             for name in operations:
                 operations[name].append({
                     "index": index, "order": order, "off_ms": measured["off"][name],

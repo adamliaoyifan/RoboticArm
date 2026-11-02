@@ -2,6 +2,7 @@
 #include "uld_occ_observer/interface_trace.hpp"
 #include "uld_occ_observer/checkpoint_io.hpp"
 #include "uld_occ_observer/serialization.hpp"
+#include "uld_occ_observer/freespace_query.hpp"
 #include "query_content_digest.hpp"
 #include <filesystem>
 #include <fstream>
@@ -112,6 +113,46 @@ int main(int argc, char** argv) {
           row["acquire_ms"] = ms(acquire_start,acquired); row["get_handle_ms"] = ms(acquired,got);
           row["roi_ms"] = ms(got,read); row["roi_cells"] = roi_page.cells.size();
           row["snapshot_identity"] = identity_to_yaml(snap->identity());
+          if (manifest["freespace"]) {
+            // Whole-query chain for the O9 freespace_full operation:
+            // acquire -> every page of the deterministic enumeration ->
+            // release, wall clock from the first call to the release, plus a
+            // content digest so ON/OFF pairs prove they ran the same query.
+            const auto query = manifest["freespace"];
+            FreespaceRequest request;
+            const auto box = query["box"].as<std::vector<double>>();
+            if (box.size() != 3) throw Error("INVALID_BOX");
+            request.box_length_m = box[0];
+            request.box_width_m = box[1];
+            request.box_height_m = box[2];
+            request.yaw_mode = query["yaw_mode"].as<int>(2);
+            request.limit = query["page_limit"].as<std::size_t>(65536);
+            const auto chain_start = Clock::now();
+            std::size_t cursor = 0, pages = 0, candidates = 0;
+            bool done = false;
+            std::string content;
+            while (!done) {
+              request.cursor = cursor;
+              const auto page = query_freespace(*snap, request);
+              for (const auto& candidate : page.candidates) {
+                content += std::to_string(candidate.yaw_deg) + ","
+                    + std::to_string(candidate.cell_x) + ","
+                    + std::to_string(candidate.cell_y) + ","
+                    + std::to_string(candidate.cell_z) + ","
+                    + std::to_string(candidate.support_kind) + ";";
+              }
+              candidates += page.candidates.size();
+              cursor = page.next_cursor;
+              done = page.done;
+              ++pages;
+              if (pages > 100000) throw Error("PAGE_COUNT_RUNAWAY");
+            }
+            repo.release(lease.handle);
+            row["freespace_full_external_ms"] = ms(chain_start, Clock::now());
+            row["freespace_pages"] = pages;
+            row["freespace_candidates"] = candidates;
+            row["freespace_content_sha256"] = sha256(content);
+          }
           if (manifest["surface"].as<bool>(true)) {
             for (int call=0;call<2;++call) {
               SurfaceProfile profile;
