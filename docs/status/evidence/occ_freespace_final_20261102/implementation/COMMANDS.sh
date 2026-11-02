@@ -9,7 +9,8 @@
 # or a SHA mismatch, and no entry silently continues into a dependent stage.
 # Formal scoring stays CLOSED: `score` refuses to run until the new S3 task
 # binds the frozen candidate and exports OCC_FS_SCORE_OPEN=1.
-set -euo pipefail
+set -eo pipefail
+# -u off: ROS setup scripts read optional AMENT_* variables.
 
 WORKTREE=/tmp/elfin-occ-freespace-impl-g1
 CORE=/tmp/observer-fsi-g1-core
@@ -82,6 +83,9 @@ case "$entry" in
     # carry formal=false and the judge refuses to certify them.
     require_fixtures
     source /opt/ros/humble/setup.bash
+    # The real placement solver comes from the main workspace install; the
+    # observer under test from this candidate's install (sourced last).
+    source /home/adamliao/work/elfin_humble_ws/install/setup.bash
     source "$INSTALL/setup.bash"
     cd "$WORKTREE"
     FRAME_DIR="$EVIDENCE/rehearsal/frames"
@@ -95,6 +99,11 @@ case "$entry" in
         cp "$frame" "$FRAME_DIR/b${tag}_$(basename "$frame")"
       done
     done
+    # Live consumer chain against the install under test (bridge + solver
+    # cross-check); skipped suites above run here with the node bound.
+    OCC_FS_NODE="$INSTALL/uld_occ_observer/lib/uld_occ_observer/observer_node" \
+      python3 -m pytest -q --tb=line -p no:cacheprovider \
+      src/uld_occ_observer/test/test_occ_surface_bridge.py 2>&1 | tail -2
     python3 src/uld_occ_observer/test/benchmark/freespace_campaign.py \
       --node "$INSTALL/uld_occ_observer/lib/uld_occ_observer/observer_node" \
       --eval-native "$CORE/observer_eval_native" \
