@@ -1,0 +1,9 @@
+case_id: epoch-reject
+mode: 'off'
+surface: false
+state_digest: false
+frames:
+- path: ../epoch99.yaml
+  sha256: d22f8a4138088c2d1322bf54375ec522690ddfbff7df0ef35012a0f866e83030
+  warmup: false
+  expect_status: EPOCH_MISMATCH

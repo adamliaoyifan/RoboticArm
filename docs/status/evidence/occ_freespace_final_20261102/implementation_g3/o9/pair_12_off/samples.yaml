@@ -1,0 +1,206 @@
+---
+schema: observer_profile_v1
+case_id: o9-12-off
+manifest_sha256: 68ff5f84018a80ffad266eecd973818900d8451e2c8854d92474525fd890d45d
+index: 0
+warmup: false
+mode: off
+monotonic_start_ns: 4225548766945405
+status: OK
+input_path: /tmp/elfin-occ-freespace-impl-g3/docs/status/evidence/occ_freespace_final_20261102/implementation_g3/o9/pair_12_off/../emitted/frames/f000.yaml
+input_sha256: 2548ec3ec47233c976a724d2ee1eee01f153d5d2a9d395f5b5b09e4bc5579e34
+input_load_parse_ms: 177.13918799999999
+integrate_external_ms: 69.892841000000004
+integrate_process_cpu_ms: 70.072000000000003
+receipt:
+  epoch: 1
+  map_revision: 1
+  observed_revision: 1
+  last_integrated_stamp_ns: 1000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 8983ea7ae6c6383a531b28ef04306429069ec70b247b768b648456f20dfed821
+  clock_domain: ros
+  sensor_id: cam0
+  observation_id: r02_b00_chamfer_c30000_o50_x00-0
+  input_stamp_ns: 1000000000
+  profile:
+    enabled: false
+    mode: off
+    stage_ms:
+      lock_wait: 0
+      validation: 0
+      fingerprint: 0
+      dedup: 0
+      depth_filter: 0
+      transform: 0
+      ray_preparation: 0
+      fusion: 0
+      finalization: 0
+      ray_generation: 0
+      ray_filter_dedup: 0
+      tree_update: 0
+      block_maintenance: 0
+    stage_visited:
+      lock_wait: false
+      validation: false
+      fingerprint: false
+      dedup: false
+      depth_filter: false
+      transform: false
+      ray_preparation: false
+      fusion: false
+      finalization: false
+      ray_generation: false
+      ray_filter_dedup: false
+      tree_update: false
+      block_maintenance: false
+    residual_ms: 0
+    rays_attempted: 0
+    ray_keys_generated: 0
+    active_ray_key_visits: 0
+    inactive_ray_key_visits: 0
+    rays_with_active_keys: 0
+    rays_without_active_keys: 0
+    free_insert_attempts: 0
+    free_insert_duplicates: 0
+    free_unique_before_hit_removal: 0
+    copied_blocks: 0
+    copied_cells: 0
+    split_key_timers: not_provided
+    fusion_breakdown:
+      collected: false
+      apply_batch_visited: ~
+      apply_batch_ms: ~
+      block_batch_visited: ~
+      block_batch_ms: ~
+      mutation_storage: not_collected
+      mutation_size: ~
+      mutation_capacity: ~
+      mutation_element_bytes: ~
+    apply_breakdown:
+      collected: false
+      write_loop_ms: ~
+      inner_update_ms: ~
+      prune_ms: ~
+      keys_considered: ~
+      unchanged_keys: ~
+      written_keys: ~
+  status: INTEGRATED
+  raw_points: 30000
+  accepted_points: 30000
+  free_keys: 208932
+  hit_keys: 14630
+  changed_keys: 223562
+  occupancy_changed_keys: 223562
+  rebuilt_blocks: 802
+  preprocessing_ms: 13.542464000000001
+  preparation_ms: 25.866374
+  fusion_ms: 29.848378
+  total_ms: 69.867019999999997
+tree_nodes: 177451
+known_cells: 223562
+block_count: 802
+cell_block_bytes: 4168
+tree_memory_estimate_bytes: 4947696
+acquire_ms: 0.025499000000000001
+get_handle_ms: 0.00071100000000000004
+roi_ms: 0.083993999999999999
+roi_cells: 4096
+snapshot_identity:
+  epoch: 1
+  map_revision: 1
+  observed_revision: 1
+  last_integrated_stamp_ns: 1000000000
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  config_digest: 8983ea7ae6c6383a531b28ef04306429069ec70b247b768b648456f20dfed821
+  clock_domain: ros
+freespace_acquire_ms: 0.0013829999999999999
+freespace_full_external_ms: 30.453904000000001
+freespace_pages: 1
+freespace_candidates: 0
+freespace_content_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+surface_first_call:
+  external_ms: 3.751868
+  cache_hit: false
+  profile_enabled: false
+  columns: 7425
+surface_second_call:
+  external_ms: 0.00014100000000000001
+  cache_hit: true
+  profile_enabled: false
+  columns: 7425
+probability_tree_sha256: 9a51436e95e44f41d94fab73681be32fb7309d404236ee2b89c1b7447d64ea30
+checkpoint_digest_ms: 5.1409659999999997
+canonical_probability_sha256: 9a51436e95e44f41d94fab73681be32fb7309d404236ee2b89c1b7447d64ea30
+canonical_probability_digest_ms: 15.568350000000001
+roi_cell_count: 4096
+surface_column_count: 7425
+surface_second_column_count: 7425
+roi_surface_content_sha256: 774a639f341e7536e962aa59d89baefaba9f14c55d2a4641750ea54db1825d2d
+content_digest_ms: 3.3296380000000001
+process_peak_rss_kib: 143196
+resource_usage:
+  read_view_bytes: 3458520
+  read_view_bytes_peak: 3458696
+  cache_bytes: 297072
+  cache_bytes_peak: 297072
+  read_view_cache_bytes_peak: 3755680
+  attribution_complete: true
+  unmarked_allocations: false
+  certification: READ_VIEW_CACHE_ATTRIBUTED
+  store_tree_bytes: 4947696
+  shared_block_bytes: 3355568
+  old_view_block_bytes: 0
+  view_directory_bytes: 102656
+  inflight_response_bytes: 0
+  entry_queue_payload_bytes: 0
+  receipt_ledger_bytes: 0
+  completion_board_bytes: 0
+  class_bytes:
+    block_allocations: 3355568
+    block_directory_nodes: 102656
+    completion_board: 0
+    entry_queue_payload: 0
+    entry_queue_retained: 0
+    handle_directory_nodes: 0
+    inflight_responses: 0
+    reader_tracking: 64
+    receipt_ledger: 0
+    snapshot_objects: 232
+    surface_caches: 297072
+  class_peaks:
+    block_allocations: 3355568
+    block_directory_nodes: 102656
+    completion_board: 0
+    entry_queue_payload: 0
+    entry_queue_retained: 0
+    handle_directory_nodes: 176
+    inflight_responses: 0
+    query_scratch: 6869700
+    receipt_ledger: 0
+    snapshot_objects: 232
+    surface_caches: 297072
+  class_flows:
+    block_allocations: 3355568
+    block_directory_nodes: 102656
+    handle_directory_nodes: 176
+    snapshot_objects: 232
+    surface_caches: 297072
+  class_basis:
+    block_allocations: unique live blocks x (sizeof(CellBlock) + control block)
+    block_directory_nodes: (store + view registry entries) x (32 + sizeof(BlockRegistry::value_type))
+    completion_board: board accounted bytes (map nodes + pairs + heap strings + order deque chunks)
+    entry_queue_payload: queued point-cloud payload bytes, lifecycle-tracked
+    entry_queue_retained: "ingress chunk model: (high-water chunks + spare) x chunk bytes, never freed on pop"
+    handle_directory_nodes: open handles x (32 + sizeof(pair<const string, Entry)); handle keys are SSO-sized (<16 bytes) so no key heap
+    inflight_responses: live response payload bytes, lifecycle-tracked
+    query_scratch: freespace query per-call prefix-sum buffers; RAII add/subtract, outside the read-view/cache gate scope
+    reader_tracking: reader vector capacity x 2 pointers (weak_ptr slots)
+    receipt_ledger: ledger accounted bytes (map node + pair + heap strings)
+    snapshot_objects: unique live snapshots x (sizeof(Snapshot) + control block)
+    surface_caches: unique caches x (sizeof(SurfaceCache) + control block + column buffer capacity)
+  uncovered_classes:
+    - middleware_transport_buffers
+    - tf_buffer
+    - fingerprint_table
+sample_compute_ms: 337.19907999999998

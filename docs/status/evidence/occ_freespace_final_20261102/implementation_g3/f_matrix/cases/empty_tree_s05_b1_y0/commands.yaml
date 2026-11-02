@@ -1,0 +1,3 @@
+- op: acquire
+  now_ns: 2000000000
+  expect_status: NO_DATA

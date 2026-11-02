@@ -1,0 +1,45 @@
+{
+  "gate": "occ_freespace_implement_gen3",
+  "source": "docs/agents/reviews/2026-11-02_1621_occ-freespace-g2-review.md (745740ae), baseline ca28c885; the four groups A-D are existing-contract repairs, no new metrics",
+  "items": {
+    "A_per_record_judges": {
+      "status": "pass",
+      "evidence": [
+        "the review's eight audit injections were replayed RED-BASELINE first (all eight wrongly passed under the gen2 judge, recorded), then re-replayed after the fix: three contract-GRADE controls stay green and all eight are rejected with named reasons (audit_baseline.py, exit 0, run in every tests entry)",
+        "no sampling: R/L query loops check EVERY record; P matches the receipt ID SET (duplicates counted, never collapsed); E2E recomputed from raw publish/receipt clocks; negative/misordered query times named; complete five-field identity; content digest recomputed from the materialized candidates",
+        "L exact 18000/14400 (the 90% relaxation is gone), per-120s-window P/H gates over the 110 scored minutes, RSS by real time (strict monotonic stamps, all 12 planned buckets present at >=600 samples, first/last scored 10-min medians), 1000/100 rounds measured back to the ownership baseline per round"
+      ]
+    },
+    "B_real_scheduling_and_lease_closure": {
+      "status": "pass",
+      "evidence": [
+        "recovery is three concurrent workers on one shared t0: the sender, the first Wait whose lease immediately completes the candidate chain and is released in a finally, and 59 more full queries on the same 2 Hz table (60 including the wait); the drain keeps its own 60-query schedule and is judged from receipt ARRIVAL times against the exact deadline (a late success is a late drain)",
+        "L records every input publish/terminal and every query planned/started/ended; 1000 read rounds run DURING the scored window; 100 reset rounds during warmup hold a REAL lease across the reset and release it explicitly in a finally -- the product's release is idempotent-OK by design, so the gen2 bogus-handle 'error path' was a fiction and is deleted; ownership back to baseline after the refill proves no TTL abandonment",
+        "formal R/L bind the fixed 20-box frame set by per-frame sha+tag manifest; P writes one file per window with window_id and the judge requires the exact 3x3 window set; a failed stage STOPS its dependents; the budget is scheduler-enforced (--budget-minutes); the failure prefix persists before teardown; the schedule event sequences come from offline-verifiable plan builders shared by stages and tests"
+      ]
+    },
+    "C_freeze_disk_judge_failure_evidence": {
+      "status": "pass",
+      "evidence": [
+        "require_freeze: all five groups present and non-empty, byte-verified, the commands entry must equal THIS script's bytes, HEAD re-measured against the frozen head, and the tree re-measured clean -- freeze.dirty is a record, not proof",
+        "the judge entry covers rehearsal AND scoring directories, the nine-window set, O9 recomputed from the raw per-pair samples.yaml (independently re-validated document shape, recomputed P95 ratios, per-pair freespace/content digest equality, verdict.performance_certified); a deleted window, a forged summary, or a lied ratio cannot stay green",
+        "verify negative-tests the guards AND the disk judge against a tampered copy of the evidence tree; replay preserves exit codes and really executes the product; the score entry stays closed (formal = same-source campaign + stage runner; bounded rehearsal path re-exercised)"
+      ]
+    },
+    "D_matrix_and_qualification": {
+      "status": "pass",
+      "evidence": [
+        "test_freespace_g3_offline: contract-grade healthy fixtures (300/240; 600+120/60/75+60 with the used wait lease; 18000/14400 + 1000/100 + 12 dense buckets) pass formal-green, the eight review mutations fail, and the field x position(first/middle/last) x fault matrix rejects missing/wrong-id/duplicate/illegal/over-gate/corrupt at every position",
+        "F matrix re-run on the gen3 tree: 360/360; short wiring with the new scheduler and per-record judges: wiring_ok=true; bounded score rehearsal re-exercised",
+        "post-freeze four-operation O9 (candidate tool commit 0e3dd151, freeze head 7e2b7a25): verdict pass, performance_certified=true, failures=[], 30 AB/BA pairs, P95 ratios all <= 1.10 (see summary.json for the numbers); the disk judge recomputes the ratios from the raw samples and agrees"
+      ]
+    }
+  },
+  "formal_scoring": "not_started (score implemented, closed until OCTOMAP-2CM-REPAIR-S3 gen3)",
+  "official_windows": "not_run",
+  "unmeasured_performance": [
+    "formal P/R/L/O8/O5/O6; the bounded score rehearsal is same-source wiring proof only",
+    "occasional lease-refusing read-round acquires under full load (ACQUIRE_STALE, no lease taken) are honest observables; ownership gates are unaffected",
+    "first-recovery Wait <=2 s under a full 600-input drain remains a formal-R measurement; the timeline is preserved"
+  ]
+}

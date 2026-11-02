@@ -1,0 +1,100 @@
+{
+  "duplicate_receipt": {
+    "duplicate_event": true,
+    "events": 3,
+    "events_before": 2,
+    "new_events": 1,
+    "observation_id": "1793616583160133192"
+  },
+  "duplicate_rejected": true,
+  "duration_measured_s": 11.298,
+  "duration_s": 10.0,
+  "freshness_advanced": false,
+  "kind": "duplicate_id",
+  "probability_unchanged": true,
+  "probe_after": {
+    "cells": 483516,
+    "content": {
+      "content_sha256": "834e48e957089207408a01b690242f57d1d74bff98280514ce4a17a22b7e1464",
+      "odds_file": "o8_r2/probe-content/duplicate_id-1-after.odds.bin",
+      "odds_sha256": "71be86aa1af9af6c3f7f25f5819f555265072d7335086b80081dba54dc64a69c",
+      "states_file": "o8_r2/probe-content/duplicate_id-1-after.states.bin",
+      "states_sha256": "9a8647c50954cd41b7bf446fbda7aad73f26ad5a80eabc8c119858f133fba15b"
+    },
+    "duration_ms": 259.743663,
+    "identity": {
+      "epoch": 1,
+      "last_integrated_stamp_ns": 1793616641326382716,
+      "map_revision": 8,
+      "observed_revision": 63
+    },
+    "last_integrated_stamp_ns": 1793616641326382716,
+    "pages": 8,
+    "pages_done": true,
+    "probe_mono_ns": 4229153297058313,
+    "region": {
+      "begin": [
+        9,
+        0,
+        0
+      ],
+      "end": [
+        75,
+        99,
+        74
+      ],
+      "resolution_m": 0.02,
+      "shape": [
+        75,
+        99,
+        74
+      ]
+    },
+    "release": "OK",
+    "surface_columns": 6534,
+    "surface_hash": "f79bddce2a1f01d2103d715f4c6b240c21de1d738033637c65e141739b13b091"
+  },
+  "probe_before": {
+    "cells": 483516,
+    "content": {
+      "content_sha256": "834e48e957089207408a01b690242f57d1d74bff98280514ce4a17a22b7e1464",
+      "odds_file": "o8_r2/probe-content/duplicate_id-1-before.odds.bin",
+      "odds_sha256": "71be86aa1af9af6c3f7f25f5819f555265072d7335086b80081dba54dc64a69c",
+      "states_file": "o8_r2/probe-content/duplicate_id-1-before.states.bin",
+      "states_sha256": "9a8647c50954cd41b7bf446fbda7aad73f26ad5a80eabc8c119858f133fba15b"
+    },
+    "duration_ms": 259.455813,
+    "identity": {
+      "epoch": 1,
+      "last_integrated_stamp_ns": 1793616641326382716,
+      "map_revision": 8,
+      "observed_revision": 63
+    },
+    "last_integrated_stamp_ns": 1793616641326382716,
+    "pages": 8,
+    "pages_done": true,
+    "probe_mono_ns": 4229141999409816,
+    "region": {
+      "begin": [
+        9,
+        0,
+        0
+      ],
+      "end": [
+        75,
+        99,
+        74
+      ],
+      "resolution_m": 0.02,
+      "shape": [
+        75,
+        99,
+        74
+      ]
+    },
+    "release": "OK",
+    "surface_columns": 6534,
+    "surface_hash": "f79bddce2a1f01d2103d715f4c6b240c21de1d738033637c65e141739b13b091"
+  },
+  "surface_geometry_unchanged": true
+}
