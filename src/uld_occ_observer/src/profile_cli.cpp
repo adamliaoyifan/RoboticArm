@@ -114,10 +114,13 @@ int main(int argc, char** argv) {
           row["roi_ms"] = ms(got,read); row["roi_cells"] = roi_page.cells.size();
           row["snapshot_identity"] = identity_to_yaml(snap->identity());
           if (manifest["freespace"]) {
-            // Whole-query chain for the O9 freespace_full operation:
-            // acquire -> every page of the deterministic enumeration ->
-            // release, wall clock from the first call to the release, plus a
-            // content digest so ON/OFF pairs prove they ran the same query.
+            // Whole-query chain for the O9 freespace_full operation. The
+            // clock starts BEFORE the lease acquire: the chain is acquire ->
+            // every page of the deterministic enumeration -> release, so the
+            // measured number covers the full contract chain (the earlier
+            // acquire in this frame belongs to the ROI/surface operations
+            // and must not silently front-run this one).
+            const auto chain_start = Clock::now();
             const auto query = manifest["freespace"];
             FreespaceRequest request;
             const auto box = query["box"].as<std::vector<double>>();
@@ -127,13 +130,16 @@ int main(int argc, char** argv) {
             request.box_height_m = box[2];
             request.yaw_mode = query["yaw_mode"].as<int>(2);
             request.limit = query["page_limit"].as<std::size_t>(65536);
-            const auto chain_start = Clock::now();
+            const auto lease_start = Clock::now();
+            const auto chain_lease = repo.acquire(diagnostics.identity.last_integrated_stamp_ns, 0);
+            const auto chain_snap = repo.get(chain_lease.handle);
+            row["freespace_acquire_ms"] = ms(lease_start, Clock::now());
             std::size_t cursor = 0, pages = 0, candidates = 0;
             bool done = false;
             std::string content;
             while (!done) {
               request.cursor = cursor;
-              const auto page = query_freespace(*snap, request);
+              const auto page = query_freespace(*chain_snap, request);
               for (const auto& candidate : page.candidates) {
                 content += std::to_string(candidate.yaw_deg) + ","
                     + std::to_string(candidate.cell_x) + ","
@@ -147,7 +153,7 @@ int main(int argc, char** argv) {
               ++pages;
               if (pages > 100000) throw Error("PAGE_COUNT_RUNAWAY");
             }
-            repo.release(lease.handle);
+            repo.release(chain_lease.handle);
             row["freespace_full_external_ms"] = ms(chain_start, Clock::now());
             row["freespace_pages"] = pages;
             row["freespace_candidates"] = candidates;
