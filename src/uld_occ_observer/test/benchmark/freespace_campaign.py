@@ -52,8 +52,26 @@ def load_frames(path_glob):
         tag = re.match(r"b(\d+)_", path.name)
         if tag:
             frame["_box_tag"] = int(tag.group(1))
+        frame["_path"] = str(path)
         frames.append(frame)
     return frames
+
+
+def frames_manifest(frames):
+    """Bind the exact input workload: every frame file by name and content
+    SHA with its box tag. The formal R/L stages must run the fixed 20-box
+    set -- a mixed or short-rehearsal frame list never substitutes for the
+    final workload."""
+    import hashlib
+    manifest = []
+    for frame in frames:
+        path = frame.get("_path")
+        entry = {"box_tag": frame.get("_box_tag"), "name": Path(path).name
+                 if path else None}
+        if path and Path(path).is_file():
+            entry["sha256"] = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        manifest.append(entry)
+    return manifest
 
 
 class NodeProcess:
@@ -182,25 +200,72 @@ class Client:
         self.rclpy.shutdown()
 
 
-def _canonical_candidate_bytes(yaw, x, y, z, kind):
-    """Same canonical stream the O9 profile CLI hashes, so a Python-run chain
-    and a C++-run chain agree on content identity."""
-    return ("%d,%d,%d,%d,%d;" % (yaw, x, y, z, kind)).encode()
+def _page_all(client, handle, record, box, yaw_mode=2, request_timeout=10.0):
+    """Materialize EVERY page of a live lease into the record: all response
+    arrays equal length, verify ranges 3n, page identity == lease identity on
+    every page, cursor exactly min(cursor+limit, feasible_total) with a
+    consistent done flag, and the candidate count == feasible_total. The
+    canonical digest is recomputed over the raw candidate stream."""
+    import hashlib
+    cursor, done, pages = 0, False, 0
+    digest = hashlib.sha256()
+    feasible = None
+    page = None
+    while not done:
+        page = client.call(client.freespace,
+                           _freespace_request(handle, box, yaw_mode, cursor),
+                           request_timeout)
+        record["page_status"] = page.status
+        if page.status not in ("OK", "NO_KNOWN_FREE"):
+            record["status"] = "PAGE_%s" % page.status
+            return record
+        feasible = page.feasible_total
+        record["feasible_total"] = feasible
+        count = len(page.cell_x)
+        arrays = (page.cell_y, page.cell_z, page.origin_x, page.origin_y,
+                  page.origin_z, page.yaw_deg, page.support_ratio,
+                  page.support_kind)
+        if any(len(array) != count for array in arrays) \
+                or len(page.verify_begin) != 3 * count \
+                or len(page.verify_end) != 3 * count:
+            record["status"] = "PAGE_ARRAY_LENGTH_MISMATCH"
+            return record
+        if _identity(page.identity) != record["lease_identity"]:
+            record["status"] = "PAGE_IDENTITY_DRIFT"
+            return record
+        expected_next = min(cursor + 65536, feasible)
+        expected_done = expected_next >= feasible
+        if page.next_cursor != expected_next or page.done != expected_done:
+            record["status"] = "PAGE_CURSOR_PROGRESS"
+            return record
+        for index in range(count):
+            yaw = int(page.yaw_deg[index])
+            cell = (yaw, int(page.cell_x[index]), int(page.cell_y[index]),
+                    int(page.cell_z[index]), int(page.support_kind[index]))
+            record["candidates"].append(cell)
+            digest.update(freespace_judge.canonical_candidate_bytes(*cell))
+        cursor = page.next_cursor
+        done = page.done
+        pages += 1
+        if pages > 100000:
+            record["status"] = "PAGE_RUNAWAY"
+            return record
+    if len(record["candidates"]) != feasible:
+        record["status"] = "CANDIDATE_COUNT_MISMATCH"
+        return record
+    record["pages"] = pages
+    record["content_sha256"] = digest.hexdigest()
+    record["status"] = page.status
+    return record
 
 
 def full_query(client, box, yaw_mode=2, max_age_ms=1000, request_timeout=10.0):
     """The measured whole chain: acquire -> EVERY page materialized -> release.
 
     Fail-closed rules (review group 2): the lease is released in a finally
-    block even on timeouts; every response array must have the same length
-    and the verify ranges 3n; the page identity must equal the lease identity
-    on every page; the cursor must advance exactly to min(cursor+limit,
-    feasible_total) with a consistent done flag; the materialized candidate
-    count must equal feasible_total; the FULL candidate list is kept and a
-    canonical content digest is recorded. Any fault names itself in the
-    status; a healthy NO_KNOWN_FREE stays a legal semantic answer.
+    block even on timeouts; any fault names itself in the status; a healthy
+    NO_KNOWN_FREE stays a legal semantic answer.
     """
-    import hashlib
     started = time.monotonic_ns()
     record = {"status": "OK", "lease_identity": None, "pages": 0,
               "candidates": [], "feasible_total": None,
@@ -216,55 +281,7 @@ def full_query(client, box, yaw_mode=2, max_age_ms=1000, request_timeout=10.0):
         handle = lease.handle
         record["lease_identity"] = _identity(lease.identity)
         record["age_ns"] = lease.age_ns
-        cursor, done, pages = 0, False, 0
-        digest = hashlib.sha256()
-        feasible = None
-        while not done:
-            page = client.call(client.freespace,
-                               _freespace_request(handle, box, yaw_mode, cursor),
-                               request_timeout)
-            record["page_status"] = page.status
-            if page.status not in ("OK", "NO_KNOWN_FREE"):
-                record["status"] = "PAGE_%s" % page.status
-                return record
-            feasible = page.feasible_total
-            record["feasible_total"] = feasible
-            count = len(page.cell_x)
-            arrays = (page.cell_y, page.cell_z, page.origin_x, page.origin_y,
-                      page.origin_z, page.yaw_deg, page.support_ratio,
-                      page.support_kind)
-            if any(len(array) != count for array in arrays) \
-                    or len(page.verify_begin) != 3 * count \
-                    or len(page.verify_end) != 3 * count:
-                record["status"] = "PAGE_ARRAY_LENGTH_MISMATCH"
-                return record
-            if _identity(page.identity) != record["lease_identity"]:
-                record["status"] = "PAGE_IDENTITY_DRIFT"
-                return record
-            expected_next = min(cursor + 65536, feasible)
-            expected_done = expected_next >= feasible
-            if page.next_cursor != expected_next or page.done != expected_done:
-                record["status"] = "PAGE_CURSOR_PROGRESS"
-                return record
-            for index in range(count):
-                yaw = int(page.yaw_deg[index])
-                cell = (yaw, int(page.cell_x[index]), int(page.cell_y[index]),
-                        int(page.cell_z[index]), int(page.support_kind[index]))
-                record["candidates"].append(cell)
-                digest.update(_canonical_candidate_bytes(*cell))
-            cursor = page.next_cursor
-            done = page.done
-            pages += 1
-            if pages > 100000:
-                record["status"] = "PAGE_RUNAWAY"
-                return record
-        if len(record["candidates"]) != feasible:
-            record["status"] = "CANDIDATE_COUNT_MISMATCH"
-            return record
-        record["pages"] = pages
-        record["content_sha256"] = digest.hexdigest()
-        record["status"] = page.status
-        return record
+        return _page_all(client, handle, record, box, yaw_mode, request_timeout)
     except TimeoutError as error:
         record["status"] = "QUERY_TIMEOUT:%s" % error
         return record
@@ -278,6 +295,35 @@ def full_query(client, box, yaw_mode=2, max_age_ms=1000, request_timeout=10.0):
                     record["release_fault"] = response.status
             except Exception as error:  # noqa: BLE001 - recorded, never raised past finally
                 record["release_status"] = "RELEASE_EXCEPTION:%r" % (error,)
+        record["latency_ms"] = (time.monotonic_ns() - started) / 1e6
+
+
+def wait_chain(client, wait_response, box, request_timeout=10.0):
+    """Complete the candidate chain ON the first Wait's own lease and release
+    it in a finally block -- the wait lease is used, never abandoned to TTL
+    (review group B)."""
+    record = {"status": "OK", "lease_identity": None, "pages": 0,
+              "candidates": [], "feasible_total": None,
+              "content_sha256": None, "release_status": None,
+              "page_status": None, "latency_ms": None}
+    started = time.monotonic_ns()
+    handle = wait_response.handle
+    try:
+        record["lease_identity"] = _identity(wait_response.identity)
+        record["age_ns"] = wait_response.age_ns
+        return _page_all(client, handle, record, box, 2, request_timeout)
+    except TimeoutError as error:
+        record["status"] = "QUERY_TIMEOUT:%s" % error
+        return record
+    finally:
+        try:
+            response = client.call(client.release, _release_request(handle),
+                                   request_timeout)
+            record["release_status"] = response.status
+            if response.status != "OK":
+                record["release_fault"] = response.status
+        except Exception as error:  # noqa: BLE001 - recorded, never raised past finally
+            record["release_status"] = "RELEASE_EXCEPTION:%r" % (error,)
         record["latency_ms"] = (time.monotonic_ns() - started) / 1e6
 
 
@@ -381,39 +427,53 @@ def send_inputs(client, frames, count, hz, t0_ns, base_stamp):
 
 
 def receipt_timeline(client, records, timeout_s=10.0):
-    """Per-input terminal timeline from the receipts the node published.
+    """Per-input terminal timeline, indexed (one incremental pass, no rescan).
 
-    The input E2E clock is publish -> terminal receipt observable; a missing
-    or non-terminal receipt stays missing (never guessed).
+    EVERY receipt event is kept per id -- rows are never collapsed to the
+    last receipt, so duplicate terminals stay visible to the judge; the
+    terminal count and the terminal arrival (for the drain deadline) are
+    recorded per row. The input E2E clock is publish -> terminal receipt
+    observable; a missing or non-terminal receipt stays missing.
     """
+    events = {record["input_id"]: [] for record in records}
+    cursor = 0
     deadline = time.monotonic() + timeout_s
-    by_id = {}
-    while time.monotonic() < deadline:
-        by_id = {}
-        for record in records:
-            for receipt in client.receipts:
-                if receipt["observation_id"] == record["input_id"]:
-                    current = by_id.get(record["input_id"])
-                    if current is None or receipt["arrival_mono_ns"] > current["arrival_mono_ns"]:
-                        by_id[record["input_id"]] = receipt
-        pending = [record["input_id"] for record in records
-                   if record["input_id"] not in by_id
-                   or by_id[record["input_id"]]["status"] in NON_TERMINAL_STATUSES]
-        if not pending:
+    while True:
+        receipts = client.receipts
+        while cursor < len(receipts):
+            receipt = receipts[cursor]
+            cursor += 1
+            bucket = events.get(receipt["observation_id"])
+            if bucket is not None:
+                bucket.append(receipt)
+        pending = any(
+            not any(event["status"] in freespace_judge.LEGAL_TERMINAL
+                    for event in events[record["input_id"]])
+            for record in records)
+        if not pending or time.monotonic() >= deadline:
             break
         time.sleep(0.05)
     timeline = []
     for record in records:
-        receipt = by_id.get(record["input_id"])
+        bucket = events[record["input_id"]]
+        terminals = [event for event in bucket
+                     if event["status"] in freespace_judge.LEGAL_TERMINAL]
+        chosen = terminals[-1] if terminals else (bucket[-1] if bucket else None)
         timeline.append({
             "input_id": record["input_id"],
             "planned_mono_ns": record["planned_mono_ns"],
             "publish_mono_ns": record["publish_mono_ns"],
-            "receipt_status": receipt["status"] if receipt else None,
-            "callback_enter_ns": receipt["callback_enter_ns"] if receipt else None,
-            "receipt_arrival_mono_ns": receipt["arrival_mono_ns"] if receipt else None,
-            "e2e_ms": ((receipt["arrival_mono_ns"] - record["publish_mono_ns"]) / 1e6)
-            if receipt and receipt["status"] not in NON_TERMINAL_STATUSES else None,
+            "receipt_status": chosen["status"] if chosen else None,
+            "receipt_count": len(terminals),
+            "receipt_events": [{"status": event["status"],
+                                "arrival_mono_ns": event["arrival_mono_ns"]}
+                               for event in bucket],
+            "callback_enter_ns": chosen["callback_enter_ns"] if chosen else None,
+            "receipt_arrival_mono_ns": terminals[-1]["arrival_mono_ns"]
+            if terminals else None,
+            "e2e_ms": ((terminals[-1]["arrival_mono_ns"]
+                        - record["publish_mono_ns"]) / 1e6)
+            if terminals else None,
         })
     return timeline
 
@@ -474,13 +534,50 @@ def _epoch_of(client):
     return client.health[-1].get("epoch")
 
 
-def stage_p(client, frames, box_count, inputs, queries, out_dir, formal=False):
+def p_window_plan(t0_ns, inputs, queries, update_hz, query_hz):
+    """The P window event plan: inputs and queries on independent absolute
+    deadlines from one shared t0 (offline-verifiable schedule source)."""
+    return {
+        "inputs": [t0_ns + int(index / update_hz * 1e9) for index in range(inputs)],
+        "queries": [t0_ns + int(index / query_hz * 1e9) for index in range(queries)],
+    }
+
+
+def recovery_plan(t0_ns, inputs, queries, update_hz, query_hz):
+    """The recovery plan: the FIRST Wait shares input 0's planned instant and
+    runs the candidate chain on its own lease; the remaining queries follow
+    the same 1/query_hz schedule from t0 + one period."""
+    return {
+        "inputs": [t0_ns + int(index / update_hz * 1e9) for index in range(inputs)],
+        "first_wait_ns": t0_ns,
+        "queries": [t0_ns + int((index + 1) / query_hz * 1e9)
+                    for index in range(queries)],
+    }
+
+
+def drain_plan(last_planned_ns, drain_s, queries, query_hz):
+    """The drain plan: the 30 s window opens at the last planned send; its
+    queries spread over it at query_hz; the deadline is exact."""
+    start_ns = last_planned_ns
+    return {
+        "start_ns": start_ns,
+        "deadline_ns": start_ns + int(drain_s * 1e9),
+        "queries": [start_ns + int((index + 0.5) / query_hz * 1e9)
+                    for index in range(queries)],
+    }
+
+
+def stage_p(client, frames, box_count, inputs, queries, out_dir, formal=False,
+            window_index=0):
     """One window: sender and full-query threads on independent absolute
     clocks from the same t0; per-input terminal timeline; per-query latency
     against its own planned deadline (the H gate reads the same records)."""
-    window = {"stage": "p", "box_count": box_count, "inputs": inputs,
+    window_id = "b%02d_w%d" % (box_count, window_index)
+    window = {"stage": "p", "box_count": box_count, "window_index": window_index,
+              "window_id": window_id, "inputs": inputs,
               "queries": queries, "update_hz": contract.UPDATE_HZ,
               "query_hz": contract.QUERY_HZ, "formal": formal,
+              "frames_manifest": frames_manifest(frames),
               "window_planned_s": inputs / contract.UPDATE_HZ}
     t0 = readiness(client, frames)
     base_stamp = int(time.time() * 1e9)  # stamps lag wall clock by design
@@ -527,24 +624,27 @@ def stage_p(client, frames, box_count, inputs, queries, out_dir, formal=False):
         "health_gap_max_s": max(health_gaps) if health_gaps else None,
         "window_close_ms": (window_closed_ns - t0) / 1e6,
     })
-    (out_dir / ("p_b%02d.json" % box_count)).write_text(json.dumps(window, indent=1))
+    (out_dir / ("p_%s.json" % window_id)).write_text(json.dumps(window, indent=1))
     return window
 
 
 def stage_r(client, frames, overload_inputs, drain_s, recovery_inputs, out_dir,
             formal=False):
     """Overload with 10 Hz inputs and 2 Hz queries CONCURRENT; a fixed drain
-    whose deadline judgment uses real receipt times; recovery on the same
-    node and epoch whose FIRST input and FIRST WaitSnapshot start together.
-    The full publish/callback/receipt/wait timeline is preserved so a
-    TIMEOUT is diagnosed from evidence instead of blamed on throughput."""
+    with its OWN query schedule whose deadline judgment uses real receipt
+    arrival times; recovery on the same node and epoch whose FIRST input and
+    FIRST WaitSnapshot start together -- the wait's lease immediately runs
+    the full candidate chain and is released in a finally, and the remaining
+    queries follow the same 2 Hz table from t0 + one period."""
     artifact = {"stage": "r", "formal": formal, "overload_inputs": overload_inputs,
-                "drain_s": drain_s, "recovery_inputs": recovery_inputs}
+                "drain_s": drain_s, "recovery_inputs": recovery_inputs,
+                "frames_manifest": frames_manifest(frames)}
     epoch_before = _epoch_of(client)
     t0 = readiness(client, frames)
     base_stamp = int(time.time() * 1e9)
     overload_records = []
     query_records = []
+    drain_query_records = []
     errors = []
 
     def send_overload():
@@ -568,30 +668,65 @@ def stage_r(client, frames, overload_inputs, drain_s, recovery_inputs, out_dir,
         thread.start()
     for thread in threads:
         thread.join(timeout=overload_inputs / 10.0 + 30)
-    # Fixed drain from the last planned send; the deadline check uses the
-    # receipts that actually arrived, not a poll after the fact.
+    # Fixed drain from the last planned send. The drain keeps its own query
+    # schedule (2 Hz across the window) and the deadline judgment uses the
+    # receipt ARRIVAL times, never a poll after the fact.
     last_planned_ns = overload_records[-1]["planned_mono_ns"] \
         if overload_records else t0
-    drain_deadline_ns = last_planned_ns + int(drain_s * 1e9)
-    while time.monotonic_ns() < drain_deadline_ns:
+    drain_queries_n = contract.R_DRAIN_QUERIES if formal \
+        else max(2, int(drain_s * contract.QUERY_HZ))
+    plan = drain_plan(last_planned_ns, drain_s, drain_queries_n,
+                      contract.QUERY_HZ)
+
+    def query_drain():
+        try:
+            for index, deadline in enumerate(plan["queries"]):
+                now = time.monotonic_ns()
+                if now < deadline:
+                    time.sleep((deadline - now) / 1e9)
+                box = contract.F_BOXES[index % 2]
+                started = time.monotonic_ns()
+                result = full_query(client, box)
+                drain_query_records.append(
+                    {"index": index, "box": list(box),
+                     "planned_mono_ns": deadline,
+                     "started_mono_ns": started,
+                     "ended_mono_ns": time.monotonic_ns(), **result})
+        except Exception as error:  # noqa: BLE001
+            errors.append("drain-query: %r" % error)
+
+    drain_thread = threading.Thread(target=query_drain)
+    drain_thread.start()
+    while time.monotonic_ns() < plan["deadline_ns"]:
         time.sleep(0.05)
     drain_observed_ns = time.monotonic_ns()
+    drain_thread.join(timeout=drain_s + 15)
     timeline = receipt_timeline(client, overload_records,
                                 timeout_s=max(10.0, drain_s))
     terminals, pending = collect_terminals(
         client, [record["input_id"] for record in overload_records],
-        timeout_s=0.0 or 1.0)
+        timeout_s=1.0)
     in_flight_at_deadline = [
         entry["input_id"] for entry in timeline
         if entry["receipt_status"] is None
         or entry["receipt_status"] in NON_TERMINAL_STATUSES]
+    late_at_deadline = [
+        entry["input_id"] for entry in timeline
+        if entry["receipt_arrival_mono_ns"] is not None
+        and entry["receipt_arrival_mono_ns"] > plan["deadline_ns"]]
 
-    # Recovery: the first input publish and the first WaitSnapshot begin at
-    # the same instant (two threads, one shared t0). The wait is bound to the
-    # FIRST recovery id, which is deterministic before publishing.
+    # Recovery: three concurrent workers on ONE shared t0 -- the sender, the
+    # first Wait (bound to the deterministic first id, its lease completing
+    # the candidate chain and released in a finally), and the remaining
+    # queries on the same 2 Hz table.
     recovery_t0_ns = time.monotonic_ns() + int(0.5e9)
     recovery_stamp = int(time.time() * 1e9)
     first_id = str(recovery_stamp)  # index 0 stamp
+    recovery_query_count = (contract.R_RECOVERY_QUERIES - 1) if formal \
+        else max(2, recovery_inputs // 2)
+    rplan = recovery_plan(recovery_t0_ns, recovery_inputs,
+                          recovery_query_count, contract.UPDATE_HZ,
+                          contract.QUERY_HZ)
 
     def send_recovery():
         try:
@@ -601,7 +736,7 @@ def stage_r(client, frames, overload_inputs, drain_s, recovery_inputs, out_dir,
         except Exception as error:  # noqa: BLE001
             errors.append("recovery: %r" % error)
 
-    wait_record = {}
+    wait_record = {"planned_mono_ns": rplan["first_wait_ns"], "bound_id": first_id}
 
     def first_recovery_wait():
         from uld_occ_observer.srv import WaitSnapshot
@@ -622,35 +757,60 @@ def stage_r(client, frames, overload_inputs, drain_s, recovery_inputs, out_dir,
                 "age_ns": wait.age_ns,
                 "elapsed_ms": (time.monotonic_ns() - wait_started) / 1e6,
                 "started_mono_ns": wait_started,
-                "bound_id": first_id,
             })
+            if wait.status == "OK" and wait.handle:
+                # The wait lease is USED, not abandoned: the full candidate
+                # chain runs on it and the finally in wait_chain releases it.
+                wait_record["chain"] = wait_chain(client, wait,
+                                                  contract.F_BOXES[0])
+                wait_record["release_status"] = \
+                    wait_record["chain"].get("release_status")
         except Exception as error:  # noqa: BLE001
             wait_record.update({"status": "EXCEPTION:%r" % (error,),
                                 "started_mono_ns": wait_started,
-                                "bound_id": first_id,
                                 "elapsed_ms": (time.monotonic_ns() - wait_started) / 1e6})
 
+    recovery_query_records = []
+
+    def query_recovery():
+        try:
+            for index, deadline in enumerate(rplan["queries"]):
+                now = time.monotonic_ns()
+                if now < deadline:
+                    time.sleep((deadline - now) / 1e9)
+                box = contract.F_BOXES[index % 2]
+                started = time.monotonic_ns()
+                result = full_query(client, box)
+                recovery_query_records.append(
+                    {"index": index, "box": list(box),
+                     "planned_mono_ns": deadline,
+                     "started_mono_ns": started,
+                     "ended_mono_ns": time.monotonic_ns(), **result})
+        except Exception as error:  # noqa: BLE001
+            errors.append("recovery-query: %r" % error)
+
     recovery_threads = [threading.Thread(target=send_recovery),
-                        threading.Thread(target=first_recovery_wait)]
+                        threading.Thread(target=first_recovery_wait),
+                        threading.Thread(target=query_recovery)]
     for thread in recovery_threads:
         thread.start()
+    recovery_timeout = recovery_inputs / contract.UPDATE_HZ + 30
     for thread in recovery_threads:
-        thread.join(timeout=15)
+        thread.join(timeout=recovery_timeout)
     if "recovery" not in artifact:
         artifact["recovery"] = []
-    recovery_queries = run_queries(
-        client, max(2, recovery_inputs // 2), contract.QUERY_HZ,
-        recovery_t0_ns + int(0.2e9))
     recovery_timeline = receipt_timeline(client, artifact["recovery"])
     artifact.update({
         "overload": overload_records, "overload_queries": query_records,
+        "drain_queries": drain_query_records,
         "overload_timeline": timeline,
         "overload_terminals": terminals, "overload_pending": pending,
         "in_flight_at_drain_deadline": in_flight_at_deadline,
-        "drain_deadline_mono_ns": drain_deadline_ns,
+        "late_at_drain_deadline": late_at_deadline,
+        "drain_deadline_mono_ns": plan["deadline_ns"],
         "drain_observed_mono_ns": drain_observed_ns,
         "first_wait": wait_record,
-        "recovery_queries": recovery_queries,
+        "recovery_queries": recovery_query_records,
         "recovery_timeline": recovery_timeline,
         "epoch_before": epoch_before,
         "epoch_after": _epoch_of(client),
@@ -660,62 +820,181 @@ def stage_r(client, frames, overload_inputs, drain_s, recovery_inputs, out_dir,
     return artifact
 
 
+def _acquire_real_lease(client, max_age_ms, deadline_s):
+    """Acquire a REAL lease, retrying briefly (a just-reset map needs the
+    next input to integrate first). Returns (lease_or_None, last_status)."""
+    deadline = time.monotonic() + deadline_s
+    last = None
+    while time.monotonic() < deadline:
+        lease = client.call(client.get_snapshot, _snapshot_request(max_age_ms))
+        last = lease.status
+        if lease.status == "OK":
+            return lease, last
+        time.sleep(0.2)
+    return None, last
+
+
+def _ownership(client, max_samples=12, spacing_s=0.2, settle_s=0.0,
+               target=None):
+    """Adaptive ownership measurement: sample until the expected residual
+    appears (or the budget runs out) and keep EVERY sample. Mid-soak the
+    node transiently carries the integration path's old/new retained pair
+    and the parallel query stream's in-flight lease -- a single instant can
+    legitimately read one extra full view. The minimum over an adaptive
+    window is the round's own residual: a leaked handle survives every
+    sample and raises the minimum; a transient drops out."""
+    if settle_s:
+        time.sleep(settle_s)
+    entries = []
+    fields = None
+    for _ in range(max_samples):
+        fields = _resource_fields(client.call(client.resource,
+                                              _resource_request()))
+        entries.append(fields["view_directory_entries"])
+        if target is not None and fields["view_directory_entries"] <= target:
+            break
+        time.sleep(spacing_s)
+    fields["view_directory_entries_samples"] = entries
+    return fields
+
+
 def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
             formal=False, node_pid=None):
-    """Sustained loop on ABSOLUTE clocks (query latency never stretches the
-    send period), per-frame terminal timeline, a 1 Hz raw RSS series off the
-    node process, full query records, and reset/error rounds whose leases
-    are released through their error paths."""
+    """The soak judged per record: EVERY input keeps its publish row and
+    terminal receipt, EVERY query keeps its planned/started/ended and full
+    chain record, the read-release and reset rounds run DURING the loop on
+    their own absolute schedules (1000 reads spread over the scored window,
+    100 resets over the warmup), each round measuring ownership back to the
+    baseline. Reset rounds prove the real error path: a live lease, a
+    bogus-handle release that must fail, then the real lease released in a
+    finally -- never abandoned to TTL. RSS samples at 0.5 s."""
     artifact = {"stage": "l", "formal": formal, "planned_seconds": seconds,
-                "read_rounds": read_rounds, "reset_rounds": reset_rounds}
+                "read_rounds": read_rounds, "reset_rounds": reset_rounds,
+                "frames_manifest": frames_manifest(frames)}
     baseline = client.call(client.resource, _resource_request())
+    baseline_entries = baseline.view_directory_entries
     t0 = readiness(client, frames)
+    t0_ns = time.monotonic_ns()
     base_stamp = int(time.time() * 1e9)
+    warmup_s = contract.L_WARMUP_S if formal else min(10.0, seconds / 2.0)
     stop = threading.Event()
-    send_index = [0]
+    input_records = []
     query_records = []
+    read_rounds_results = []
+    reset_rounds_results = []
     send_errors = []
     rss_series = []
+    lock = threading.Lock()
 
     def sustained():
         from sensor_msgs.msg import PointCloud2
         period_ns = int(1e9 / contract.UPDATE_HZ)
-        next_deadline_ns = time.monotonic_ns()
+        index = 0
         while not stop.is_set():
-            frame = frames[send_index[0] % len(frames)]
+            frame = frames[index % len(frames)]
             cloud, _ = cloud_from_frame(frame)
-            stamp = base_stamp + send_index[0] * period_ns
+            stamp = base_stamp + index * period_ns
             cloud.header.stamp.sec = stamp // 10**9
             cloud.header.stamp.nanosec = stamp % 10**9
+            deadline = t0_ns + int(index / contract.UPDATE_HZ * 1e9)
             now = time.monotonic_ns()
-            if now < next_deadline_ns:
-                time.sleep((next_deadline_ns - now) / 1e9)
+            if now < deadline:
+                time.sleep((deadline - now) / 1e9)
             client.cloud.publish(cloud)
-            send_index[0] += 1
-            next_deadline_ns += period_ns
-            if next_deadline_ns < time.monotonic_ns() - int(5e9):
-                send_errors.append("sender_fell_behind_at_%d" % send_index[0])
-                next_deadline_ns = time.monotonic_ns()
+            with lock:
+                input_records.append({
+                    "index": index, "stamp_ns": stamp, "input_id": str(stamp),
+                    "planned_mono_ns": deadline,
+                    "publish_mono_ns": time.monotonic_ns()})
+            index += 1
+            if deadline < time.monotonic_ns() - int(5e9):
+                send_errors.append("sender_fell_behind_at_%d" % index)
+                return
 
     def queries():
         index = 0
-        period_ns = int(1e9 / contract.QUERY_HZ)
-        next_deadline_ns = time.monotonic_ns()
         while not stop.is_set():
+            deadline = t0_ns + int(index / contract.QUERY_HZ * 1e9)
             now = time.monotonic_ns()
-            if now < next_deadline_ns:
-                time.sleep((next_deadline_ns - now) / 1e9)
-            query_records.append(full_query(client, contract.F_BOXES[index % 2]))
+            if now < deadline:
+                time.sleep((deadline - now) / 1e9)
+            box = contract.F_BOXES[index % 2]
+            started = time.monotonic_ns()
+            result = full_query(client, box)
+            with lock:
+                query_records.append(
+                    {"index": index, "box": list(box),
+                     "planned_mono_ns": deadline,
+                     "started_mono_ns": started,
+                     "ended_mono_ns": time.monotonic_ns(), **result})
             index += 1
-            next_deadline_ns += period_ns
+
+    def reader():
+        scored_s = max(1.0, seconds - warmup_s)
+        for index in range(read_rounds):
+            if stop.is_set():
+                break  # the run window closed; the count is then honest
+            deadline = t0_ns + int((warmup_s + (index + 0.5) * scored_s
+                                    / read_rounds) * 1e9)
+            now = time.monotonic_ns()
+            if now < deadline:
+                time.sleep((deadline - now) / 1e9)
+            record = full_query(client, contract.F_BOXES[0])
+            record["ownership_after"] = _ownership(client, target=baseline_entries)
+            with lock:
+                read_rounds_results.append(record)
+
+    def resetter():
+        from uld_occ_observer.srv import ResetObservation
+        epoch = _epoch_of(client) or 1
+        for index in range(reset_rounds):
+            if stop.is_set():
+                break  # the run window closed; the count is then honest
+            deadline = t0_ns + int((warmup_s * (index + 1)
+                                    / (reset_rounds + 1)) * 1e9)
+            now = time.monotonic_ns()
+            if now < deadline:
+                time.sleep((deadline - now) / 1e9)
+            record = {"index": index}
+            # The error-path round needs a REAL lease on the live map; retry
+            # past the just-reset gap until the next input integrates. The
+            # product's release is idempotent-OK by design (an unknown
+            # handle is a no-op), so the OBSERVABLE error lifecycle is: hold
+            # a lease ACROSS a reset, then release it explicitly in the
+            # finally -- never abandoned to TTL. Ownership returning to the
+            # baseline after the refill proves the handle did not linger.
+            lease, acquire_status = _acquire_real_lease(client, 1000, 4.0)
+            record["acquire_status"] = acquire_status
+            try:
+                request = ResetObservation.Request()
+                request.expected_epoch = epoch
+                request.reset_id = "l_reset_%d" % index
+                response = client.call(client.reset, request)
+                record["reset_status"] = response.status
+                if response.status == "OK":
+                    epoch = response.epoch
+            finally:
+                if lease is not None:
+                    try:
+                        real = client.call(client.release,
+                                           _release_request(lease.handle))
+                        record["real_release"] = real.status
+                    except Exception as error:  # noqa: BLE001
+                        record["real_release"] = "EXCEPTION:%r" % (error,)
+            record["epoch"] = epoch
+            record["ownership_after"] = _ownership(client, settle_s=1.5,
+                                                   target=baseline_entries)
+            with lock:
+                reset_rounds_results.append(record)
 
     def rss_sampler():
         while not stop.is_set():
             rss_series.append({"t_mono_ns": time.monotonic_ns(),
                                "rss_kib": _rss_kib(node_pid)})
-            stop.wait(1.0)
+            stop.wait(0.5)
 
     workers = [threading.Thread(target=sustained), threading.Thread(target=queries),
+               threading.Thread(target=reader), threading.Thread(target=resetter),
                threading.Thread(target=rss_sampler)]
     for worker in workers:
         worker.start()
@@ -723,39 +1002,22 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
     stop.set()
     for worker in workers:
         worker.join(timeout=15)
-    artifact["sent_inputs"] = send_index[0]
+    # Terminal closure for every input through the indexed collector.
+    input_timeline = receipt_timeline(client, input_records, timeout_s=10.0)
+    artifact["sent_inputs"] = len(input_records)
     artifact["send_errors"] = send_errors
+    artifact["input_records"] = input_records
+    artifact["input_timeline"] = input_timeline
     artifact["query_records"] = query_records
+    artifact["read_rounds_results"] = read_rounds_results
+    artifact["reset_rounds_results"] = reset_rounds_results
     artifact["rss_series"] = rss_series
     artifact["health_samples"] = len(client.health)
-    rounds = []
-    for _ in range(read_rounds):
-        rounds.append(full_query(client, contract.F_BOXES[0]))
-    artifact["read_rounds_results"] = rounds
-    resets = []
-    epoch = _epoch_of(client) or 1
-    for index in range(reset_rounds):
-        from uld_occ_observer.srv import ResetObservation
-        request = ResetObservation.Request()
-        request.expected_epoch = epoch
-        request.reset_id = "l_reset_%d" % index
-        response = client.call(client.reset, request)
-        resets.append(response.status)
-        if response.status == "OK":
-            epoch = response.epoch
-        # Error path: acquire a lease and let the release FAIL on purpose by
-        # releasing through a bogus handle; the real lease must still expire
-        # by TTL, proven by the next round answering on the new epoch.
-        lease = client.call(client.get_snapshot, _snapshot_request(60_000))
-        if lease.status == "OK":
-            try:
-                client.call(client.release, _release_request("bogus"), timeout=1.0)
-            except TimeoutError:
-                pass
-    artifact["reset_statuses"] = resets
-    after = client.call(client.resource, _resource_request())
+    # Stage end: every worker joined; let the last integration's transient
+    # old-view tail drain, then measure adaptively back to the baseline.
+    after = _ownership(client, settle_s=0.6, target=baseline_entries)
     artifact["baseline"] = _resource_fields(baseline)
-    artifact["after"] = _resource_fields(after)
+    artifact["after"] = after
     (out_dir / "l.json").write_text(json.dumps(artifact, indent=1))
     return artifact
 
@@ -787,6 +1049,9 @@ def main():
     parser.add_argument("--r-drain", type=float, default=5.0)
     parser.add_argument("--r-recovery", type=int, default=10)
     parser.add_argument("--l-seconds", type=float, default=20.0)
+    parser.add_argument("--budget-minutes", type=float, default=None,
+                        help="hard wall-clock budget ENFORCED between stages "
+                             "(the scheduler stops, not a text promise)")
     parser.add_argument("--formal", action="store_true",
                         help="run contract counts (P 300/240 x9, R 600/30/75, "
                              "L 120 min); the same source powers the rehearsal "
@@ -804,10 +1069,20 @@ def main():
         tagged = [frame for frame in frames
                   if isinstance(frame, dict) and frame.get("_box_tag") == box_count]
         frames_by_box[box_count] = tagged or frames
+    started = time.monotonic()
     node = NodeProcess(args.node, args.geometry, args.config,
                        out / "observer.log", "/freespace_campaign_cloud")
     client = Client("/freespace_campaign_cloud")
     results = {}
+
+    def _failed(name):
+        return any(reason != "short_sample_not_formal"
+                   for reason in results.get(name, {}).get("reasons", []))
+
+    def _budget_spent():
+        return args.budget_minutes is not None and \
+            time.monotonic() - started > args.budget_minutes * 60
+
     try:
         client.wait_services()
         first = frames[0]
@@ -824,36 +1099,65 @@ def main():
         l_rounds = contract.L_READ_RELEASE_ROUNDS if args.formal else 15
         l_resets = contract.L_RESET_ROUNDS if args.formal else 2
         p_windows = contract.P_WINDOWS_PER_BOX if args.formal else 1
+        # Formal R and L run the FIXED 20-box workload, never the mixed set.
+        r_l_frames = frames_by_box[20] if args.formal else frames
         if "p" in stages:
             for box_count in contract.P_BOX_COUNTS:
                 for window_index in range(p_windows):
                     window = stage_p(client, frames_by_box[box_count], box_count,
-                                     p_inputs, p_queries, out, formal=args.formal)
+                                     p_inputs, p_queries, out, formal=args.formal,
+                                     window_index=window_index)
                     results["p_b%02d_w%d" % (box_count, window_index)] = \
                         freespace_judge.judge_p_window(window)
-        if "r" in stages:
+        # A failed stage STOPS its dependents (P gates R, R gates L); the
+        # budget is enforced here in the scheduler, between stages.
+        stop_reason = None
+        if "p" in stages and _failed("p"):
+            stop_reason = "p_failed"
+        if stop_reason is None and "r" in stages:
             results["r"] = freespace_judge.judge_r_stage(
-                stage_r(client, frames, r_overload, r_drain, r_recovery, out,
+                stage_r(client, r_l_frames, r_overload, r_drain, r_recovery, out,
                         formal=args.formal))
-        if "l" in stages:
+            if _failed("r"):
+                stop_reason = "r_failed"
+            elif _budget_spent():
+                stop_reason = "budget_exhausted"
+        if stop_reason is not None:
+            results["skipped"] = {"reason": "stage_failure_stops_dependents",
+                                  "detail": stop_reason}
+        elif "l" in stages:
             results["l"] = freespace_judge.judge_l_stage(
-                stage_l(client, frames, l_seconds, l_rounds, l_resets, out,
+                stage_l(client, r_l_frames, l_seconds, l_rounds, l_resets, out,
                         formal=args.formal, node_pid=node.proc.pid))
+    except Exception as error:  # noqa: BLE001 - persist the failure prefix
+        import traceback
+        (out / "failure.json").write_text(json.dumps({
+            "error": repr(error),
+            "traceback": traceback.format_exc(),
+            "partial_results": results,
+            "elapsed_s": time.monotonic() - started,
+        }, indent=1))
+        raise
     finally:
         client.shutdown()
         node.stop()
     # A rehearsal verdict: the wiring must be clean; short_sample_not_formal
     # is the by-design marker that these counts cannot certify a formal gate.
     formal_reached = all(v.get("formal") and not v.get("reasons")
-                         for v in results.values()) if args.formal else False
+                         for v in results.values()
+                         if isinstance(v, dict)) if args.formal else False
     summary = {"stages": results, "formal": args.formal,
                "formal_pass": formal_reached,
+               "budget_exhausted": _budget_spent(),
                "wiring_ok": all(
                    all(reason == "short_sample_not_formal"
                        for reason in v.get("reasons", []))
-                   for v in results.values()) if not args.formal else False}
+                   for v in results.values()
+                   if isinstance(v, dict) and "reasons" in v)
+               if not args.formal else False}
     (out / "summary.json").write_text(json.dumps(summary, indent=1))
-    print(json.dumps({name: verdict.get("reasons") for name, verdict in results.items()},
+    print(json.dumps({name: verdict.get("reasons") if isinstance(verdict, dict)
+                      else verdict for name, verdict in results.items()},
                      indent=1))
     return 0 if (formal_reached or summary["wiring_ok"]) else 1
 

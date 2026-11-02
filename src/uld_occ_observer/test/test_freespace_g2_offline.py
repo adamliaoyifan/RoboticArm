@@ -1,16 +1,17 @@
-"""gen2 tool-repair tests: every review counterexample is a permanent red
-test with a healthy green control, and full_query's own fault paths are
-exercised against injected fake services.
+"""gen2 tool-repair tests, realigned for gen3.
 
-The review's audit.py injected: 240 INTERNAL_ERROR queries under a formal P
-window, an R artifact with 599 missing overload ids and a NaN first-wait, an
-L artifact with zero seconds/traffic and a NaN cache peak, a query page that
-returned 1 of 100 candidates with the wrong identity and a failing release,
-and a query timeout that leaked the lease. None may ever pass again.
+The 1621 review rejected the gen2 "formal healthy controls" as short of the
+contract (one recovery query, two read rounds, a lone STALE overload query);
+the contract-GRADE controls and gate rejections now live in
+test_freespace_g3_offline.py. What stays here must keep holding:
+
+- the original audit injections keep ADDING named failures under whatever
+  judge version is current (the fixtures are deliberately pre-gen3-shaped);
+- full_query's own fault paths against the injected fake service;
+- the score entry stays closed without authorization.
 """
 from __future__ import annotations
 
-import math
 import sys
 from pathlib import Path
 from types import SimpleNamespace as S
@@ -28,7 +29,7 @@ IDENTITY = {"epoch": 1, "map_revision": 5, "observed_revision": 9,
             "geometry_hash": GEOMETRY_HASH, "last_integrated_stamp_ns": 10**9}
 
 
-# --- the review's counterexamples, verbatim in spirit ----------------------
+# --- the review's counterexamples, verbatim in spirit ------------------------
 def audit_p():
     return {"formal": True,
             "sender": [{"input_id": str(i), "planned_mono_ns": i * 400_000_000,
@@ -121,7 +122,6 @@ class FakeService:
 
 
 def test_full_query_rejects_short_page(monkeypatch):
-    patched = None
     monkeypatch.setattr(campaign, "_snapshot_request", lambda x: x)
     monkeypatch.setattr(campaign, "_freespace_request", lambda *a: a)
     monkeypatch.setattr(campaign, "_release_request", lambda x: x)
@@ -187,148 +187,13 @@ def test_full_query_healthy_materializes_all(monkeypatch):
     assert record["age_ns"] == 10**9
 
 
-# --- healthy formal controls: the judges accept genuinely good artifacts ---
-def healthy_p_window():
-    inputs = contract.P_WINDOW_INPUTS
-    queries = contract.P_WINDOW_QUERIES
-    period_in = int(1e9 / contract.UPDATE_HZ)
-    period_q = int(1e9 / contract.QUERY_HZ)
-    sender = [{"input_id": str(i), "planned_mono_ns": i * period_in,
-               "publish_mono_ns": i * period_in + 2_000_000} for i in range(inputs)]
-    timeline = [{"input_id": str(i), "receipt_status": "COMPLETED",
-                 "e2e_ms": 120.0} for i in range(inputs)]
-    good_query = {"planned_mono_ns": 0, "started_mono_ns": 1,
-                  "ended_mono_ns": 2, "status": "OK", "latency_ms": 100.0,
-                  "release_status": "OK", "lease_identity": IDENTITY,
-                  "content_sha256": "x" * 64, "age_ns": 10**9}
-    queries_list = []
-    for i in range(queries):
-        record = dict(good_query)
-        record["planned_mono_ns"] = i * period_q
-        record["started_mono_ns"] = i * period_q + 3_000_000
-        record["ended_mono_ns"] = i * period_q + 100_000_000
-        queries_list.append(record)
-    return {"formal": True, "errors": [], "sender": sender,
-            "queries": queries_list, "input_timeline": timeline,
-            "terminals": {}, "pending": [], "health_samples": 240,
-            "health_gap_max_s": 0.5, "window_close_ms": 120_000.0,
-            "window_planned_s": 120.0}
-
-
-def test_healthy_formal_p_window_passes():
-    verdict = judge.judge_p_window(healthy_p_window())
-    assert verdict["reasons"] == [], verdict["reasons"]
-
-
-def test_formal_p_rejects_over_gate_e2e():
-    window = healthy_p_window()
-    for entry in window["input_timeline"]:
-        entry["e2e_ms"] = 360.0  # P95 over the 350 ms gate
-    reasons = judge.judge_p_window(window)["reasons"]
-    assert any("input_e2e_p95" in r for r in reasons)
-
-
-def test_formal_p_rejects_sched_late():
-    window = healthy_p_window()
-    for record in window["queries"]:
-        record["started_mono_ns"] = record["planned_mono_ns"] + 60_000_000
-    reasons = judge.judge_p_window(window)["reasons"]
-    assert any("sched_late" in r for r in reasons)
-
-
-def test_formal_p_rejects_count_lie_and_bad_age():
-    window = healthy_p_window()
-    window["queries"] = window["queries"][:100]
-    assert "formal_counts" in judge.judge_p_window(window)["reasons"]
-    window = healthy_p_window()
-    for record in window["queries"]:
-        record["age_ns"] = 5 * 10**9
-    assert any("q_age" in r for r in judge.judge_p_window(window)["reasons"])
-
-
-def healthy_r_artifact():
-    overload = [{"input_id": "o%d" % i, "planned_mono_ns": i * 100_000_000,
-                 "publish_mono_ns": i * 100_000_000}
-                for i in range(contract.R_OVERLOAD_INPUTS)]
-    timeline = [{"input_id": "o%d" % i,
-                 "receipt_status": "REJECTED" if i == 0 else "COMPLETED",
-                 "e2e_ms": 100.0}
-                for i in range(contract.R_OVERLOAD_INPUTS)]
-    recovery = [{"input_id": "r%d" % i, "planned_mono_ns": i * 400_000_000,
-                 "publish_mono_ns": i * 400_000_000}
-                for i in range(contract.R_RECOVERY_INPUTS)]
-    recovery_timeline = [{"input_id": "r%d" % i, "receipt_status": "COMPLETED",
-                          "e2e_ms": 90.0} for i in range(contract.R_RECOVERY_INPUTS)]
-    good = {"status": "OK", "latency_ms": 100.0, "release_status": "OK",
-            "lease_identity": IDENTITY, "content_sha256": "y" * 64,
-            "age_ns": 10**9, "planned_mono_ns": 0, "started_mono_ns": 1,
-            "ended_mono_ns": 2}
-    return {"formal": True, "overload": overload, "overload_timeline": timeline,
-            "overload_terminals": {}, "overload_pending": [],
-            "in_flight_at_drain_deadline": [], "epoch_before": 1,
-            "epoch_after": 1, "recovery": recovery,
-            "recovery_timeline": recovery_timeline,
-            "overload_queries": [dict(good, status="STALE")],
-            "recovery_queries": [dict(good)],
-            "first_wait": {"status": "OK", "elapsed_ms": 800.0, "age_ns": 10**9,
-                           "bound_id": "r0"}}
-
-
-def test_healthy_formal_r_passes():
-    verdict = judge.judge_r_stage(healthy_r_artifact())
-    assert verdict["reasons"] == [], verdict["reasons"]
-
-
-def test_formal_r_rejects_in_flight_and_restarted_epoch():
-    artifact = healthy_r_artifact()
-    artifact["in_flight_at_drain_deadline"] = ["o599"]
-    assert any("drain_in_flight" in r for r in judge.judge_r_stage(artifact)["reasons"])
-    artifact = healthy_r_artifact()
-    artifact["epoch_after"] = 2
-    assert any("epoch_restarted" in r for r in judge.judge_r_stage(artifact)["reasons"])
-
-
-def healthy_l_artifact():
-    good = {"status": "OK", "latency_ms": 100.0, "release_status": "OK",
-            "lease_identity": IDENTITY, "content_sha256": "z" * 64,
-            "age_ns": 10**9}
-    total = int(contract.L_DURATION_S)
-    # 1 Hz sampling for the whole 120 min: >=600 samples per 10-min bucket.
-    rss = [{"t_mono_ns": i * 10**9, "rss_kib": 300_000}
-           for i in range(0, total + 2)]
-    return {"formal": True, "send_errors": [], "sent_inputs": contract.L_INPUTS,
-            "query_records": [dict(good) for _ in range(contract.L_QUERIES)],
-            "rss_series": rss, "health_samples": 7000,
-            "read_rounds": 2, "reset_rounds": 1,
-            "read_rounds_results": [dict(good), dict(good)],
-            "reset_statuses": ["OK"],
-            "baseline": {"view_directory_entries": 1},
-            "after": {"view_directory_entries": 1,
-                      "read_view_cache_bytes_peak": 10_000_000},
-            "planned_seconds": contract.L_DURATION_S}
-
-
-def test_healthy_formal_l_passes():
-    verdict = judge.judge_l_stage(healthy_l_artifact())
-    assert verdict["reasons"] == [], verdict["reasons"]
-
-
-def test_formal_l_rejects_rss_growth_and_duration_lie():
-    artifact = healthy_l_artifact()
-    series = artifact["rss_series"]
-    for sample in series[-800:]:
-        sample["rss_kib"] = 400_000  # > 5% growth over the first decile
-    assert any("rss_growth" in r for r in judge.judge_l_stage(artifact)["reasons"])
-    artifact = healthy_l_artifact()
-    artifact["planned_seconds"] = 60
-    assert any("l_duration" in r for r in judge.judge_l_stage(artifact)["reasons"])
-
-
-def test_short_samples_still_carry_the_marker():
-    window = healthy_p_window()
-    window["formal"] = False
-    reasons = judge.judge_p_window(window)["reasons"]
-    assert reasons == ["short_sample_not_formal"]
+def test_candidate_digest_recomputes_from_raw_cells():
+    cells = [(0, 1, 2, 3, 1), (90, 4, 5, 6, 2)]
+    digest = judge.candidate_digest(cells)
+    assert digest == judge.candidate_digest([list(cell) for cell in cells])
+    assert judge.candidate_digest([(0, 1, 2, 3)]) is None  # not five numbers
+    assert judge.candidate_digest([(0, "x", 2, 3, 1)]) is None
+    assert judge.candidate_digest(None) == judge.candidate_digest([])
 
 
 # --- COMMANDS guard behavior -------------------------------------------------
