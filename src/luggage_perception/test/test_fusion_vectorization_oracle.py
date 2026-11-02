@@ -21,6 +21,8 @@ sys.path.insert(0, os.path.join(PKG_ROOT, "src", "luggage_perception"))
 sys.path.insert(0, os.path.join(PKG_ROOT, "src", "luggage_description"))
 sys.path.insert(0, PKG_ROOT)
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from scalar_integrate_reference import scalar_integrate
 from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
 
 
@@ -69,16 +71,14 @@ class TestFusionVectorizationOracle(unittest.TestCase):
         cloud = make_cloud(mapper_a, n_points, seed=42)
         ray_cloud = make_cloud(mapper_a, min(500, n_points), seed=99)
 
-        # Original path
-        diag_a = mapper_a.integrate_points(
-            cloud, origin=origin, labels=labels, instance_ids=instances,
-            ray_points=ray_cloud)
+        diag_a = scalar_integrate(
+            mapper_a, cloud, origin=origin, labels=labels,
+            instance_ids=instances, ray_points=ray_cloud)
         state_a = snapshot_state(mapper_a)
 
-        # Vectorized path (same function, vectorized flag)
         diag_b = mapper_b.integrate_points(
             cloud, origin=origin, labels=labels, instance_ids=instances,
-            ray_points=ray_cloud, _vectorized=True)
+            ray_points=ray_cloud)
         state_b = snapshot_state(mapper_b)
 
         # Compare every cell of every array
@@ -117,14 +117,12 @@ class TestFusionVectorizationOracle(unittest.TestCase):
         cloud = make_cloud(mapper_a, 500, seed=42)
         rays = make_cloud(mapper_a, 200, seed=99)
         origin = (0.0, 0.0, 2.0)
-        mapper_a.integrate_points(cloud, origin=origin, ray_points=rays)
-        mapper_b.integrate_points(cloud, origin=origin,
-                                  ray_points=rays, _vectorized=True)
+        scalar_integrate(mapper_a, cloud, origin=origin, ray_points=rays)
+        mapper_b.integrate_points(cloud, origin=origin, ray_points=rays)
         ga = bytes(mapper_a._grid)
         gb = bytes(mapper_b._grid)
-        diffs = sum(1 for i in range(len(ga)) if ga[i] != gb[i])
-        self.assertLess(diffs, 10,
-                        'expected <=3 boundary cells, got %d' % diffs)
+        diffs = [i for i in range(len(ga)) if ga[i] != gb[i]]
+        self.assertEqual(diffs, [0, 11866, 19573])
 
     def test_with_labels(self):
         labels = [3] * 500
@@ -149,14 +147,12 @@ class TestFusionVectorizationOracle(unittest.TestCase):
         rays = make_cloud(mapper_a, 200, seed=3)
         origin = (0.0, 0.0, 2.0)
 
-        mapper_a.integrate_points(cloud1, origin=origin, ray_points=rays)
-        mapper_a.integrate_points(cloud2, origin=origin, ray_points=rays)
+        scalar_integrate(mapper_a, cloud1, origin=origin, ray_points=rays)
+        scalar_integrate(mapper_a, cloud2, origin=origin, ray_points=rays)
         state_a = snapshot_state(mapper_a)
 
-        mapper_b.integrate_points(cloud1, origin=origin,
-                                  ray_points=rays, _vectorized=True)
-        mapper_b.integrate_points(cloud2, origin=origin,
-                                  ray_points=rays, _vectorized=True)
+        mapper_b.integrate_points(cloud1, origin=origin, ray_points=rays)
+        mapper_b.integrate_points(cloud2, origin=origin, ray_points=rays)
         state_b = snapshot_state(mapper_b)
 
         for key in state_a:
@@ -186,14 +182,19 @@ class TestVectorizedDeltaCapture(unittest.TestCase):
     def test_scalar_and_vectorized_deltas_match(self):
         from luggage_perception.cargo_voxel_delta import VoxelDeltaBuilder
         deltas = []
-        for vectorized in (False, True):
+        points = [(0.0, 0.0, 0.05), (.02, .01, 0.05)]
+        for use_scalar in (True, False):
             m = CargoVolumeMapper((.12, .12, .12), (0, 0, .06), 0, .02,
                                   max_raycast_points=4)
             m._voxel_delta = VoxelDeltaBuilder(m)
-            m.integrate_points([(0.0, 0.0, 0.05), (.02, .01, 0.05)],
-                               origin=(0, 0, .2), labels=[2, 2],
-                               instance_ids=[3, 3],
-                               _vectorized=vectorized)
+            if use_scalar:
+                scalar_integrate(
+                    m, points, origin=(0, 0, .2), labels=[2, 2],
+                    instance_ids=[3, 3])
+            else:
+                m.integrate_points(
+                    points, origin=(0, 0, .2), labels=[2, 2],
+                    instance_ids=[3, 3])
             deltas.append(m._voxel_delta.finalize())
         self.assertEqual(sorted(int(i) for i in deltas[0].indices),
                          sorted(int(i) for i in deltas[1].indices),

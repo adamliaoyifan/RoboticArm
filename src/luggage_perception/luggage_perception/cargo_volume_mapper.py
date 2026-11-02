@@ -550,69 +550,14 @@ class CargoVolumeMapper:
         return indices
 
     def integrate_points(self, points, origin=None, labels=None, instance_ids=None,
-                         ray_points=None, _vectorized=True):
-        """Integrate observed points into the voxel grid.
+                         ray_points=None):
+        """Integrate observed points with the batch kernel.
 
-        Args:
-            points: list of (x, y, z) in base frame.
-            origin: optional camera position for free-space raycasting.
-            labels: optional parallel list of per-point semantic class labels.
-            instance_ids: optional parallel list of per-point instance IDs.
-            _vectorized: use the batch-numpy kernel path (oracle-tested
-                to produce identical results to the original loop).
+        The scalar loop lives in test/scalar_integrate_reference.py and is
+        the independent reference. Misses are applied before hits.
         """
-        if _vectorized:
-            return self._integrate_points_vectorized(
-                points, origin, labels, instance_ids, ray_points)
-        hit_records = {}
-        diagnostics = dict(rays_selected=0, ray_intersecting=0, samples_visited=0)
-        miss_indices = set()
-        for i, pt in enumerate(points):
-            x, y, z = pt[0], pt[1], pt[2]
-            if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
-                continue
-            lbl = int(labels[i]) if labels is not None else 0
-            iid = int(instance_ids[i]) if instance_ids is not None else 0
-            local = self._world_to_local(x, y, z)
-            vox = self._local_to_voxel(*local)
-            if vox is not None:
-                hit_records[self._index(*vox)] = (x, y, z, lbl, iid)
-
-        if origin is not None:
-            ox, oy, oz = origin
-            # The free-space ray walk is O(points * ray_steps) in pure Python;
-            # subsample the rays (not the hit marks) when the cloud is large so
-            # integrate stays interactive. The coarse voxel grid tolerates
-            # fewer rays without losing free-space coverage.
-            ray_points = points if ray_points is None else ray_points
-            if self.max_raycast_points and len(ray_points) > self.max_raycast_points:
-                stride = max(1, len(ray_points) // self.max_raycast_points)
-                ray_points = ray_points[::stride]
-            for pt in ray_points:
-                x, y, z = pt[0], pt[1], pt[2]
-                if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
-                    continue
-                diagnostics["rays_selected"] += 1
-                miss_indices.update(
-                    self._raycast_indices((ox, oy, oz), (x, y, z), diagnostics)
-                )
-        miss_indices.difference_update(hit_records)
-        self._observe_voxels(miss_indices)
-        self._observe_voxels(hit_records)
-        for idx in miss_indices:
-            self._grid[idx] = self._occupancy.apply_miss(idx)
-            self._record_sensor_miss(idx)
-            if self._grid[idx] == FREE and self._source[idx] != SOURCE_GEOMETRY:
-                self._source[idx] = SOURCE_NONE
-                self._labels[idx] = 0
-                self._instance_ids[idx] = 0
-        for x, y, z, lbl, iid in hit_records.values():
-            self.mark_occupied_world(
-                x, y, z, label=lbl, instance_id=iid
-            )
-        if hit_records or miss_indices:
-            self._revision += 1
-        return diagnostics
+        return self._integrate_points_vectorized(
+            points, origin, labels, instance_ids, ray_points)
 
     def _integrate_points_vectorized(self, points, origin=None,
                                      labels=None, instance_ids=None,

@@ -5,9 +5,14 @@ records every miss, and repeated free-space observations can never
 erode a placed box to FREE.
 """
 
+import os
+import sys
+
 import numpy as np
 import pytest
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from scalar_integrate_reference import scalar_integrate
 from luggage_perception.cargo_volume_mapper import (
     CargoVolumeMapper, SOURCE_GEOMETRY, SOURCE_SENSOR)
 
@@ -145,7 +150,10 @@ def test_full_integration_paths_equal_with_boxes_and_misses():
         original = mapper.integrate_points
 
         def patched(*args, **kwargs):
-            return original(*args, **{**kwargs, '_vectorized': vectorized})
+            kwargs.pop("_vectorized", None)
+            if vectorized:
+                return original(*args, **kwargs)
+            return scalar_integrate(mapper, *args, **kwargs)
         mapper.integrate_points = patched
         for stamp in range(3):
             n = 8000
