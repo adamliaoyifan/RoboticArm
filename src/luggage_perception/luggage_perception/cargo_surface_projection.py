@@ -13,6 +13,7 @@ import time
 
 import numpy as np
 
+from luggage_perception.cargo_column_math import column_summary
 from luggage_perception.cargo_grid_projection import surface_columns
 from luggage_perception.cargo_voxel_delta import immutable_array
 
@@ -54,33 +55,14 @@ class SurfaceProjection:
 
 
 def project_column_subset(mapper, columns):
-    """Native selection of whole Z columns; matches full oracle arithmetic."""
-    shape = (mapper.nz, mapper.ny*mapper.nx)
-    grid = np.frombuffer(mapper._grid, 'u1').reshape(shape)[:, columns]
-    active = np.frombuffer(mapper._active, 'u1').reshape(shape)[:, columns].astype(bool)
-    occupied = (grid == 2) & active
-    observed = (grid != 0) & active
-    unknown = (grid == 0) & active
-    has_top = occupied.any(axis=0)
-    top = mapper.nz-1-occupied[::-1].argmax(axis=0)
-    height = np.where(has_top, np.minimum((top+1)*mapper.resolution, mapper.inner_h), 0.)
-    state = np.where(has_top, 'occupied', np.where(unknown.any(axis=0), 'unknown', 'free'))
-    source = np.frombuffer(mapper._source, 'u1').reshape(shape)[:, columns]
-    top_source = np.take_along_axis(source, top[None, :], axis=0)[0]
-    confidence = np.where(has_top, np.where(top_source == 2, 'geometry', 'sensor'),
-                          np.where(state == 'free', 'sensor', 'none'))
-    count = active.sum(axis=0)
-    ratio = np.divide(observed.sum(axis=0), count, out=np.zeros(count.shape), where=count != 0)
-    labels = np.frombuffer(mapper._labels, '<i8').reshape(shape)[:, columns]
-    valid_label = occupied & (labels > 0)
-    semantic = np.zeros(len(columns), dtype=np.int64)
-    for i in np.flatnonzero(valid_label.any(axis=0)):
-        values = labels[:, i][valid_label[:, i]]
-        unique, first, frequencies = np.unique(values, return_index=True, return_counts=True)
-        winners = np.flatnonzero(frequencies == frequencies.max())
-        semantic[i] = unique[winners[np.argmin(first[winners])]]
-    return dict(height=height, clearance=mapper.inner_h-height, state=state,
-                known_ratio=ratio, confidence=confidence, semantic_label=semantic)
+    """Dirty columns only. Integer indexing copies those Z columns."""
+    shape = (mapper.nz, mapper.ny * mapper.nx)
+    grid = np.frombuffer(mapper._grid, "u1").reshape(shape)[:, columns]
+    active = np.frombuffer(mapper._active, "u1").reshape(shape)[:, columns].astype(bool)
+    source = np.frombuffer(mapper._source, "u1").reshape(shape)[:, columns]
+    labels = np.frombuffer(mapper._labels, "<i8").reshape(shape)[:, columns]
+    return column_summary(
+        grid, active, source, labels, mapper.resolution, mapper.inner_h)
 
 
 class IncrementalSurfaceProjection:
