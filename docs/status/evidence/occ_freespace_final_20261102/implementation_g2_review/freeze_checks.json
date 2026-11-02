@@ -1,0 +1,110 @@
+[
+  {
+    "path": "/tmp/observer-fsi-g2-core/observer_cli",
+    "match": true
+  },
+  {
+    "path": "/tmp/observer-fsi-g2-core/observer_eval_native",
+    "match": true
+  },
+  {
+    "path": "/tmp/observer-fsi-g2-core/observer_freespace_behavior",
+    "match": true
+  },
+  {
+    "path": "/tmp/fsi-g2-install/uld_occ_observer/lib/uld_occ_observer/observer_node",
+    "match": true
+  },
+  {
+    "path": "/tmp/observer-fsi-g2-core/observer_profile_cli",
+    "match": true
+  },
+  {
+    "path": "/tmp/observer-fsi-g2-core/observer_repair_s1_behavior",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/docs/status/evidence/occ_freespace_final_20261102/implementation_g2/COMMANDS.sh",
+    "match": true
+  },
+  {
+    "path": "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_o6_o7_20261029/run01/fixtures/config_chamfer_r0p02.yaml",
+    "match": true
+  },
+  {
+    "path": "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_o6_o7_20261029/run01/fixtures/geometry_chamfer.yaml",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/docs/status/evidence/occ_freespace_final_20261102/implementation_g2/rehearsal/frames/b00_f000.yaml",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/docs/status/evidence/occ_freespace_final_20261102/implementation_g2/rehearsal/frames/b00_f001.yaml",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/docs/status/evidence/occ_freespace_final_20261102/implementation_g2/rehearsal/frames/b05_f000.yaml",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/docs/status/evidence/occ_freespace_final_20261102/implementation_g2/rehearsal/frames/b05_f001.yaml",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/docs/status/evidence/occ_freespace_final_20261102/implementation_g2/rehearsal/frames/b20_f000.yaml",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/docs/status/evidence/occ_freespace_final_20261102/implementation_g2/rehearsal/frames/b20_f001.yaml",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/benchmark/campaign_executor.py",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/test_occ_surface_bridge.py",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/benchmark/freespace_campaign.py",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/benchmark/freespace_cases.py",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/benchmark/freespace_contract.py",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/benchmark/freespace_judge.py",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/benchmark/freespace_oracle.py",
+    "match": true
+  },
+  {
+    "path": "/tmp/observer-fsi-g2-core/libuld_occ_observer_core.a",
+    "match": true
+  },
+  {
+    "path": "/tmp/observer-fsi-g2-core/libuld_occ_observer_io.a",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/benchmark/repair_s0_judge.py",
+    "match": true
+  },
+  {
+    "path": "/tmp/elfin-occ-freespace-impl-g2/src/uld_occ_observer/test/s2_o9.py",
+    "match": true
+  },
+  {
+    "path": "/tmp/fsi-g2-install/uld_occ_observer/lib/libuld_occ_observer__rosidl_typesupport_cpp.so",
+    "match": true
+  }
+]

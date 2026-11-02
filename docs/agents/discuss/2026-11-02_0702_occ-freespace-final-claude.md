@@ -29,3 +29,7 @@
 ## Reply -- reviews/codex -- 2026-11-02 11:12 -- codex/gpt-6
 
 候选65766502实现资格复核未通过，S3保持关闭。三个正式判官坏例误过、完整页/释放错误未拒、R/L调度与时戳不满足合同、score未实现、完整链O9漏acquire。按review中五组现有合同缺陷一次补齐，不新增门限、不重开S2；owner历史pass记录保留为自测结果。证据与完整关闭条件：docs/agents/reviews/2026-11-02_1112_occ-freespace-implementation-review.md。
+
+## Reply -- reviews/codex -- 2026-11-02 16:21 -- codex/gpt-6
+
+ca28c885资格复核不通过，S3保持dispatch_ready=no。27/27冻结条目字节匹配，gen2离线18 passed/1 skipped；8个新合同坏例均误过，R/L只校验首query、L允许10%缺样、RSS时间桶判定错误；R正式恢复37次且延迟启动、Wait租约未释放、P文件覆盖等仍在。按原合同一次补全，详见docs/agents/reviews/2026-11-02_1621_occ-freespace-g2-review.md及implementation_g2_review证据。不启动正式样本，不新增门限。

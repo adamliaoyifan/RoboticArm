@@ -1,0 +1,60 @@
+{
+  "p_control": {
+    "reasons": [],
+    "formal": true,
+    "inputs": 300,
+    "queries": 240
+  },
+  "r_control": {
+    "reasons": [],
+    "overload": 600,
+    "formal": true
+  },
+  "l_control": {
+    "reasons": [],
+    "rounds": 2,
+    "formal": true
+  },
+  "p_all_receipts_same_unrelated_id": {
+    "reasons": [],
+    "formal": true,
+    "inputs": 300,
+    "queries": 240
+  },
+  "p_negative_query_time": {
+    "reasons": [],
+    "formal": true,
+    "inputs": 300,
+    "queries": 240
+  },
+  "r_no_recovery_receipts_or_queries": {
+    "reasons": [],
+    "overload": 600,
+    "formal": true
+  },
+  "r_second_query_error": {
+    "reasons": [],
+    "overload": 600,
+    "formal": true
+  },
+  "l_all_but_first_query_error": {
+    "reasons": [],
+    "rounds": 2,
+    "formal": true
+  },
+  "l_drop_10pct": {
+    "reasons": [],
+    "rounds": 2,
+    "formal": true
+  },
+  "l_all_rss_same_timestamp": {
+    "reasons": [],
+    "rounds": 2,
+    "formal": true
+  },
+  "l_missing_10min_bucket": {
+    "reasons": [],
+    "rounds": 2,
+    "formal": true
+  }
+}
