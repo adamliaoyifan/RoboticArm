@@ -1,0 +1,152 @@
+[
+  {
+    "group": "binaries",
+    "name": "observer_cli",
+    "match": true
+  },
+  {
+    "group": "binaries",
+    "name": "observer_eval_native",
+    "match": true
+  },
+  {
+    "group": "binaries",
+    "name": "observer_freespace_behavior",
+    "match": true
+  },
+  {
+    "group": "binaries",
+    "name": "observer_node",
+    "match": true
+  },
+  {
+    "group": "binaries",
+    "name": "observer_profile_cli",
+    "match": true
+  },
+  {
+    "group": "binaries",
+    "name": "observer_repair_s1_behavior",
+    "match": true
+  },
+  {
+    "group": "tools",
+    "name": "audit_replay",
+    "match": true
+  },
+  {
+    "group": "tools",
+    "name": "campaign_executor.py",
+    "match": true
+  },
+  {
+    "group": "tools",
+    "name": "consumer_test",
+    "match": true
+  },
+  {
+    "group": "tools",
+    "name": "freespace_campaign.py",
+    "match": true
+  },
+  {
+    "group": "tools",
+    "name": "freespace_cases.py",
+    "match": true
+  },
+  {
+    "group": "tools",
+    "name": "freespace_contract.py",
+    "match": true
+  },
+  {
+    "group": "tools",
+    "name": "freespace_judge.py",
+    "match": true
+  },
+  {
+    "group": "tools",
+    "name": "freespace_oracle.py",
+    "match": true
+  },
+  {
+    "group": "tools",
+    "name": "g2_fault_tests",
+    "match": true
+  },
+  {
+    "group": "tools",
+    "name": "g3_matrix_tests",
+    "match": true
+  },
+  {
+    "group": "tools",
+    "name": "observer_core_static",
+    "match": true
+  },
+  {
+    "group": "tools",
+    "name": "observer_io_static",
+    "match": true
+  },
+  {
+    "group": "tools",
+    "name": "repair_s0_judge.py",
+    "match": true
+  },
+  {
+    "group": "tools",
+    "name": "s2_o9.py",
+    "match": true
+  },
+  {
+    "group": "tools",
+    "name": "typesupport_cpp",
+    "match": true
+  },
+  {
+    "group": "fixtures",
+    "name": "config",
+    "match": true
+  },
+  {
+    "group": "fixtures",
+    "name": "geometry",
+    "match": true
+  },
+  {
+    "group": "inputs",
+    "name": "frame_b00_f000.yaml",
+    "match": true
+  },
+  {
+    "group": "inputs",
+    "name": "frame_b00_f001.yaml",
+    "match": true
+  },
+  {
+    "group": "inputs",
+    "name": "frame_b05_f000.yaml",
+    "match": true
+  },
+  {
+    "group": "inputs",
+    "name": "frame_b05_f001.yaml",
+    "match": true
+  },
+  {
+    "group": "inputs",
+    "name": "frame_b20_f000.yaml",
+    "match": true
+  },
+  {
+    "group": "inputs",
+    "name": "frame_b20_f001.yaml",
+    "match": true
+  },
+  {
+    "group": "commands",
+    "name": "self",
+    "match": true
+  }
+]

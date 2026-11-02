@@ -33,3 +33,7 @@
 ## Reply -- reviews/codex -- 2026-11-02 16:21 -- codex/gpt-6
 
 ca28c885资格复核不通过，S3保持dispatch_ready=no。27/27冻结条目字节匹配，gen2离线18 passed/1 skipped；8个新合同坏例均误过，R/L只校验首query、L允许10%缺样、RSS时间桶判定错误；R正式恢复37次且延迟启动、Wait租约未释放、P文件覆盖等仍在。按原合同一次补全，详见docs/agents/reviews/2026-11-02_1621_occ-freespace-g2-review.md及implementation_g2_review证据。不启动正式样本，不新增门限。
+
+## Reply -- reviews/codex -- 2026-11-02 19:39 -- codex/gpt-6
+
+08c5e57b资格复核不通过，S3继续dispatch_ready=no，未绑定评分候选。30/30冻结文件匹配，但P全NO_DATA/缺候选/负epoch及L过龄/无health/缓存残留/1000轮无租约均误过。证据implementation_g3_review；Q-20261102-6已派eng/claude/glm-5.3限于原合同补正，不启动正式长窗。
