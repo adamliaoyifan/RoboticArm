@@ -808,7 +808,13 @@ def judge_r_stage(artifact):
         pressure = sum(1 for entry in timeline
                        if entry.get("receipt_status") in ("REJECTED", "QUEUE_FULL"))
         if pressure < 1:
-            reasons.append("no_real_pressure")
+            # The S3 execution contract (section 7): when the fixed overload
+            # load never materializes actual queueing or rejection, the
+            # PRESSURE COVERAGE is not_evaluated -- never auto-pressurize,
+            # never pick a heavier rerun, and never fail the product for
+            # outperforming the frozen load. The evidence (every row
+            # INTEGRATED, e2e below the 10 Hz period) is recorded in measured.
+            reasons.append("overload_pressure_not_evaluated")
         if first.get("status") != "OK":
             reasons.append("first_wait_%s" % first.get("status"))
         elif elapsed > contract.RECOVERY_FIRST_WAIT_S * 1000:
@@ -818,9 +824,16 @@ def judge_r_stage(artifact):
             reasons.append("first_wait_age_%s" % age)
     if not reasons and not formal:
         reasons.append("short_sample_not_formal")
+    pressure_count = sum(1 for entry in timeline
+                         if entry.get("receipt_status") in ("REJECTED", "QUEUE_FULL"))
+    e2e = sorted(entry["e2e_ms"] for entry in timeline
+                 if isinstance(entry.get("e2e_ms"), (int, float)))
     return {"reasons": reasons, "overload": len(overload), "formal": formal,
             "measured": {
                 "overload_inputs": len(overload),
+                "overload_pressure_inputs": pressure_count,
+                "overload_e2e_ms_p95": e2e[int(len(e2e) * 0.95)] if e2e else None,
+                "overload_e2e_ms_max": e2e[-1] if e2e else None,
                 "drain_in_flight": len(artifact.get("in_flight_at_drain_deadline")
                                        or []),
                 "drain_late": len(artifact.get("late_at_drain_deadline") or []),

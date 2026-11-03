@@ -333,49 +333,393 @@ def _row_evidence(root):
         ["FREEZE.json", "verdict.json"]
 
 
+def _row_evidence_formal(root, run):
+    """Evidence.validity at a FORMAL run root: the gen4 PRODUCT binaries are
+    byte-identical to the reviewed freeze (only scoring-side tools changed),
+    and the S3 freeze binds those tools, the input frames and the scoring
+    commands. The gen4 root's own qualification verdict stays preserved as
+    history -- this row never re-judges it against S3-era tool bytes."""
+    problems = []
+    measured = {}
+    qual_recorded = run.get("qualification_root")
+    if not qual_recorded:
+        return "fail", ["formal_qualification_root_unbound"], None, []
+    qual = Path(qual_recorded)
+    if not qual.is_absolute():
+        qual = Path(root).parent / qual
+    gen4 = _load(qual / "FREEZE.json")
+    if not isinstance(gen4, dict):
+        return "fail", ["formal_gen4_freeze_unreadable"], None, []
+    binaries = gen4.get("binaries") or {}
+    matched = 0
+    for name, entry in sorted(binaries.items()):
+        path = Path(entry.get("path") or "")
+        if not path.is_file():
+            problems.append("formal_binary_missing_%s" % name)
+        elif hashlib.sha256(path.read_bytes()).hexdigest() != entry.get("sha256"):
+            problems.append("formal_binary_changed_%s" % name)
+        else:
+            matched += 1
+    measured["gen4_binaries_matched"] = matched
+    measured["gen4_binaries_checked"] = len(binaries)
+    s3_record = run.get("s3_freeze") or {}
+    s3_path = s3_record.get("path")
+    if not s3_path:
+        problems.append("formal_s3_freeze_unbound")
+    else:
+        s3 = Path(s3_path)
+        if not s3.is_absolute():
+            s3 = Path(root).parent / s3
+        document = _load(s3)
+        if not isinstance(document, dict):
+            problems.append("formal_s3_freeze_unreadable")
+        else:
+            if s3_record.get("sha256") and \
+                    hashlib.sha256(s3.read_bytes()).hexdigest() \
+                    != s3_record.get("sha256"):
+                problems.append("formal_s3_freeze_changed")
+            for group in ("tools", "inputs", "commands"):
+                entries = document.get(group) or {}
+                group_matched = 0
+                for name, entry in entries.items():
+                    path = Path(entry.get("path") or "")
+                    if path.is_file() and \
+                            hashlib.sha256(path.read_bytes()).hexdigest() \
+                            == entry.get("sha256"):
+                        group_matched += 1
+                    else:
+                        problems.append("formal_s3_%s_changed_%s" % (group, name))
+                measured["s3_%s_matched" % group] = group_matched
+                if not entries:
+                    problems.append("formal_s3_%s_empty" % group)
+    return ("pass" if not problems else "fail"), problems[:5], measured, \
+        ["run_manifest.json", "FREEZE_S3.json"]
+
+
+def _scoring_root(root):
+    """Formal artifacts sit under <root>/scoring (qualification layout) or
+    directly under a run root that carries run_manifest.json."""
+    if (root / "run_manifest.json").is_file():
+        return root
+    return root / "scoring"
+
+
+def _run_manifest(root):
+    return _load(_scoring_root(root) / "run_manifest.json")
+
+
+def _stage_attempt(run, stage_key):
+    """None = no orchestrator record; else the stage's LATEST attempt.
+
+    A resumed stage records under <stage>_resume*; the latest attempt wins
+    (an earlier blocked/completed record never overrides the newest state).
+    """
+    if not isinstance(run, dict):
+        return None
+    stages = run.get("stages") or {}
+    candidates = [key for key in stages
+                  if key == stage_key or key.startswith(stage_key + "_resume")]
+    if not candidates:
+        return {"status": "absent"}
+
+    def order(key):
+        suffix = key[len(stage_key):]
+        try:
+            return (0, int(suffix.split("_")[-1]))
+        except ValueError:
+            return (0, 0)
+
+    latest = sorted(candidates, key=order)[-1]
+    state = stages[latest]
+    return state if isinstance(state, dict) else {"status": "absent"}
+
+
+def _stage_started(run, stage_key):
+    state = _stage_attempt(run, stage_key)
+    if state is None:
+        return False
+    return state.get("status") in ("started", "completed", "timeout_killed")
+
+
+def _expected_matrix_groups(stage):
+    """The FIXED formal group sets, derived from the frozen matrix scheme.
+
+    O5: 2 cm chamfer, boxes 0/20, clouds 30k/100k, outside .5, cross 0
+    (4 groups). O6: resolutions 2/5 cm x boxes 0/5/20 x both hulls x both
+    clouds x both outside x both cross (96 groups). The 1 cm rows stay out.
+    """
+    if stage == "o5":
+        combos = [(0.02, boxes, "chamfer", cloud, 0.5, 0.0)
+                  for boxes in (0, 20) for cloud in (30000, 100000)]
+    elif stage == "o6":
+        combos = [(resolution, boxes, hull, cloud, outside, cross)
+                  for resolution in (0.02, 0.05)
+                  for boxes in (0, 5, 20)
+                  for hull in ("chamfer", "cuboid")
+                  for cloud in (30000, 100000)
+                  for outside in (0.5, 0.9)
+                  for cross in (0.0, 0.5)]
+    else:
+        raise ValueError(stage)
+
+    def group_id(resolution, boxes, hull, cloud, outside, cross):
+        return "r%02d_b%02d_%s_c%d_o%02d_x%02d" % (
+            round(resolution * 100), boxes, hull, cloud,
+            round(outside * 100), round(cross * 100))
+
+    return {group_id(*combo): {
+        "id": group_id(*combo), "resolution": combo[0], "boxes": combo[1],
+        "hull": combo[2], "cloud": combo[3], "outside": combo[4],
+        "cross": combo[5]} for combo in combos}
+
+
+def _raw_group_problems(directory, artifact, stage):
+    """Cross-check the assembled group artifact against the RAW per-sample
+    files: the cumulative process samples and every cold-start sample.
+
+    The assembled columns are copies; this re-derives them from the raw
+    documents so a doctored group json cannot certify a stage whose raw
+    measurements disagree or do not exist."""
+    import yaml as _yaml
+    problems = []
+    cumulative = directory / "cumulative" / "samples.yaml"
+    if not cumulative.is_file():
+        return ["group_%s_cumulative_raw_missing" % artifact.get("id")]
+    try:
+        documents = [row for row in _yaml.safe_load_all(cumulative.read_text())
+                     if isinstance(row, dict)]
+    except _yaml.YAMLError:
+        return ["group_%s_cumulative_raw_unreadable" % artifact.get("id")]
+    scored_n = 30 if stage in ("o5", "o6") else None
+    if scored_n is None:
+        return ["group_%s_unknown_stage" % artifact.get("id")]
+    # 3 warmup rows + 30 scored + 1 successor (the after-update surface of
+    # the last scored row is the next row's first call).
+    if len(documents) < 3 + scored_n + 1:
+        problems.append("group_%s_cumulative_rows_%d" % (artifact.get("id"),
+                                                         len(documents)))
+        return problems
+    for row in documents[:3 + scored_n]:
+        if row.get("status") != "OK":
+            problems.append("group_%s_raw_status_%s" % (artifact.get("id"),
+                                                        row.get("status")))
+            break
+    scored_rows = documents[3:3 + scored_n]
+
+    def _raw_column(key):
+        values = []
+        for row in scored_rows:
+            if key in ("surface_first_ms", "surface_repeat_ms"):
+                call = row.get("surface_first_call" if key == "surface_first_ms"
+                               else "surface_second_call")
+                values.append(call.get("external_ms")
+                              if isinstance(call, dict) else None)
+            elif key == "integrate_ms":
+                # The raw sample documents carry the external-clock field the
+                # adapter copies into the assembled integrate_ms column.
+                values.append(row.get("integrate_external_ms",
+                                      row.get("integrate_ms")))
+            else:
+                values.append(row.get(key))
+        return values
+
+    for key in ("integrate_ms", "surface_first_ms", "surface_repeat_ms"):
+        raw = _raw_column(key)
+        assembled = artifact.get(key)
+        if not isinstance(assembled, list) or len(assembled) != scored_n:
+            problems.append("group_%s_column_%s_len" % (artifact.get("id"), key))
+        elif any((left is None) != (right is None) or
+                 (left is not None and right is not None and not
+                  __import__("math").isclose(left, right, rel_tol=1e-9,
+                                             abs_tol=1e-6))
+                 for left, right in zip(raw, assembled)):
+            problems.append("group_%s_column_%s_raw_mismatch"
+                            % (artifact.get("id"), key))
+    # Every scored index must own one cold-start raw sample.
+    missing_cold = []
+    for offset in range(3, 3 + scored_n):
+        cold = directory / ("f%03d" % offset) / ("cold-%03d" % offset) \
+            / "samples.yaml"
+        if not cold.is_file():
+            missing_cold.append(offset)
+            continue
+        try:
+            rows = [row for row in _yaml.safe_load_all(cold.read_text())
+                    if isinstance(row, dict)]
+        except _yaml.YAMLError:
+            missing_cold.append(offset)
+            continue
+        if len(rows) != 1 or rows[0].get("status") != "OK":
+            missing_cold.append(offset)
+    if missing_cold:
+        problems.append("group_%s_cold_raw_missing_%d_of_%d"
+                        % (artifact.get("id"), len(missing_cold), scored_n))
+    return problems
+
+
+def _row_formal_matrix(root, stage):
+    """Formal.O5 / Formal.O6: recompute the FIXED group campaign from the
+    per-group artifacts AND the raw per-sample files. A summary.json's
+    passed==total is never evidence (the review's nine pseudo-summaries all
+    died here). Started-but-missing is a fail; never-started (budget or an
+    O5 dependency) stays not_evaluated with its recorded reason."""
+    import repair_s0_judge
+    score = _scoring_root(root)
+    directory = score / stage
+    run = _run_manifest(root)
+    expected = _expected_matrix_groups(stage)
+    if not directory.is_dir() or not any(directory.iterdir()):
+        if _stage_started(run, stage):
+            return "fail", ["formal_%s_started_artifact_missing" % stage], \
+                None, []
+        attempt = _stage_attempt(run, stage)
+        reason = (attempt or {}).get("not_evaluated_reason") \
+            or "formal_%s_not_run" % stage
+        return "not_evaluated", [reason], None, []
+    groups = []
+    raw_problems = []
+    for group_id in sorted(expected):
+        group_path = directory / ("%s.json" % group_id)
+        artifact = _load(group_path)
+        if artifact is None:
+            continue
+        groups.append(artifact)
+        raw_problems.extend(_raw_group_problems(directory / group_id,
+                                                artifact, stage))
+    case = {
+        "gate": "%s_campaign" % stage,
+        "groups": groups,
+        "planned_groups": [expected[group_id] for group_id in sorted(expected)],
+    }
+    verdict = repair_s0_judge.judge_case(case)
+    reasons = list(verdict.get("reasons") or [])
+    reasons.extend(raw_problems)
+    present = len(groups)
+    if present != len(expected):
+        reasons.append("formal_%s_groups_%d_of_%d" % (stage, present,
+                                                      len(expected)))
+    measured = {"groups": present, "expected_groups": len(expected),
+                "failed_groups": verdict.get("failed_groups")}
+    status = "fail" if reasons else ("pass" if present == len(expected)
+                                     else "not_evaluated")
+    return status, reasons[:5], measured, ["scoring/%s/*.json" % stage,
+                                           "scoring/%s/*/cumulative/samples.yaml" % stage]
+
+
+def _row_formal_o8(root):
+    """Formal.O8: recompute judge_o8 from runs.json. The judge re-decodes the
+    lossless probe-content files from disk (sha, region-derived cell counts,
+    state domain, finite odds) -- a summary is never evidence."""
+    import repair_s0_judge
+    score = _scoring_root(root)
+    directory = score / "o8"
+    run = _run_manifest(root)
+    if not directory.is_dir() or not any(directory.iterdir()):
+        if _stage_started(run, "o8"):
+            return "fail", ["formal_o8_started_artifact_missing"], None, []
+        attempt = _stage_attempt(run, "o8")
+        reason = (attempt or {}).get("not_evaluated_reason") or "formal_o8_not_run"
+        return "not_evaluated", [reason], None, []
+    artifact = _load(directory / "runs.json")
+    if artifact is None:
+        # The directory has content but not the raw artifact: a stage that
+        # produced something cannot wash itself into not-run.
+        return "fail", ["formal_o8_runs_missing"], None, []
+    artifact = dict(artifact)
+    artifact["artifact_dir"] = str(directory)
+    verdict = repair_s0_judge.judge_o8(artifact)
+    reasons = list(verdict.get("reasons") or [])
+    measured = {"runs": len(artifact.get("runs") or []),
+                "holds": len(artifact.get("holds") or [])}
+    return ("pass" if not reasons else "fail"), reasons[:5], measured, \
+        ["scoring/o8/runs.json", "scoring/o8/probe-content/*"]
+
+
+def _formal_run_ok(run):
+    """A rehearsal root can never certify a formal row: clean judge output
+    on a non-formal run stays not_evaluated, never a pass."""
+    if run is None:
+        return True
+    return run.get("formal") is True
+
+
+def _not_formal_result(run, judge_clean):
+    if judge_clean:
+        return "not_evaluated", ["rehearsal_not_formal_run"]
+    return None
+
+
 def _row_formal(root, stage):
-    campaign_dir = root / "scoring" / "campaign"
-    directory = root / "scoring" / stage
+    score = _scoring_root(root)
+    run = _run_manifest(root)
+    campaign_dir = score / "campaign"
+    if stage in ("o8", "o5", "o6"):
+        if stage == "o8":
+            result = _row_formal_o8(root)
+        else:
+            result = _row_formal_matrix(root, stage)
+        if result[0] == "pass" and not _formal_run_ok(run):
+            return "not_evaluated", ["rehearsal_not_formal_run"], result[2], \
+                result[3]
+        return result
     if stage in ("p", "r", "l"):
+        started = _stage_started(run, "campaign")
         if not campaign_dir.is_dir() or not any(campaign_dir.iterdir()):
+            if started:
+                return "fail", ["formal_campaign_started_artifact_missing"], \
+                    None, []
             return "not_evaluated", ["formal_not_run"], None, []
         if (campaign_dir / "failure.json").is_file():
             return "fail", ["formal_failure_prefix_present"], None, []
-    if stage in ("o8", "o5", "o6") and not directory.is_dir():
-        return "not_evaluated", ["formal_%s_not_run" % stage], None, []
     if stage == "p":
         windows = [(_load(path), path.name)
                    for path in sorted(campaign_dir.glob("p_b*_w*.json"))]
         windows = [item for item in windows if item[0] is not None]
         if not windows:
-            return "not_evaluated", ["formal_p_windows_missing"], None, []
+            reason = "formal_p_windows_missing"
+            if started:
+                return "fail", [reason], None, []
+            return "not_evaluated", [reason], None, []
         problems = judge.judge_p_matrix([window for window, _ in windows])
+        if not problems and not _formal_run_ok(run):
+            return "not_evaluated", ["rehearsal_not_formal_run"], {
+                "windows": len(windows)}, ["scoring/campaign/p_*.json"]
         return ("pass" if not problems else "fail"), problems[:5], {
             "windows": len(windows)}, ["scoring/campaign/p_*.json"]
-    if stage == "r":
-        artifact = _load(campaign_dir / "r.json")
+    if stage in ("r", "l"):
+        artifact = _load(campaign_dir / ("%s.json" % stage))
         if artifact is None:
-            return "not_evaluated", ["formal_r_missing"], None, []
-        reasons = judge.judge_r_stage(artifact).get("reasons") or []
-        return ("pass" if not reasons else "fail"), reasons[:5], None, \
-            ["scoring/campaign/r.json"]
-    if stage == "l":
-        artifact = _load(campaign_dir / "l.json")
-        if artifact is None:
-            return "not_evaluated", ["formal_l_missing"], None, []
-        reasons = judge.judge_l_stage(artifact).get("reasons") or []
-        return ("pass" if not reasons else "fail"), reasons[:5], None, \
-            ["scoring/campaign/l.json"]
-    summary = _load(directory / "summary.json")
-    if summary is None:
-        return "not_evaluated", ["formal_%s_summary_missing" % stage], None, []
-    passed = summary.get("passed")
-    total = summary.get("total")
-    if not isinstance(passed, int) or not isinstance(total, int) \
-            or passed != total:
-        return "fail", ["formal_%s_failures_%s" % (stage, passed)], summary, \
-            ["scoring/%s/summary.json" % stage]
-    return "pass", [], summary, ["scoring/%s/summary.json" % stage]
+            summary = _load(campaign_dir / "summary.json")
+            skipped = summary.get("skipped") if isinstance(summary, dict) \
+                else None
+            if isinstance(skipped, dict):
+                # A dependency/budget stop recorded by the runner: the stage
+                # never started, so it is not a failure of its own.
+                return "not_evaluated", ["formal_%s_skipped_%s" % (
+                    stage, skipped.get("detail") or skipped.get("reason"))], \
+                    None, []
+            if started:
+                return "fail", ["formal_%s_started_artifact_missing" % stage], \
+                    None, []
+            return "not_evaluated", ["formal_%s_missing" % stage], None, []
+        verdict_stage = judge.judge_r_stage(artifact) \
+            if stage == "r" else judge.judge_l_stage(artifact)
+        reasons = verdict_stage.get("reasons") or []
+        if stage == "r" and reasons == ["overload_pressure_not_evaluated"]:
+            # Every measured aspect (drain closure, recovery, first-Wait) is
+            # green; the only finding is that the FROZEN overload load never
+            # materialized real pressure -- the execution contract scores the
+            # pressure coverage not_evaluated, so the row cannot certify but
+            # nothing failed. The e2e evidence is in the judge's measured.
+            return "not_evaluated", reasons, verdict_stage.get("measured"), \
+                ["scoring/campaign/r.json"]
+        if not reasons and not _formal_run_ok(run):
+            return "not_evaluated", ["rehearsal_not_formal_run"], None, \
+                ["scoring/campaign/%s.json" % stage]
+        return ("pass" if not reasons else "fail"), reasons[:5], \
+            verdict_stage.get("measured"), \
+            ["scoring/campaign/%s.json" % stage]
+    raise ValueError(stage)
 
 
 # The FIXED table: id -> (group, main-conclusion, evaluator, coverage note).
@@ -452,21 +796,69 @@ ROW_TABLE = (
     ("Formal.L", "formal", True, lambda root: _row_formal(root, "l"),
      "sources scoring/campaign/l.json; judge judge_l_stage formal"),
     ("Formal.O8", "formal", True, lambda root: _row_formal(root, "o8"),
-     "sources scoring/o8/summary.json (campaign_executor --mode stage o8)"),
+     "sources scoring/o8/runs.json + probe-content/ (campaign_executor "
+     "--mode stage o8); judge repair_s0_judge.judge_o8 recomputed with the "
+     "artifact_dir pointed at the run: 3 runs, 30 saturation frames, 3x3 "
+     "holds, probe content re-decoded from the lossless files; a "
+     "passed==total summary is never evidence (9 review counterexamples)"),
     ("Formal.O5", "formal", False, lambda root: _row_formal(root, "o5"),
-     "sources scoring/o5/summary.json -- legacy matrix, listed SEPARATELY, "
+     "sources scoring/o5/<gid>.json per group + raw cumulative/cold "
+     "samples.yaml (campaign_executor --mode stage o5); judge "
+     "repair_s0_judge.judge_case recomputed against the FIXED 4-group plan "
+     "with raw-column cross-checks -- legacy matrix, listed SEPARATELY, "
      "never merged into the main conclusion"),
     ("Formal.O6", "formal", False, lambda root: _row_formal(root, "o6"),
-     "sources scoring/o6/summary.json -- legacy matrix, listed SEPARATELY, "
-     "never merged into the main conclusion"),
+     "sources scoring/o6/<gid>.json per group + raw cumulative/cold "
+     "samples.yaml (campaign_executor --mode stage o6); judge "
+     "repair_s0_judge.judge_case recomputed against the FIXED 96-group "
+     "2/5 cm plan with raw-column cross-checks -- legacy matrix, listed "
+     "SEPARATELY, never merged into the main conclusion; O5 failure stops "
+     "O6 (recorded not_evaluated with its reason)"),
 )
 
 
-def judge_evidence_root(root):
+def judge_evidence_root(root, qualification_root=None):
+    """Recompute the FIXED table for one evidence root.
+
+    Two layouts:
+    - a qualification root (the gen4 implementation evidence): qualification
+      rows read it directly; the Formal.* rows see no scoring data and stay
+      not_evaluated.
+    - a formal run root (run_manifest.json present): the qualification rows
+      are recomputed against the recorded qualification root -- preserved,
+      never rewritten -- while the Formal.* rows read THIS run's artifacts.
+      A first formal result turning a not_evaluated row into pass/fail is a
+      new run, not tampering; rewriting the same run is caught by the row
+      cross-check and the run binding.
+    """
     root = Path(root)
+    run = _load(root / "run_manifest.json")
+    qual_target = None
+    if isinstance(run, dict):
+        if qualification_root is None:
+            recorded = run.get("qualification_root")
+            if recorded:
+                candidate = Path(recorded)
+                if not candidate.is_absolute():
+                    candidate = root.parent / candidate
+                qual_target = candidate
+        else:
+            qual_target = Path(qualification_root)
+        if qual_target is not None and not qual_target.is_dir():
+            raise SystemExit("run_manifest qualification_root missing: %s"
+                             % qual_target)
     rows = []
     for row_id, group, main, evaluator, note in ROW_TABLE:
-        status, reasons, measured, sources = evaluator(root)
+        target = qual_target if (qual_target is not None
+                                 and group == "qualification") else root
+        if row_id == "Evidence.validity" and isinstance(run, dict):
+            # The formal run's evidence binding is the S3 freeze (product
+            # unchanged + S3 tools/inputs/commands); the gen4 root's own
+            # verdict is preserved history and is not re-judged against
+            # S3-era tool bytes.
+            status, reasons, measured, sources = _row_evidence_formal(root, run)
+        else:
+            status, reasons, measured, sources = evaluator(target)
         rows.append({"row": row_id, "group": group, "main": main,
                      "status": status, "reasons": reasons or [],
                      "measured": measured, "sources": sources,
@@ -488,12 +880,27 @@ def judge_evidence_root(root):
             "qualification": "pass" if all(
                 row["status"] == "pass" for row in qualification) else "fail",
             "formal": formal_status,
+            "any_row_failed": any(row["status"] == "fail" for row in rows),
             "not_evaluated_rows": not_evaluated,
             "main_conclusion_rows": [row["row"] for row in main_rows],
         },
         "generated_mono_ns": __import__("time").monotonic_ns(),
         "root": str(root),
     }
+    if isinstance(run, dict):
+        document["run"] = {
+            "report_version": "formal",
+            "run_id": run.get("run_id"),
+            "formal": run.get("formal"),
+            "qualification_root": run.get("qualification_root"),
+            "input_manifest_sha256": run.get("input_manifest_sha256"),
+            "freeze": run.get("freeze"),
+            "budget_minutes": run.get("budget_minutes"),
+            "measurement_s": run.get("measurement_s"),
+            "stage_status": {name: (state or {}).get("status")
+                             for name, state in sorted(
+                                 (run.get("stages") or {}).items())},
+        }
     return document
 
 
@@ -509,7 +916,8 @@ def main():
         root.mkdir(parents=True, exist_ok=True)
         verdict_path.write_text(json.dumps(document, indent=1))
         print(json.dumps(document["overall"], indent=1))
-        return 0 if document["overall"]["qualification"] == "pass" else 1
+        return 0 if (document["overall"]["qualification"] == "pass"
+                     and not document["overall"]["any_row_failed"]) else 1
     # check mode: recompute, compare against a stored verdict if present
     problems = []
     if verdict_path.is_file():
@@ -523,11 +931,25 @@ def main():
                 problems.append("verdict_row_mismatch_%s:%s!=%s"
                                 % (row["row"], stored_row.get("status"),
                                    row["status"]))
+        # Run binding: a stored formal verdict belongs to exactly one run.
+        if isinstance(document.get("run"), dict):
+            stored_run = (stored or {}).get("run") if isinstance(stored, dict) \
+                else None
+            if not isinstance(stored_run, dict) \
+                    or stored_run.get("run_id") != document["run"].get("run_id"):
+                problems.append("verdict_run_mismatch")
+            elif stored_run.get("input_manifest_sha256") \
+                    != document["run"].get("input_manifest_sha256"):
+                problems.append("verdict_input_manifest_mismatch")
     else:
         problems.append("verdict_not_written")
     print(json.dumps({"problems": problems[:10], "total": len(problems),
                       "overall": document["overall"]}, indent=1))
-    return 0 if not problems else 1
+    # The judge's exit code reflects failure: a failing row (formal or
+    # qualification) is nonzero; not_evaluated rows never launder it to 0.
+    if problems:
+        return 1
+    return 0 if not document["overall"]["any_row_failed"] else 1
 
 
 if __name__ == "__main__":

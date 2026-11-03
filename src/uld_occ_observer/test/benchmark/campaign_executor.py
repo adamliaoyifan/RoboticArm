@@ -470,8 +470,15 @@ def _blocked(stage, reason):
 
 def schedule(plan, adapter, out_dir, stages=("o5", "o6", "o7", "o8"),
              budget_s=BUDGET_S, frame_limit=None, input_limit=None, scored=False,
-             allow_incomplete_dependencies=False):
-    """Run the requested stages. scored=True does nothing unless S3 is open."""
+             allow_incomplete_dependencies=False, o5_evidence=None):
+    """Run the requested stages. scored=True does nothing unless S3 is open.
+
+    o5_evidence: a prior invocation's scoring/o5/verdict.json. The S3
+    orchestrator resumes stages one at a time in contract order; a resumed
+    O6 may carry the ALREADY-SCORED O5 verdict instead of re-running O5
+    (re-running a scored unit is forbidden). The file must say pass:true --
+    a failing or unreadable evidence file leaves the dependency blocked.
+    """
     if scored and allow_incomplete_dependencies:
         raise RuntimeError("a scored run cannot skip the O5 dependency")
     if scored and os.environ.get("ULD_OCC_S3_OPEN") != "1":
@@ -487,6 +494,13 @@ def schedule(plan, adapter, out_dir, stages=("o5", "o6", "o7", "o8"),
     out.mkdir(parents=True, exist_ok=True)
     clock = adapter.clock
     o5_pass = None
+    if o5_evidence and "o5" not in stages and ("o6" in stages or "o7" in stages):
+        try:
+            document = json.loads(Path(o5_evidence).read_text())
+        except (OSError, ValueError):
+            document = None
+        if isinstance(document, dict) and document.get("pass") is True:
+            o5_pass = True
     stage_results = []
     budget_hit = False
     for stage in stages:
@@ -2046,6 +2060,12 @@ def main(argv):
     parser.add_argument("--judge-file")
     parser.add_argument("--bundle")
     parser.add_argument("--o9-root")
+    parser.add_argument("--budget-minutes", type=float, default=None,
+                        help="stage-mode budget for the scheduler (the S3 "
+                             "orchestrator passes the remaining shared budget)")
+    parser.add_argument("--o5-evidence", default=None,
+                        help="a prior scored O5 verdict.json; lets a resumed "
+                             "O6 run without re-scoring O5 (pass:true only)")
     args = parser.parse_args(argv)
     fixtures = args.fixtures or "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_o6_o7_20261029/run01/fixtures"
     if args.mode == "stage":
@@ -2085,9 +2105,13 @@ def main(argv):
             adapter.bind_plan(plan)
             result = None
             try:
+                budget_s = (args.budget_minutes * 60.0
+                            if args.budget_minutes is not None else BUDGET_S)
                 result = schedule(plan, adapter, args.out, stages=stages,
+                                  budget_s=budget_s,
                                   frame_limit=args.frame_limit, input_limit=args.input_limit,
                                   scored=not rehearsal,
+                                  o5_evidence=args.o5_evidence,
                                   # A rehearsal exercises every stage on the live
                                   # adapter; the O5 dependency gate itself is
                                   # proven offline on the same schedule().
