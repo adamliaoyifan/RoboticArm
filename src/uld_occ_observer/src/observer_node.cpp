@@ -452,7 +452,19 @@ class ObserverNode : public rclcpp::Node {
     const auto current = validity_.load();
     if (current->state != ValidityState::kBuilding) return;
     const auto epoch = current->epoch;
-    const auto snapshot = store_->try_snapshot();
+    // A reset can empty the store between the kBuilding guard above and
+    // this snapshot (an integration stored pre-reset completes its receipt
+    // callback after the reset linearized): try_snapshot() then throws
+    // NO_DATA. This callback runs on the worker thread with no catcher, so
+    // an escaping throw terminates the whole node (integ_run01 L crash,
+    // 2026-11-03 19:19:31). An empty store simply has nothing to publish;
+    // readiness re-fires on the next stored observation.
+    std::shared_ptr<const Snapshot> snapshot;
+    try {
+      snapshot = store_->try_snapshot();
+    } catch (const Error&) {
+      return;
+    }
     if (!snapshot) return;
     const auto& identity = snapshot->identity();
     if (identity.epoch != epoch) return;
