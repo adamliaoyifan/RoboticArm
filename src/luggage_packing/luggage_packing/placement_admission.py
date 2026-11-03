@@ -82,6 +82,26 @@ class RobotStateSample:
     content: Dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class AdmissionToken:
+    """Immutable per-request binding minted at planning admission (§2/§3).
+
+    The generation captured BEFORE the candidate is computed is the only
+    generation that candidate may ever commit against: a reset (or the
+    recovery that follows it) voids the token, so an old computation can
+    neither commit with its own generation nor with the board's current
+    one. Tokens are single-use: one admission buys exactly one commit.
+    """
+
+    seq: int
+    epoch: int
+    generation: int
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {"seq": self.seq, "epoch": self.epoch,
+                "generation": self.generation}
+
+
 @dataclass
 class Decision:
     """The gate's answer. ``reason`` is always one of the frozen codes."""
@@ -90,6 +110,11 @@ class Decision:
     reason: str
     validity: ValidityObservation
     execution_active: bool = False
+    #: Set on an admitted ``admit_planning`` decision: the token the caller
+    #: must carry to the matching ``commit_plan`` (review 2026-11-03: the
+    #: commit argument is the captured start generation, never a re-read of
+    #: the board's current generation).
+    admission_token: Optional[AdmissionToken] = None
 
 
 class AdmissionGate:
@@ -123,6 +148,11 @@ class AdmissionGate:
         #: execution_active; the production orchestration boundary owns the
         #: actual executing command).
         self._executing_generations: List[int] = []
+        #: Outstanding per-request admission tokens (§2: the candidate
+        #: generation from planning admission survives through commit). Any
+        #: generation advance voids them.
+        self._outstanding: List[AdmissionToken] = []
+        self._token_seq = 0
         #: Counters for the judge: late old results must be counted, never
         #: delivered.
         self.rejected_late_results = 0
@@ -137,6 +167,17 @@ class AdmissionGate:
             return
         previous = self._validity
         self._validity = observation
+        if observation.generation != previous.generation:
+            # Any generation advance (reset, recovery, re-publish of a newer
+            # snapshot) voids every admission minted against the old one: a
+            # candidate planned before the advance can never commit.
+            if self._outstanding:
+                self.invalidated_candidates += len(
+                    [t for t in self._outstanding
+                     if t.generation != observation.generation])
+                self._outstanding = [
+                    t for t in self._outstanding
+                    if t.generation == observation.generation]
         if observation.state != "VALID":
             # Invalidation observed: placement stops new computations and the
             # cached map/candidates from older generations die here.
@@ -223,24 +264,54 @@ class AdmissionGate:
                         execution_active=bool(self._executing_generations))
 
     def admit_planning(self, **kwargs: Any) -> Decision:
-        """Check BEFORE planning (§3). Same rule as the recovery gate."""
-        return self.gate_state(**kwargs)
+        """Check BEFORE planning (§3). Same rule as the recovery gate.
+
+        On success the decision carries an immutable admission token: the
+        caller must present exactly that token at commit time. The token is
+        the generation captured BEFORE computing — re-reading the board at
+        commit and passing the current generation is a contract violation
+        the gate itself now rejects (review 2026-11-03, finding 1).
+        """
+        decision = self.gate_state(**kwargs)
+        if not decision.admitted:
+            return decision
+        self._token_seq += 1
+        token = AdmissionToken(self._token_seq, self._validity.epoch,
+                               self._validity.generation)
+        self._outstanding.append(token)
+        decision.admission_token = token
+        return decision
 
     def commit_plan(self, planned_generation: Optional[int] = None,
+                    admission_token: Optional[AdmissionToken] = None,
                     **kwargs: Any) -> Decision:
         """Check BEFORE committing a plan: the second epoch/state check.
 
-        The candidate carries the generation it was planned against; if the
-        board moved (a reset committed while planning), the plan is discarded.
+        The commit must present the generation (and token) captured at
+        planning admission. Three things must hold: the recovery gate is
+        open, an outstanding admission exists for this candidate, and the
+        captured generation still equals the board's current generation. A
+        reset during computation voids the admission, so an old candidate
+        fails whether it presents its own generation or the recovered
+        board's current one.
         """
         validity = self._validity
         decision = self.gate_state(**kwargs)
         if not decision.admitted:
             return decision
-        if planned_generation is not None and planned_generation != validity.generation:
+        if planned_generation is None and admission_token is not None:
+            planned_generation = admission_token.generation
+        if planned_generation is None:
+            planned_generation = validity.generation
+        matches = [t for t in self._outstanding
+                   if t.generation == planned_generation]
+        if admission_token is not None:
+            matches = [t for t in matches if t == admission_token]
+        if planned_generation != validity.generation or not matches:
             self.invalidated_candidates += 1
             return Decision(False, self.REASON_COMMIT_GENERATION, validity,
                             execution_active=bool(self._executing_generations))
+        self._outstanding.remove(matches[0])
         return decision
 
     def record_execution(self) -> int:
@@ -277,3 +348,8 @@ class AdmissionGate:
     @property
     def executing_generations(self) -> List[int]:
         return list(self._executing_generations)
+
+    @property
+    def outstanding_admissions(self) -> List[AdmissionToken]:
+        """Admissions minted but not yet committed (introspection/dumps)."""
+        return list(self._outstanding)

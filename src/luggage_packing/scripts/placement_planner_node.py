@@ -429,32 +429,40 @@ class PlacementPlannerNode(Node):
     def _validity_admit(self):
         """Admission check BEFORE planning (§3).
 
-        Returns None when planning may proceed, else the closed-gate reason.
+        Returns ``(reason, admission)``: ``reason`` is None when planning
+        may proceed, ``admission`` is the immutable token captured BEFORE
+        computing (None when the validity stream is absent/unenforced). The
+        matching commit must present exactly this token — re-reading the
+        board's current generation at commit is the gen1 defect (review
+        2026-11-03): after reset+recovery it admitted the old computation.
         A deployment without the observer validity stream keeps its
         pre-contract behavior (the gate only binds once a validity
         publication exists); with the stream, the gate is closed until a
         fresh VALID map and a post-transition robot-state sample exist.
         """
         if not self._validity_seen or not self._validity_gate_enforce:
-            return None
+            return None, None
         decision = self._admission.admit_planning(
             now_mono_ns=int(self.get_clock().now().nanoseconds()),
             robot_max_age_ns=self._robot_max_age_ns)
         if decision.admitted:
-            return None
+            return None, decision.admission_token
         return ("VALIDITY_GATE_CLOSED: %s (state=%s epoch=%s gen=%s "
                 "execution_active=%s)"
                 % (decision.reason, decision.validity.state,
                    decision.validity.epoch, decision.validity.generation,
-                   decision.execution_active))
+                   decision.execution_active)), None
 
-    def _validity_commit(self, planned_generation):
+    def _validity_commit(self, planning_admission):
         """Commit check BEFORE delivering a successful plan (§3): the
-        second epoch/generation look. Returns None to commit, else reason."""
+        second epoch/generation look against the admission captured before
+        computing. Returns None to commit, else the rejection reason."""
         if not self._validity_seen or not self._validity_gate_enforce:
             return None
+        token = planning_admission
         decision = self._admission.commit_plan(
-            planned_generation,
+            token.generation if token is not None else None,
+            admission_token=token,
             now_mono_ns=int(self.get_clock().now().nanoseconds()),
             robot_max_age_ns=self._robot_max_age_ns)
         if decision.admitted:
@@ -463,7 +471,8 @@ class PlacementPlannerNode(Node):
                 "planned_gen=%s execution_active=%s)"
                 % (decision.reason, decision.validity.state,
                    decision.validity.epoch, decision.validity.generation,
-                   planned_generation, decision.execution_active))
+                   token.generation if token is not None else None,
+                   decision.execution_active))
 
     def _on_validity(self, msg):
         """Consume the observer's latched validity publication (§2/§3).
@@ -878,8 +887,9 @@ class PlacementPlannerNode(Node):
                 response.message = "%s: %s" % (error.code, error.field)
                 return response
         # Reset-contract admission check BEFORE planning (§3), shared with
-        # the v1 handler: gate closed -> no new computations.
-        gate = self._validity_admit()
+        # the v1 handler: gate closed -> no new computations. The admission
+        # token travels with this request to its commit check.
+        gate, planning_admission = self._validity_admit()
         if gate is not None:
             response.success = False
             response.reason_code = "VALIDITY_GATE_CLOSED"
@@ -975,8 +985,10 @@ class PlacementPlannerNode(Node):
                 response.reason_code = error.code
                 response.message = "%s: %s" % (error.code, error.field)
                 return response
-        # Reset-contract commit check (§3) before the slot is committed.
-        commit = self._validity_commit(self._admission.validity.generation)
+        # Reset-contract commit check (§3) before the slot is committed:
+        # against the admission captured before computing, never a re-read
+        # of the board's current generation.
+        commit = self._validity_commit(planning_admission)
         if commit is not None:
             response.success = False
             response.reason_code = "VALIDITY_COMMIT_REJECTED"
@@ -1205,8 +1217,9 @@ class PlacementPlannerNode(Node):
                 return response
         # Reset-contract admission check BEFORE planning (§3): the gate is
         # closed until a fresh VALID map and a post-transition robot-state
-        # sample both exist; a delayed old response never re-opens it.
-        gate = self._validity_admit()
+        # sample both exist; a delayed old response never re-opens it. The
+        # admission token travels with this request to its commit check.
+        gate, planning_admission = self._validity_admit()
         if gate is not None:
             response.success = False
             response.reason_code = "VALIDITY_GATE_CLOSED"
@@ -1366,9 +1379,10 @@ class PlacementPlannerNode(Node):
         best = result.get("preferred_candidate", result["selected"])
         # Reset-contract commit check (§3): the second epoch/generation look
         # before a plan becomes a valid placement result. A reset that won
-        # while planning discards the candidate here.
-        commit = self._validity_commit(
-            self._admission.validity.generation)
+        # while planning discards the candidate here — checked against the
+        # admission captured before computing, never the board's current
+        # generation (gen1 defect, review 2026-11-03).
+        commit = self._validity_commit(planning_admission)
         if commit is not None:
             response.success = False
             response.reason_code = "VALIDITY_COMMIT_REJECTED"

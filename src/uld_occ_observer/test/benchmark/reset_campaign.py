@@ -69,6 +69,11 @@ V3_PAIRINGS = [
 ]
 REQUEST_DEADLINE_MS = 500.0     # existing request deadline (contract V3)
 INVALIDATION_VISIBLE_MS = 200.0
+#: Contract §5: a V3 pairing (parked request + reset + completion) must
+#: close within 500 ms of the pairing start. The gen1 runner used a
+#: separate 4*deadline cutoff, which could not implement this gate
+#: (review 2026-11-03 finding 2).
+PAIRING_DEADLINE_MS = 500.0
 OWNERSHIP_BASELINE_S = 2.0
 
 
@@ -278,9 +283,17 @@ class DownstreamHarness:
     def robot(self, stamp_ns, source="joint_states"):
         self.gate.observe_robot_state(self.RobotStateSample(stamp_ns, source))
 
-    def plan_once(self, *, now_ns, robot_max_age_ns, planned_generation=None):
+    def plan_once(self, *, now_ns, robot_max_age_ns, planned_generation=None,
+                  commit_with_current_generation=False):
         """Compute + commit with the two barrier stages; returns the
-        terminal record: (admitted: bool, reason, stage_reached)."""
+        terminal record: (admitted: bool, reason, stage_reached).
+
+        The caller protocol mirrors the planner node (review 2026-11-03):
+        the admission token captured BEFORE computing is what commit
+        presents. ``commit_with_current_generation`` deliberately replays
+        the gen1 defective wiring (re-read the board at commit) so cases
+        can prove the gate itself rejects it after a reset+recovery.
+        """
         admit = self.gate.admit_planning(
             now_mono_ns=now_ns, robot_max_age_ns=robot_max_age_ns)
         if not admit.admitted:
@@ -289,12 +302,22 @@ class DownstreamHarness:
                     "stage": "admission"}
         self.checkpoint("placement_computation")
         # Between the barriers a reset may commit; the commit check below is
-        # the contract's second epoch/generation look.
+        # the contract's second epoch/generation look against the captured
+        # admission.
         self.checkpoint("planning_admission")
-        commit = self.gate.commit_plan(
-            planned_generation if planned_generation is not None
-            else self.gate.validity.generation,
-            now_mono_ns=now_ns, robot_max_age_ns=robot_max_age_ns)
+        if commit_with_current_generation:
+            # The gen1 defect, replayed on purpose: the current board
+            # generation instead of the captured one.
+            commit = self.gate.commit_plan(
+                self.gate.validity.generation,
+                now_mono_ns=now_ns, robot_max_age_ns=robot_max_age_ns)
+        else:
+            commit = self.gate.commit_plan(
+                planned_generation if planned_generation is not None
+                else admit.admission_token.generation,
+                admission_token=(None if planned_generation is not None
+                                 else admit.admission_token),
+                now_mono_ns=now_ns, robot_max_age_ns=robot_max_age_ns)
         if not commit.admitted:
             self.records.append(("rejected_commit", commit.reason))
             return {"admitted": False, "reason": commit.reason,
@@ -596,8 +619,7 @@ class Campaign:
         elif stage in ("placement_computation", "planning_admission"):
             now = mono()
             response = self.harness.plan_once(
-                now_ns=now, robot_max_age_ns=1_000_000_000,
-                planned_generation=self.harness.gate.validity.generation)
+                now_ns=now, robot_max_age_ns=1_000_000_000)
             outcome["status"] = "OK" if response["admitted"] else response["reason"]
             outcome["admitted"] = response["admitted"]
             outcome["stage_reached"] = response["stage"]
@@ -761,6 +783,14 @@ class Campaign:
         if not self.harness.admit_map(pre_epoch, int(valid.generation)).admitted:
             record["problems"].append("pre_cycle_map_not_admitted")
         self.harness.robot(mono(), "joint_states")
+        # An admission minted in the pre-reset generation: after reset AND
+        # recovery this token must be dead even against the recovered
+        # board's CURRENT generation (review 2026-11-03 finding 1).
+        pre_admission = self.harness.gate.admit_planning(
+            now_mono_ns=mono(), robot_max_age_ns=1_000_000_000)
+        record["pre_reset_admission_generation"] = (
+            pre_admission.admission_token.generation
+            if pre_admission.admitted else None)
         # Invalidate.
         ok, new_epoch, _, reset_id = self.do_reset("v2_cycle")
         record["reset_epoch"] = new_epoch
@@ -821,6 +851,33 @@ class Campaign:
             record["problems"].append("fresh_map_not_admitted")
         self.harness.robot(mono(), "joint_states")
         record["robot_refresh"] = True
+        # Raw evidence for the judge (review 2026-11-03 finding 2): the
+        # fresh robot sample stamp and the validity transition stamp it
+        # must post-date, in one monotonic domain, plus the event-stream
+        # copy. A record missing these fields is incomplete evidence.
+        record["robot_refresh_ns"] = self.harness.gate.robot_state.stamp_mono_ns
+        record["transition_mono_ns"] = int(rebuilt.transition_mono_ns)
+        record["recovery_epoch"] = int(rebuilt.epoch)
+        record["recovery_generation"] = int(rebuilt.generation)
+        self.events.emit(
+            "v2_recovery", case_id=case_id,
+            transition_mono_ns=record["transition_mono_ns"],
+            robot_refresh_ns=record["robot_refresh_ns"],
+            epoch=record["recovery_epoch"],
+            generation=record["recovery_generation"])
+        # The pre-reset admission must be void: committing the OLD candidate
+        # with the board's current generation (the gen1 defective wiring)
+        # and with its own captured generation must BOTH be rejected.
+        current = self.harness.gate.validity.generation
+        stale_current = self.harness.gate.commit_plan(
+            current, now_mono_ns=mono(), robot_max_age_ns=1_000_000_000)
+        stale_captured = self.harness.gate.commit_plan(
+            record["pre_reset_admission_generation"],
+            now_mono_ns=mono(), robot_max_age_ns=1_000_000_000)
+        if stale_current.admitted or stale_captured.admitted:
+            record["problems"].append("pre_reset_admission_committed")
+        record["stale_admission_rejected"] = not (
+            stale_current.admitted or stale_captured.admitted)
         plan = self.harness.plan_once(
             now_ns=mono(), robot_max_age_ns=1_000_000_000)
         if not plan["admitted"]:
@@ -836,6 +893,19 @@ class Campaign:
         return record
 
     # -- V3 ------------------------------------------------------------------
+    def v3_begin(self, case_id):
+        """Pairing window start (§5): stamped into the event stream so the
+        judge derives the latency from events, not from record fields."""
+        t = mono()
+        self.events.emit("v3_pairing_start", case_id=case_id, t_ns=t)
+        return t
+
+    def v3_reset_done(self, case_id):
+        """Reset linearization stamp for the pairing (post-response)."""
+        t = mono()
+        self.events.emit("v3_reset_done", case_id=case_id, t_ns=t)
+        return t
+
     def v3_pairing(self, index, pairing):
         case_id = "v3_%s_%03d" % (pairing, index)
         record = {"case_id": case_id, "pairing": pairing, "problems": []}
@@ -860,9 +930,10 @@ class Campaign:
                 self.set_hook("hold_integrate", 0)
 
             releaser = threading.Thread(target=release_hold_soon, daemon=True)
-            started = mono()
+            started = self.v3_begin(case_id)
             releaser.start()
             ok, new_epoch, reset_ms, _ = self.do_reset("v3_integration")
+            record["t_reset_done_ns"] = self.v3_reset_done(case_id)
             worker.join(timeout=15)
             releaser.join(timeout=5)
             outcome = {"reset_ms": reset_ms, "ok": ok}
@@ -913,8 +984,9 @@ class Campaign:
                 record["status"] = "fail"
                 self.write_case(case_id, record)
                 return record
-            started = mono()
+            started = self.v3_begin(case_id)
             ok, new_epoch, reset_ms, _ = self.do_reset("v3_%s" % pairing)
+            record["t_reset_done_ns"] = self.v3_reset_done(case_id)
             self.release_gate(stage)
             worker.join(timeout=20)
             response = request_holder.get("response")
@@ -927,8 +999,9 @@ class Campaign:
             get.max_age_ms = 60000
             get.allow_stale = True
             lease = self.client.call(self.client.get_snapshot, get)
-            started = mono()
+            started = self.v3_begin(case_id)
             ok, new_epoch, reset_ms, _ = self.do_reset("v3_release")
+            record["t_reset_done_ns"] = self.v3_reset_done(case_id)
             release_started = mono()
             from uld_occ_observer.srv import ReleaseSnapshot
             release_response = self.client.call(
@@ -955,8 +1028,9 @@ class Campaign:
                 record["status"] = "fail"
                 self.write_case(case_id, record)
                 return record
-            started = mono()
+            started = self.v3_begin(case_id)
             ok, new_epoch, reset_ms, _ = self.do_reset("v3_planning")
+            record["t_reset_done_ns"] = self.v3_reset_done(case_id)
             self.harness.observe(self.get_validity())
             self.harness.release("planning_admission")
             worker.join(timeout=20)
@@ -966,16 +1040,23 @@ class Campaign:
             if plan.get("admitted"):
                 record["problems"].append("plan_committed_across_reset")
         elif pairing == "status":
-            started = mono()
+            started = self.v3_begin(case_id)
             ok, new_epoch, reset_ms, _ = self.do_reset("v3_status")
+            record["t_reset_done_ns"] = self.v3_reset_done(case_id)
             outcome = {"reset_ms": reset_ms, "ok": ok}
         else:
             raise ValueError(pairing)
-        # Invalidation observability <=200 ms after the reset returned.
-        visible_started = mono()
+        # Invalidation observability <=200 ms from the reset linearization
+        # (the v3_reset_done event), derived from event stamps.
         observed = self.wait_validity_state(("INVALID", "BUILDING"),
                                             timeout_s=2.0)
-        visible_ms = (mono() - visible_started) / 1e6
+        record["t_visible_ns"] = mono()
+        self.events.emit("v3_invalidation_visible", case_id=case_id,
+                         t_ns=record["t_visible_ns"],
+                         state=(observed.state if observed else None))
+        visible_ms = (record["t_visible_ns"]
+                      - record.get("t_reset_done_ns",
+                                   record["t_visible_ns"])) / 1e6
         # For 'status' the reset itself is the pairing; for others the
         # pairing request must complete within the 500 ms deadline after the
         # release. Reset must never exceed the request deadline.
@@ -988,10 +1069,17 @@ class Campaign:
         reset_ms = record.get("reset_ms", 0.0)
         if reset_ms > REQUEST_DEADLINE_MS:
             record["problems"].append("reset_exceeded_deadline")
-        record["pairing_ms"] = round((mono() - started) / 1e6, 3)
-        if record["pairing_ms"] > 4 * REQUEST_DEADLINE_MS:
-            record["problems"].append("pairing_very_slow")
+        record["t_pairing_start_ns"] = started
+        record["t_complete_ns"] = mono()
+        record["pairing_ms"] = round(
+            (record["t_complete_ns"] - record["t_pairing_start_ns"]) / 1e6, 3)
+        if record["pairing_ms"] > PAIRING_DEADLINE_MS:
+            record["problems"].append("pairing_exceeded_deadline")
         record["status"] = "pass" if not record["problems"] else "fail"
+        self.events.emit("v3_pairing_complete", case_id=case_id,
+                         t_ns=record["t_complete_ns"],
+                         pairing_ms=record["pairing_ms"],
+                         status=record["status"])
         if record["status"] == "fail":
             self.write_case(case_id, record)
         return record
@@ -1057,15 +1145,20 @@ class Campaign:
             self.write_case(case_id, record)
             return record
         ok, new_epoch, _, _ = self.do_reset("ownership_%s" % kind)
+        record["t_reset_done_ns"] = mono()
         # While the last owner still holds the object, its bytes stay charged
         # to its class (the reset erased the lease handle; the parked reader
         # keeps the reference alive).
         held = self.resource_sample()
+        record["t_hold_ns"] = mono()
         record["bytes_at_hold"] = {
             "old_view": held["old_view_block_bytes"],
             "client_held": held["client_held_view_block_bytes"],
             "external_surface": held["external_surface_buffer_bytes"],
         }
+        self.events.emit(
+            "owner_hold", case_id=case_id, t_ns=record["t_hold_ns"],
+            bytes_at_hold=record["bytes_at_hold"])
         if kind == "held_view" and \
                 held["old_view_block_bytes"] == 0 and \
                 held["client_held_view_block_bytes"] == 0:
@@ -1087,6 +1180,10 @@ class Campaign:
         worker.join(timeout=20)
         response = holder.get("response")
         record["terminal_status"] = response.status if response else "timeout"
+        # Final-owner release: the moment the parked reader dropped its
+        # reference, stamped into the event stream (judge derives the
+        # settle window from events, never from the record's own ms).
+        record["t_final_release_ns"] = mono()
         if response is None or response.status != "INVALIDATED":
             record["problems"].append(
                 "holder_terminal:%s" % record["terminal_status"])
@@ -1101,7 +1198,23 @@ class Campaign:
                     settled["external_surface_buffer_bytes"] == 0:
                 break
             time.sleep(0.05)
-        record["settle_ms"] = round((mono() - settle_started) / 1e6, 3)
+        record["t_baseline_ns"] = mono()
+        record["settle_ms"] = round(
+            (record["t_baseline_ns"] - record["t_final_release_ns"]) / 1e6, 3)
+        baseline_bytes = {
+            "old_view": (settled or {}).get("old_view_block_bytes"),
+            "client_held": (settled or {}).get("client_held_view_block_bytes"),
+            "external_surface": (settled or {}).get(
+                "external_surface_buffer_bytes"),
+        }
+        self.events.emit(
+            "owner_baseline", case_id=case_id, t_ns=record["t_baseline_ns"],
+            bytes=baseline_bytes,
+            settled=(settled is not None and not any(
+                settled[k] for k in ("old_view_block_bytes",
+                                     "lease_view_block_bytes",
+                                     "client_held_view_block_bytes",
+                                     "external_surface_buffer_bytes"))))
         if settled is None or \
                 settled["old_view_block_bytes"] or \
                 settled["lease_view_block_bytes"] or \
@@ -1114,14 +1227,25 @@ class Campaign:
                 "external_surface": settled["external_surface_buffer_bytes"],
             }
         # The ledger must show the object released AFTER the reset and the
-        # final-release sample; and every object id appears once.
+        # final-release sample; and every object id appears once. The
+        # released stamp is evidence the judge can cross-check against the
+        # final_release event (review 2026-11-03 finding 2).
         trace = (settled or held)["ownership_trace"]
         relevant = [entry for entry in trace if entry["object_class"] == (
             "view" if kind == "held_view" else "surface_buffer")]
         if relevant:
             newest = max(relevant, key=lambda entry: entry["object_id"])
+            record["ledger_object_id"] = newest.get("object_id")
+            record["ledger_released_mono_ns"] = newest.get("released_mono_ns")
             if not newest.get("released_mono_ns"):
                 record["problems"].append("ledger_release_missing")
+            elif int(newest["released_mono_ns"]) < record["t_reset_done_ns"]:
+                record["problems"].append("ledger_release_before_reset")
+        self.events.emit(
+            "owner_final_release", case_id=case_id,
+            t_ns=record["t_final_release_ns"],
+            terminal_status=record["terminal_status"],
+            ledger_released_mono_ns=record.get("ledger_released_mono_ns"))
         ids = [entry["object_id"] for entry in trace]
         if len(ids) != len(set(ids)):
             record["problems"].append("object_attributed_twice")
@@ -1139,6 +1263,7 @@ class Campaign:
                 for stage in V1_STAGES:
                     record = self.v1_case(index, stage)
                     self.summary["v1"].append(record)
+                    self.write_case(record["case_id"], record)
                     self.events.emit("case_terminal", **{
                         "case_id": record["case_id"],
                         "status": record["status"],
@@ -1146,6 +1271,7 @@ class Campaign:
             for index in range(self.repeats):
                 record = self.v2_cycle(index)
                 self.summary["v2"].append(record)
+                self.write_case(record["case_id"], record)
                 self.events.emit("case_terminal", **{
                     "case_id": record["case_id"], "status": record["status"],
                     "problems": record["problems"]})
@@ -1153,6 +1279,7 @@ class Campaign:
                 for pairing in V3_PAIRINGS:
                     record = self.v3_pairing(index, pairing)
                     self.summary["v3"].append(record)
+                    self.write_case(record["case_id"], record)
                     self.events.emit("case_terminal", **{
                         "case_id": record["case_id"],
                         "status": record["status"],
@@ -1161,6 +1288,7 @@ class Campaign:
                 kind = "held_view" if index % 2 == 0 else "held_buffer"
                 record = self.ownership_cycle(index, kind)
                 self.summary["ownership"].append(record)
+                self.write_case(record["case_id"], record)
                 self.events.emit("case_terminal", **{
                     "case_id": record["case_id"], "status": record["status"],
                     "problems": record["problems"]})

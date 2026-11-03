@@ -85,8 +85,12 @@ def test_commit_double_check_and_execution_active():
     gate.observe_validity(m.ValidityObservation("VALID", 2, 4))
     gate.observe_map(m.MapObservation(epoch=2, generation=4))
     gate.observe_robot_state(m.RobotStateSample(stamp_mono_ns=900))
-    assert gate.admit_planning(now_mono_ns=1000,
-                               robot_max_age_ns=1_000_000).admitted
+    admitted = gate.admit_planning(now_mono_ns=1000,
+                                   robot_max_age_ns=1_000_000)
+    assert admitted.admitted
+    # The admission token is the immutable capture of the start generation.
+    token = admitted.admission_token
+    assert token is not None and token.generation == 4 and token.epoch == 2
     # A reset won while planning: the commit against the stale generation is
     # discarded even though the gate object still holds fresh-enough robot
     # state for the NEW epoch (it will be dropped by observe_validity).
@@ -95,12 +99,31 @@ def test_commit_double_check_and_execution_active():
     decision = gate.commit_plan(4, now_mono_ns=1200, robot_max_age_ns=1_000_000)
     assert not decision.admitted
     assert decision.reason == m.AdmissionGate.REASON_CLOSED_INVALID
-    # Recovery: new VALID epoch, fresh map, fresh robot -> one admission.
+    # Recovery: new VALID epoch, fresh map, fresh robot. The pre-reset
+    # admission is VOID: the old candidate cannot commit with its own
+    # generation NOR with the recovered board's current generation (review
+    # 2026-11-03 finding 1 — the gen1 wiring re-read the board at commit).
     gate.observe_validity(m.ValidityObservation("VALID", 3, 6,
                                                 transition_mono_ns=1250))
     gate.observe_map(m.MapObservation(epoch=3, generation=6))
     gate.observe_robot_state(m.RobotStateSample(stamp_mono_ns=1300))
-    decision = gate.commit_plan(6, now_mono_ns=1400, robot_max_age_ns=1_000_000)
+    decision = gate.commit_plan(gate.validity.generation, now_mono_ns=1400,
+                                robot_max_age_ns=1_000_000)
+    assert not decision.admitted
+    assert decision.reason == m.AdmissionGate.REASON_COMMIT_GENERATION
+    decision = gate.commit_plan(4, now_mono_ns=1400,
+                                robot_max_age_ns=1_000_000)
+    assert not decision.admitted
+    assert decision.reason == m.AdmissionGate.REASON_COMMIT_GENERATION
+    # A fresh admission in the recovered generation is the only commit path.
+    re_admitted = gate.admit_planning(now_mono_ns=1400,
+                                      robot_max_age_ns=1_000_000)
+    assert re_admitted.admitted
+    assert re_admitted.admission_token.generation == 6
+    decision = gate.commit_plan(
+        re_admitted.admission_token.generation,
+        admission_token=re_admitted.admission_token,
+        now_mono_ns=1400, robot_max_age_ns=1_000_000)
     assert decision.admitted
     # Production records the committed generation; retiring it clears the
     # flag. Until then an invalidation must report execution_active.
@@ -134,9 +157,52 @@ def test_reset_during_building_and_duplicate_generations():
     assert gate.observe_map(m.MapObservation(epoch=2, generation=0)).admitted
 
 
+def test_admission_token_lifecycle():
+    m = load_module()
+    gate = m.AdmissionGate()
+    gate.observe_validity(m.ValidityObservation("VALID", 1, 2))
+    gate.observe_map(m.MapObservation(epoch=1, generation=2))
+    gate.observe_robot_state(m.RobotStateSample(stamp_mono_ns=100))
+    # Tokens are single-use: one admission buys exactly one commit.
+    first = gate.admit_planning(now_mono_ns=200, robot_max_age_ns=10**9)
+    second = gate.admit_planning(now_mono_ns=200, robot_max_age_ns=10**9)
+    assert first.admission_token != second.admission_token
+    assert len(gate.outstanding_admissions) == 2
+    decision = gate.commit_plan(
+        first.admission_token.generation,
+        admission_token=first.admission_token,
+        now_mono_ns=300, robot_max_age_ns=10**9)
+    assert decision.admitted
+    replay = gate.commit_plan(
+        first.admission_token.generation,
+        admission_token=first.admission_token,
+        now_mono_ns=300, robot_max_age_ns=10**9)
+    assert not replay.admitted
+    assert replay.reason == m.AdmissionGate.REASON_COMMIT_GENERATION
+    # A forged/unknown token never commits, even naming the right generation.
+    forged = m.AdmissionToken(9999, 1, 2)
+    decision = gate.commit_plan(2, admission_token=forged,
+                                now_mono_ns=300, robot_max_age_ns=10**9)
+    assert not decision.admitted
+    # A same-generation re-publication (idempotent latch) keeps the
+    # surviving admission valid; any generation advance voids it.
+    gate.observe_validity(m.ValidityObservation("VALID", 1, 2))
+    assert [t.seq for t in gate.outstanding_admissions] == [second.admission_token.seq]
+    gate.observe_validity(m.ValidityObservation("VALID", 2, 3,
+                                                transition_mono_ns=400))
+    assert gate.outstanding_admissions == []
+    # And a commit without any admission is refused, open gate or not.
+    gate.observe_map(m.MapObservation(epoch=2, generation=3))
+    gate.observe_robot_state(m.RobotStateSample(stamp_mono_ns=500))
+    decision = gate.commit_plan(3, now_mono_ns=600, robot_max_age_ns=10**9)
+    assert not decision.admitted
+    assert decision.reason == m.AdmissionGate.REASON_COMMIT_GENERATION
+
+
 if __name__ == "__main__":
     test_boot_closed_until_valid_map_and_robot()
     test_invalidation_drops_map_and_rejects_late_results()
     test_commit_double_check_and_execution_active()
     test_reset_during_building_and_duplicate_generations()
+    test_admission_token_lifecycle()
     print("placement admission checks passed")
