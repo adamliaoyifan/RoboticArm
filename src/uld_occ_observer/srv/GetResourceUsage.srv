@@ -47,3 +47,7 @@ uint64 store_tree_bytes
 bool uncovered_allocations
 string certification
 string[] uncovered_classes
+
+# Per-object ownership ledger (live + recently released), JSON array of
+# {object_class,object_id,bytes,allocated_mono_ns,released_mono_ns,handle,epoch,refcount}.
+string ownership_trace_json

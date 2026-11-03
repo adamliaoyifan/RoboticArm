@@ -9,3 +9,5 @@ string reason
 string handle
 uld_occ_observer/SnapshotIdentity identity
 int64 age_ns
+
+uld_occ_observer/ValidityStamp validity

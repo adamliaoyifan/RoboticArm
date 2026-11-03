@@ -47,3 +47,5 @@ float64 repository_wait_ms
 float64 enumerate_ms
 float64 response_fill_ms
 float64 server_total_ms
+
+uld_occ_observer/ValidityStamp validity

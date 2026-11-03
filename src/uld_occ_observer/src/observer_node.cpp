@@ -19,7 +19,11 @@
 #include "uld_occ_observer/srv/get_resource_usage.hpp"
 #include "uld_occ_observer/srv/set_behavior_hook.hpp"
 #include "uld_occ_observer/srv/query_freespace.hpp"
+#include "uld_occ_observer/srv/get_validity.hpp"
 #include "uld_occ_observer/freespace_query.hpp"
+#include "uld_occ_observer/validity.hpp"
+#include "uld_occ_observer/ownership_trace.hpp"
+#include "uld_occ_observer/test_gates.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <tf2_ros/buffer.h>
@@ -34,6 +38,7 @@
 #include <iostream>
 #include <iterator>
 #include <mutex>
+#include <sstream>
 #include <thread>
 
 namespace uld_occ_observer {
@@ -54,6 +59,12 @@ namespace uld_occ_observer {
 //      repository waits; send_wait releases it before try_acquire.
 //   6. adapter_mu_ / ingress / ledger / board locks -- ingress admission and
 //      receipt bookkeeping only; never held while touching (1)-(4).
+//   7. ValidityBoard::mutex_ and OwnershipTrace/StageGates (test) -- leaf
+//      locks. Never taken while holding (1)-(6), never held across ROS
+//      serialization or waits. The validity transition (state+epoch+
+//      generation+latched event) is one logical step under this leaf; the
+//      reset linearization point itself remains the store's atomic epoch
+//      publish inside (1), which INVALID follows immediately.
 // No lock is ever held across ROS serialization or network waits: responses
 // are filled into rclcpp response objects after the data copy, and publish()
 // happens outside every scope above. reset/TTL/release linearize at (2):
@@ -80,6 +91,16 @@ class ObserverNode : public rclcpp::Node {
     worker_ = std::make_unique<ObservationWorker>(*store_);
     behavior_hooks_ = declare_parameter<bool>("behavior_test_hooks", false);
     if (behavior_hooks_) install_behavior_hooks();
+    // Validity readiness: BUILDING->VALID requires the newest publish to be
+    // younger than this at publication (plan §3 "age <= 1 s at publication").
+    validity_max_age_ns_ = std::max<std::int64_t>(0,
+        declare_parameter<std::int64_t>("validity_max_age_ms", 1000)) * 1000000LL;
+    OwnershipTrace::instance().set_enabled(
+        declare_parameter<bool>("ownership_trace", true));
+    // Latched validity publication: transient_local so a subscribing consumer
+    // that restarts receives the current state without having seen the event.
+    validity_pub_ = create_publisher<std_msgs::msg::String>("validity",
+        rclcpp::QoS(1).reliable().transient_local());
     service_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
     input_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     health_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -303,6 +324,8 @@ class ObserverNode : public rclcpp::Node {
     const auto sealed = seal_inflight(ledger_, board_, epoch, sensor, id, std::move(done.receipt),
                                       std::chrono::steady_clock::now(), done.queue_ms);
     if (sealed.stored) publish_sealed(sealed);
+    // A stored new-epoch observation may satisfy BUILDING->VALID readiness.
+    maybe_publish_valid();
   }
   // False means the store mutex is busy and the waiter must be queued again.
   // The response has not been sent.
@@ -339,10 +362,23 @@ class ObserverNode : public rclcpp::Node {
             response.status = "REVISION_NOT_COVERED";
             response.handle.clear();
           } else {
-            response.status = "OK";
-            response.handle = lease->handle;
-            response.identity = ros_identity(lease->identity);
-            response.age_ns = lease->age_ns;
+            // Validity admission for the leased epoch (plan §2): a lease
+            // acquired while the board is not VALID for that epoch is not
+            // delivered; the waiter retries on its own timeout.
+            const auto validity = validity_.load();
+            if (!validity_admits(lease->identity.epoch)) {
+              repository_->release(lease->handle);
+              response.status = validity->state == ValidityState::kInvalid
+                  ? "INVALIDATED" : "NO_DATA";
+              response.handle.clear();
+              response.validity = ros_validity(validity);
+            } else {
+              response.status = "OK";
+              response.handle = lease->handle;
+              response.identity = ros_identity(lease->identity);
+              response.age_ns = lease->age_ns;
+              response.validity = ros_validity(validity);
+            }
           }
         }
       } catch (const std::exception& error) {
@@ -362,6 +398,85 @@ class ObserverNode : public rclcpp::Node {
   template <class Values>
   static std::uint64_t reserved_bytes(const Values& values) {
     return static_cast<std::uint64_t>(values.capacity()) * sizeof(typename Values::value_type);
+  }
+  // ---- Reset validity (plan OCTOMAP_RESET_VALIDITY_NEXT_20261103 §2/§3) ----
+  static msg::ValidityStamp ros_validity(const std::shared_ptr<const ValiditySnapshot>& v) {
+    msg::ValidityStamp stamp;
+    stamp.state = to_string(v->state);
+    stamp.generation = v->generation;
+    stamp.epoch = v->epoch;
+    stamp.reason = v->reason;
+    return stamp;
+  }
+  void publish_validity(const std::shared_ptr<const ValiditySnapshot>& v) {
+    // Latched publication outside every data lock (QoS transient_local).
+    std_msgs::msg::String message;
+    message.data = validity_json(v);
+    validity_pub_->publish(message);
+  }
+  static std::string validity_json(const std::shared_ptr<const ValiditySnapshot>& v) {
+    std::ostringstream out;
+    out << "{\"state\":\"" << to_string(v->state) << "\",\"epoch\":" << v->epoch
+        << ",\"generation\":" << v->generation << ",\"reason\":\"" << v->reason
+        << "\",\"reset_id\":\"" << v->reset_id
+        << "\",\"transition_mono_ns\":" << v->transition_mono_ns
+        << ",\"map_revision\":" << v->map_revision
+        << ",\"observed_revision\":" << v->observed_revision
+        << ",\"last_integrated_stamp_ns\":" << v->last_integrated_stamp_ns
+        << ",\"geometry_hash\":\"" << v->geometry_hash
+        << "\",\"config_digest\":\"" << v->config_digest
+        << "\",\"clock_domain\":\"" << v->clock_domain << "\"}";
+    return out.str();
+  }
+  static std::string validity_events_json(const std::vector<ValidityEvent>& events) {
+    std::ostringstream out;
+    out << '[';
+    for (std::size_t i = 0; i < events.size(); ++i) {
+      const auto& event = events[i];
+      if (i) out << ',';
+      out << "{\"generation\":" << event.generation << ",\"state\":\""
+          << to_string(event.state) << "\",\"epoch\":" << event.epoch
+          << ",\"reason\":\"" << event.reason << "\",\"reset_id\":\""
+          << event.reset_id << "\",\"transition_mono_ns\":"
+          << event.transition_mono_ns << '}';
+    }
+    out << ']';
+    return out.str();
+  }
+  // BUILDING(e) -> VALID(e) readiness (plan §3): an accepted new-epoch
+  // observation has published a snapshot whose identity matches this epoch,
+  // with known cells, and the publish is fresh within validity_max_age_ns_.
+  // Called on every stored integrate completion and after restore. A floor
+  // prior or pre-reset snapshot cannot pass (epoch must equal the board's).
+  void maybe_publish_valid() {
+    const auto current = validity_.load();
+    if (current->state != ValidityState::kBuilding) return;
+    const auto epoch = current->epoch;
+    const auto snapshot = store_->try_snapshot();
+    if (!snapshot) return;
+    const auto& identity = snapshot->identity();
+    if (identity.epoch != epoch) return;
+    const auto diagnostics = store_->diagnostics();
+    // Age is judged in the snapshot's own clock domain (ROS): the identity
+    // stamp is the observation's input stamp, so the node clock -- not the
+    // steady monotonic event clock -- measures publication freshness. The
+    // latched transition stamp stays monotonic-steady for event ordering.
+    const auto published = validity_.try_publish_valid(
+        epoch, diagnostics.known_cells, identity.map_revision,
+        identity.observed_revision, identity.last_integrated_stamp_ns,
+        now().nanoseconds(),
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count(),
+        validity_max_age_ns_, identity.geometry_hash, identity.config_digest,
+        identity.clock_domain, "observed");
+    if (published != current) publish_validity(published);
+  }
+  // Commit check for every read that already holds a lease: the response is
+  // delivered only when the board still admits the leased epoch (plan §2:
+  // "its final response ... require a second state/epoch check"). On loss the
+  // caller must clear payload fields; this helper only reports the verdict.
+  bool validity_admits(std::uint64_t leased_epoch) const {
+    return validity_.admits(leased_epoch);
   }
   void install_services() {
     integrate_ = service<srv::IntegrateObservation>("integrate_observation",
@@ -406,6 +521,7 @@ class ObserverNode : public rclcpp::Node {
                                             std::chrono::steady_clock::now(), done.queue_ms);
           response->receipt = sealed.stored ? publish_sealed(sealed)
                                             : publish_open(sensor, id, done.receipt.status, stamp);
+          if (sealed.stored) maybe_publish_valid();
         } catch (const std::exception& error) {
           if (admitted) {
             UpdateReceipt receipt;
@@ -429,13 +545,43 @@ class ObserverNode : public rclcpp::Node {
              std::shared_ptr<srv::GetSnapshot::Response> response) {
         try {
           if (request->max_age_ms < 0 || request->max_age_ms > 86400000) throw Error("INVALID_MAX_AGE");
+          // Deterministic V1 injection boundary, before any repository lock.
+          test::gate_checkpoint("acquire_before_lock");
+          // New acquires never see old data (plan §2): INVALID refuses with
+          // INVALIDATED, BUILDING (no trusted map yet) refuses with NO_DATA.
+          auto validity = validity_.load();
+          if (validity->state == ValidityState::kInvalid) {
+            response->status = "INVALIDATED";
+            response->validity = ros_validity(validity);
+            return;
+          }
+          if (validity->state == ValidityState::kBuilding) {
+            response->status = "NO_DATA";
+            response->validity = ros_validity(validity);
+            return;
+          }
           const auto lease = repository_->acquire(now().nanoseconds(),request->max_age_ms*1000000,
               request->allow_stale,request->expected_epoch,request->exact_revision ?
                 std::optional<std::uint64_t>(request->expected_revision) : std::nullopt);
+          // Deterministic V1 injection boundary, after the lease exists.
+          test::gate_checkpoint("acquire_after_lock");
+          // The reset could have committed between the check above and the
+          // acquire: a lease for a non-admitted epoch is never handed out.
+          validity = validity_.load();
+          if (!validity_admits(lease.identity.epoch)) {
+            repository_->release(lease.handle);
+            response->status = "INVALIDATED";
+            response->validity = ros_validity(validity);
+            return;
+          }
           response->status = "OK"; response->handle = lease.handle;
           response->identity = ros_identity(lease.identity); response->age_ns = lease.age_ns;
           response->stale = lease.stale;
-        } catch (const std::exception& error) { response->status = error.what(); }
+          response->validity = ros_validity(validity);
+        } catch (const std::exception& error) {
+          response->status = error.what();
+          response->validity = ros_validity(validity_.load());
+        }
       });
     cells_ = service<srv::ReadCells>("read_cells",
       [this](const std::shared_ptr<srv::ReadCells::Request> request,
@@ -448,11 +594,30 @@ class ObserverNode : public rclcpp::Node {
               std::chrono::steady_clock::now() - started).count();
           response->store_wait_ms = 0;
           const auto& b = request->begin; const auto& e = request->end;
+          // Deterministic V1 injection boundary: the page walk itself.
+          test::gate_checkpoint("page_work");
           const auto page = snapshot->read_cells({b[0],b[1],b[2]},{e[0],e[1],e[2]},request->cursor,request->limit);
           response->identity = ros_identity(snapshot->identity());
           response->next_cursor = page.next_cursor; response->done = page.done;
           response->states.reserve(page.cells.size());
           response->log_odds.reserve(page.cells.size());
+          // Deterministic V1 injection boundary: payload serialization.
+          test::gate_checkpoint("response_serialization");
+          // Second epoch/state check (plan §2): a request whose lease lost the
+          // reset race delivers INVALIDATED with no usable payload.
+          {
+            const auto validity = validity_.load();
+            if (!validity_admits(snapshot->identity().epoch)) {
+              response->states.clear(); response->log_odds.clear();
+              response->states.shrink_to_fit(); response->log_odds.shrink_to_fit();
+              response->validity = ros_validity(validity);
+              response->server_total_ms = std::chrono::duration<double, std::milli>(
+                  std::chrono::steady_clock::now() - started).count();
+              response->status = "INVALIDATED";
+              return;
+            }
+            response->validity = ros_validity(validity);
+          }
           const auto fill_started = std::chrono::steady_clock::now();
           for (const auto& cell : page.cells) {
             response->states.push_back(!cell.active ? 3 : !cell.known ? 0 : cell.value.occupied ? 2 : 1);
@@ -487,6 +652,23 @@ class ObserverNode : public rclcpp::Node {
           response->x.reserve(count); response->y.reserve(count);
           response->active_count.reserve(count); response->known_count.reserve(count);
           response->has_occupied.reserve(count); response->top_z.reserve(count);
+          // Deterministic V1 injection boundaries: the page slice and the
+          // payload serialization.
+          test::gate_checkpoint("page_work");
+          test::gate_checkpoint("response_serialization");
+          {
+            const auto validity = validity_.load();
+            if (!validity_admits(snapshot->identity().epoch)) {
+              response->identity = ros_identity(snapshot->identity());
+              response->next_cursor = request->cursor; response->done = false;
+              response->validity = ros_validity(validity);
+              response->server_total_ms = std::chrono::duration<double, std::milli>(
+                  std::chrono::steady_clock::now() - started).count();
+              response->status = "INVALIDATED";
+              return;
+            }
+            response->validity = ros_validity(validity);
+          }
           const auto fill_started = std::chrono::steady_clock::now();
           for (auto i = request->cursor; i < stop; ++i) {
             const auto& column = surface->at(i);
@@ -532,6 +714,9 @@ class ObserverNode : public rclcpp::Node {
           core_request.limit = request->limit;
           const auto enumerated = std::chrono::steady_clock::now();
           const PlacementPolicy policy;  // frozen contract values, echoed below
+          // Deterministic V1 injection boundaries: ROI enumeration and
+          // response serialization.
+          test::gate_checkpoint("page_work");
           const auto page = query_freespace(*snapshot, core_request, policy);
           response->enumerate_ms = std::chrono::duration<double, std::milli>(
               std::chrono::steady_clock::now() - enumerated).count();
@@ -544,6 +729,23 @@ class ObserverNode : public rclcpp::Node {
           response->yaw_deg.reserve(count); response->support_ratio.reserve(count);
           response->support_kind.reserve(count);
           response->verify_begin.reserve(3 * count); response->verify_end.reserve(3 * count);
+          test::gate_checkpoint("response_serialization");
+          // Second epoch/state check (plan §2): a page from a lease that lost
+          // the reset race delivers INVALIDATED with no usable candidates.
+          {
+            const auto validity = validity_.load();
+            if (!validity_admits(identity.epoch)) {
+              response->identity = ros_identity(identity);
+              response->next_cursor = request->cursor; response->done = false;
+              response->age_ns = now().nanoseconds() - identity.last_integrated_stamp_ns;
+              response->validity = ros_validity(validity);
+              response->server_total_ms = std::chrono::duration<double, std::milli>(
+                  std::chrono::steady_clock::now() - started).count();
+              response->status = "INVALIDATED";
+              return;
+            }
+            response->validity = ros_validity(validity);
+          }
           for (const auto& candidate : page.candidates) {
             response->cell_x.push_back(candidate.cell_x);
             response->cell_y.push_back(candidate.cell_y);
@@ -603,7 +805,22 @@ class ObserverNode : public rclcpp::Node {
              std::shared_ptr<srv::ResetObservation::Response> response) {
         try {
           if (request->reset_id.empty()) throw Error("RESET_ID_REQUIRED");
+          // Duplicate reset within an epoch is an idempotent replay (plan §2):
+          // same reset_id re-answers OK with the committed epoch and no new
+          // transition. A later distinct reset_id proceeds and invalidates a
+          // rebuilding map as well.
+          if (validity_.last_reset_id() == request->reset_id) {
+            response->epoch = store_->published_epoch();
+            response->status = "OK";
+            return;
+          }
           response->epoch = store_->reset(request->expected_epoch);
+          validity_.commit_reset(response->epoch, request->reason.empty()
+              ? "explicit" : request->reason, request->reset_id);
+          // The emptied store is immediately ready for new observations; the
+          // readiness gate (maybe_publish_valid) moves BUILDING->VALID.
+          validity_.begin_building(response->epoch);
+          publish_validity(validity_.load());
           worker_->refresh_store_diagnostics();
           board_.drop_other_epochs(response->epoch);
           ledger_.drop_terminal_other_epochs(response->epoch);
@@ -618,8 +835,17 @@ class ObserverNode : public rclcpp::Node {
             const auto data = store_->checkpoint();
             if (data.identity.epoch != request->expected_epoch) throw Error("EPOCH_MISMATCH");
             write_checkpoint(data,request->path); response->epoch = data.identity.epoch;
-          } else if (request->operation == "restore")
+          } else if (request->operation == "restore") {
             response->epoch = store_->restore(read_checkpoint(request->path),request->expected_epoch);
+            // A verified restore publishes VALID for the restored epoch: the
+            // payload integrity is proven by the restore's fingerprint check,
+            // and the epoch guard above rejects stale restores.
+            const auto identity = store_->snapshot()->identity();
+            validity_.publish_restored(response->epoch, identity.map_revision,
+                identity.observed_revision, identity.last_integrated_stamp_ns,
+                identity.geometry_hash, identity.config_digest, identity.clock_domain);
+            publish_validity(validity_.load());
+          }
           else throw Error("UNSUPPORTED_OPERATION");
           worker_->refresh_store_diagnostics(); response->status = "OK";
         } catch (const std::exception& error) { response->status = error.what(); }
@@ -627,6 +853,9 @@ class ObserverNode : public rclcpp::Node {
     status_ = service<srv::GetObservationStatus>("get_observation_status",
       [this](const std::shared_ptr<srv::GetObservationStatus::Request> request,
              std::shared_ptr<srv::GetObservationStatus::Response> response) {
+        response->validity = ros_validity(validity_.load());
+        response->last_reset_id = validity_.last_reset_id();
+        response->validity_events_json = validity_events_json(validity_.events());
         const auto now = std::chrono::steady_clock::now();
         ledger_.expire(now);
         const auto record = ledger_.query(request->epoch, request->sensor_id, request->observation_id);
@@ -646,6 +875,25 @@ class ObserverNode : public rclcpp::Node {
           }
         }
         response->status = "NOT_SEEN";
+      });
+    validity_svc_ = service<srv::GetValidity>("get_validity",
+      [this](const std::shared_ptr<srv::GetValidity::Request> request,
+             std::shared_ptr<srv::GetValidity::Response> response) {
+        (void)request;
+        const auto snapshot = validity_.load();
+        response->state = to_string(snapshot->state);
+        response->epoch = snapshot->epoch;
+        response->generation = snapshot->generation;
+        response->reason = snapshot->reason;
+        response->reset_id = snapshot->reset_id;
+        response->transition_mono_ns = snapshot->transition_mono_ns;
+        response->map_revision = snapshot->map_revision;
+        response->observed_revision = snapshot->observed_revision;
+        response->last_integrated_stamp_ns = snapshot->last_integrated_stamp_ns;
+        response->geometry_hash = snapshot->geometry_hash;
+        response->config_digest = snapshot->config_digest;
+        response->clock_domain = snapshot->clock_domain;
+        response->events_json = validity_events_json(validity_.events());
       });
     resource_ = service<srv::GetResourceUsage>("get_resource_usage",
       [this](const std::shared_ptr<srv::GetResourceUsage::Request> request,
@@ -668,6 +916,27 @@ class ObserverNode : public rclcpp::Node {
         repository_->account(accounts);
         const auto usage = repository_->usage();
         response->status = "OK";
+        {
+          // Per-object ownership ledger (plan §4): identity + lifecycle for
+          // every live/recently-released surface buffer and view object.
+          std::ostringstream out;
+          out << '[';
+          const auto records = OwnershipTrace::instance().snapshot();
+          for (std::size_t i = 0; i < records.size(); ++i) {
+            const auto& record = records[i];
+            if (i) out << ',';
+            out << "{\"object_class\":\"" << record.object_class
+                << "\",\"object_id\":" << record.object_id
+                << ",\"bytes\":" << record.bytes
+                << ",\"allocated_mono_ns\":" << record.allocated_mono_ns
+                << ",\"released_mono_ns\":" << record.released_mono_ns
+                << ",\"handle\":\"" << record.handle
+                << "\",\"epoch\":" << record.epoch
+                << ",\"refcount\":" << record.refcount << '}';
+          }
+          out << ']';
+          response->ownership_trace_json = out.str();
+        }
         response->shared_block_bytes = usage.shared_block_bytes;
         response->shared_block_bytes_peak = usage.shared_block_bytes_peak;
         response->old_view_block_bytes = usage.old_view_block_bytes;
@@ -725,6 +994,37 @@ class ObserverNode : public rclcpp::Node {
             response->accepted = true;
             response->status = "checking=" + std::to_string(waits_checking_) +
                 " queued=" + std::to_string(waiters_.size());
+            return;
+          } else if (request->name.rfind("gate_arm:", 0) == 0) {
+            // Deterministic reset-race injection (plan §6): arm a named stage
+            // gate; the next arrival at that stage parks until gate_release.
+            test::StageGates::instance().arm(request->name.substr(9));
+            response->accepted = true;
+            response->status = "armed";
+            return;
+          } else if (request->name.rfind("gate_release:", 0) == 0) {
+            test::StageGates::instance().release(request->name.substr(13));
+            response->accepted = true;
+            response->status = "released";
+            return;
+          } else if (request->name == "gate_release_all") {
+            test::StageGates::instance().release_all();
+            response->accepted = true;
+            response->status = "released";
+            return;
+          } else if (request->name == "gate_probe") {
+            response->accepted = true;
+            response->status = test::StageGates::instance().probe();
+            return;
+          } else if (request->name == "ownership_trace_recent_clear") {
+            OwnershipTrace::instance().clear_recent();
+            response->accepted = true;
+            response->status = "OK";
+            return;
+          } else if (request->name == "ownership_trace_enable") {
+            OwnershipTrace::instance().set_enabled(request->value != 0);
+            response->accepted = true;
+            response->status = "OK";
             return;
           } else {
             response->accepted = false;
@@ -855,6 +1155,9 @@ class ObserverNode : public rclcpp::Node {
   std::atomic<bool> adapter_pause_{false};
   std::atomic<bool> hold_integrate_{false};
   bool behavior_hooks_{false};
+  ValidityBoard validity_;
+  std::int64_t validity_max_age_ns_{1000000000};
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr validity_pub_;
   std::mutex adapter_mu_;
   std::condition_variable adapter_cv_;
   std::thread adapter_;
@@ -873,6 +1176,7 @@ class ObserverNode : public rclcpp::Node {
   rclcpp::TimerBase::SharedPtr health_timer_;
   rclcpp::Service<srv::IntegrateObservation>::SharedPtr integrate_;
   rclcpp::Service<srv::GetSnapshot>::SharedPtr acquire_;
+  rclcpp::Service<srv::GetValidity>::SharedPtr validity_svc_;
   rclcpp::Service<srv::ReadCells>::SharedPtr cells_;
   rclcpp::Service<srv::ReadSurface>::SharedPtr surface_;
   rclcpp::Service<srv::ReleaseSnapshot>::SharedPtr release_;

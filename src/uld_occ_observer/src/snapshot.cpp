@@ -2,6 +2,8 @@
 #include "uld_occ_observer/interface_trace.hpp"
 #include "uld_occ_observer/block_storage.hpp"
 #include "uld_occ_observer/resource_usage.hpp"
+#include "uld_occ_observer/ownership_trace.hpp"
+#include "uld_occ_observer/test_gates.hpp"
 #include <algorithm>
 #include <string>
 
@@ -21,6 +23,7 @@ Snapshot::~Snapshot() {
   totals.subtract("block_directory_nodes",
                   static_cast<std::uint64_t>(blocks_.size())
                       * map_node_bytes<BlockRegistry::value_type>());
+  if (ownership_trace_id_) OwnershipTrace::instance().released(ownership_trace_id_);
 }
 Snapshot::Snapshot(SnapshotIdentity identity, std::shared_ptr<const UldDomain> domain,
                    BlockRegistry blocks, std::shared_ptr<SurfaceCache> surface_cache)
@@ -41,6 +44,10 @@ Snapshot::Snapshot(SnapshotIdentity identity, std::shared_ptr<const UldDomain> d
                  * map_node_bytes<BlockRegistry::value_type>());
   if (fresh_surface_cache_)
     totals.add("surface_caches", sizeof(SurfaceCache) + kControlBlockBytes);
+  // Ownership ledger: one record per view object, born in its build epoch.
+  if (OwnershipTrace::enabled())
+    ownership_trace_id_ = OwnershipTrace::instance().allocated(
+        "view", sizeof(Snapshot) + kControlBlockBytes, identity_.epoch, "");
 }
 
 std::shared_ptr<const Snapshot> Snapshot::with_identity(SnapshotIdentity identity) const {
@@ -153,6 +160,9 @@ std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface(SurfaceProfi
     interface_trace_event("surface_end", "", "hit", "query");
     return surface_cache_->value;
   }
+  // Deterministic V1 injection point: the first Surface cache build for this
+  // snapshot (armed gates only; unarmed builds pay one atomic load).
+  test::gate_checkpoint("surface_first_build");
   const auto shape = domain_->shape();
   DomainInitObservation init;
   const bool observe_init = profile != nullptr;
@@ -168,10 +178,19 @@ std::shared_ptr<const std::vector<SurfaceColumn>> Snapshot::surface(SurfaceProfi
   const auto buffer_bytes = static_cast<std::uint64_t>(active_counts.size())
       * sizeof(SurfaceColumn);
   AllocationTotals::instance().add("surface_caches", buffer_bytes);
+  // Ownership ledger: this buffer is the class the S3 72-byte external
+  // residual came from. The record's release time is the deleter run — the
+  // last owner letting go — which is exactly what the judge must see for a
+  // final release (plan §4).
+  const std::uint64_t surface_trace_id = OwnershipTrace::enabled()
+      ? OwnershipTrace::instance().allocated(
+            "surface_buffer", buffer_bytes, identity_.epoch, "external")
+      : 0;
   auto output = std::shared_ptr<std::vector<SurfaceColumn>>(
       new std::vector<SurfaceColumn>(active_counts.size()),
-      [buffer_bytes](std::vector<SurfaceColumn>* columns) {
+      [buffer_bytes, surface_trace_id](std::vector<SurfaceColumn>* columns) {
         AllocationTotals::instance().subtract("surface_caches", buffer_bytes);
+        if (surface_trace_id) OwnershipTrace::instance().released(surface_trace_id);
         delete columns;
       });
   std::vector<int> highest_occupied(active_counts.size(), -1);

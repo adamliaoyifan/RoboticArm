@@ -66,6 +66,8 @@ from luggage_description.scene_tf_config_utils import (
     yaw_world_to_base_link,
 )
 from luggage_packing.placement_reachability import make_atlas_annotate
+from luggage_packing.placement_admission import (
+    AdmissionGate, MapObservation, RobotStateSample, ValidityObservation)
 from luggage_packing.placement_solver import (
     CODE_CARGO_MAP_GEOMETRY_MISMATCH,
     CODE_DETECT_FULL_GEOMETRY_REQUIRED,
@@ -242,6 +244,20 @@ class PlacementPlannerNode(Node):
         # progression against it; ComputePlacementV2 checks requests against
         # the active surface's revision.
         self._admitted_map_revision = None
+        # OCToMap reset validity (plan OCTOMAP_RESET_VALIDITY_NEXT_20261103
+        # §3): the latched observer validity stream drives the admission
+        # gate. The floor prior serves only BEFORE the first map admission;
+        # after an invalidation the gate stays closed until a fresh VALID
+        # map and a post-transition robot-state sample both exist.
+        self._admission = AdmissionGate()
+        self._ever_admitted_map = False
+        self._validity_seen = False
+        self.declare_parameter("robot_state_max_age_ms", 500)
+        self.declare_parameter("validity_gate_enforce", True)
+        self._validity_gate_enforce = bool(
+            self.get_parameter("validity_gate_enforce").value)
+        self._robot_max_age_ns = int(max(0, int(
+            self.get_parameter("robot_state_max_age_ms").value)) * 1_000_000)
         # Atlas handles keyed by requested box size (payload selection is
         # per-request; see atlas_runtime.resolve_atlas_files).
         self._atlas_cache = {}
@@ -292,6 +308,17 @@ class PlacementPlannerNode(Node):
                 self._handle_v2, callback_group=group)
         self._last_pub = self.create_publisher(
             String, "/placement_planner/last_result", map_qos)
+        # Reset-contract inputs: latched validity (replayable via the
+        # transient-local QoS) and the robot joint state whose freshness
+        # gates recovery. The validity arrival is re-stamped in this node's
+        # clock so robot-sample comparisons stay in one time domain.
+        self.create_subscription(
+            String, "/uld_occ_observer/validity",
+            self._on_validity, map_qos, callback_group=group)
+        from sensor_msgs.msg import JointState
+        self.create_subscription(
+            JointState, "/joint_states", self._on_joint_state, 10,
+            callback_group=group)
 
         self.create_service(
             ComputePlacement, "/placement_planner/compute_placement",
@@ -399,6 +426,117 @@ class PlacementPlannerNode(Node):
     # ------------------------------------------------------------------
     # Surface map in / floor prior
 
+    def _validity_admit(self):
+        """Admission check BEFORE planning (§3).
+
+        Returns None when planning may proceed, else the closed-gate reason.
+        A deployment without the observer validity stream keeps its
+        pre-contract behavior (the gate only binds once a validity
+        publication exists); with the stream, the gate is closed until a
+        fresh VALID map and a post-transition robot-state sample exist.
+        """
+        if not self._validity_seen or not self._validity_gate_enforce:
+            return None
+        decision = self._admission.admit_planning(
+            now_mono_ns=int(self.get_clock().now().nanoseconds()),
+            robot_max_age_ns=self._robot_max_age_ns)
+        if decision.admitted:
+            return None
+        return ("VALIDITY_GATE_CLOSED: %s (state=%s epoch=%s gen=%s "
+                "execution_active=%s)"
+                % (decision.reason, decision.validity.state,
+                   decision.validity.epoch, decision.validity.generation,
+                   decision.execution_active))
+
+    def _validity_commit(self, planned_generation):
+        """Commit check BEFORE delivering a successful plan (§3): the
+        second epoch/generation look. Returns None to commit, else reason."""
+        if not self._validity_seen or not self._validity_gate_enforce:
+            return None
+        decision = self._admission.commit_plan(
+            planned_generation,
+            now_mono_ns=int(self.get_clock().now().nanoseconds()),
+            robot_max_age_ns=self._robot_max_age_ns)
+        if decision.admitted:
+            return None
+        return ("VALIDITY_COMMIT_REJECTED: %s (state=%s epoch=%s gen=%s "
+                "planned_gen=%s execution_active=%s)"
+                % (decision.reason, decision.validity.state,
+                   decision.validity.epoch, decision.validity.generation,
+                   planned_generation, decision.execution_active))
+
+    def _on_validity(self, msg):
+        """Consume the observer's latched validity publication (§2/§3).
+
+        The arrival time replaces the observer's monotonic transition stamp
+        so the robot-sample freshness comparison stays in one clock domain;
+        arrival is strictly after the transition, which keeps the recovery
+        rule conservative (a sample must post-date the transition, and a
+        sample newer than arrival certainly does).
+        """
+        try:
+            payload = json.loads(msg.data)
+        except ValueError:
+            return
+        observation = ValidityObservation.from_json(payload)
+        self._validity_seen = True
+        observation = ValidityObservation(
+            state=observation.state, epoch=observation.epoch,
+            generation=observation.generation, reason=observation.reason,
+            reset_id=observation.reset_id,
+            transition_mono_ns=self.get_clock().now().nanoseconds(),
+            map_revision=observation.map_revision,
+            observed_revision=observation.observed_revision,
+            geometry_hash=observation.geometry_hash,
+            config_digest=observation.config_digest,
+            clock_domain=observation.clock_domain)
+        self._admission.observe_validity(observation)
+        if observation.state != "VALID" and self._ever_admitted_map:
+            # Invalidation observed: placement stops. The admitted map and
+            # its candidates die here; the gate reopens only through a fresh
+            # VALID map + post-transition robot state.
+            if self._surface is not None:
+                self._surface = None
+            if getattr(self, "_v2_surface", None) is not None:
+                self._v2_surface = None
+            self._admitted_map_revision = None
+            self.get_logger().warning(
+                "validity %s epoch %s gen %s: admitted map invalidated"
+                % (observation.state, observation.epoch,
+                   observation.generation))
+
+    def _on_joint_state(self, msg):
+        stamp = int(msg.header.stamp.sec) * 1_000_000_000 \
+            + int(msg.header.stamp.nanosec)
+        if not stamp:
+            stamp = int(self.get_clock().now().nanoseconds())
+        self._admission.observe_robot_state(RobotStateSample(
+            stamp, "joint_states", {"name": list(msg.name)}))
+
+    def _admit_surface_map(self, surface, source):
+        """Admission-gate a freshly delivered surface map (v1 or v2).
+
+        Returns True when the map is bound to the current VALID epoch and
+        generation; a mismatched map is counted and never stored.
+        """
+        decision = self._admission.observe_map(MapObservation(
+            epoch=int(surface.get("epoch", 0) or 0),
+            generation=int(surface.get("validity_generation", 0) or 0),
+            map_revision=int(surface.get("map_revision", 0) or 0),
+            geometry_hash=str(surface.get("geometry_hash") or ""),
+            payload=surface))
+        if not decision.admitted:
+            self._rejected_maps += 1
+            self.get_logger().error(
+                "rejected %s cargo map by admission gate: %s "
+                "(epoch=%s gen=%s, rejected=%d)"
+                % (source, decision.reason,
+                   surface.get("epoch"), surface.get("validity_generation"),
+                   self._rejected_maps))
+            return False
+        self._ever_admitted_map = True
+        return True
+
     def _on_surface(self, msg):
         if getattr(self, "_v2_surface_mode", False):
             # v2 mode subscribes only the contract topic; a v1 JSON
@@ -425,6 +563,8 @@ class PlacementPlannerNode(Node):
                 "(rejected=%d)"
                 % (incoming or "<missing>", self._geometry_hash,
                    self._rejected_maps))
+            return
+        if not self._admit_surface_map(surface, "v1"):
             return
         self._surface = surface
 
@@ -513,6 +653,14 @@ class PlacementPlannerNode(Node):
             self.get_logger().error(
                 "rejected v2 cargo map: geometry_hash %s != planner %s"
                 % (record.get("geometry_hash"), self._geometry_hash))
+            return
+        if not self._admit_surface_map({
+                "epoch": int(getattr(msg, "epoch", "0") or 0),
+                "validity_generation": int(
+                    getattr(msg, "validity_generation", 0) or 0),
+                "map_revision": claimed_revision,
+                "geometry_hash": str(record.get("geometry_hash") or "")},
+                "v2"):
             return
         self._surface = self._surface_view_from_record(record)
         self._admitted_map_revision = claimed_revision
@@ -729,6 +877,14 @@ class PlacementPlannerNode(Node):
                 response.reason_code = error.code
                 response.message = "%s: %s" % (error.code, error.field)
                 return response
+        # Reset-contract admission check BEFORE planning (§3), shared with
+        # the v1 handler: gate closed -> no new computations.
+        gate = self._validity_admit()
+        if gate is not None:
+            response.success = False
+            response.reason_code = "VALIDITY_GATE_CLOSED"
+            response.message = gate
+            return response
         if not bool(request.height_measured):
             response.success = False
             response.reason_code = CODE_DETECT_FULL_GEOMETRY_REQUIRED
@@ -819,6 +975,14 @@ class PlacementPlannerNode(Node):
                 response.reason_code = error.code
                 response.message = "%s: %s" % (error.code, error.field)
                 return response
+        # Reset-contract commit check (§3) before the slot is committed.
+        commit = self._validity_commit(self._admission.validity.generation)
+        if commit is not None:
+            response.success = False
+            response.reason_code = "VALIDITY_COMMIT_REJECTED"
+            response.message = commit
+            return response
+        self._admission.record_execution()
         slot_message, _record = self._slot_message(best, request_id)
         response.slot = slot_message
         response.success = True
@@ -1039,6 +1203,24 @@ class PlacementPlannerNode(Node):
                 response.reason_code = error.code
                 response.message = "%s: %s" % (error.code, error.field)
                 return response
+        # Reset-contract admission check BEFORE planning (§3): the gate is
+        # closed until a fresh VALID map and a post-transition robot-state
+        # sample both exist; a delayed old response never re-opens it.
+        gate = self._validity_admit()
+        if gate is not None:
+            response.success = False
+            response.reason_code = "VALIDITY_GATE_CLOSED"
+            response.message = gate
+            self._publish_last({
+                "success": False,
+                "reason_code": "VALIDITY_GATE_CLOSED",
+                "message": gate,
+                "geometry_hash": self._geometry_hash,
+                "candidates": [],
+                "execution_active": bool(
+                    self._admission.executing_generations),
+            })
+            return response
         # E0/E4 contract: packing needs measured full geometry. A top-only
         # detection must not become a collision box inside the container.
         # Catalog size is spawn-only and is never a substitute for height.
@@ -1182,7 +1364,27 @@ class PlacementPlannerNode(Node):
             return response
 
         best = result.get("preferred_candidate", result["selected"])
+        # Reset-contract commit check (§3): the second epoch/generation look
+        # before a plan becomes a valid placement result. A reset that won
+        # while planning discards the candidate here.
+        commit = self._validity_commit(
+            self._admission.validity.generation)
+        if commit is not None:
+            response.success = False
+            response.reason_code = "VALIDITY_COMMIT_REJECTED"
+            response.message = commit
+            dump["success"] = False
+            dump["reason_code"] = response.reason_code
+            dump["message"] = commit
+            dump["candidates"] = []
+            dump["execution_active"] = bool(
+                self._admission.executing_generations)
+            self._publish_last(dump)
+            return response
         slot, annotated = self._slot_from_candidate(best, size)
+        # The plan crossed the commit check: record its generation so a later
+        # invalidation reports execution_active instead of silent cancel.
+        self._admission.record_execution()
         response.slot = slot
         response.success = True
         response.reason_code = ""
@@ -1205,6 +1407,13 @@ class PlacementPlannerNode(Node):
             response.candidate_scores.append(float(candidate.get("score", 0.0)))
             response.candidate_reasons.append(str(candidate.get("reason") or "ok"))
         dump["message"] = response.message
+        dump["validity"] = {
+            "state": self._admission.validity.state,
+            "epoch": self._admission.validity.epoch,
+            "generation": self._admission.validity.generation,
+        }
+        dump["execution_active"] = bool(
+            self._admission.executing_generations)
         # Packing preference only. The certified slot is written by
         # SelectPlacePathV2 after a complete route succeeds.
         dump["preferred_candidate"] = jsonable_candidate(annotated)

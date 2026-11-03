@@ -1,6 +1,7 @@
 #include "uld_occ_observer/snapshot_repository.hpp"
 #include "uld_occ_observer/observation_ingress.hpp"
 #include "uld_occ_observer/snapshot_wait_board.hpp"
+#include "uld_occ_observer/ownership_trace.hpp"
 #include <algorithm>
 #include <set>
 
@@ -54,6 +55,8 @@ void SnapshotRepository::expire_unlocked(Clock::time_point now, std::uint64_t ep
     const bool will_erase = it->second.expires <= now
         || it->second.snapshot->identity().epoch != epoch;
     if (will_erase) {
+      if (const auto id = it->second.snapshot->ownership_trace_id())
+        OwnershipTrace::instance().handle(id, "");
       AllocationTotals::instance().subtract("handle_directory_nodes", handle_node_bytes());
       it = entries_.erase(it);
     } else ++it;
@@ -101,6 +104,8 @@ SnapshotLease SnapshotRepository::acquire(std::int64_t now_ns, std::int64_t max_
   if (entries_.size() >= 8 || revisions.size() > 2) throw Error("SNAPSHOT_PRESSURE");
   const auto handle = std::to_string(identity.epoch) + ":" + std::to_string(++next_handle_);
   entries_.emplace(handle, Entry{selected, now + ttl_});
+  if (const auto id = selected->ownership_trace_id())
+    OwnershipTrace::instance().handle(id, handle);
   // Allocation-lifecycle accounting: a handle node is allocated here (the
   // key is SSO-sized for epoch:counter strings).
   AllocationTotals::instance().add("handle_directory_nodes", handle_node_bytes());
@@ -155,8 +160,12 @@ std::shared_ptr<const Snapshot> SnapshotRepository::get(const std::string& handl
 }
 void SnapshotRepository::release(const std::string& handle) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (entries_.erase(handle) != 0)
+  if (const auto it = entries_.find(handle); it != entries_.end()) {
+    if (const auto id = it->second.snapshot->ownership_trace_id())
+      OwnershipTrace::instance().handle(id, "");
+    entries_.erase(it);
     AllocationTotals::instance().subtract("handle_directory_nodes", handle_node_bytes());
+  }
 }
 SnapshotRepository::~SnapshotRepository() {
   std::lock_guard<std::mutex> lock(mutex_);

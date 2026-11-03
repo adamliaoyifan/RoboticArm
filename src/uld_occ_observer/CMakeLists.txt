@@ -8,7 +8,7 @@ find_package(octomap 1.9.8 EXACT REQUIRED CONFIG
 find_package(OpenSSL REQUIRED)
 find_package(Threads REQUIRED)
 find_package(yaml-cpp REQUIRED)
-add_library(uld_occ_observer_core
+add_library(uld_occ_observer_core src/validity.cpp
   src/preprocessing.cpp src/geometry.cpp src/block_storage.cpp src/snapshot.cpp
   src/occupancy_grid.cpp src/observer.cpp
   src/snapshot_repository.cpp src/observation_worker.cpp
@@ -34,6 +34,9 @@ if(BUILD_TESTING)
   target_link_libraries(observer_keyset_checks PRIVATE uld_occ_observer_io)
   target_compile_definitions(observer_keyset_checks PRIVATE OBSERVER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   add_test(NAME observer_keyset_checks COMMAND observer_keyset_checks)
+  add_executable(observer_validity_checks test/test_validity.cpp)
+  target_link_libraries(observer_validity_checks PRIVATE uld_occ_observer_core)
+  add_test(NAME observer_validity_checks COMMAND observer_validity_checks)
   add_test(NAME observer_hot_path_disassembly
     COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/test/check_hot_path.py
             ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/uld_occ_observer_core.dir/src/occupancy_grid.cpp.o)
@@ -89,12 +92,12 @@ if(OBSERVER_WITH_ROS)
   find_package(tf2_ros REQUIRED)
   find_package(rosidl_default_generators REQUIRED)
   rosidl_generate_interfaces(${PROJECT_NAME}
-    "msg/SnapshotIdentity.msg" "msg/UpdateReceipt.msg"
+    "msg/SnapshotIdentity.msg" "msg/UpdateReceipt.msg" "msg/ValidityStamp.msg"
     "srv/IntegrateObservation.srv" "srv/GetSnapshot.srv" "srv/ReadCells.srv"
     "srv/ReadSurface.srv" "srv/ReleaseSnapshot.srv" "srv/ResetObservation.srv"
     "srv/CheckpointObservation.srv"
     "srv/GetObservationStatus.srv" "srv/WaitSnapshot.srv" "srv/GetResourceUsage.srv"
-    "srv/SetBehaviorHook.srv" "srv/QueryFreespace.srv"
+    "srv/SetBehaviorHook.srv" "srv/QueryFreespace.srv" "srv/GetValidity.srv"
     DEPENDENCIES sensor_msgs geometry_msgs)
   add_executable(observer_node src/observer_node.cpp src/ros_adapters.cpp)
   target_link_libraries(observer_node uld_occ_observer_io)

@@ -102,5 +102,10 @@ class Snapshot {
   // shares an existing one (never re-counted).
   const bool fresh_surface_cache_;
   const std::shared_ptr<SurfaceCache> surface_cache_;
+  // Ownership-ledger id (0 when tracing is disabled): identity for the
+  // reset-contract judge to pair view byte classes with object lifecycles.
+  std::uint64_t ownership_trace_id_{};
+ public:
+  std::uint64_t ownership_trace_id() const { return ownership_trace_id_; }
 };
 }  // namespace uld_occ_observer

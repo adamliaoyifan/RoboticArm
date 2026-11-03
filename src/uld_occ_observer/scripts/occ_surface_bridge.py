@@ -90,6 +90,9 @@ def build_surface_map(columns, geometry, identity):
         "geometry_hash": identity["geometry_hash"],
         "map_revision": int(identity.get("map_revision", 0)),
         "epoch": int(identity.get("epoch", 0)),
+        # Validity generation the whole read chain crossed (reset contract):
+        # the planner admission binds map -> generation, not epoch alone.
+        "validity_generation": int(identity.get("validity_generation", 0)),
         "observed_revision": int(identity.get("observed_revision", 0)),
         "last_integrated_stamp_ns": int(identity.get("last_integrated_stamp_ns", 0)),
         "clock_domain": identity.get("clock_domain", ""),
@@ -120,6 +123,12 @@ def collect_columns(observer_prefix, timeout_s=5.0):
         lease = future.result()
         if lease is None or lease.status != "OK":
             raise RuntimeError("get_snapshot: %s" % (lease.status if lease else "timeout"))
+        # Reset-contract binding: the published map carries the validity
+        # generation the whole read chain crossed (lease + every page's
+        # commit check), so the planner admission can reject a page that lost
+        # a reset race even if its epoch field looks current.
+        lease_generation = lease.validity.generation
+        last_page_generation = lease_generation
         columns = []
         try:
             cursor, done = 0, False
@@ -134,6 +143,10 @@ def collect_columns(observer_prefix, timeout_s=5.0):
                 if response is None or response.status != "OK":
                     raise RuntimeError("read_surface: %s"
                                        % (response.status if response else "timeout"))
+                if response.validity.state != "VALID":
+                    raise RuntimeError("read_surface invalidated: %s"
+                                       % response.validity.state)
+                last_page_generation = response.validity.generation
                 identity = {
                     "epoch": response.identity.epoch,
                     "map_revision": response.identity.map_revision,
@@ -154,6 +167,11 @@ def collect_columns(observer_prefix, timeout_s=5.0):
                 cursor, done = response.next_cursor, response.done
         finally:
             release.call_async(ReleaseSnapshot.Request(handle=lease.handle))
+        # A page that crossed a generation change mid-walk is not one map.
+        if last_page_generation != lease_generation:
+            raise RuntimeError("validity generation changed mid-read: %s -> %s"
+                               % (lease_generation, last_page_generation))
+        identity["validity_generation"] = last_page_generation
         return columns, identity
     finally:
         node.destroy_node()
