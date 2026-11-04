@@ -1158,12 +1158,16 @@ def _ownership(client, max_samples=12, spacing_s=0.2, settle_s=0.0,
 def _validity_trace(client, mark):
     """gen4: full board transition trace (INVALID/BUILDING/VALID).
 
-    The node's server-side ring keeps only the LAST 64 events, so the live
-    subscription (running from stage start) is the primary source; a final
-    get_validity poll merges its bounded events_json as a backstop. Deduped
-    by (generation, state, transition_mono_ns) and sorted. The boot event's
-    transition_mono_ns is 0 by construction (validity.cpp) -- kept verbatim,
-    the judge tolerates and flags it, never rewrites it."""
+    The node publishes the topic only AFTER a transition settles (the reset
+    handler commits INVALID then BUILDING then publishes once -- the INVALID
+    snapshot itself is never published), and the server-side ring keeps only
+    the LAST 64 events. The collector therefore (a) subscribes the topic
+    from stage start, (b) runs a drainer thread polling get_validity every
+    2 s so the ring is emptied well before its 64-event horizon (~21
+    resets), and (c) merges a final poll. Deduped by (generation, state,
+    transition_mono_ns), sorted. The boot event's transition_mono_ns is 0
+    by construction (validity.cpp) -- kept verbatim, tolerated by the
+    judge, never rewritten."""
     from uld_occ_observer.srv import GetValidity
     events, seen = [], set()
 
@@ -1188,6 +1192,28 @@ def _validity_trace(client, mark):
     events.sort(key=lambda e: (e.get("generation") or 0,
                                e.get("transition_mono_ns") or 0))
     return events
+
+
+def _start_validity_drainer(client, stop, interval_s=2.0):
+    """Poll get_validity every `interval_s` and fold the ring's events into
+    the same accumulation the subscription writes (dedup happens in
+    _validity_trace). The ring holds ~21 resets of history; 2 s polling
+    gives two orders of margin. Responses are small (~6 KB)."""
+    from uld_occ_observer.srv import GetValidity
+
+    def drain():
+        while not stop.is_set():
+            try:
+                response = client.call(client.get_validity,
+                                       GetValidity.Request())
+                for entry in json.loads(response.events_json or "[]"):
+                    if isinstance(entry, dict):
+                        client.validity_events.append(entry)
+            except Exception:  # noqa: BLE001 - polling is best effort
+                pass
+            stop.wait(interval_s)
+
+    threading.Thread(target=drain, daemon=True).start()
 
 
 def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
@@ -1442,6 +1468,10 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
         # no collection inside the scored segment).
         trace.start_heartbeat(stop, hardening_t0_ns=t0_ns,
                               hardening_s=warmup_s)
+    # Board-transition ring drainer: the topic never carries the INVALID
+    # snapshot (published only after BUILDING settles) and the ring keeps
+    # 64 events; poll it so the trace proves all 100 resets.
+    _start_validity_drainer(client, stop)
     for worker in workers:
         worker.start()
     time.sleep(seconds)

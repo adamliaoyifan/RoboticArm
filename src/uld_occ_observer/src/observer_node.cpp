@@ -964,6 +964,15 @@ class ObserverNode : public rclcpp::Node {
             }
             out << ']';
             response->ownership_trace_json = out.str();
+            // The caller just materialized the full table (live + recent);
+            // releasing the recent history NOW bounds the trace's resident
+            // set to the inter-capture churn. Without this the recent deque
+            // fills its 4096-record cap over ~35 min (~6 MB) and pushes the
+            // L RSS growth gate over 5% (arm3: 5.84% vs run02's 0.89% with
+            // the trace off). The judge's balance is counter arithmetic and
+            // each captured table carries its own recent history, so the
+            // release-after-capture loses nothing.
+            OwnershipTrace::instance().clear_recent();
           }
         }
         response->shared_block_bytes = usage.shared_block_bytes;
