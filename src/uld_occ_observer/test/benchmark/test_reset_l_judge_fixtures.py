@@ -30,16 +30,73 @@ _ROOT = next(p for p in HERE.parents
              if (p / "docs/status/evidence").is_dir())
 REAL_L = _ROOT / "docs/status/evidence/occ_reset_validity_20261103" \
     / "integ_run02/campaign/l.json"
-#: The pristine artifact's single honest finding (kept verbatim; if this
-#: baseline ever changes, the change must be explained, not absorbed).
+
+
+#: The pristine artifact's honest findings (kept verbatim): the gen3 w59
+#: gate violation PLUS the three gen4 evidence classes the run02 collector
+#: predates (board trace, ledger loss counters, stage-end ledger table).
+#: Missing evidence is a named failure, never a silent pass.
 BASELINE_PROBLEMS = {"window_and:w59:['sched_late_max_107']",
-                     "window_and_count:1"}
+                     "window_and_count:1",
+                     "validity_trace_missing",
+                     "ledger_counters_missing",
+                     "ledger_end_table_missing"}
 
 
 def _load():
     if not REAL_L.is_file():
         pytest.skip("run02 l.json not present on this machine")
     return json.loads(REAL_L.read_text())
+
+
+def _synthetic_validity_trace(doc, drop_generation=None,
+                              shift_round_linearization=None):
+    """A well-formed trace derived from the artifact's OWN reset rounds,
+    following the board's real numbering: `generation` is a TRANSITION
+    counter (boot BUILDING=1, VALID=2, then each reset appends
+    INVALID/BUILDING/VALID at +3 generations; 100 resets -> 1..302), with
+    exactly len(rounds) INVALID events whose epochs run 2..101 and whose
+    transitions land inside their round's [called, end] window."""
+    trace = [{"generation": 1, "state": "BUILDING", "epoch": 1,
+              "reason": "boot", "reset_id": "", "transition_mono_ns": 0},
+             {"generation": 2, "state": "VALID", "epoch": 1,
+              "reason": "store_ready", "reset_id": "",
+              "transition_mono_ns": doc["reset_rounds_results"][0]
+              ["started_mono_ns"]}]
+    generation = 2
+    for index, record in enumerate(doc["reset_rounds_results"]):
+        called = record["reset_called_mono_ns"]
+        # +5 s: past the round's sampling end (~1.7 s), so the transition
+        # provably does NOT linearize inside its own round window.
+        shift = 5 * 10**9 if index + 1 == shift_round_linearization else 0
+        epoch = index + 2
+        for state, offset in (("INVALID", 5), ("BUILDING", 6), ("VALID", 7)):
+            generation += 1
+            if generation == drop_generation:
+                continue
+            trace.append({"generation": generation, "state": state,
+                          "epoch": epoch,
+                          "reason": "reset" if state == "INVALID"
+                          else "store_ready",
+                          "reset_id": "l_reset_%d" % index
+                          if state == "INVALID" else "",
+                          "transition_mono_ns": called
+                          + offset * 10**6
+                          + (shift if state == "INVALID" else 0)})
+    trace.sort(key=lambda e: (e["generation"], e["transition_mono_ns"]))
+    return trace
+
+
+def _inject_ledger_counters(doc, dropped_live=0):
+    """Put gen4 loss counters on every flat snapshot that carries class
+    fields (baseline, after, each round's nested samples get them via the
+    top-level dicts the judge walks)."""
+    doc.setdefault("baseline", {})["ownership_dropped_live"] = dropped_live
+    doc["baseline"]["ownership_allocated_total"] = 10
+    doc["baseline"]["ownership_released_total"] = 10
+    doc.setdefault("after", {})["ownership_dropped_live"] = dropped_live
+    doc["after"]["ownership_allocated_total"] = 11
+    doc["after"]["ownership_released_total"] = 11
 
 
 def _write(tmp_path, doc):
@@ -50,12 +107,12 @@ def _write(tmp_path, doc):
 
 
 def _problems_extra(verdict):
-    """Problems beyond the known honest baseline finding."""
+    """Problems beyond the known honest baseline findings."""
     return {p for p in verdict["problems"]
             if p not in BASELINE_PROBLEMS}
 
 
-def test_pristine_baseline_single_honest_finding(tmp_path):
+def test_pristine_baseline_named_gaps_plus_w59(tmp_path):
     verdict = judge_module.judge(_write(tmp_path, _load()))
     assert verdict["status"] == "fail"
     assert set(verdict["problems"]) == BASELINE_PROBLEMS
@@ -225,6 +282,107 @@ def test_missing_artifact(tmp_path):
     verdict = judge_module.judge(tmp_path / "nowhere")
     assert verdict["status"] == "fail"
     assert "missing_artifact:l.json" in verdict["problems"]
+
+
+# ---- gen4 gates: board trace continuity + ledger no-loss / no-misjudge ----
+
+def test_gen4_trace_generation_gap_fails(tmp_path):
+    doc = _load()
+    doc["validity_trace"] = _synthetic_validity_trace(doc, drop_generation=50)
+    verdict = judge_module.judge(_write(tmp_path, doc))
+    assert verdict["status"] == "fail"
+    assert any("validity_trace_generation_gap" in p
+               for p in verdict["problems"])
+
+
+def test_gen4_trace_chain_incomplete_fails(tmp_path):
+    """A missing VALID transition breaks the chain: round 29 (generation
+    3*29+5=92) never provably recovered."""
+    doc = _load()
+    trace = _synthetic_validity_trace(doc)
+    doc["validity_trace"] = [e for e in trace if e["generation"] != 92]
+    verdict = judge_module.judge(_write(tmp_path, doc))
+    assert verdict["status"] == "fail"
+    assert any("validity_trace_generation_gap" in p
+               for p in verdict["problems"])
+
+
+def test_gen4_round_linearization_unproven_fails(tmp_path):
+    """The INVALID transition must land inside its round's own window: a
+    shifted transition is a gap in the raw linearization proof."""
+    doc = _load()
+    doc["validity_trace"] = _synthetic_validity_trace(
+        doc, shift_round_linearization=41)
+    verdict = judge_module.judge(_write(tmp_path, doc))
+    assert verdict["status"] == "fail"
+    assert any("reset_round_40_linearization_unproven" in p
+               for p in verdict["problems"])
+
+
+def test_gen4_ledger_drop_fails(tmp_path):
+    doc = _load()
+    doc["validity_trace"] = _synthetic_validity_trace(doc)
+    _inject_ledger_counters(doc, dropped_live=3)
+    verdict = judge_module.judge(_write(tmp_path, doc))
+    assert verdict["status"] == "fail"
+    assert any("ledger_dropped_live:3" in p for p in verdict["problems"])
+
+
+def test_gen4_ledger_balance_break_fails(tmp_path):
+    doc = _load()
+    doc["validity_trace"] = _synthetic_validity_trace(doc)
+    _inject_ledger_counters(doc)
+    # Stage-end table disagrees with the counters by one live object.
+    doc["after"]["ownership_trace"] = [
+        {"object_class": "surface_buffer", "object_id": 9, "bytes": 72,
+         "allocated_mono_ns": 5, "released_mono_ns": 0, "handle": "",
+         "epoch": 3, "refcount": 1},
+        {"object_class": "surface_buffer", "object_id": 10, "bytes": 72,
+         "allocated_mono_ns": 6, "released_mono_ns": 0, "handle": "",
+         "epoch": 4, "refcount": 1}]
+    verdict = judge_module.judge(_write(tmp_path, doc))
+    assert verdict["status"] == "fail"
+    assert any("ledger_balance" in p or "ledger_end" in p
+               for p in verdict["problems"])
+
+
+def test_gen4_legal_holder_not_misjudged_as_leak(tmp_path):
+    """§1: the cache entry's own surface buffer LIVE at stage end, with the
+    cache entry present baseline..end, is a legal holder -- the judge must
+    NOT add a leak problem for it (the run still fails on its honest w59,
+    and on nothing ledger-related)."""
+    doc = _load()
+    doc["validity_trace"] = _synthetic_validity_trace(doc)
+    _inject_ledger_counters(doc)
+    doc["after"]["ownership_allocated_total"] = 12
+    doc["after"]["ownership_released_total"] = 11
+    doc["after"]["ownership_trace"] = [
+        {"object_class": "surface_buffer", "object_id": 11, "bytes": 72,
+         "allocated_mono_ns": 5, "released_mono_ns": 0, "handle": "",
+         "epoch": 5, "refcount": 1}]
+    # baseline/after cache entry present and equal (real data: 72 == 72).
+    verdict = judge_module.judge(_write(tmp_path, doc))
+    assert verdict["status"] == "fail"          # honest w59 stands
+    assert not any("ledger_end" in p for p in verdict["problems"])
+    assert verdict["ledger"]["end_live_surface_buffers"] == 1
+    assert verdict["ledger"]["end_live_views"] == 0
+
+
+def test_gen4_end_live_view_is_residual(tmp_path):
+    """A live VIEW at stage end (all workers joined) is a residual, not a
+    legal holder -- must be flagged."""
+    doc = _load()
+    doc["validity_trace"] = _synthetic_validity_trace(doc)
+    _inject_ledger_counters(doc)
+    doc["after"]["ownership_allocated_total"] = 12
+    doc["after"]["ownership_released_total"] = 11
+    doc["after"]["ownership_trace"] = [
+        {"object_class": "view", "object_id": 12, "bytes": 3363936,
+         "allocated_mono_ns": 5, "released_mono_ns": 0, "handle": "h",
+         "epoch": 5, "refcount": 1}]
+    verdict = judge_module.judge(_write(tmp_path, doc))
+    assert verdict["status"] == "fail"
+    assert any("ledger_end_live_views:1" in p for p in verdict["problems"])
 
 
 if __name__ == "__main__":

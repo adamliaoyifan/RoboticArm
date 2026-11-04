@@ -931,23 +931,34 @@ class ObserverNode : public rclcpp::Node {
         {
           // Per-object ownership ledger (plan §4): identity + lifecycle for
           // every live/recently-released surface buffer and view object.
-          std::ostringstream out;
-          out << '[';
-          const auto records = OwnershipTrace::instance().snapshot();
-          for (std::size_t i = 0; i < records.size(); ++i) {
-            const auto& record = records[i];
-            if (i) out << ',';
-            out << "{\"object_class\":\"" << record.object_class
-                << "\",\"object_id\":" << record.object_id
-                << ",\"bytes\":" << record.bytes
-                << ",\"allocated_mono_ns\":" << record.allocated_mono_ns
-                << ",\"released_mono_ns\":" << record.released_mono_ns
-                << ",\"handle\":\"" << record.handle
-                << "\",\"epoch\":" << record.epoch
-                << ",\"refcount\":" << record.refcount << '}';
+          // gen4: the bounded table serializes ONLY when the caller asks
+          // (the table can be hundreds of KB; the high-frequency read
+          // rounds reconcile with the cheap monotone counters below), and
+          // the loss counters are always present so a silent live-overflow
+          // drop is provable instead of invisible.
+          const auto totals = OwnershipTrace::instance().totals();
+          response->ownership_allocated_total = totals.allocated_total;
+          response->ownership_released_total = totals.released_total;
+          response->ownership_dropped_live = totals.dropped_live;
+          if (request->include_ownership_trace) {
+            std::ostringstream out;
+            out << '[';
+            const auto records = OwnershipTrace::instance().snapshot();
+            for (std::size_t i = 0; i < records.size(); ++i) {
+              const auto& record = records[i];
+              if (i) out << ',';
+              out << "{\"object_class\":\"" << record.object_class
+                  << "\",\"object_id\":" << record.object_id
+                  << ",\"bytes\":" << record.bytes
+                  << ",\"allocated_mono_ns\":" << record.allocated_mono_ns
+                  << ",\"released_mono_ns\":" << record.released_mono_ns
+                  << ",\"handle\":\"" << record.handle
+                  << "\",\"epoch\":" << record.epoch
+                  << ",\"refcount\":" << record.refcount << '}';
+            }
+            out << ']';
+            response->ownership_trace_json = out.str();
           }
-          out << ']';
-          response->ownership_trace_json = out.str();
         }
         response->shared_block_bytes = usage.shared_block_bytes;
         response->shared_block_bytes_peak = usage.shared_block_bytes_peak;

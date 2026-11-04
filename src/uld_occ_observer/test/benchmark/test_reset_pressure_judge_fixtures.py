@@ -53,9 +53,16 @@ def _save(run, name, doc):
     (run / name).write_text(json.dumps(doc))
 
 
-def test_pristine_baseline_passes(run):
+def test_pristine_baseline_gen4(run):
+    """Legacy run02 data under the gen4 judge: all mechanics recomputed and
+    green, but the three evidence classes the run02 collector never wrote
+    (offered-load identity, recovery input receipts, recovery health) are
+    NAMED failures -- evidence incomplete is never a silent pass."""
     verdict = judge_module.judge(run)
-    assert verdict["status"] == "pass", verdict["problems"]
+    assert verdict["status"] == "fail"
+    assert set(verdict["problems"]) == {"load_identity_missing",
+                                        "recovery_input_receipts_missing",
+                                        "recovery_health_missing"}
     assert verdict["frozen_rate_hz"] == 20.0
     assert verdict["first_valid_read_completion_s"] <= 2.0
 
@@ -227,6 +234,144 @@ def test_missing_sweep_raw(run):
     assert verdict["status"] == "fail"
     assert any("missing_artifact:sweep_40hz" in p
                for p in verdict["problems"])
+
+
+# ---- gen4 gates: offered-load identity, perf lock, recovery P/H -----------
+
+def _gen4_evidence(run):
+    """Bring a legacy run02 copy up to gen4 evidence completeness so the new
+    gates can be tested on their own merits."""
+    import hashlib
+    doc = _load(run, "recovery.json")
+    inputs = doc["inputs"]
+    t0 = doc["summary"]["window"]["t0_ns"]
+    receipts = []
+    for row in inputs:
+        published = row["publish_mono_ns"]
+        receipts.append({
+            "input_id": row["input_id"],
+            "receipt_status": "INTEGRATED", "receipt_count": 1,
+            "receipt_events": [{"status": "INTEGRATED",
+                                "arrival_mono_ns": published + 40 * 10**6}],
+            "receipt_arrival_mono_ns": published + 40 * 10**6})
+    doc["input_receipts"] = receipts
+    doc["health_series"] = [
+        {"stamp_ns": t0 + i * 500 * 10**6,
+         "arrival_mono_ns": t0 + i * 500 * 10**6, "epoch": 1}
+        for i in range(60)]
+    _save(run, "recovery.json", doc)
+    frames = [{"box_tag": 20, "name": "b20_f000.yaml", "sha256": "x"},
+              {"box_tag": 20, "name": "b20_f001.yaml", "sha256": "y"}]
+    (run / "load_identity.json").write_text(json.dumps({
+        "frames_manifest": frames,
+        "perf_lock": {"path": "/tmp/elfin-occ-backend-perf.lock",
+                      "wait_s": 0.0, "acquired": True}}))
+
+
+def test_gen4_full_evidence_passes(run):
+    _gen4_evidence(run)
+    verdict = judge_module.judge(run)
+    assert verdict["status"] == "pass", verdict["problems"]
+    assert verdict["load_box_tags"] == [20]
+    assert verdict["recovery_input_e2e_p95_ms"] <= 350
+
+
+def test_gen4_mixed_box_load_rejected(run):
+    _gen4_evidence(run)
+    doc = json.loads((run / "load_identity.json").read_text())
+    doc["frames_manifest"][0]["box_tag"] = 0
+    (run / "load_identity.json").write_text(json.dumps(doc))
+    verdict = judge_module.judge(run)
+    assert verdict["status"] == "fail"
+    assert any("load_identity:not_20box" in p for p in verdict["problems"])
+
+
+def test_gen4_lock_not_held_rejected(run):
+    _gen4_evidence(run)
+    doc = json.loads((run / "load_identity.json").read_text())
+    doc["perf_lock"] = {"acquired": False}
+    (run / "load_identity.json").write_text(json.dumps(doc))
+    verdict = judge_module.judge(run)
+    assert verdict["status"] == "fail"
+    assert any("perf_lock:not_recorded_as_held" in p
+               for p in verdict["problems"])
+
+
+def test_gen4_recovery_input_open_rejected(run):
+    _gen4_evidence(run)
+    doc = _load(run, "recovery.json")
+    doc["input_receipts"][10]["receipt_status"] = None
+    doc["input_receipts"][10]["receipt_events"] = []
+    _save(run, "recovery.json", doc)
+    verdict = judge_module.judge(run)
+    assert verdict["status"] == "fail"
+    assert any("recovery_inputs_open:1" in p for p in verdict["problems"])
+
+
+def test_gen4_recovery_send_late_rejected(run):
+    _gen4_evidence(run)
+    doc = _load(run, "recovery.json")
+    doc["inputs"][20]["publish_mono_ns"] += 80 * 10**6
+    _save(run, "recovery.json", doc)
+    verdict = judge_module.judge(run)
+    assert verdict["status"] == "fail"
+    assert any("recovery_send_late_max" in p for p in verdict["problems"])
+
+
+def test_gen4_recovery_health_gap_rejected(run):
+    _gen4_evidence(run)
+    doc = _load(run, "recovery.json")
+    doc["health_series"][30]["arrival_mono_ns"] += 2 * 10**9
+    doc["health_series"].sort(key=lambda s: s["arrival_mono_ns"])
+    _save(run, "recovery.json", doc)
+    verdict = judge_module.judge(run)
+    assert verdict["status"] == "fail"
+    assert any("recovery_health_gap_" in p for p in verdict["problems"])
+
+
+# ---- perf lock behavioral checks (contention + abnormal release) ----------
+
+def test_perf_lock_contention_and_release(tmp_path):
+    """A second exclusive acquisition must block (contention observed), and
+    an explicit unlock must free it again."""
+    import fcntl
+    handle, info = judge_module._perf_lock()
+    assert info["acquired"] is True
+    try:
+        path = Path(info["path"])
+        second = path.open("a+")
+        try:
+            fcntl.flock(second, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            blocked = False
+        except OSError:
+            blocked = True
+        second.close()
+        assert blocked, "second exclusive acquisition unexpectedly succeeded"
+    finally:
+        judge_module._perf_unlock(handle)
+    handle2, info2 = judge_module._perf_lock()
+    assert info2["acquired"] is True
+    judge_module._perf_unlock(handle2)
+
+
+def test_perf_lock_released_after_sigkill(tmp_path):
+    """The abnormal-release path: a holder killed with SIGKILL must leave
+    the lock reclaimable (fd closed by the OS)."""
+    import fcntl
+    import subprocess
+    code = ("import sys, time; sys.path.insert(0, %r); "
+            "import reset_pressure as J; "
+            "h, i = J._perf_lock(); "
+            "print(i['acquired'], flush=True); "
+            "time.sleep(300)" % str(HERE))
+    proc = subprocess.Popen([sys.executable, "-c", code],
+                            stdout=subprocess.PIPE, text=True)
+    assert proc.stdout.readline().strip() == "True"
+    proc.kill()
+    proc.wait(timeout=10)
+    handle, info = judge_module._perf_lock()
+    assert info["acquired"] is True
+    judge_module._perf_unlock(handle)
 
 
 if __name__ == "__main__":

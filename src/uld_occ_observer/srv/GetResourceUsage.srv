@@ -1,3 +1,7 @@
+# gen4: the per-object table serializes only when the caller asks for it
+# (read rounds reconcile with the cheap counters; baseline / reset rounds /
+# stage end request the full table). The loss counters are ALWAYS present.
+bool include_ownership_trace
 ---
 string status
 uint64 shared_block_bytes
@@ -50,4 +54,11 @@ string[] uncovered_classes
 
 # Per-object ownership ledger (live + recently released), JSON array of
 # {object_class,object_id,bytes,allocated_mono_ns,released_mono_ns,handle,epoch,refcount}.
+# Serialized ONLY when the request sets include_ownership_trace.
 string ownership_trace_json
+# Ledger loss observability (gen4): monotone counters so a bounded-table
+# overflow is provable, not silent. No-loss proof at any sample:
+#   dropped_live == 0 && allocated_total - released_total == live table size.
+uint64 ownership_allocated_total
+uint64 ownership_released_total
+uint64 ownership_dropped_live

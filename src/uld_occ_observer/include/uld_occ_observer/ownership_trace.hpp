@@ -44,6 +44,21 @@ class OwnershipTrace {
   // atomic load; enabled_ is set once by the node before traffic starts.
   void set_enabled(bool on) { enabled_.store(on, std::memory_order_release); }
 
+  // Loss observability (gen4): the live map is bounded and its overflow
+  // policy drops the OLDEST record silently -- from the record stream alone
+  // a drop is indistinguishable from a release. These monotone counters
+  // make any drop (and the alloc/release balance) visible on EVERY
+  // diagnostic call, so the judge can demand
+  //   dropped_live == 0 && allocated_total - released_total == live_count
+  // as a hard no-loss proof instead of trusting the bounded tables.
+  struct Totals {
+    std::uint64_t allocated_total{};
+    std::uint64_t released_total{};
+    std::uint64_t dropped_live{};
+    std::size_t live_count{};
+    std::size_t recent_count{};
+  };
+
   std::uint64_t allocated(const std::string& object_class, std::uint64_t bytes,
                           std::uint64_t epoch, std::string handle) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -51,7 +66,11 @@ class OwnershipTrace {
     auto& record = live_[id];
     record = OwnershipRecord{object_class, id, bytes, steady_now_ns(), 0,
                              std::move(handle), epoch, 1};
-    if (live_.size() > kMaxLive) live_.erase(live_.begin());
+    ++allocated_total_;
+    if (live_.size() > kMaxLive) {
+      live_.erase(live_.begin());
+      ++dropped_live_;
+    }
     return id;
   }
   void handle(std::uint64_t object_id, std::string handle) {
@@ -71,6 +90,7 @@ class OwnershipTrace {
       record.released_mono_ns = steady_now_ns();
       live_.erase(it);
       recent_.push_back(std::move(record));
+      ++released_total_;
       while (recent_.size() > kMaxRecent) recent_.pop_front();
     }
   }
@@ -84,6 +104,11 @@ class OwnershipTrace {
     for (const auto& [id, record] : live_) out.push_back(record);
     for (const auto& record : recent_) out.push_back(record);
     return out;
+  }
+  Totals totals() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return Totals{allocated_total_, released_total_, dropped_live_,
+                  live_.size(), recent_.size()};
   }
   void clear_recent() {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -100,6 +125,9 @@ class OwnershipTrace {
   std::map<std::uint64_t, OwnershipRecord> live_;
   std::deque<OwnershipRecord> recent_;
   std::uint64_t next_id_{};
+  std::uint64_t allocated_total_{0};
+  std::uint64_t released_total_{0};
+  std::uint64_t dropped_live_{0};
   std::atomic<bool> enabled_{false};
 };
 

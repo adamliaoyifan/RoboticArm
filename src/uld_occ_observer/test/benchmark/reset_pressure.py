@@ -173,17 +173,51 @@ def _with_queue_ms(timeline, client):
     return timeline
 
 
+def _perf_lock():
+    """s2_o9-style exclusive perf lock (blocking, wait recorded). Held for
+    the WHOLE run: node startup, offered load, sampling, drain, recovery --
+    released only after the node is stopped. The gen3 closeout recorded the
+    manual run02 R running WITHOUT the lock as a named limitation; from gen4
+    the tool self-locks and the driver releases its own fd before R."""
+    import fcntl
+    lock_path = Path("/tmp/elfin-occ-backend-perf.lock")
+    lock_path.touch()
+    handle = lock_path.open("a+")
+    waited = time.monotonic()
+    fcntl.flock(handle, fcntl.LOCK_EX)
+    return handle, {"path": str(lock_path),
+                    "wait_s": round(time.monotonic() - waited, 3),
+                    "acquired": True}
+
+
+def _perf_unlock(handle):
+    import fcntl
+    fcntl.flock(handle, fcntl.LOCK_UN)
+    handle.close()
+
+
+def _formal_frames(args):
+    """Contract offered load: the 20-box frame group ONLY, hard-failing on a
+    mixed or missing set (run02's R gate failed exactly this way and the
+    gen4 plan froze the repair)."""
+    frames = fs.load_frames(args.frames_glob)
+    groups = fs.group_frames_by_box(frames, strict=True)
+    return groups[args.box_tag]
+
+
 def sweep(args):
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    frames = fs.load_frames(args.frames_glob)
+    frames = _formal_frames(args)
+    lock_handle, lock_info = _perf_lock()
     node = fs.NodeProcess(args.node, args.geometry, args.config,
                           out / "observer.log", "/reset_pressure_cloud")
     client = fs.Client("/reset_pressure_cloud")
     import hashlib
     client.config_digest = hashlib.sha256(
         Path(args.config).read_bytes()).hexdigest()
-    results = {"mode": "sweep", "rates": [], "queue_event_ms": QUEUE_EVENT_MS}
+    results = {"mode": "sweep", "rates": [], "queue_event_ms": QUEUE_EVENT_MS,
+               "perf_lock": lock_info}
     frozen_rate = None
     try:
         client.wait_services()
@@ -224,6 +258,9 @@ def sweep(args):
         results["frozen_rate_hz"] = frozen_rate
         results["pressure_unreached"] = frozen_rate is None
         (out / "sweep_result.json").write_text(json.dumps(results, default=str))
+        (out / "load_identity.json").write_text(json.dumps({
+            "frames_manifest": fs.frames_manifest(frames),
+            "perf_lock": lock_info}, default=str))
         print(json.dumps({"frozen_rate_hz": frozen_rate,
                           "per_rate_events": [
                               {"rate": r["rate_hz"],
@@ -233,6 +270,7 @@ def sweep(args):
     finally:
         client.shutdown()
         node.stop()
+        _perf_unlock(lock_handle)
 
 
 def score(args):
@@ -242,7 +280,8 @@ def score(args):
                          "record not_evaluated instead)")
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    frames = fs.load_frames(args.frames_glob)
+    frames = _formal_frames(args)
+    lock_handle, lock_info = _perf_lock()
     node = fs.NodeProcess(args.node, args.geometry, args.config,
                           out / "observer.log", "/reset_pressure_cloud")
     client = fs.Client("/reset_pressure_cloud")
@@ -251,7 +290,9 @@ def score(args):
         Path(args.config).read_bytes()).hexdigest()
     artifact = {"mode": "score", "frozen_rate_hz": args.frozen_rate,
                 "windows": [], "recovery": None,
-                "queue_event_ms": QUEUE_EVENT_MS}
+                "queue_event_ms": QUEUE_EVENT_MS,
+                "perf_lock": lock_info}
+    health_mark = len(client.health)
     try:
         client.wait_services()
         first = frames[0]
@@ -314,6 +355,21 @@ def score(args):
                                       contract.UPDATE_HZ,
                                       args.recovery_seconds, "recovery")
         reader.join(timeout=15)
+        # Recovery input terminals: EVIDENCE COLLECTION ONLY -- bounded 5 s,
+        # run after the window closed. No request deadline moves: every
+        # planned/publish stamp was already fixed inside the window; this
+        # only joins the receipt rows onto them.
+        recovery_receipts = fs.receipt_timeline(
+            client, recovery_window["inputs"], timeout_s=5.0)
+        # Health over the whole scored sequence (windows + recovery): the
+        # Client subscription is live; project like stage_l does.
+        health_series = [
+            {"stamp_ns": sample.get("stamp_ns"),
+             "arrival_mono_ns": sample.get("arrival_mono_ns"),
+             "epoch": sample.get("epoch")}
+            for sample in client.health[health_mark:]
+            if isinstance(sample, dict)
+            and isinstance(sample.get("stamp_ns"), int)]
         artifact["recovery"] = {
             "t0_ns": recovery_t0_ns, "first_read": first_read,
             "window": {k: v for k, v in recovery_window.items()
@@ -325,7 +381,9 @@ def score(args):
         (out / "recovery.json").write_text(json.dumps(
             {"summary": artifact["recovery"],
              "queries": recovery_window.get("queries"),
-             "inputs": recovery_window.get("inputs")}, default=str))
+             "inputs": recovery_window.get("inputs"),
+             "input_receipts": recovery_receipts,
+             "health_series": health_series}, default=str))
         (out / "pressure_score.json").write_text(json.dumps(
             artifact, default=str))
         # Load identity binding (post-hoc lesson from run02: the offered-load
@@ -334,6 +392,7 @@ def score(args):
         import hashlib as _hashlib
         (out / "load_identity.json").write_text(json.dumps({
             "frames_manifest": fs.frames_manifest(frames),
+            "perf_lock": lock_info,
             "node_sha256": _hashlib.sha256(
                 Path(args.node).read_bytes()).hexdigest(),
             "geometry_sha256": _hashlib.sha256(
@@ -349,6 +408,7 @@ def score(args):
     finally:
         client.shutdown()
         node.stop()
+        _perf_unlock(lock_handle)
 
 
 def _finite(value):
@@ -444,6 +504,28 @@ def judge(run: Path, expected_windows=3, window_s=60.0,
             problems.append("freeze_rule_mismatch:cap_hz")
     else:
         problems.append("freeze_binding_missing:FREEZE_INTEG.json")
+
+    # ---- offered-load identity + perf lock (gen4 gates; missing = evidence
+    # incomplete, never a silent pass -- run02's R failed exactly here) -----
+    load_path = run / "load_identity.json"
+    if not load_path.is_file():
+        problems.append("load_identity_missing")
+    else:
+        load = json.loads(load_path.read_text())
+        manifest = load.get("frames_manifest") or []
+        if not manifest:
+            problems.append("load_identity:frames_manifest_missing")
+        bad_tags = sorted({entry.get("box_tag") for entry in manifest}
+                          - {20})
+        if bad_tags:
+            problems.append("load_identity:not_20box:%s" % bad_tags)
+        verdict["load_box_tags"] = sorted(
+            {entry.get("box_tag") for entry in manifest})
+        lock_record = load.get("perf_lock")
+        verdict["perf_lock"] = lock_record
+        if not isinstance(lock_record, dict) \
+                or lock_record.get("acquired") is not True:
+            problems.append("perf_lock:not_recorded_as_held")
 
     # ---- scored windows: recompute from score_w{i}.json --------------------
     score_summary_path = run / "pressure_score.json"
@@ -571,6 +653,63 @@ def judge(run: Path, expected_windows=3, window_s=60.0,
                   if r.get("status") not in NORMAL_QUERY_OK]
     if bad_status:
         problems.append("recovery_bad_status:%s" % bad_status[:5])
+    # Inherited P/H gates on the recovery INPUTS: per-ID terminal closure
+    # (receipt rows joined by input_id -- evidence the run02 collector never
+    # wrote), send lateness, and e2e. Deadlines stay the in-window planned
+    # stamps; the collector's 5 s post-window evidence wait moves nothing.
+    rec_receipts = recovery.get("input_receipts")
+    if not isinstance(rec_receipts, list) or not rec_receipts:
+        problems.append("recovery_input_receipts_missing")
+    else:
+        by_id = {}
+        for row in rec_receipts:
+            by_id.setdefault(row.get("input_id"), []).append(row)
+        open_inputs = [row.get("input_id") for row in rec_inputs
+                       if not any(r.get("receipt_status")
+                                  for r in by_id.get(row.get("input_id"),
+                                                     []))]
+        if open_inputs:
+            problems.append("recovery_inputs_open:%d" % len(open_inputs))
+        send_late, e2e = [], []
+        for row in rec_inputs:
+            published, planned = (row.get("publish_mono_ns"),
+                                  row.get("planned_mono_ns"))
+            if not isinstance(published, int) or not isinstance(planned, int):
+                problems.append("recovery_input_boundaries_missing")
+                continue
+            send_late.append((published - planned) / 1e6)
+            arrivals = [r.get("receipt_arrival_mono_ns")
+                        for r in by_id.get(row.get("input_id"), [])
+                        if isinstance(r.get("receipt_arrival_mono_ns"), int)]
+            if arrivals:
+                e2e.append((max(arrivals) - published) / 1e6)
+        if send_late:
+            if _p95(send_late) > 20.0:
+                problems.append("recovery_send_late_p95:%.1f"
+                                % _p95(send_late))
+            if max(send_late) > 50.0:
+                problems.append("recovery_send_late_max:%.1f"
+                                % max(send_late))
+        if e2e:
+            if _p95(e2e) > 350.0:
+                problems.append("recovery_e2e_p95:%.1f" % _p95(e2e))
+            if max(e2e) > 500.0:
+                problems.append("recovery_e2e_max:%.1f" % max(e2e))
+        verdict["recovery_input_e2e_p95_ms"] = _p95(e2e)
+    # Recovery health liveness (the Client subscription is live; the gen4
+    # collector projects it). Missing series = evidence incomplete.
+    rec_health = recovery.get("health_series")
+    if not isinstance(rec_health, list) or not rec_health:
+        problems.append("recovery_health_missing")
+    else:
+        gaps = [(b.get("arrival_mono_ns") - a.get("arrival_mono_ns")) / 1e9
+                for a, b in zip(rec_health, rec_health[1:])
+                if isinstance(a.get("arrival_mono_ns"), int)
+                and isinstance(b.get("arrival_mono_ns"), int)]
+        verdict["recovery_health_gap_max_s"] = round(max(gaps), 3) if gaps \
+            else None
+        if gaps and max(gaps) >= 1.0:
+            problems.append("recovery_health_gap_%.2fs" % max(gaps))
     latencies = []
     for row in rec_queries:
         started, planned, ended = (row.get("started_mono_ns"),
@@ -665,6 +804,10 @@ def main():
     parser.add_argument("--config", default=None)
     parser.add_argument("--frames-glob", default=None)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--box-tag", type=int, default=20,
+                        help="offered-load box count (contract R row: 20-box "
+                             "frames; the group is strict -- a mixed or "
+                             "missing set aborts instead of falling back)")
     parser.add_argument("--frozen-rate", type=float, default=None)
     parser.add_argument("--windows", type=int, default=3)
     parser.add_argument("--window-seconds", type=float, default=60.0)

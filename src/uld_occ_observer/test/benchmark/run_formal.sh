@@ -142,12 +142,16 @@ if [ -z "$STOPPED_AT" ]; then
   if ! run_stage phl "$PHL_BUDGET_S" env OCC_FS_SCORE_OPEN=1 \
     python3 "$BENCH/freespace_campaign.py" \
     --node "$NODE" --eval-native "$EVAL" --frames-glob "$FRAMES" \
-    --out "$ROOT/campaign" --stages p,l --formal; then
+    --out "$ROOT/campaign" --stages p,l --formal --ownership-trace; then
     [ -n "$STOPPED_AT" ] || stop_here phl "phl_failed"
   fi
 fi
 
 # --- R pressure (sweep -> frozen rate -> 3 scored windows + recovery) --------
+# reset_pressure takes the perf lock ITSELF (whole-run coverage: node + load
+# + sampling); release the driver's fd first or the tool blocks forever on
+# the same flock file (the O9 lesson, applied in reverse).
+if [ -e /proc/$$/fd/9 ]; then exec 9>&-; fi
 if [ -z "$STOPPED_AT" ]; then
   if ! run_stage r_sweep "$((R_BUDGET_S / 3))" python3 "$BENCH/reset_pressure.py" --mode sweep \
     --node "$NODE" --geometry "$GEOM" --config "$CONF" --frames-glob "$FRAMES" \

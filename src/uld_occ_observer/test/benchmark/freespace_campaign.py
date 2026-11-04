@@ -22,6 +22,7 @@ Stages (each optional, failures do not auto-continue dependents):
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import os
 import signal
@@ -40,6 +41,144 @@ from live_schedule import cloud_from_frame  # noqa: E402
 
 FIXTURES = Path("/home/adamliao/work/elfin_humble_ws/docs/status/evidence/"
                 "occ_o6_o7_20261029/run01/fixtures")
+
+
+# ---------------------------------------------------------------------------
+# Opt-in scheduler forensics (--trace-sched / --pin-client / --gc-hardening).
+#
+# Purpose: the run02 L record contains exactly one 107.1 ms late query START in
+# 14,402 deadlines (client-side, two client threads resumed at the same
+# instant). These switches decompose every deadline-loop wakeup into
+# sleep-lag vs post-wake lag, with INDEPENDENT witnesses -- a 50 ms heartbeat
+# thread (catches a freeze even when no thread has a deadline due), gc pause
+# pairs, and executor-callback durations -- so a reproduced event can be
+# classified: OS freeze vs GIL hold vs GC vs server queueing. OFF by default;
+# judged fields are never touched; the trace lands in sched_trace.json beside
+# the stage artifact. None of this changes any gate, threshold, or the
+# contract's no-CPU-affinity environment: --pin-client is a LOCALIZATION arm
+# only; formal use of affinity requires a new contract version.
+# ---------------------------------------------------------------------------
+SCHED_TRACE = None
+GC_HARDENING = False
+
+
+class SchedTrace:
+    """Collects wakeup decompositions, gc pauses, heartbeat gaps."""
+
+    def __init__(self, min_overshoot_ms=5.0, heartbeat_ms=50, gap_ms=10.0):
+        self.rows = []
+        self.gc_pauses = []
+        self.heartbeat_gaps = []
+        self.callbacks = []
+        self.min_overshoot_ms = min_overshoot_ms
+        self.heartbeat_ms = heartbeat_ms
+        self.gap_ms = gap_ms
+        self._gc_t0 = None
+        self._gc_registered = False
+        self.meta = {"switch_interval_s": sys.getswitchinterval(),
+                     "affinity": None,
+                     "started_mono_ns": time.monotonic_ns()}
+
+    def wake(self, tag, deadline_ns, wake_ns, started_ns):
+        """One deadline wakeup: overshoot split into sleep-lag vs post-wake.
+
+        sleep_lag > 0 means the sleep returned late (OS/deschedule); a large
+        post_wake_lag with small sleep_lag means the thread was awake but
+        waited for the GIL between the wake stamp and the started stamp."""
+        overshoot_ms = (started_ns - deadline_ns) / 1e6
+        if overshoot_ms < self.min_overshoot_ms:
+            return
+        self.rows.append({
+            "tag": tag,
+            "deadline_mono_ns": deadline_ns,
+            "wake_mono_ns": wake_ns,
+            "started_mono_ns": started_ns,
+            "overshoot_ms": round(overshoot_ms, 3),
+            "sleep_lag_ms": round((wake_ns - deadline_ns) / 1e6, 3),
+            "post_wake_lag_ms": round((started_ns - wake_ns) / 1e6, 3)})
+
+    def slow_callback(self, tag, started_ns, ended_ns):
+        if (ended_ns - started_ns) / 1e6 >= self.min_overshoot_ms:
+            self.callbacks.append({
+                "tag": tag, "started_mono_ns": started_ns,
+                "ended_mono_ns": ended_ns,
+                "duration_ms": round((ended_ns - started_ns) / 1e6, 3)})
+
+    def _on_gc(self, phase, info):
+        if phase == "start":
+            self._gc_t0 = time.perf_counter_ns()
+        elif self._gc_t0 is not None:
+            pause_ms = (time.perf_counter_ns() - self._gc_t0) / 1e6
+            # Gen-0 collections run thousands of times per minute at ~50 us;
+            # only pauses that could matter against a 50 ms deadline gate are
+            # kept, or the 120-min trace would hold ~150k noise rows.
+            if pause_ms >= 1.0:
+                self.gc_pauses.append({
+                    "pause_ms": round(pause_ms, 3),
+                    "generation": info.get("generation"),
+                    "at_perf_ns": self._gc_t0})
+            self._gc_t0 = None
+
+    def install_gc(self):
+        if not self._gc_registered:
+            gc.callbacks.append(self._on_gc)
+            self._gc_registered = True
+
+    def start_heartbeat(self, stop, hardening_t0_ns=None, hardening_s=None):
+        """Independent freeze witness; also drives --gc-hardening schedule.
+
+        The heartbeat sleeps a fixed 50 ms tick; any tick that lands late by
+        >= gap_ms is recorded -- it has no deadline of its own to miss, so a
+        gap here is direct evidence the whole process stopped running. With
+        --gc-hardening it freezes the heap at warmup end, disables automatic
+        collection for the scored segment, and collects once per 120 s.
+        """
+
+        def beat():
+            last = time.monotonic_ns()
+            hardened = False
+            last_collect = None
+            while not stop.is_set():
+                stop.wait(self.heartbeat_ms / 1e3)
+                now = time.monotonic_ns()
+                gap_ms = (now - last) / 1e6 - self.heartbeat_ms
+                if gap_ms >= self.gap_ms:
+                    self.heartbeat_gaps.append(
+                        {"at_mono_ns": now, "gap_ms": round(gap_ms, 1),
+                         "sleep_lag_ms": round(gap_ms, 1)})
+                last = now
+                if GC_HARDENING:
+                    if not hardened and hardening_t0_ns is not None \
+                            and now >= hardening_t0_ns + hardening_s * 10**9:
+                        gc.collect()
+                        gc.freeze()
+                        gc.disable()
+                        hardened = True
+                        self.meta["gc_hardening_at_mono_ns"] = now
+                    elif hardened and (last_collect is None
+                                       or now >= last_collect):
+                        last_collect = now + 120 * 10**9
+                        gc.collect()
+
+        threading.Thread(target=beat, daemon=True).start()
+
+    def dump(self, out_dir):
+        doc = {"meta": self.meta, "rows": self.rows,
+               "gc_pauses": self.gc_pauses,
+               "heartbeat_gaps": self.heartbeat_gaps,
+               "callbacks": self.callbacks,
+               "counts": {"rows": len(self.rows),
+                          "gc_pauses": len(self.gc_pauses),
+                          "heartbeat_gaps": len(self.heartbeat_gaps),
+                          "slow_callbacks": len(self.callbacks)}}
+        out = Path(out_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "sched_trace.json").write_text(json.dumps(doc, indent=1))
+        return doc
+
+
+def _trace():
+    return SCHED_TRACE
 
 
 def load_frames(path_glob):
@@ -74,20 +213,45 @@ def frames_manifest(frames):
     return manifest
 
 
+def group_frames_by_box(frames, strict=False):
+    """Group loaded frames by their bNN box tag.
+
+    Wiring mode keeps the historical fallback (an untagged set maps every
+    box count to the whole list so short rehearsals still run). With
+    strict=True an empty group for any contract box count RAISES instead of
+    falling back: a formal offered load must never silently run a mixed or
+    missing frame set (the run02 R gate failed exactly this way)."""
+    groups = {}
+    for box_count in contract.P_BOX_COUNTS:
+        tagged = [frame for frame in frames
+                  if isinstance(frame, dict)
+                  and frame.get("_box_tag") == box_count]
+        if strict and not tagged:
+            raise SystemExit(
+                "frames for box_count=%s missing from the glob; refusing to "
+                "fall back to a mixed load (strict=formal workload identity)"
+                % box_count)
+        groups[box_count] = tagged or frames
+    return groups
+
+
 class NodeProcess:
-    def __init__(self, binary, geometry, config, log_path, cloud_topic):
+    def __init__(self, binary, geometry, config, log_path, cloud_topic,
+                 extra_params=()):
         self.log = open(log_path, "w")
         env = os.environ.copy()
         install_lib = Path(binary).resolve().parent.parent.parent / "lib"
         env["LD_LIBRARY_PATH"] = "%s:%s" % (install_lib, env.get("LD_LIBRARY_PATH", ""))
+        params = ["-p", "geometry_file:=%s" % geometry,
+                  "-p", "config_file:=%s" % config,
+                  "-p", "input_mode:=subscription",
+                  "-p", "cloud_topic:=%s" % cloud_topic,
+                  "-p", "optical_frame:=d555_color_optical_frame",
+                  "-p", "sensor_id:=d555"]
+        for item in extra_params:
+            params += ["-p", item]
         self.proc = subprocess.Popen(
-            [binary, "--ros-args",
-             "-p", "geometry_file:=%s" % geometry,
-             "-p", "config_file:=%s" % config,
-             "-p", "input_mode:=subscription",
-             "-p", "cloud_topic:=%s" % cloud_topic,
-             "-p", "optical_frame:=d555_color_optical_frame",
-             "-p", "sensor_id:=d555"],
+            [binary, "--ros-args", *params],
             stdout=self.log, stderr=subprocess.STDOUT, env=env,
             start_new_session=True)
 
@@ -135,6 +299,14 @@ class Client:
         from std_msgs.msg import String
         self.node.create_subscription(
             String, "/uld_occ_observer/health", self._health, 32)
+        # gen4: the latched validity topic carries every board transition
+        # (INVALID/BUILDING/VALID with generation/epoch + mono stamps). The
+        # node keeps only the last 64 events server-side, so the collector
+        # subscribes from stage start and accumulates incrementally; a final
+        # get_validity poll merges/dedupes as a backstop.
+        self.validity_events = []
+        self.node.create_subscription(
+            String, "/uld_occ_observer/validity", self._validity, 64)
         self.wait = self._client(WaitSnapshot, "wait_snapshot")
         self.get_snapshot = self._client(GetSnapshot, "get_snapshot")
         self.freespace = self._client(QueryFreespace, "query_freespace")
@@ -142,6 +314,8 @@ class Client:
         self.status = self._client(GetObservationStatus, "get_observation_status")
         self.reset = self._client(ResetObservation, "reset_observation")
         self.resource = self._client(GetResourceUsage, "get_resource_usage")
+        from uld_occ_observer.srv import GetValidity
+        self.get_validity = self._client(GetValidity, "get_validity")
         self._tf = StaticTransformBroadcaster(self.node)
         self.tf_frame = TransformStamped()
         self.tf_frame.header.frame_id = "container_link"
@@ -160,8 +334,9 @@ class Client:
         # product's own segment timers ride along (queue/preparation/
         # preprocessing/fusion/total) so a slow input decomposes into its
         # server-side stages instead of one opaque number.
+        cb_t0 = time.monotonic_ns()
         self.receipts.append({
-            "arrival_mono_ns": time.monotonic_ns(),
+            "arrival_mono_ns": cb_t0,
             "status": message.status,
             "observation_id": message.observation_id,
             "input_stamp_ns": message.input_stamp_ns,
@@ -175,12 +350,25 @@ class Client:
             "map_revision": message.identity.map_revision,
             "observed_revision": message.identity.observed_revision,
         })
+        trace = _trace()
+        if trace is not None:
+            trace.slow_callback("receipt", cb_t0, time.monotonic_ns())
 
     def _health(self, message):
+        cb_t0 = time.monotonic_ns()
+        entry = yaml.safe_load(message.data)
+        if isinstance(entry, dict):
+            entry["arrival_mono_ns"] = cb_t0
+        self.health.append(entry)
+        trace = _trace()
+        if trace is not None:
+            trace.slow_callback("health", cb_t0, time.monotonic_ns())
+
+    def _validity(self, message):
         entry = yaml.safe_load(message.data)
         if isinstance(entry, dict):
             entry["arrival_mono_ns"] = time.monotonic_ns()
-        self.health.append(entry)
+            self.validity_events.append(entry)
 
     def broadcast_tf(self, translation):
         self.tf_frame.transform.translation.x = float(translation[0])
@@ -468,10 +656,15 @@ def send_inputs(client, frames, count, hz, t0_ns, base_stamp):
         now = time.monotonic_ns()
         if now < deadline:
             time.sleep((deadline - now) / 1e9)
+        wake_ns = time.monotonic_ns()
         client.cloud.publish(cloud)
+        published_ns = time.monotonic_ns()
+        trace = _trace()
+        if trace is not None:
+            trace.wake("send_inputs", deadline, wake_ns, published_ns)
         records.append({"index": index, "stamp_ns": stamp,
                         "planned_mono_ns": deadline,
-                        "publish_mono_ns": time.monotonic_ns(),
+                        "publish_mono_ns": published_ns,
                         "input_id": str(stamp)})
     return records
 
@@ -559,7 +752,11 @@ def run_queries(client, count, hz, t0_ns):
         now = time.monotonic_ns()
         if now < deadline:
             time.sleep((deadline - now) / 1e9)
+        wake_ns = time.monotonic_ns()
         started = time.monotonic_ns()
+        trace = _trace()
+        if trace is not None:
+            trace.wake("run_queries", deadline, wake_ns, started)
         result = full_query(client, box)
         records.append({"index": index, "box": list(box),
                         "planned_mono_ns": deadline,
@@ -899,7 +1096,8 @@ def _acquire_real_lease(client, max_age_ms, deadline_s):
 
 
 def _ownership(client, max_samples=12, spacing_s=0.2, settle_s=0.0,
-               target=None, target_field="view_directory_entries"):
+               target=None, target_field="view_directory_entries",
+               include_trace=False):
     """Adaptive ownership measurement: sample the FULL resource snapshot
     until the expected residual appears (or the budget runs out) and keep
     EVERY sample with its timestamp. Mid-soak the node transiently carries
@@ -911,9 +1109,21 @@ def _ownership(client, max_samples=12, spacing_s=0.2, settle_s=0.0,
     if settle_s:
         time.sleep(settle_s)
     samples = []
-    for _ in range(max_samples):
-        samples.append(_resource_snapshot(
-            client.call(client.resource, _resource_request())))
+    for index in range(max_samples):
+        # gen4: the FIRST sample of an on-demand reconciliation round also
+        # carries the per-object ledger table; every sample carries the
+        # cheap loss counters (RESOURCE_FIELDS).
+        include = include_trace and index == 0
+        response = client.call(client.resource,
+                               _resource_request(include_trace=include))
+        sample = _resource_snapshot(response)
+        if include:
+            table = _parse_ownership_trace(response)
+            if isinstance(table, list):
+                sample["ownership_trace"] = table
+                sample["ownership_live_count"] = sum(
+                    1 for record in table if not record.get("released_mono_ns"))
+        samples.append(sample)
         if target is not None \
                 and samples[-1].get(target_field) <= target:
             break
@@ -923,6 +1133,41 @@ def _ownership(client, max_samples=12, spacing_s=0.2, settle_s=0.0,
     fields["view_directory_entries_samples"] = [
         sample["view_directory_entries"] for sample in samples]
     return fields
+
+
+def _validity_trace(client, mark):
+    """gen4: full board transition trace (INVALID/BUILDING/VALID).
+
+    The node's server-side ring keeps only the LAST 64 events, so the live
+    subscription (running from stage start) is the primary source; a final
+    get_validity poll merges its bounded events_json as a backstop. Deduped
+    by (generation, state, transition_mono_ns) and sorted. The boot event's
+    transition_mono_ns is 0 by construction (validity.cpp) -- kept verbatim,
+    the judge tolerates and flags it, never rewrites it."""
+    from uld_occ_observer.srv import GetValidity
+    events, seen = [], set()
+
+    def add(entry):
+        if not isinstance(entry, dict):
+            return
+        key = (entry.get("generation"), entry.get("state"),
+               entry.get("transition_mono_ns"))
+        if key in seen:
+            return
+        seen.add(key)
+        events.append(entry)
+
+    for entry in client.validity_events[mark:]:
+        add(entry)
+    try:
+        response = client.call(client.get_validity, GetValidity.Request())
+        for entry in json.loads(response.events_json or "[]"):
+            add(entry)
+    except Exception:  # noqa: BLE001 -- the subscription trace stands alone
+        pass
+    events.sort(key=lambda e: (e.get("generation") or 0,
+                               e.get("transition_mono_ns") or 0))
+    return events
 
 
 def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
@@ -944,6 +1189,7 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
     t0 = readiness(client, frames)
     t0_ns = time.monotonic_ns()
     health_mark = len(client.health)
+    validity_mark = len(client.validity_events)
     base_stamp = int(time.time() * 1e9)
     warmup_s = contract.L_WARMUP_S if formal else min(10.0, seconds / 2.0)
     stop = threading.Event()
@@ -985,7 +1231,8 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
                                        getattr(client, "config_digest", ""))
         baseline_holder.update(_ownership(
             client, max_samples=12, target=0,
-            target_field="lease_view_directory_entries"))
+            target_field="lease_view_directory_entries",
+            include_trace=True))
         baseline_holder["binding"] = binding
         baseline_ready.set()
 
@@ -1003,12 +1250,17 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
             now = time.monotonic_ns()
             if now < deadline:
                 time.sleep((deadline - now) / 1e9)
+            wake_ns = time.monotonic_ns()
             client.cloud.publish(cloud)
+            published_ns = time.monotonic_ns()
+            trace = _trace()
+            if trace is not None:
+                trace.wake("l_input", deadline, wake_ns, published_ns)
             with lock:
                 input_records.append({
                     "index": index, "stamp_ns": stamp, "input_id": str(stamp),
                     "planned_mono_ns": deadline,
-                    "publish_mono_ns": time.monotonic_ns()})
+                    "publish_mono_ns": published_ns})
             index += 1
             if deadline < time.monotonic_ns() - int(5e9):
                 send_errors.append("sender_fell_behind_at_%d" % index)
@@ -1021,8 +1273,12 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
             now = time.monotonic_ns()
             if now < deadline:
                 time.sleep((deadline - now) / 1e9)
+            wake_ns = time.monotonic_ns()
             box = contract.F_BOXES[index % 2]
             started = time.monotonic_ns()
+            trace = _trace()
+            if trace is not None:
+                trace.wake("l_query", deadline, wake_ns, started)
             result = full_query(client, box)
             with lock:
                 query_records.append(
@@ -1099,8 +1355,11 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
                 record["reset_status"] = response.status
                 if response.status == "OK":
                     epoch = response.epoch
-                record["ownership_after_reset"] = _resource_snapshot(
-                    client.call(client.resource, _resource_request()))
+                response = client.call(client.resource,
+                                       _resource_request(include_trace=True))
+                record["ownership_after_reset"] = _resource_snapshot(response)
+                record["ownership_after_reset"]["ownership_trace"] = \
+                    _parse_ownership_trace(response)
             finally:
                 if lease is not None:
                     try:
@@ -1112,7 +1371,8 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
             record["epoch"] = epoch
             record["ownership_after"] = _ownership(
                 client, settle_s=1.5, max_samples=12, target=0,
-                target_field="lease_view_directory_entries")
+                target_field="lease_view_directory_entries",
+                include_trace=True)
             with lock:
                 reset_rounds_results.append(record)
 
@@ -1126,6 +1386,12 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
                threading.Thread(target=sustained), threading.Thread(target=queries),
                threading.Thread(target=reader), threading.Thread(target=resetter),
                threading.Thread(target=rss_sampler)]
+    trace = _trace()
+    if trace is not None:
+        # Independent freeze witness (50 ms tick, no deadline of its own) +
+        # the --gc-hardening schedule anchor (freeze/disable at warmup end).
+        trace.start_heartbeat(stop, hardening_t0_ns=t0_ns,
+                              hardening_s=warmup_s)
     for worker in workers:
         worker.start()
     time.sleep(seconds)
@@ -1159,15 +1425,23 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
     # Stage end: every worker joined; let the last integration's transient
     # old-view tail drain, then measure adaptively back to the baseline.
     after = _ownership(client, settle_s=0.6, target=0,
-                       target_field="lease_view_directory_entries")
+                       target_field="lease_view_directory_entries",
+                       include_trace=True)
     artifact["after"] = after
+    artifact["validity_trace"] = _validity_trace(client, validity_mark)
+    if trace is not None:
+        artifact["sched_trace_counts"] = trace.dump(out_dir)["counts"]
     (out_dir / "l.json").write_text(json.dumps(artifact, indent=1))
     return artifact
 
 
-def _resource_request():
+def _resource_request(include_trace=False):
     from uld_occ_observer.srv import GetResourceUsage
-    return GetResourceUsage.Request()
+    request = GetResourceUsage.Request()
+    # gen4: read rounds reconcile with the always-present loss counters;
+    # only baseline / reset rounds / stage end ask for the full table.
+    request.include_ownership_trace = bool(include_trace)
+    return request
 
 
 # Every scalar field of GetResourceUsage, captured whole: the per-owner
@@ -1186,7 +1460,22 @@ RESOURCE_FIELDS = (
     "inflight_response_bytes", "inflight_response_bytes_peak",
     "read_view_bytes", "read_view_bytes_peak",
     "cache_bytes", "cache_bytes_peak", "read_view_cache_bytes_peak",
-    "store_tree_bytes", "uncovered_allocations", "certification")
+    "store_tree_bytes", "uncovered_allocations", "certification",
+    # gen4 ledger loss counters (present on every call; the no-loss proof
+    # is dropped_live == 0 && allocated - released == live table size).
+    "ownership_allocated_total", "ownership_released_total",
+    "ownership_dropped_live")
+
+
+def _parse_ownership_trace(response):
+    """The on-demand per-object table, parsed defensively (empty when the
+    request did not ask for it)."""
+    raw = getattr(response, "ownership_trace_json", "") or ""
+    try:
+        records = json.loads(raw) if raw.strip() else []
+    except ValueError:
+        return {"parse_error": True, "raw_len": len(raw)}
+    return records if isinstance(records, list) else {"parse_error": True}
 
 
 def _resource_snapshot(response):
@@ -1232,7 +1521,40 @@ def main():
                         help="run contract counts (P 300/240 x9, R 600/30/75, "
                              "L 120 min); the same source powers the rehearsal "
                              "and the closed score entry")
+    parser.add_argument("--trace-sched", action="store_true",
+                        help="opt-in scheduler forensics: wakeup decomposition "
+                             "per deadline loop + 50 ms heartbeat witness + gc "
+                             "pause pairs + callback durations -> "
+                             "sched_trace.json. Localization only; judged "
+                             "fields are never touched.")
+    parser.add_argument("--pin-client", default=None,
+                        help="comma CPU list for sched_setaffinity of the "
+                             "CLIENT process, e.g. '4,5'. LOCALIZATION arm "
+                             "only -- the frozen contract environment is "
+                             "no-CPU-affinity; formal use needs a new "
+                             "contract version.")
+    parser.add_argument("--ownership-trace", action="store_true",
+                        help="launch the node with ownership_trace:=true and "
+                             "capture the per-object ledger (baseline / reset "
+                             "rounds / stage end carry the full table; every "
+                             "resource sample carries the loss counters). "
+                             "The gen4 L judge REQUIRES this evidence.")
+    parser.add_argument("--gc-hardening", action="store_true",
+                        help="gc.freeze() at warmup end + gc.disable() for "
+                             "the scored segment + one collect per 120 s "
+                             "(driven by the trace heartbeat thread). "
+                             "Localization/exclusion arm only.")
     args = parser.parse_args()
+    global SCHED_TRACE, GC_HARDENING
+    if args.trace_sched:
+        SCHED_TRACE = SchedTrace()
+        SCHED_TRACE.install_gc()
+    GC_HARDENING = args.gc_hardening
+    if args.pin_client:
+        cpus = sorted(int(value) for value in args.pin_client.split(","))
+        os.sched_setaffinity(0, cpus)
+        if SCHED_TRACE is not None:
+            SCHED_TRACE.meta["affinity"] = cpus
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     frames = load_frames(args.frames_glob)
@@ -1240,14 +1562,12 @@ def main():
         raise SystemExit("no frames matched %s" % args.frames_glob)
     # Prefer per-box-count groups when the glob carries the bNN tag; the
     # fallback keeps any frame set usable for wiring.
-    frames_by_box = {}
-    for box_count in contract.P_BOX_COUNTS:
-        tagged = [frame for frame in frames
-                  if isinstance(frame, dict) and frame.get("_box_tag") == box_count]
-        frames_by_box[box_count] = tagged or frames
+    frames_by_box = group_frames_by_box(frames)
     started = time.monotonic()
     node = NodeProcess(args.node, args.geometry, args.config,
-                       out / "observer.log", "/freespace_campaign_cloud")
+                       out / "observer.log", "/freespace_campaign_cloud",
+                       extra_params=("ownership_trace:=true",)
+                       if args.ownership_trace else ())
     client = Client("/freespace_campaign_cloud")
     import hashlib
     client.config_digest = hashlib.sha256(

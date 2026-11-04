@@ -155,6 +155,53 @@ def judge(run: Path):
     warmup_end = t0 + int(contract.L_WARMUP_S * 1e9)
     score_end = t0 + int(contract.L_DURATION_S * 1e9)
 
+    # ---- gen4: board transition trace (hard evidence requirement) ----------
+    # The node's server ring keeps only 64 events; the collector subscribes
+    # from stage start. A formal gen4 artifact MUST carry the full trace;
+    # a gap or a missing trace is evidence-incomplete = fail, never a
+    # degraded pass. NOTE the board's `generation` is a TRANSITION counter
+    # (every state change +1: boot BUILDING=1, VALID=2, reset INVALID=3,
+    # BUILDING=4, VALID=5, ...): 100 resets span generations 1..302 with
+    # exactly 100 INVALID events whose epochs advance 2..101 in order. The
+    # boot event's transition_mono_ns==0 is tolerated (flagged), never
+    # rewritten.
+    validity_trace = d.get("validity_trace")
+    invalid_events = []
+    if not isinstance(validity_trace, list) or not validity_trace:
+        problems.append("validity_trace_missing")
+    else:
+        generations = []
+        for event in validity_trace:
+            generation = event.get("generation")
+            state = event.get("state")
+            if not isinstance(generation, int) or not isinstance(state, str):
+                problems.append("validity_trace_row_bad")
+                continue
+            generations.append(generation)
+            if state == "INVALID":
+                invalid_events.append(event)
+        generations.sort()
+        if generations != list(range(1, len(generations) + 1)):
+            problems.append("validity_trace_generation_gap:%d..%d(%d rows)"
+                            % (generations[0] if generations else -1,
+                               generations[-1] if generations else -1,
+                               len(generations)))
+        ordered = sorted(validity_trace,
+                         key=lambda e: e.get("generation") or 0)
+        for prev, nxt in zip(ordered, ordered[1:]):
+            if nxt.get("epoch") < prev.get("epoch"):
+                problems.append("validity_trace_epoch_regression:g%s"
+                                % nxt.get("generation"))
+                break
+        if len(invalid_events) != len(rr):
+            problems.append("validity_trace_invalid_count:%d!=%d"
+                            % (len(invalid_events), len(rr)))
+        for index, event in enumerate(invalid_events):
+            if event.get("epoch") != index + 2:
+                problems.append("validity_trace_invalid_epoch_%d:%s"
+                                % (index, event.get("epoch")))
+                break
+
     # ---- frames / workload identity (item 2) -------------------------------
     manifest = d.get("frames_manifest") or []
     if not manifest:
@@ -168,6 +215,7 @@ def judge(run: Path):
     # ---- reset rounds: linearization windows + per-round lifecycle ----------
     windows = []          # (round_index, called_ns, round_end_ns, epoch_pre, epoch_post)
     at_reset_view = []    # recorded, never gated (§1)
+    round_linearizations = {}
     for index, record in enumerate(rr):
         epoch = record.get("epoch")
         if epoch != index + 2:
@@ -188,7 +236,21 @@ def judge(run: Path):
             if samples else called
         if end < called:
             problems.append("reset_round_%d_window_inverted" % index)
+        # gen4 linearization proof: this round's INVALID transition (node
+        # steady clock == client CLOCK_MONOTONIC on the same machine) must
+        # land between the client's reset CALL and the first post-reset
+        # resource sample -- the raw timestamp the reset actually won.
+        linearization = None
+        if index < len(invalid_events):
+            stamp = invalid_events[index].get("transition_mono_ns")
+            if isinstance(stamp, int) and stamp > 0 \
+                    and called - 100_000_000 <= stamp <= end:
+                linearization = stamp
+        if linearization is None and invalid_events:
+            problems.append("reset_round_%d_linearization_unproven" % index)
         windows.append((index, called, end, index + 1, epoch))
+        if linearization is not None:
+            round_linearizations[index] = linearization
         # Recorded (not gated): the S3 at-instant survival view, superseded by
         # §1 final-release. Kept in the verdict for the dual-view report.
         at_reset_view.append({
@@ -518,6 +580,85 @@ def judge(run: Path):
     if not isinstance(baseline.get("external_surface_buffer_bytes"), int):
         problems.append("baseline_external_missing")
     after_all = d.get("after") or {}
+
+    # ---- gen4: per-object ledger no-loss proof --------------------------------
+    # Every resource sample carries the monotone loss counters; the on-demand
+    # tables (baseline / reset rounds / stage end) prove
+    # allocated_total - released_total == live table size. A drop anywhere,
+    # a failed balance, or missing counters = evidence incomplete = fail.
+    ledger_stats = {"samples_with_counters": 0, "dropped_live_max": 0,
+                    "table_checks": 0, "table_balance_ok": 0,
+                    "end_live_views": None, "end_live_surface_buffers": None}
+
+    def _ledger_check(snapshot, label):
+        dropped = snapshot.get("ownership_dropped_live")
+        allocated = snapshot.get("ownership_allocated_total")
+        released = snapshot.get("ownership_released_total")
+        if not all(isinstance(v, int) for v in (dropped, allocated, released)):
+            return  # pre-gen4 sample: counted below as missing evidence
+        ledger_stats["samples_with_counters"] += 1
+        ledger_stats["dropped_live_max"] = max(
+            ledger_stats["dropped_live_max"], dropped)
+        table = snapshot.get("ownership_trace")
+        if isinstance(table, list):
+            ledger_stats["table_checks"] += 1
+            live = [record for record in table
+                    if isinstance(record, dict)
+                    and not record.get("released_mono_ns")]
+            if allocated - released == len(live):
+                ledger_stats["table_balance_ok"] += 1
+            else:
+                problems.append("%s_ledger_balance:%d-%d!=%d"
+                                % (label, allocated, released, len(live)))
+            return live
+
+    any_counter_sample = [False]
+
+    def walk_samples(obj, label):
+        if isinstance(obj, dict):
+            if isinstance(obj.get("ownership_dropped_live"), int):
+                any_counter_sample[0] = True
+                _ledger_check(obj, label)
+            for key, child in obj.items():
+                if key in ("ownership_trace",):
+                    continue
+                walk_samples(child, label)
+        elif isinstance(obj, list):
+            for child in obj:
+                walk_samples(child, label)
+
+    walk_samples(d, "sample")
+    if not any_counter_sample[0]:
+        problems.append("ledger_counters_missing")
+    if ledger_stats["dropped_live_max"]:
+        problems.append("ledger_dropped_live:%d"
+                        % ledger_stats["dropped_live_max"])
+    # Stage-end semantics: disappearance != release -- only
+    # released_mono_ns counts as released. Live VIEWS at stage end (all
+    # workers joined) are a residual; a live SURFACE BUFFER is the cache
+    # entry's own retained object and is legal ONLY while the cache entry
+    # itself is present baseline..end (§1 live owner) -- never auto-leak,
+    # never auto-legal.
+    end_table = after_all.get("ownership_trace")
+    if isinstance(end_table, list):
+        live_views = [r for r in end_table if isinstance(r, dict)
+                      and r.get("object_class") == "view"
+                      and not r.get("released_mono_ns")]
+        live_buffers = [r for r in end_table if isinstance(r, dict)
+                        and r.get("object_class") == "surface_buffer"
+                        and not r.get("released_mono_ns")]
+        ledger_stats["end_live_views"] = len(live_views)
+        ledger_stats["end_live_surface_buffers"] = len(live_buffers)
+        if live_views:
+            problems.append("ledger_end_live_views:%d" % len(live_views))
+        cache_base = baseline.get("surface_cache_bytes")
+        cache_end = after_all.get("surface_cache_bytes")
+        if live_buffers and not (isinstance(cache_base, int)
+                                 and isinstance(cache_end, int)
+                                 and cache_base == cache_end and cache_end > 0):
+            problems.append("ledger_end_surface_buffer_without_cache_owner")
+    else:
+        problems.append("ledger_end_table_missing")
     problems.extend(s3._class_residual_problems(after_all, baseline, "after_"))
     problems.extend(s3._split_identity_problems(after_all, "after_"))
     problems.extend(s3._split_identity_problems(baseline, "baseline_"))
@@ -597,12 +738,14 @@ def judge(run: Path):
         for e in tl if e["_segment"] == "overrun"]
     return _finish(run, d, problems, rss_stats, qs, tl, rr, read_rounds,
                    binding, exempt_queries, exempt_inputs, at_reset_view,
-                   overrun_rows, windows, peak, window_stats)
+                   overrun_rows, windows, peak, window_stats,
+                   round_linearizations, ledger_stats)
 
 
 def _finish(run, d, problems, rss_stats, qs, tl, rr, read_rounds, binding,
             exempt_queries=None, exempt_inputs=None, at_reset_view=None,
-            overrun_rows=None, windows=None, peak=None, window_stats=None):
+            overrun_rows=None, windows=None, peak=None, window_stats=None,
+            round_linearizations=None, ledger_stats=None):
     exempt_queries = exempt_queries or []
     exempt_inputs = exempt_inputs or []
     verdict = {
@@ -623,10 +766,13 @@ def _finish(run, d, problems, rss_stats, qs, tl, rr, read_rounds, binding,
                        "reset_windows": [
                            {"round": i, "called_mono_ns": c,
                             "round_end_mono_ns": e, "epoch_pre": p,
-                            "epoch_post": q}
+                            "epoch_post": q,
+                            "linearization_mono_ns": (
+                                round_linearizations or {}).get(i)}
                            for i, c, e, p, q in (windows or [])]},
         "overrun_rows": overrun_rows,
         "windows_120s": window_stats or {},
+        "ledger": ledger_stats or {},
         "resources": rss_stats or {},
         "s3_rule_view": "see campaign summary.json stage 'l' (unchanged)",
     }
