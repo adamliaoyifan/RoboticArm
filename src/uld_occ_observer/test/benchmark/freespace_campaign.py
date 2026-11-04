@@ -137,7 +137,6 @@ class SchedTrace:
         def beat():
             last = time.monotonic_ns()
             hardened = False
-            last_collect = None
             while not stop.is_set():
                 stop.wait(self.heartbeat_ms / 1e3)
                 now = time.monotonic_ns()
@@ -150,15 +149,17 @@ class SchedTrace:
                 if GC_HARDENING:
                     if not hardened and hardening_t0_ns is not None \
                             and now >= hardening_t0_ns + hardening_s * 10**9:
+                        # Arm1 verdict: the 50-150 ms client stalls ARE gen-2
+                        # GC pauses. The hardening therefore runs NO
+                        # collection at all inside the scored segment -- a
+                        # periodic collect would itself be a deliberate
+                        # mid-window stop-the-world pause. One collect+freeze
+                        # at warmup end, GC disabled until the run stops.
                         gc.collect()
                         gc.freeze()
                         gc.disable()
                         hardened = True
                         self.meta["gc_hardening_at_mono_ns"] = now
-                    elif hardened and (last_collect is None
-                                       or now >= last_collect):
-                        last_collect = now + 120 * 10**9
-                        gc.collect()
 
         threading.Thread(target=beat, daemon=True).start()
 
@@ -1097,7 +1098,7 @@ def _acquire_real_lease(client, max_age_ms, deadline_s):
 
 def _ownership(client, max_samples=12, spacing_s=0.2, settle_s=0.0,
                target=None, target_field="view_directory_entries",
-               include_trace=False):
+               include_trace=False, ledger_sink=None, label=""):
     """Adaptive ownership measurement: sample the FULL resource snapshot
     until the expected residual appears (or the budget runs out) and keep
     EVERY sample with its timestamp. Mid-soak the node transiently carries
@@ -1120,9 +1121,28 @@ def _ownership(client, max_samples=12, spacing_s=0.2, settle_s=0.0,
         if include:
             table = _parse_ownership_trace(response)
             if isinstance(table, list):
-                sample["ownership_trace"] = table
-                sample["ownership_live_count"] = sum(
-                    1 for record in table if not record.get("released_mono_ns"))
+                # Stream the table to the ledger sidecar: retaining ~1600
+                # records x ~100 rounds in the artifact inflated both the
+                # heap (arm1: RSS growth 5.6% > the 5% gate -- bigger gen-2
+                # GC pauses) and l.json (83 MB). The artifact keeps only the
+                # counters + live count; the judge reads the sidecar rows.
+                live = sum(1 for record in table
+                           if not record.get("released_mono_ns"))
+                if ledger_sink is not None:
+                    ledger_sink.write(json.dumps({
+                        "label": label or "ownership",
+                        "t_mono_ns": sample.get("t_mono_ns"),
+                        "ownership_allocated_total":
+                            sample.get("ownership_allocated_total"),
+                        "ownership_released_total":
+                            sample.get("ownership_released_total"),
+                        "ownership_dropped_live":
+                            sample.get("ownership_dropped_live"),
+                        "live_count": live, "table": table}) + "\n")
+                    ledger_sink.flush()
+                else:
+                    sample["ownership_trace"] = table
+                sample["ownership_live_count"] = live
         samples.append(sample)
         if target is not None \
                 and samples[-1].get(target_field) <= target:
@@ -1193,6 +1213,9 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
     base_stamp = int(time.time() * 1e9)
     warmup_s = contract.L_WARMUP_S if formal else min(10.0, seconds / 2.0)
     stop = threading.Event()
+    # gen4 ledger sidecar: per-object tables stream here (one JSON line per
+    # capture point) instead of inflating the in-memory artifact/heap.
+    ledger_sink = open(out_dir / "ownership_ledger.jsonl", "w")
     input_records = []
     query_records = []
     read_rounds_results = []
@@ -1232,7 +1255,7 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
         baseline_holder.update(_ownership(
             client, max_samples=12, target=0,
             target_field="lease_view_directory_entries",
-            include_trace=True))
+            include_trace=True, ledger_sink=ledger_sink, label="baseline"))
         baseline_holder["binding"] = binding
         baseline_ready.set()
 
@@ -1358,8 +1381,26 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
                 response = client.call(client.resource,
                                        _resource_request(include_trace=True))
                 record["ownership_after_reset"] = _resource_snapshot(response)
-                record["ownership_after_reset"]["ownership_trace"] = \
-                    _parse_ownership_trace(response)
+                _table = _parse_ownership_trace(response)
+                record["ownership_after_reset"]["ownership_live_count"] = sum(
+                    1 for r in _table if isinstance(r, dict)
+                    and not r.get("released_mono_ns")) if isinstance(
+                        _table, list) else None
+                ledger_sink.write(json.dumps({
+                    "label": "reset_%d_after_reset" % index,
+                    "t_mono_ns": record["ownership_after_reset"]
+                    .get("t_mono_ns"),
+                    "ownership_allocated_total":
+                        record["ownership_after_reset"]
+                        .get("ownership_allocated_total"),
+                    "ownership_released_total":
+                        record["ownership_after_reset"]
+                        .get("ownership_released_total"),
+                    "ownership_dropped_live":
+                        record["ownership_after_reset"]
+                        .get("ownership_dropped_live"),
+                    "table": _table}) + "\n")
+                ledger_sink.flush()
             finally:
                 if lease is not None:
                     try:
@@ -1372,7 +1413,8 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
             record["ownership_after"] = _ownership(
                 client, settle_s=1.5, max_samples=12, target=0,
                 target_field="lease_view_directory_entries",
-                include_trace=True)
+                include_trace=True, ledger_sink=ledger_sink,
+                label="reset_%d_after" % index)
             with lock:
                 reset_rounds_results.append(record)
 
@@ -1387,9 +1429,17 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
                threading.Thread(target=reader), threading.Thread(target=resetter),
                threading.Thread(target=rss_sampler)]
     trace = _trace()
+    if trace is None and GC_HARDENING:
+        # Hardening without --trace-sched still needs the heartbeat thread
+        # (it drives the freeze/disable at warmup end); the minimal trace it
+        # leaves behind doubles as proof the hardening actually ran.
+        global SCHED_TRACE
+        SCHED_TRACE = SchedTrace()
+        trace = SCHED_TRACE
     if trace is not None:
         # Independent freeze witness (50 ms tick, no deadline of its own) +
-        # the --gc-hardening schedule anchor (freeze/disable at warmup end).
+        # the gc-hardening schedule anchor (freeze/disable at warmup end,
+        # no collection inside the scored segment).
         trace.start_heartbeat(stop, hardening_t0_ns=t0_ns,
                               hardening_s=warmup_s)
     for worker in workers:
@@ -1426,9 +1476,14 @@ def stage_l(client, frames, seconds, read_rounds, reset_rounds, out_dir,
     # old-view tail drain, then measure adaptively back to the baseline.
     after = _ownership(client, settle_s=0.6, target=0,
                        target_field="lease_view_directory_entries",
-                       include_trace=True)
+                       include_trace=True, ledger_sink=ledger_sink,
+                       label="after")
+    ledger_sink.close()
     artifact["after"] = after
     artifact["validity_trace"] = _validity_trace(client, validity_mark)
+    ledger_lines = sum(1 for _ in open(out_dir / "ownership_ledger.jsonl"))
+    artifact["ownership_ledger"] = {
+        "file": "ownership_ledger.jsonl", "captures": ledger_lines}
     if trace is not None:
         artifact["sched_trace_counts"] = trace.dump(out_dir)["counts"]
     (out_dir / "l.json").write_text(json.dumps(artifact, indent=1))
@@ -1539,6 +1594,9 @@ def main():
                              "rounds / stage end carry the full table; every "
                              "resource sample carries the loss counters). "
                              "The gen4 L judge REQUIRES this evidence.")
+    parser.add_argument("--no-gc-hardening", action="store_true",
+                        help="opt OUT of the formal-default gc hardening "
+                             "(localization baseline arm only)")
     parser.add_argument("--gc-hardening", action="store_true",
                         help="gc.freeze() at warmup end + gc.disable() for "
                              "the scored segment + one collect per 120 s "
@@ -1549,7 +1607,14 @@ def main():
     if args.trace_sched:
         SCHED_TRACE = SchedTrace()
         SCHED_TRACE.install_gc()
-    GC_HARDENING = args.gc_hardening
+    # A3 verdict (arm1): every >=20 ms scored-segment stall was covered by a
+    # gen-2 GC pause (79.2 ms pause -> 70.5 ms input sleep-lag + 58.3 ms
+    # heartbeat gap, single resumption). Formal runs therefore harden by
+    # DEFAULT (freeze at warmup end, GC disabled for the scored segment) --
+    # a runner-side fix, the contract environment is untouched. --no-gc-
+    # hardening restores the baseline arm for localization reruns.
+    GC_HARDENING = args.gc_hardening or (
+        args.formal and not args.no_gc_hardening)
     if args.pin_client:
         cpus = sorted(int(value) for value in args.pin_client.split(","))
         os.sched_setaffinity(0, cpus)

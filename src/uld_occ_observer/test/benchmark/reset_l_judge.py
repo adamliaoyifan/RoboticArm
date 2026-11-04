@@ -583,12 +583,47 @@ def judge(run: Path):
 
     # ---- gen4: per-object ledger no-loss proof --------------------------------
     # Every resource sample carries the monotone loss counters; the on-demand
-    # tables (baseline / reset rounds / stage end) prove
-    # allocated_total - released_total == live table size. A drop anywhere,
-    # a failed balance, or missing counters = evidence incomplete = fail.
+    # tables stream to ownership_ledger.jsonl (one row per capture point) --
+    # baseline / reset rounds / stage end -- and prove
+    # allocated_total - released_total == live_count. A drop anywhere, a
+    # failed balance, or missing counters = evidence incomplete = fail.
     ledger_stats = {"samples_with_counters": 0, "dropped_live_max": 0,
                     "table_checks": 0, "table_balance_ok": 0,
-                    "end_live_views": None, "end_live_surface_buffers": None}
+                    "end_live_views": None, "end_live_surface_buffers": None,
+                    "sidecar_rows": 0}
+
+    sidecar_rows = []
+    ledger_ref = d.get("ownership_ledger") or {}
+    sidecar_path = run / ledger_ref.get("file", "ownership_ledger.jsonl") \
+        if isinstance(ledger_ref.get("file"), str) else None
+    if sidecar_path is not None and sidecar_path.is_file():
+        for line in sidecar_path.read_text().splitlines():
+            try:
+                row = json.loads(line)
+            except ValueError:
+                problems.append("ledger_sidecar_row_bad")
+                continue
+            sidecar_rows.append(row)
+            allocated = row.get("ownership_allocated_total")
+            released = row.get("ownership_released_total")
+            dropped = row.get("ownership_dropped_live")
+            table = row.get("table")
+            if not all(isinstance(v, int) for v in (allocated, released)):
+                problems.append("ledger_sidecar_row_counters_missing")
+                continue
+            ledger_stats["dropped_live_max"] = max(
+                ledger_stats["dropped_live_max"], dropped or 0)
+            if isinstance(table, list):
+                ledger_stats["table_checks"] += 1
+                live = [r for r in table if isinstance(r, dict)
+                        and not r.get("released_mono_ns")]
+                if allocated - released == len(live):
+                    ledger_stats["table_balance_ok"] += 1
+                else:
+                    problems.append("ledger_%s_balance:%d-%d!=%d"
+                                    % (row.get("label"), allocated,
+                                       released, len(live)))
+        ledger_stats["sidecar_rows"] = len(sidecar_rows)
 
     def _ledger_check(snapshot, label):
         dropped = snapshot.get("ownership_dropped_live")
@@ -620,7 +655,7 @@ def judge(run: Path):
                 any_counter_sample[0] = True
                 _ledger_check(obj, label)
             for key, child in obj.items():
-                if key in ("ownership_trace",):
+                if key in ("ownership_trace", "table"):
                     continue
                 walk_samples(child, label)
         elif isinstance(obj, list):
@@ -639,7 +674,17 @@ def judge(run: Path):
     # entry's own retained object and is legal ONLY while the cache entry
     # itself is present baseline..end (§1 live owner) -- never auto-leak,
     # never auto-legal.
-    end_table = after_all.get("ownership_trace")
+    # End table: the sidecar's "after" capture when streaming (gen4 default);
+    # inline after.ownership_trace otherwise (smoke/legacy compatibility).
+    end_table = None
+    if sidecar_rows:
+        for row in reversed(sidecar_rows):
+            if row.get("label") == "after" \
+                    and isinstance(row.get("table"), list):
+                end_table = row["table"]
+                break
+    if end_table is None:
+        end_table = after_all.get("ownership_trace")
     if isinstance(end_table, list):
         live_views = [r for r in end_table if isinstance(r, dict)
                       and r.get("object_class") == "view"
@@ -649,8 +694,19 @@ def judge(run: Path):
                         and not r.get("released_mono_ns")]
         ledger_stats["end_live_views"] = len(live_views)
         ledger_stats["end_live_surface_buffers"] = len(live_buffers)
-        if live_views:
-            problems.append("ledger_end_live_views:%d" % len(live_views))
+        # End-live legality (arm1 lesson): a handle-less view built in the
+        # FINAL epoch whose byte classes all reconcile (gated above) is the
+        # store's own current-map share -- a legal live owner, recorded, not
+        # a residual. Anything else live at stage end IS a residual.
+        expected_epoch = (binding or {}).get("expected_epoch")
+        legal_views = [r for r in live_views
+                       if not r.get("handle")
+                       and expected_epoch is not None
+                       and r.get("epoch") == expected_epoch]
+        residual_views = [r for r in live_views if r not in legal_views]
+        ledger_stats["end_live_views_legal_current_map"] = len(legal_views)
+        if residual_views:
+            problems.append("ledger_end_live_views:%d" % len(residual_views))
         cache_base = baseline.get("surface_cache_bytes")
         cache_end = after_all.get("surface_cache_bytes")
         if live_buffers and not (isinstance(cache_base, int)

@@ -100,7 +100,13 @@ class ObserverNode : public rclcpp::Node {
     // Latched validity publication: transient_local so a subscribing consumer
     // that restarts receives the current state without having seen the event.
     validity_pub_ = create_publisher<std_msgs::msg::String>("validity",
-        rclcpp::QoS(1).reliable().transient_local());
+        // gen4: depth 64, not 1. A reset emits INVALID then BUILDING within
+        // the SAME service call -- a depth-1 history overwrote the INVALID
+        // before subscribers could pull it (arm1: 100 resets, 21 INVALID
+        // messages received). The latched semantics are unchanged (late
+        // subscribers still get the current state); 64 covers the ~3
+        // transitions per reset by a wide margin.
+        rclcpp::QoS(64).reliable().transient_local());
     service_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
     input_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     health_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
