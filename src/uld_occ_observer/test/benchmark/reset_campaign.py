@@ -531,8 +531,12 @@ class Campaign:
 
     def resource_sample(self):
         from uld_occ_observer.srv import GetResourceUsage
-        response = self.client.call(self.client.resource,
-                                    GetResourceUsage.Request())
+        request = GetResourceUsage.Request()
+        # gen4: the per-object table serializes only on request (it can be
+        # hundreds of KB); the V3 held-object cycles NEED it -- their final
+        # release proof is the released record in the capture after release.
+        request.include_ownership_trace = True
+        response = self.client.call(self.client.resource, request)
         if response is None:
             return None
         return {
