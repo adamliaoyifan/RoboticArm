@@ -1,30 +1,45 @@
 #!/usr/bin/env python3
-"""Plan-rule L judge (OCTOMAP_RESET_VALIDITY_NEXT_20261103 §5, L row).
+"""Reset-contract L judge (OCTOMAP_RESET_VALIDITY_NEXT_20261103 §5, L row).
 
   reset_l_judge.py --run <campaign-dir-containing-l.json>
 
-The S3-frozen freespace_judge applies the OLDER S3 L rules (no reset-window
-concept, any extra ID is a failure, ownership sampled at the reset instant).
-The reset contract redefined exactly those three aspects -- its §5 L row is
-the frozen rule set for this campaign:
+RETROSPECTIVE TOOL -- see PROVENANCE in the verdict: this judge was first
+committed AFTER the run02 freeze (d10dffe1) and is an offline recompute of
+preserved raw records under the already-frozen contract text. It never
+rewrites artifacts; the scoring-time freeze (FREEZE_INTEG.json) and the S3
+S3-rule view (campaign summary.json) stay untouched beside its verdict.
 
-- Planned IDs complete; <=2 extra updates and <=2 extra queries; all extra
-  IDs judged with the same latency/status/identity rules.
-- Reset-affected IDs (predeclared event window: the reset rounds' own
-  [reset_called, round-end] interval, classified by planned OR execution
-  overlap -- raw timestamps prove the reset won the linearization race) use
-  the V1/V2 status contract, are excluded only from the normal-success
-  denominator, and stay counted in all-ID closure and latency.
-- Normal segments retain the S3 P/H thresholds and the 120 s-window AND.
-- Resource classes reconcile after final release; at-sample transients
-  charged to a LIVE owner (the bounded surface-cache entry) are legal
-  (§1: size or survival at the reset instant is not a leak verdict).
-- Resources: RSS <= 2 GiB, read view+cache combined peak <= 512 MiB,
-  last-vs-first RSS median growth <= 5%.
+Rule set (frozen plan §5 + §1 amendments over the S3 L rules):
 
-Everything is recomputed from the l.json raw records on disk. The verdict
-also records the S3-rule view (from the campaign's own judge output) so both
-rule sets are visible -- never laundered.
+1. Planned-ID discipline: the 18000 input stamps and 14400 query slots are
+   derived from the raw arithmetic grid (2.5 Hz / 2 Hz from t0). Every
+   planned ID present exactly once, no duplicates/unknowns, one terminal per
+   row. At most 2 extra inputs and 2 extra queries -- real, retained, judged
+   with the same latency/status/identity rules, reported as boundary rows,
+   never substituted for planned IDs and never counted as a 120 s window.
+2. Warmup [t0, t0+600 s) and the scored half-open window [t0+600 s, t0+7200 s)
+   are separate segments. All reset rounds declare their own event window
+   [reset_called, round sampling end]; a non-normal outcome is exempted ONLY
+   with an execution-interval overlap with that window AND row-level identity
+   proof (server-side rejection receipt, lease epoch, or the store-empty
+   interval for ACQUIRE_NO_DATA). Planned-time overlap alone never exempts.
+3. Scored segment: per-120 s-window AND of the full S3 P/H gates (e2e, query
+   latency, schedule lateness, snapshot age, health liveness) via the frozen
+   freespace_judge helpers; whole-run all-ID closure and input/query/age
+   gates include the exempted rows.
+4. Ownership (§1): size or survival at the reset instant is recorded, never
+   gated; the verdict is per-round final release (round reconciles to its own
+   pre-round state) plus stage-end residual == post-warmup baseline for every
+   owner class. Every external_surface_buffer byte must belong to the
+   surface-cache entry (external <= cache at every sample) -- constancy of
+   the cache counter alone is never the ownership proof.
+5. Resources: RSS by real time (12 dense 10-min buckets, max <= 2 GiB,
+   first-vs-last scored 10-min medians <= +5%), same-instant read view+cache
+   peak <= 512 MiB, 1000 real read/release rounds and 100 reset rounds
+   validated per round -- never by array length alone.
+
+The helpers are the S3 frozen ones (freespace_judge): per-record field
+checks, latency gates, quantile method, ownership reconciliation.
 """
 from __future__ import annotations
 
@@ -34,238 +49,592 @@ import statistics
 import sys
 from pathlib import Path
 
-PLANNED_INPUTS = 18000
-PLANNED_QUERIES = 14400
-MAX_EXTRA = 2
-P95_INPUT_MS = 350.0
-MAX_MS = 500.0
-P95_QUERY_MS = 250.0
-MAX_AGE_S = 1.0
-WINDOW_S = 120.0
-WARMUP_S = 600.0
-RSS_MAX_GIB = 2.0
-VIEW_CACHE_PEAK_MIB = 512.0
-RSS_MEDIAN_GROWTH_PCT = 5.0
-#: V1/V2 status contract for reset-affected rows (plan §5 note: these are
-#: expected only with raw-timestamp proof, which the window overlap is).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import freespace_contract as contract  # noqa: E402
+import freespace_judge as s3  # noqa: E402
+
+#: V1/V2 status contract for reset-window rows (plan §5: legal only with the
+#: execution + identity proof this judge demands per row).
 RESET_LEGAL_QUERY = {"ACQUIRE_NO_DATA", "PAGE_INVALIDATED", "INVALIDATED",
                      "NO_DATA", "STALE", "REVISION_NOT_COVERED"}
 RESET_LEGAL_INPUT = {"EPOCH_MISMATCH", "REJECTED", "QUEUE_FULL"}
-NORMAL_QUERY_OK = {"OK", "NO_KNOWN_FREE"}  # served answers; geometry may say no
+NORMAL_QUERY_OK = set(s3.QUERY_SEMANTIC_OK)   # served answers ("OK", "NO_KNOWN_FREE")
+NORMAL_INPUT_OK = set(s3.INPUT_SUCCESS)
+#: Max extra rows per stream (plan §5 L row); extras are judged, not dropped.
+MAX_EXTRA = 2
+VIEW_CACHE_PEAK_MIB = contract.READ_VIEW_CACHE_LIMIT_BYTES / 1048576.0
+RULE_SET = "OCTOMAP_RESET_VALIDITY_NEXT_20261103 §5 L (reset contract)"
 
 
 def _p95(values):
-    if not values:
-        return None
-    ordered = sorted(values)
-    return ordered[min(len(ordered) - 1, int(round(0.95 * len(ordered))))]
+    return s3._p95(values)
+
+
+#: §1 live-owner classes: retained by a legitimate holder for the stage's
+#: life (the surface-cache entry owns its external buffer), so a ROUND
+#: reconciliation cannot demand they return to the round's pre-state. They
+#: are gated separately: every external byte must sit inside the cache entry
+#: (external <= cache at every sample) and the entry must exist at baseline
+#: AND stage end. Every other class stays under the frozen S3 residual rule.
+LIVE_OWNER_FIELDS = ("external_surface_buffer_bytes",)
+
+
+def _class_residual_round(after, before, prefix):
+    """Frozen S3 per-class residual, minus the §1 live-owner fields."""
+    skip = set(LIVE_OWNER_FIELDS)
+    fields = [f for f in s3.OWNERSHIP_RECONCILE_FIELDS if f not in skip]
+    problems = []
+    samples = (after or {}).get("resource_samples")
+    if not isinstance(samples, list) or not samples:
+        return ["%ssamples_missing" % prefix]
+    for field in fields:
+        values = []
+        for sample in samples:
+            if not isinstance(sample, dict):
+                values = None
+                break
+            values.append(sample.get(field))
+        if values is None or any(value is None for value in values):
+            problems.append("%sclass_%s_missing" % (prefix, field))
+            continue
+        base = (before or {}).get(field)
+        base_samples = (before or {}).get("resource_samples")
+        if isinstance(base_samples, list) and base_samples:
+            candidates = [sample.get(field) for sample in base_samples
+                          if isinstance(sample, dict)]
+            if len(candidates) == len(base_samples) \
+                    and None not in candidates:
+                base = min(candidates)
+        if not isinstance(base, int) or isinstance(base, bool):
+            problems.append("%sclass_%s_baseline_missing" % (prefix, field))
+            continue
+        if min(values) != base:
+            problems.append("%sclass_%s_residual:%s!=%s"
+                            % (prefix, field, min(values), base))
+    if any(sample.get("uncovered_allocations") for sample in samples
+           if isinstance(sample, dict)):
+        problems.append("%suncovered_allocations" % prefix)
+    return problems
+
+
+def _grid_ok(rows, key_planned, key_id, hz, t0):
+    """Exact planned arithmetic grid: returns (expected_ids, seen_ids, extras).
+
+    The sender stamps inputs at base + i/hz and queries share the same t0 at
+    2 Hz; anything off the grid is an unknown ID, any repeat is a duplicate.
+    """
+    step = int(round(1e9 / hz))
+    seen = [row.get(key_id) for row in rows]
+    planned_ns = [(row.get(key_planned) or 0) for row in rows]
+    return step, seen, planned_ns
 
 
 def judge(run: Path):
-    problems = []
     l_path = run / "l.json"
     if not l_path.is_file():
         return {"status": "fail", "problems": ["missing_artifact:l.json"]}
     d = json.loads(l_path.read_text())
+    problems = []
     tl = d.get("input_timeline") or []
+    inputs = d.get("input_records") or []
     qs = d.get("query_records") or []
     rr = d.get("reset_rounds_results") or []
     read_rounds = d.get("read_rounds_results") or []
-    t0 = min((e.get("planned_mono_ns") or 0) for e in tl) if tl else 0
+    formal = bool(d.get("formal"))
+    if not formal:
+        return {"status": "fail", "problems": ["not_formal_artifact"]}
+    if d.get("send_errors"):
+        problems.append("send_errors:%s" % d["send_errors"][:2])
+    binding = d.get("identity_binding")
+    problems.extend(s3._binding_problems(binding, "l_"))
 
-    # ---- predeclared reset event windows ------------------------------------
-    windows = []
-    for r in rr:
-        start = r.get("reset_called_mono_ns")
-        if not start:
+    if not inputs or not qs:
+        problems.append("records_missing")
+        return _finish(run, d, problems, None, [], [], rr, read_rounds, binding)
+    t0 = min(e.get("planned_mono_ns") or 0 for e in inputs)
+    warmup_end = t0 + int(contract.L_WARMUP_S * 1e9)
+    score_end = t0 + int(contract.L_DURATION_S * 1e9)
+
+    # ---- frames / workload identity (item 2) -------------------------------
+    manifest = d.get("frames_manifest") or []
+    if not manifest:
+        problems.append("frames_manifest_missing")
+    else:
+        if any(entry.get("box_tag") != 20 for entry in manifest):
+            problems.append("frames_not_20box")
+        if any(not entry.get("sha256") for entry in manifest):
+            problems.append("frames_hash_missing")
+
+    # ---- reset rounds: linearization windows + per-round lifecycle ----------
+    windows = []          # (round_index, called_ns, round_end_ns, epoch_pre, epoch_post)
+    at_reset_view = []    # recorded, never gated (§1)
+    for index, record in enumerate(rr):
+        epoch = record.get("epoch")
+        if epoch != index + 2:
+            problems.append("reset_round_%d_epoch_%s" % (index, epoch))
+        for field in ("acquire_status", "real_release", "reset_status"):
+            if record.get(field) != "OK":
+                problems.append("reset_round_%d_%s_%s"
+                                % (index, field, record.get(field)))
+        called = record.get("reset_called_mono_ns")
+        after_reset = record.get("ownership_after_reset") or {}
+        after = record.get("ownership_after") or {}
+        if not isinstance(called, int):
+            problems.append("reset_round_%d_called_missing" % index)
             continue
-        samples = (r.get("ownership_after") or {}).get("resource_samples") \
-            or (r.get("ownership_after") or {}).get("samples") or []
+        samples = (after.get("resource_samples")
+                   or [{"t_mono_ns": after.get("t_mono_ns")}])
         end = max((s.get("t_mono_ns") or 0) for s in samples) \
-            if samples else start + 2_000_000_000
-        windows.append((start, end))
-    windows.sort()
+            if samples else called
+        if end < called:
+            problems.append("reset_round_%d_window_inverted" % index)
+        windows.append((index, called, end, index + 1, epoch))
+        # Recorded (not gated): the S3 at-instant survival view, superseded by
+        # §1 final-release. Kept in the verdict for the dual-view report.
+        at_reset_view.append({
+            "round": index,
+            "client_held_view_block_bytes":
+                after_reset.get("client_held_view_block_bytes"),
+            "external_surface_buffer_bytes":
+                after_reset.get("external_surface_buffer_bytes")})
+        # §1 verdict for the round: reconcile after final release against the
+        # round's OWN pre-round state (the map grows legitimately between
+        # rounds; a round must leave nothing behind) -- minus the live-owner
+        # classes, which are gated by the external<=cache rule below.
+        before = record.get("ownership_before") or {}
+        if not before.get("resource_samples"):
+            problems.append("reset_round_%d_before_missing" % index)
+        problems.extend(_class_residual_round(
+            after, before, "reset_round_%d_" % index))
+    if len(rr) != contract.L_RESET_ROUNDS or len(rr) != d.get("reset_rounds", -1):
+        problems.append("reset_rounds_%d" % len(rr))
+    if not windows:
+        problems.append("reset_windows_missing")
+        return _finish(run, d, problems, None, qs, tl, rr, read_rounds, binding)
 
-    def affected(planned, started, ended):
-        for start, end in windows:
-            if planned is not None and planned <= end and planned >= start:
-                return True
-            if started is not None and started <= end and ended is not None \
-                    and ended >= start:
-                return True
-        return False
+    def window_hit(started, ended):
+        for index, called, end, _pre, _post in windows:
+            if started is not None and started <= end and \
+                    (ended is None or ended >= called):
+                if ended is not None and ended < called:
+                    continue
+                return index
+        return None
 
-    # ---- counts and overrun discipline --------------------------------------
-    extra_inputs = len(tl) - PLANNED_INPUTS
-    extra_queries = len(qs) - PLANNED_QUERIES
-    if extra_inputs < 0:
-        problems.append("inputs_missing:%d" % len(tl))
-    if extra_queries < 0:
-        problems.append("queries_missing:%d" % len(qs))
-    if extra_inputs > MAX_EXTRA:
-        problems.append("input_overrun:%d>%d" % (extra_inputs, MAX_EXTRA))
-    if extra_queries > MAX_EXTRA:
-        problems.append("query_overrun:%d>%d" % (extra_queries, MAX_EXTRA))
+    # ---- planned-ID discipline (grid, duplicates, unknowns, extras) --------
+    step_i = int(round(1e9 / (2.5)))
+    step_q = int(round(1e9 / 2.0))
+    input_ids = [e.get("input_id") for e in tl]
+    if len(set(input_ids)) != len(input_ids):
+        problems.append("duplicate_input_id_count_%d"
+                        % (len(input_ids) - len(set(input_ids))))
+    if len(tl) != len(inputs) or \
+            sorted(e.get("input_id") for e in inputs) != sorted(input_ids):
+        problems.append("timeline_records_mismatch")
+    # Inputs: stamp grid; ID == str(stamp) by sender construction.
+    base_stamp = inputs[0].get("stamp_ns")
+    if not isinstance(base_stamp, int):
+        problems.append("stamp_base_missing")
+    else:
+        seen_stamps = [e.get("stamp_ns") for e in inputs]
+        if len(set(seen_stamps)) != len(seen_stamps):
+            problems.append("duplicate_stamp")
+        planned_stamps = {base_stamp + i * step_i
+                          for i in range(contract.L_INPUTS)}
+        unknown = [s for s in seen_stamps if s not in planned_stamps]
+        missing = planned_stamps - set(seen_stamps)
+        extra_inputs = [s for s in unknown
+                        if not (base_stamp + contract.L_INPUTS * step_i
+                                <= s
+                                <= base_stamp + (contract.L_INPUTS + MAX_EXTRA)
+                                * step_i)]
+        if missing:
+            problems.append("planned_inputs_missing:%d" % len(missing))
+        if len(unknown) > MAX_EXTRA or extra_inputs:
+            problems.append("input_overrun_or_offgrid:%d" % len(unknown))
+        by_id = {e.get("input_id"): e for e in inputs}
+        for row in tl:
+            stamp = by_id.get(row.get("input_id"), {}).get("stamp_ns")
+            if isinstance(stamp, int) and row.get("input_id") != str(stamp):
+                problems.append("input_id_not_stamp:%s" % row.get("input_id"))
+                break
+    # Queries: planned grid on index/planned time.
+    query_indices = [q.get("index") for q in qs]
+    if len(set(query_indices)) != len(query_indices):
+        problems.append("duplicate_query_index")
+    missing_q = [i for i in range(contract.L_QUERIES) if i not in set(query_indices)]
+    extra_q_idx = [i for i in query_indices
+                   if not (0 <= i < contract.L_QUERIES + MAX_EXTRA)]
+    if missing_q:
+        problems.append("planned_queries_missing:%d" % len(missing_q))
+    if len([i for i in query_indices if i >= contract.L_QUERIES]) > MAX_EXTRA \
+            or extra_q_idx:
+        problems.append("query_overrun_or_offgrid:%d"
+                        % len([i for i in query_indices if i >= contract.L_QUERIES]))
 
-    # ---- all-ID closure ------------------------------------------------------
+    # ---- segments + per-ID classification -----------------------------------
+    exempt_queries, exempt_inputs = [], []
+    for q in qs:
+        q["_segment"] = ("warmup" if q["planned_mono_ns"] < warmup_end
+                         else "scored" if q["planned_mono_ns"] < score_end
+                         else "overrun")
+    # Recovery boundary per query index: the lease epoch of the first SERVED
+    # query at or after each index (None when none follows) -- the identity
+    # evidence for pre-recovery ACQUIRE_NO_DATA rows.
+    next_served_epoch = {}
+    _last = None
+    for q in reversed(qs):
+        next_served_epoch[q.get("index")] = _last
+        if q.get("status") in NORMAL_QUERY_OK:
+            _last = (q.get("lease_identity") or {}).get("epoch")
+    for e in tl:
+        e["_segment"] = ("warmup" if e["planned_mono_ns"] < warmup_end
+                         else "scored" if e["planned_mono_ns"] < score_end
+                         else "overrun")
+
+    def query_exemption(q):
+        """(round, proof) when the non-normal outcome is reset-proven."""
+        status = q.get("status")
+        if status in NORMAL_QUERY_OK:
+            return None
+        started, ended = q.get("started_mono_ns"), q.get("ended_mono_ns")
+        round_i = window_hit(started, ended)
+        if round_i is None:
+            return False
+        index, called, end, pre, post = windows[round_i]
+        identity = q.get("lease_identity") or {}
+        epoch = identity.get("epoch")
+        if status == "ACQUIRE_NO_DATA":
+            # No lease exists by definition, so the identity proof is the
+            # RECOVERY boundary: this query ran inside the round window AND
+            # the first served query after it answers on the round's post
+            # epoch -- the board had not recovered when this read raced it.
+            # (A receipt-side "first integrated arrival" is NOT usable here:
+            # in-flight pre-wipe callbacks land INTEGRATED receipts into the
+            # abandoned store while the new store is still empty.)
+            if started > end or ended < called:
+                return False
+            nxt = next_served_epoch.get(q.get("index"))
+            if nxt != post:
+                return False
+            proof = "pre_recovery[next_served_epoch=%s==post_%s]" % (nxt, post)
+        elif status == "PAGE_INVALIDATED":
+            # Page acquired on the old epoch, wiped mid-read.
+            if epoch != pre and epoch is not None:
+                return False
+            if started > end or ended < called:
+                return False
+            proof = "page_epoch_%s_pre_%d[called..round_end]" % (epoch, pre)
+        else:
+            if started > end or ended < called:
+                return False
+            proof = "execution[called..round_end]"
+        return (round_i, proof, {"epoch": epoch,
+                                 "map_revision": identity.get("map_revision")})
+
+    for q in qs:
+        status = q.get("status")
+        if status in NORMAL_QUERY_OK:
+            continue
+        verdict = query_exemption(q)
+        if verdict is False or verdict is None:
+            problems.append("nonnormal_query_without_reset_proof:%s:%s:%s"
+                            % (q.get("index"), status, q.get("_segment")))
+        else:
+            exempt_queries.append({"index": q.get("index"), "status": status,
+                                   "segment": q.get("_segment"),
+                                   "round": verdict[0], "proof": verdict[1],
+                                   "identity": verdict[2],
+                                   "started_mono_ns": q.get("started_mono_ns"),
+                                   "ended_mono_ns": q.get("ended_mono_ns")})
+    for e in tl:
+        status = e.get("receipt_status")
+        if status in NORMAL_INPUT_OK:
+            continue
+        started = e.get("publish_mono_ns")
+        ended = e.get("receipt_arrival_mono_ns")
+        round_i = window_hit(started, ended)
+        if round_i is None:
+            problems.append("nonnormal_input_without_reset_proof:%s:%s"
+                            % (e.get("input_id"), status))
+            continue
+        index, called, end, pre, _post = windows[round_i]
+        # EPOCH_MISMATCH is itself the server-side rejection receipt; the
+        # publish must race the epoch bump inside the round window.
+        if started > end or (ended is not None and ended < called):
+            problems.append("input_planned_only_overlap:%s" % e.get("input_id"))
+            continue
+        exempt_inputs.append({"input_id": e.get("input_id"), "status": status,
+                              "round": round_i,
+                              "proof": "server_rejection[%s]" % status,
+                              "publish_mono_ns": started,
+                              "receipt_arrival_mono_ns": ended})
+
+    # ---- per-row strict checks (frozen helpers) ------------------------------
+    for q in qs:
+        legal = NORMAL_QUERY_OK if q["status"] in NORMAL_QUERY_OK \
+            else RESET_LEGAL_QUERY
+        allowed_no_lease = {"ACQUIRE_NO_DATA"} \
+            if q["status"] == "ACQUIRE_NO_DATA" else frozenset()
+        # Epoch binding holds only for the scored segment: warmup rows echo
+        # the pre-reset epochs by design; overrun rows echo the final epoch.
+        bind = binding if q["_segment"] == "scored" else None
+        problems.extend(s3._query_record_problems(
+            q, tuple(legal), "lq:", allowed_no_lease=allowed_no_lease,
+            binding=bind))
+    problems.extend(s3._revision_monotonicity_problems(qs, "lq_"))
+    for e in tl:
+        legal = NORMAL_INPUT_OK if e.get("receipt_status") in NORMAL_INPUT_OK \
+            else NORMAL_INPUT_OK | RESET_LEGAL_INPUT
+        problems.extend(s3._input_row_problems(e, tuple(legal), "li:"))
+
+    # ---- health liveness + epoch continuity ----------------------------------
+    problems.extend(s3._health_series_problems(
+        d.get("health_series"), "l_",
+        window_s=contract.L_DURATION_S if formal else None))
+    health_epochs = [h.get("epoch") for h in (d.get("health_series") or [])]
+    if not health_epochs or any(
+            not isinstance(e, int) for e in health_epochs) or \
+            list(health_epochs) != sorted(health_epochs) or \
+            set(health_epochs) != set(range(1, len(rr) + 2)):
+        problems.append("health_epoch_continuity_broken")
+
+    # ---- scored 120 s windows: full P/H gates via frozen helpers -------------
+    window_ns = int(contract.P_WINDOW_S * 1e9)
+    warmup_windows = int(contract.L_WARMUP_S / contract.P_WINDOW_S)
+    expected_windows = int(contract.L_DURATION_S / contract.P_WINDOW_S)
+    buckets_i, buckets_q = {}, {}
+    rows_by_id = {e.get("input_id"): e for e in tl}
+    for e in tl:
+        buckets_i.setdefault(
+            int((e["planned_mono_ns"] - t0) // window_ns), []).append(e)
+    for q in qs:
+        buckets_q.setdefault(
+            int((q["planned_mono_ns"] - t0) // window_ns), []).append(q)
+    window_fail = []
+    for bucket in range(expected_windows):
+        rows_i = buckets_i.get(bucket, [])
+        rows_q = buckets_q.get(bucket, [])
+        # Warmup: shape only (resets run here by design; the exempted rows
+        # carry their own proof above).
+        if bucket < warmup_windows:
+            if len(rows_i) != contract.P_WINDOW_INPUTS:
+                window_fail.append("warmup_w%d_inputs_%d"
+                                   % (bucket, len(rows_i)))
+            continue
+        if not rows_i or not rows_q:
+            window_fail.append("w%d_empty" % bucket)
+            continue
+        exempt_ids = {r["index"] for r in exempt_queries}
+        normal_q = [q for q in rows_q if q["index"] not in exempt_ids]
+        normal_i = [e for e in rows_i
+                    if e.get("receipt_status") in NORMAL_INPUT_OK]
+        if len(rows_i) != contract.P_WINDOW_INPUTS:
+            window_fail.append("w%d_inputs_%d" % (bucket, len(rows_i)))
+        if len(rows_q) != contract.P_WINDOW_QUERIES:
+            window_fail.append("w%d_queries_%d" % (bucket, len(rows_q)))
+            continue
+        sender = [{"input_id": e["input_id"],
+                   "planned_mono_ns": e["planned_mono_ns"],
+                   "publish_mono_ns": e["publish_mono_ns"]} for e in rows_i]
+        reasons = []
+        query_late, send_late, latency = s3._ph_boundaries(
+            normal_q, sender, reasons)
+        e2e = [e["e2e_ms"] for e in normal_i
+               if isinstance(e.get("e2e_ms"), (int, float))]
+        gate = s3._latency_gate_problems(e2e, latency, query_late, send_late)
+        if reasons or gate:
+            window_fail.append("w%d:%s" % (bucket, (reasons + gate)[:3]))
+    if window_fail:
+        problems.extend(["window_and:%s" % f for f in window_fail[:8]])
+        problems.append("window_and_count:%d" % len(window_fail))
+    window_stats = {"expected": int(contract.L_DURATION_S
+                                    / contract.P_WINDOW_S) - warmup_windows,
+                    "failed": len(window_fail)}
+
+    # ---- whole-run all-ID closure/latency (exempted rows stay counted) -------
+    q_lat = [(q.get("ended_mono_ns", 0) - q.get("planned_mono_ns", 0)) / 1e6
+             for q in qs
+             if isinstance(q.get("ended_mono_ns"), int)
+             and isinstance(q.get("planned_mono_ns"), int)]
+    i_e2e = [e["e2e_ms"] for e in tl
+             if e.get("receipt_status") in NORMAL_INPUT_OK
+             and isinstance(e.get("e2e_ms"), (int, float))]
     no_terminal = [e["input_id"] for e in tl if not e.get("receipt_status")]
     if no_terminal:
         problems.append("inputs_without_terminal:%d" % len(no_terminal))
+    if _p95(q_lat) is None or _p95(q_lat) > contract.QUERY_FULL_P95_MS:
+        problems.append("allid_query_p95:%s" % _p95(q_lat))
+    if q_lat and max(q_lat) > contract.QUERY_FULL_MAX_MS:
+        problems.append("allid_query_max:%.1f" % max(q_lat))
+    if _p95(i_e2e) is None or _p95(i_e2e) > contract.INPUT_E2E_P95_MS:
+        problems.append("allid_input_p95:%s" % _p95(i_e2e))
+    if i_e2e and max(i_e2e) > contract.INPUT_E2E_MAX_MS:
+        problems.append("allid_input_max:%.1f" % max(i_e2e))
+    ages = [q["age_ns"] / 1e9 for q in qs
+            if isinstance(q.get("age_ns"), int)]
+    if ages and max(ages) > contract.SNAPSHOT_AGE_MAX_S:
+        problems.append("allid_age_max:%.3f" % max(ages))
 
-    # ---- classify rows, apply the two vocabularies ---------------------------
-    normal_q, reset_q, bad_status = [], [], []
-    for q in qs:
-        planned = q.get("planned_mono_ns")
-        started = q.get("started_mono_ns")
-        ended = q.get("ended_mono_ns")
-        status = q.get("status")
-        if affected(planned, started, ended):
-            reset_q.append(q)
-            if status not in RESET_LEGAL_QUERY and \
-                    status not in NORMAL_QUERY_OK:
-                bad_status.append("reset_query:%s:%s" % (q.get("index"), status))
-        else:
-            normal_q.append(q)
-            if status not in NORMAL_QUERY_OK:
-                bad_status.append("normal_query:%s:%s" % (q.get("index"), status))
-    normal_i, reset_i = [], []
-    for e in tl:
-        planned = e.get("planned_mono_ns")
-        started = e.get("publish_mono_ns")
-        ended = e.get("receipt_arrival_mono_ns")
-        bucket = reset_i if affected(planned, started, ended) else normal_i
-        bucket.append(e)
-    for e in reset_i:
-        if e.get("receipt_status") not in RESET_LEGAL_INPUT | {"INTEGRATED"}:
-            bad_status.append("reset_input:%s:%s"
-                              % (e["input_id"], e.get("receipt_status")))
-    problems.extend(bad_status[:20])
-
-    # ---- latency: all-ID (closure+latency includes reset rows) ---------------
-    q_lat = [q["latency_ms"] for q in qs if q.get("latency_ms") is not None]
-    i_e2e = [e["e2e_ms"] for e in tl if e.get("e2e_ms") is not None]
-    ages = [q["age_ns"] / 1e9 for q in qs if q.get("age_ns") is not None]
-    if _p95(q_lat) is None or _p95(q_lat) > P95_QUERY_MS:
-        problems.append("query_p95:%s" % _p95(q_lat))
-    if q_lat and max(q_lat) > MAX_MS:
-        problems.append("query_max:%.1f" % max(q_lat))
-    if _p95(i_e2e) is None or _p95(i_e2e) > P95_INPUT_MS:
-        problems.append("input_p95:%s" % _p95(i_e2e))
-    if i_e2e and max(i_e2e) > MAX_MS:
-        problems.append("input_max:%.1f" % max(i_e2e))
-    if ages and max(ages) > MAX_AGE_S:
-        problems.append("age_max:%.3f" % max(ages))
-
-    # ---- 120 s-window AND over the normal segment ----------------------------
-    scored_start = t0 + int(WARMUP_S * 1e9)
-    window_fail = 0
-    buckets = {}
-    for q in normal_q:
-        t = q.get("planned_mono_ns") or 0
-        if t < scored_start:
-            continue
-        buckets.setdefault(int((t - scored_start) / (WINDOW_S * 1e9)), []).append(q)
-    for _key, rows in sorted(buckets.items()):
-        lat = [r["latency_ms"] for r in rows if r.get("latency_ms") is not None]
-        ag = [r["age_ns"] / 1e9 for r in rows if r.get("age_ns") is not None]
-        if not lat or _p95(lat) > P95_QUERY_MS or max(lat) > MAX_MS \
-                or (ag and max(ag) > MAX_AGE_S):
-            window_fail += 1
-    if buckets and window_fail:
-        problems.append("window_and:%d/%d" % (window_fail, len(buckets)))
-
-    # ---- ownership: final-release reconciliation per round --------------------
+    # ---- read/release rounds + external buffer ownership ----------------------
+    if len(read_rounds) != contract.L_READ_RELEASE_ROUNDS or \
+            len(read_rounds) != d.get("read_rounds", -1):
+        problems.append("read_rounds_%d" % len(read_rounds))
+    if d.get("read_failed_attempts") != []:
+        problems.append("read_failed_attempts:%s"
+                        % d.get("read_failed_attempts"))
     baseline = d.get("baseline") or {}
-    after_all = d.get("after") or {}
-    rounds_residual = []
-    for r in rr:
-        before = r.get("ownership_before") or {}
-        after = r.get("ownership_after") or {}
-        bmin = (before.get("resource_samples") or [before])[-1] \
-            if isinstance(before.get("resource_samples"), list) else before
-        amin = (after.get("resource_samples") or [after])[-1] \
-            if isinstance(after.get("resource_samples"), list) else after
-        for k in ("client_held_view_block_bytes", "old_view_block_bytes",
-                  "lease_view_block_bytes"):
-            bv = bmin.get(k) or 0
-            av = amin.get(k) or 0
-            if av > bv:
-                rounds_residual.append((r["index"], k, bv, av))
-    if rounds_residual:
-        problems.append("final_release_residual:%s"
-                        % rounds_residual[:4])
-    # The bounded surface-cache entry is a live owner (§1): constant size,
-    # present in the run baseline AND the run-end state.
-    cache_base = (baseline.get("resource_samples") or [baseline])[-1] \
-        .get("surface_cache_bytes") if isinstance(
-            baseline.get("resource_samples"), list) else baseline.get("cache_bytes")
-    cache_end = (after_all.get("resource_samples") or [after_all])[-1] \
-        .get("surface_cache_bytes") if isinstance(
-            after_all.get("resource_samples"), list) else after_all.get("cache_bytes")
-    if cache_base != cache_end:
-        problems.append("cache_entry_drift:%s!=%s" % (cache_base, cache_end))
-    bad_reads = [x for x in read_rounds if x.get("problems") or x.get("residual")]
-    if bad_reads:
-        problems.append("read_rounds_failed:%d/%d"
-                        % (len(bad_reads), len(read_rounds)))
-    if len(read_rounds) < 1000:
-        problems.append("read_rounds_count:%d" % len(read_rounds))
-    if len(rr) < 100:
-        problems.append("reset_rounds_count:%d" % len(rr))
+    for index, record in enumerate(read_rounds):
+        problems.extend(s3._ownership_round_problems(
+            index, record, baseline, "read"))
+    external_series, cache_series = [], []
 
-    # ---- resources ------------------------------------------------------------
-    rss = [r.get("rss_kib") for r in d.get("rss_series") or []
-           if r.get("rss_kib")]
+    def collect(snapshot):
+        samples = snapshot.get("resource_samples") or [snapshot]
+        for sample in samples:
+            if isinstance(sample, dict):
+                external_series.append(
+                    sample.get("external_surface_buffer_bytes"))
+                cache_series.append(sample.get("surface_cache_bytes"))
+    for record in rr:
+        collect(record.get("ownership_before") or {})
+        collect(record.get("ownership_after_reset") or {})
+        collect(record.get("ownership_after") or {})
+    for record in read_rounds:
+        collect(record.get("ownership_after") or {})
+    collect(baseline)
+    collect(d.get("after") or {})
+    if not external_series or any(v is None for v in external_series):
+        problems.append("external_surface_series_missing")
+    else:
+        # §1 ownership proof for the external buffer class: every external
+        # byte must sit inside the surface-cache entry (its live, certified
+        # owner); the cache entry itself must exist at baseline AND stage end.
+        for ext, cache in zip(external_series, cache_series):
+            if not isinstance(cache, int) or ext > cache:
+                problems.append("external_byte_without_owner:%s>%s"
+                                % (ext, cache))
+                break
+    if not isinstance(baseline.get("external_surface_buffer_bytes"), int):
+        problems.append("baseline_external_missing")
+    after_all = d.get("after") or {}
+    problems.extend(s3._class_residual_problems(after_all, baseline, "after_"))
+    problems.extend(s3._split_identity_problems(after_all, "after_"))
+    problems.extend(s3._split_identity_problems(baseline, "baseline_"))
+
+    # ---- resources -------------------------------------------------------------
+    rss = d.get("rss_series") or []
+    for index, sample in enumerate(rss):
+        if s3._bad_number(sample.get("rss_kib")):
+            problems.append("rss_sample_bad_%d" % index)
+        if not isinstance(sample.get("t_mono_ns"), int):
+            problems.append("rss_time_missing_%d" % index)
+        elif index and sample["t_mono_ns"] <= rss[index - 1]["t_mono_ns"]:
+            problems.append("rss_time_not_monotonic_%d" % index)
+    rss_stats = {}
+    if rss:
+        span = rss[-1]["t_mono_ns"] - rss[0]["t_mono_ns"]
+        bucket_ns = int(600 * 1e9)
+        counts = {}
+        for sample in rss:
+            counts[int((sample["t_mono_ns"] - rss[0]["t_mono_ns"])
+                       // bucket_ns)] = \
+                counts.get(int((sample["t_mono_ns"] - rss[0]["t_mono_ns"])
+                               // bucket_ns), 0) + 1
+        planned_buckets = int(contract.L_DURATION_S // 600)
+        missing_buckets = [b for b in range(planned_buckets)
+                           if counts.get(b, 0) < 600]
+        if missing_buckets:
+            problems.append("rss_bucket_missing_or_sparse:%s" % missing_buckets)
+        values = [s["rss_kib"] for s in rss]
+        rss_stats["rss_max_gib"] = round(max(values) / 1048576, 3)
+        if max(values) > contract.L_RSS_LIMIT_KIB:
+            problems.append("rss_over_limit_%d" % max(values))
+        t_rss0 = rss[0]["t_mono_ns"]
+        first_window = [s["rss_kib"] for s in rss
+                        if t_rss0 + warmup_end - t0 <= s["t_mono_ns"]
+                        < t_rss0 + warmup_end - t0 + bucket_ns]
+        last_window = [s["rss_kib"] for s in rss
+                       if rss[-1]["t_mono_ns"] - bucket_ns
+                       <= s["t_mono_ns"] <= rss[-1]["t_mono_ns"]]
+        if len(first_window) < 600 or len(last_window) < 600:
+            problems.append("rss_growth_windows_thin")
+        else:
+            growth = 100.0 * (statistics.median(last_window)
+                              - statistics.median(first_window)) \
+                / max(1.0, statistics.median(first_window))
+            rss_stats["rss_growth_pct"] = round(growth, 2)
+            if growth > contract.L_RSS_GROWTH * 100:
+                problems.append("rss_growth_%.2f%%" % growth)
+        rss_stats["span_s"] = round(span / 1e9, 1)
+    else:
+        problems.append("rss_series_missing")
     peak = 0
 
     def walk(obj):
         nonlocal peak
         if isinstance(obj, dict):
-            peak = max(peak, obj.get("read_view_cache_bytes_peak") or 0)
-            for v in obj.values():
-                walk(v)
+            value = obj.get("read_view_cache_bytes_peak")
+            if isinstance(value, int):
+                peak = max(peak, value)
+            for child in obj.values():
+                walk(child)
         elif isinstance(obj, list):
-            for v in obj:
-                walk(v)
+            for child in obj:
+                walk(child)
     walk(d)
-    verdict = {
-        "rule_set": "OCTOMAP_RESET_VALIDITY_NEXT_20261103 §5 L",
-        "counts": {"inputs": len(tl), "queries": len(qs),
-                   "extra_inputs": extra_inputs, "extra_queries": extra_queries,
-                   "reset_rounds": len(rr), "read_rounds": len(read_rounds)},
-        "rows": {"reset_affected_queries": len(reset_q),
-                 "reset_affected_inputs": len(reset_i),
-                 "normal_queries": len(normal_q)},
-        "latency_all_id": {"query_p95_ms": _p95(q_lat),
-                           "query_max_ms": max(q_lat) if q_lat else None,
-                           "input_p95_ms": _p95(i_e2e),
-                           "input_max_ms": max(i_e2e) if i_e2e else None,
-                           "age_max_s": max(ages) if ages else None},
-        "windows_120s": {"count": len(buckets), "failed": window_fail},
-        "ownership": {"rounds_with_final_release_residual": len(rounds_residual),
-                      "cache_entry_baseline_end": [cache_base, cache_end]},
-        "resources": {
-            "rss_max_gib": round(max(rss) / 1048576, 3) if rss else None,
-            "view_cache_peak_mib": round(peak / 1048576, 1),
-            "rss_median_growth_pct": None},
-    }
-    if rss:
-        n = len(rss)
-        first = statistics.median(rss[:max(1, n // 6)])
-        last = statistics.median(rss[-max(1, n // 6):])
-        growth = 100.0 * (last - first) / first if first else None
-        verdict["resources"]["rss_median_growth_pct"] = round(growth, 2)
-        if max(rss) / 1048576 > RSS_MAX_GIB:
-            problems.append("rss_max:%.2fGiB" % (max(rss) / 1048576))
-        if peak / 1048576 > VIEW_CACHE_PEAK_MIB:
-            problems.append("view_cache_peak:%.1fMiB" % (peak / 1048576))
-        if growth is None or growth > RSS_MEDIAN_GROWTH_PCT:
-            problems.append("rss_growth:%s%%" % growth)
-    else:
-        problems.append("rss_series_missing")
+    rss_stats["view_cache_peak_mib"] = round(peak / 1048576, 1)
+    if peak > contract.READ_VIEW_CACHE_LIMIT_BYTES:
+        problems.append("view_cache_peak:%.1fMiB" % (peak / 1048576))
 
+    # ---- overrun rows report (judged above, never a window) --------------------
+    overrun_rows = [{
+        "kind": "query", "index": q.get("index"), "status": q.get("status"),
+        "latency_ms": q.get("latency_ms")}
+        for q in qs if q["_segment"] == "overrun"] + [{
+        "kind": "input", "input_id": e.get("input_id"),
+        "status": e.get("receipt_status"), "e2e_ms": e.get("e2e_ms")}
+        for e in tl if e["_segment"] == "overrun"]
+    return _finish(run, d, problems, rss_stats, qs, tl, rr, read_rounds,
+                   binding, exempt_queries, exempt_inputs, at_reset_view,
+                   overrun_rows, windows, peak, window_stats)
+
+
+def _finish(run, d, problems, rss_stats, qs, tl, rr, read_rounds, binding,
+            exempt_queries=None, exempt_inputs=None, at_reset_view=None,
+            overrun_rows=None, windows=None, peak=None, window_stats=None):
+    exempt_queries = exempt_queries or []
+    exempt_inputs = exempt_inputs or []
+    verdict = {
+        "rule_set": RULE_SET,
+        "provenance": {
+            "tool": "reset_l_judge.py (retrospective offline contract judge)",
+            "note": "first committed after the run02 freeze; recomputes "
+                    "preserved raw records under the frozen §5/§1 text; the "
+                    "scoring-time freeze and the S3-rule view are unchanged "
+                    "beside this verdict"},
+        "counts": {"inputs": len(tl), "queries": len(qs or []),
+                   "reset_rounds": len(rr), "read_rounds": len(read_rounds),
+                   "extra_inputs": max(0, len(tl) - contract.L_INPUTS),
+                   "extra_queries": max(0, len(qs or []) - contract.L_QUERIES)},
+        "exemptions": {"queries": exempt_queries,
+                       "inputs": exempt_inputs,
+                       "at_reset_view_recorded_not_gated": at_reset_view,
+                       "reset_windows": [
+                           {"round": i, "called_mono_ns": c,
+                            "round_end_mono_ns": e, "epoch_pre": p,
+                            "epoch_post": q}
+                           for i, c, e, p, q in (windows or [])]},
+        "overrun_rows": overrun_rows,
+        "windows_120s": window_stats or {},
+        "resources": rss_stats or {},
+        "s3_rule_view": "see campaign summary.json stage 'l' (unchanged)",
+    }
     verdict["problems"] = problems
     verdict["status"] = "fail" if problems else "pass"
+    if run is not None:
+        (run / "l_plan_verdict.json").write_text(
+            json.dumps(verdict, indent=1, sort_keys=True, default=str))
     return verdict
 
 
@@ -274,11 +643,10 @@ def main():
     parser.add_argument("--run", required=True)
     args = parser.parse_args()
     verdict = judge(Path(args.run))
-    (Path(args.run) / "l_plan_verdict.json").write_text(
-        json.dumps(verdict, indent=1, sort_keys=True))
     print(json.dumps({k: verdict[k] for k in
-                      ("status", "problems", "counts", "rows", "resources",
-                       "windows_120s")}, indent=1))
+                      ("status", "problems", "counts", "resources",
+                       "windows_120s", "exemptions", "overrun_rows")
+                      if k in verdict}, indent=1, default=str))
     return 0 if verdict["status"] == "pass" else 5
 
 

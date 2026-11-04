@@ -3,30 +3,41 @@
 
   reset_pressure.py --mode sweep   ...   non-scored 10/20/40/80 Hz x 10 s
   reset_pressure.py --mode score   ...   3 scored 60 s windows at the frozen
-                                          rate + per-window drain + 30 s
-                                          2.5/2 Hz recovery
+                                          rate, each followed by a bounded
+                                          30 s drain, then ONE final 30 s
+                                          2.5/2 Hz recovery phase
   reset_pressure.py --mode judge --run <dir>
 
+Recovery scope note (contract wording): the frozen §5 text says "3 scored
+windows + 30 s drain + 30 s recovery" -- ONE recovery phase after the
+overload sequence, not a recovery per window. The collector implements
+exactly that and records every first-read attempt (retries preserved, the
+first request bound); "first valid read" is measured to the COMPLETION of a
+served read (call end, including latency and release), never to the call
+start.
+
 Sweep: for each offered rate the runner drives inputs at that rate plus 2 Hz
-full queries for 10 s on the SAME frozen 20-box frames, then reports per-rate
-pressure evidence -- the product's own queue wait (queue_ms from the
-observation receipts) and any explicit rejection (QUEUE_FULL/REJECTED on
-inputs or queries). The LOWEST rate with at least one real pressure event is
-frozen (cap 80 Hz); if none reaches it, the score mode records
-``not_evaluated: pressure_unreached`` -- never a pass and never a raised cap.
+full queries for 10 s, then reports per-rate pressure evidence -- the
+product's own queue wait (queue_ms from the observation receipts) and any
+explicit rejection (QUEUE_FULL/REJECTED on inputs or queries). The LOWEST
+rate with at least one real pressure event is frozen (cap 80 Hz); if none
+reaches it, the score mode records ``not_evaluated: pressure_unreached`` --
+never a pass and never a raised cap.
 
 A pressure event is predeclared and bounded: queue_ms >= 50 ms (a wait that
 long cannot be scheduler noise at these periods) or an explicit rejection
 status. Raw queue_ms values are retained per input so the judge re-derives
 the verdict with the same rule from disk.
 
-Score: every window is 60 s at the frozen rate with 2 Hz queries; after each
-window the drain waits until in-flight inputs reach 0 (bounded 30 s); the
-recovery phase runs 30 s at the contract's 2.5 Hz update / 2 Hz query rates
-on the same node and measures the first valid read. Judge: one terminal per
-sent input, >=1 pressure event per window, drain empty within 30 s, first
-recovery read <= 2 s, and the remaining recovery requests meeting the P/H
-latency gates (input P95 <= 350 ms, query P95 <= 250 ms).
+Judge (recomputes EVERYTHING from the raw per-window files; the summary
+documents are only cross-checked, never trusted): exactly 3 raw 60 s windows
+at the sweep-frozen rate with 2 Hz queries, per-ID terminal closure, >=1
+REAL pressure event per window recomputed from the raw rows, drain derived
+from the offered-load end and the last receipt ARRIVAL (never a poll bool),
+one 30 s recovery with 75 inputs / 60 queries all in legal normal outcomes,
+first served read COMPLETING within 2 s of recovery start, and the P/H
+latency gates over every recovery query (failed queries are findings, never
+filtered out of the statistics).
 """
 from __future__ import annotations
 
@@ -49,6 +60,9 @@ REJECTION_STATUSES = {"QUEUE_FULL", "REJECTED"}
 #: A served-but-negative geometric answer is a VALID read (contract §5:
 #: NO_KNOWN_FREE is legal); only invalidity/absence makes a read unserved.
 UNSERVED_STATUSES = {"INVALIDATED", "NO_DATA", "STALE", "TIMEOUT"}
+#: Legal NORMAL outcomes for recovery queries (served answers; a geometric
+#: "no free cell" is served). Anything else is a finding, never filtered.
+NORMAL_QUERY_OK = {"OK", "NO_KNOWN_FREE"}
 RECOVERY_FIRST_READ_MAX_S = 2.0
 P95_INPUT_MS = 350.0
 P95_QUERY_MS = 250.0
@@ -201,7 +215,7 @@ def sweep(args):
             results["rates"].append(row)
             (out / ("sweep_%ghz.json" % rate)).write_text(json.dumps(
                 {"window": {k: v for k, v in window.items()
-                            if k not in ("inputs", "queries")},
+                            if k != "inputs"},
                  "drain": {k: v for k, v in drain.items()
                            if k != "timeline"},
                  "timeline": drain["timeline"]}, default=str))
@@ -267,10 +281,12 @@ def score(args):
                 {"summary": artifact["windows"][-1],
                  "window_full": window, "drain_full": drain}, default=str))
         # Recovery: 30 s at the contract's 2.5 Hz update / 2 Hz query rates,
-        # on the same node; the first valid read must land within 2 s.
+        # on the same node; the first valid read must COMPLETE within 2 s.
+        # Every attempt is preserved (retries included) and the first valid
+        # read is measured to the served call's END, never its start.
         recovery_t0_ns = time.monotonic_ns()
         base_stamp = int(time.time() * 1e9)
-        first_read = {}
+        first_read = {"attempts": []}
 
         def first_reader():
             deadline = time.monotonic() + 10.0
@@ -279,13 +295,16 @@ def score(args):
                 result = fs.full_query(client, contract.F_BOXES[0])
                 ended = time.monotonic_ns()
                 status = result.get("status")
-                first_read["attempt"] = {
+                first_read["attempts"].append({
                     "status": status, "started_mono_ns": started,
                     "ended_mono_ns": ended,
-                    "latency_ms": round((ended - started) / 1e6, 3)}
+                    "latency_ms": round((ended - started) / 1e6, 3),
+                    "release_status": result.get("release_status"),
+                    "pages": result.get("pages")})
                 if status not in UNSERVED_STATUSES:
+                    # Completion time (call end) relative to recovery start.
                     first_read["first_valid_read_s"] = round(
-                        (started - recovery_t0_ns) / 1e9, 3)
+                        (ended - recovery_t0_ns) / 1e9, 3)
                     return
                 time.sleep(0.1)
 
@@ -309,6 +328,18 @@ def score(args):
              "inputs": recovery_window.get("inputs")}, default=str))
         (out / "pressure_score.json").write_text(json.dumps(
             artifact, default=str))
+        # Load identity binding (post-hoc lesson from run02: the offered-load
+        # box mix must be provable from the artifact itself, not from the
+        # command line alone).
+        import hashlib as _hashlib
+        (out / "load_identity.json").write_text(json.dumps({
+            "frames_manifest": fs.frames_manifest(frames),
+            "node_sha256": _hashlib.sha256(
+                Path(args.node).read_bytes()).hexdigest(),
+            "geometry_sha256": _hashlib.sha256(
+                Path(args.geometry).read_bytes()).hexdigest(),
+            "config_sha256": _hashlib.sha256(
+                Path(args.config).read_bytes()).hexdigest()}, default=str))
         print(json.dumps({"windows": len(artifact["windows"]),
                           "events_per_window": [
                               len(w["pressure_events"])
@@ -320,62 +351,308 @@ def score(args):
         node.stop()
 
 
-def judge(run: Path):
-    """Recompute the R verdict from the artifacts on disk."""
+def _finite(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def judge(run: Path, expected_windows=3, window_s=60.0,
+          recovery_s=30.0, drain_budget_s=30.0):
+    """Recompute the R verdict from the RAW artifacts on disk.
+
+    Nothing is taken from a summary document without re-derivation: pressure
+    events, terminal closure, the drain deadline (offered-load end -> last
+    receipt ARRIVAL), the frozen rate, the recovery schedule, and the first
+    valid read (a SERVED attempt COMPLETING within the bound) are all
+    recomputed from the raw rows; summaries are only cross-checked.
+    """
     problems = []
+    verdict = {"rule_set": "OCTOMAP_RESET_VALIDITY_NEXT_20261103 §5 R"}
+
+    # ---- sweep: recompute events per rate from the RAW timelines ----------
+    sweep_raw_events = {}
+    sweep_summary = None
     sweep_path = run / "sweep_result.json"
-    score_path = run / "pressure_score.json"
     if not sweep_path.is_file():
         return {"status": "fail", "problems": ["missing_artifact:sweep_result"]}
-    sweep = json.loads(sweep_path.read_text())
-    verdict = {"sweep": {r["rate_hz"]: len(r["pressure_events"])
-                         for r in sweep["rates"]},
-               "frozen_rate_hz": sweep.get("frozen_rate_hz")}
-    if not score_path.is_file():
-        # Pressure never reached at any rate <= the cap: not_evaluated, and
-        # the cap must not rise after seeing this.
-        if sweep.get("pressure_unreached"):
-            verdict["status"] = "not_evaluated"
-            verdict["reason"] = "pressure_unreached"
-            return verdict
-        return {"status": "fail", "problems": ["missing_artifact:score"]}
-    score_doc = json.loads(score_path.read_text())
-    for window in score_doc.get("windows") or []:
-        index = window.get("index")
-        if not window.get("pressure_events"):
-            problems.append("window_without_pressure_event:%s" % index)
-        drain = window.get("drain") or {}
-        if not drain.get("drained_within_budget"):
-            problems.append("drain_not_empty_in_30s:%s" % index)
-        errors = window.get("errors") or []
-        if errors:
-            problems.append("window_errors:%s:%s" % (index, errors[:2]))
-    recovery = score_doc.get("recovery") or {}
-    first = (recovery.get("first_read") or {}).get("first_valid_read_s")
-    if first is None or first > RECOVERY_FIRST_READ_MAX_S:
-        problems.append("recovery_first_read:%s" % first)
-    # Recovery remainder meets the P/H latency gates (query-side P95; the
-    # per-query records live in recovery.json's queries list).
-    doc = json.loads((run / "recovery.json").read_text()) \
-        if (run / "recovery.json").is_file() else {}
-    recovery_latency = []
-    for record in doc.get("queries") or []:
-        if record.get("status") in UNSERVED_STATUSES:
+    sweep_summary = json.loads(sweep_path.read_text())
+    for rate in SWEEP_RATES:
+        raw_path = run / ("sweep_%ghz.json" % rate)
+        if not raw_path.is_file():
+            problems.append("missing_artifact:sweep_%ghz" % rate)
             continue
-        if record.get("latency_ms") is not None:
-            recovery_latency.append(record["latency_ms"])
+        raw = json.loads(raw_path.read_text())
+        timeline = raw.get("timeline") or []
+        raw_queries = (raw.get("window") or {}).get("queries") or []
+        events = _pressure_events(timeline, raw_queries)
+        sweep_raw_events[rate] = len(events)
+        # Closure on the sweep rows too: every offered input has a terminal.
+        open_rows = [e["input_id"] for e in timeline
+                     if not e.get("receipt_status")]
+        if open_rows:
+            problems.append("sweep_%ghz_open_rows:%d" % (rate, len(open_rows)))
+        summary_row = next((r for r in sweep_summary.get("rates") or []
+                            if r.get("rate_hz") == rate), None)
+        if summary_row is None:
+            problems.append("sweep_summary_missing_rate:%s" % rate)
+        elif len(summary_row.get("pressure_events") or []) != len(events):
+            problems.append("sweep_%ghz_events_summary_mismatch:%s!=%s"
+                            % (rate, len(summary_row.get("pressure_events")
+                                         or []),
+                               len(events)))
+    # Frozen rate = LOWEST rate with >=1 recomputed event, capped at 80 Hz.
+    derived_frozen = next((rate for rate in SWEEP_RATES
+                           if sweep_raw_events.get(rate)), None)
+    if derived_frozen is None:
+        verdict["status"] = "not_evaluated"
+        verdict["reason"] = "pressure_unreached"
+        verdict["sweep"] = sweep_raw_events
+        verdict["problems"] = problems
+        return verdict
+    if derived_frozen > 80.0:
+        problems.append("frozen_rate_over_cap:%s" % derived_frozen)
+    if sweep_summary.get("frozen_rate_hz") != derived_frozen:
+        problems.append("frozen_rate_mismatch:%s!=derived_%s"
+                        % (sweep_summary.get("frozen_rate_hz"), derived_frozen))
+    verdict["sweep"] = sweep_raw_events
+    verdict["frozen_rate_hz"] = derived_frozen
+
+    # ---- freeze-before-score binding (rule + rate existed before score) ----
+    try:
+        sweep_mtime = sweep_path.stat().st_mtime_ns
+        score_paths = [run / ("score_w%d.json" % i)
+                       for i in range(expected_windows)]
+        if all(p.is_file() for p in score_paths):
+            first_score_mtime = min(p.stat().st_mtime_ns for p in score_paths)
+            verdict["sweep_before_score"] = sweep_mtime < first_score_mtime
+            if not verdict["sweep_before_score"]:
+                problems.append("score_predates_sweep")
+    except OSError:
+        pass
+    freeze_path = run.parent / "FREEZE_INTEG.json"
+    if freeze_path.is_file():
+        freeze = json.loads(freeze_path.read_text())
+        rule = freeze.get("pressure_rule") or {}
+        verdict["freeze_pressure_rule"] = {
+            "queue_event_ms": rule.get("queue_event_ms"),
+            "cap_hz": rule.get("cap_hz"),
+            "sweep_hz": rule.get("sweep_hz")}
+        if rule.get("queue_event_ms") != QUEUE_EVENT_MS:
+            problems.append("freeze_rule_mismatch:queue_event_ms")
+        if sorted(rule.get("sweep_hz") or []) != sorted(SWEEP_RATES):
+            problems.append("freeze_rule_mismatch:sweep_hz")
+        if rule.get("cap_hz") != 80:
+            problems.append("freeze_rule_mismatch:cap_hz")
+    else:
+        problems.append("freeze_binding_missing:FREEZE_INTEG.json")
+
+    # ---- scored windows: recompute from score_w{i}.json --------------------
+    score_summary_path = run / "pressure_score.json"
+    score_summary = json.loads(score_summary_path.read_text()) \
+        if score_summary_path.is_file() else None
+    if score_summary is None:
+        problems.append("missing_artifact:pressure_score")
+    window_epochs = set()
+    last_drain_end = None
+    for index in range(expected_windows):
+        raw_path = run / ("score_w%d.json" % index)
+        if not raw_path.is_file():
+            problems.append("missing_artifact:score_w%d" % index)
             continue
-        started = record.get("started_mono_ns")
-        planned = record.get("planned_mono_ns")
-        if started and planned:
-            recovery_latency.append((started - planned) / 1e6)
-    verdict["recovery_query_p95_ms"] = _p95(recovery_latency)
-    if _p95(recovery_latency) is None or \
-            _p95(recovery_latency) > P95_QUERY_MS:
-        problems.append("recovery_query_p95:%s"
-                        % _p95(recovery_latency))
-    verdict["status"] = "fail" if problems else "pass"
+        raw = json.loads(raw_path.read_text())
+        window = raw.get("window_full") or {}
+        drain_full = raw.get("drain_full") or {}
+        timeline = drain_full.get("timeline") or []
+        queries = window.get("queries") or []
+        inputs = window.get("inputs") or []
+        prefix = "w%d" % index
+        if window.get("rate_hz") != derived_frozen:
+            problems.append("%s_rate_%s" % (prefix, window.get("rate_hz")))
+        if window.get("window_s") != window_s:
+            problems.append("%s_window_s_%s" % (prefix, window.get("window_s")))
+        if len(inputs) != int(derived_frozen * window_s):
+            problems.append("%s_inputs_%d" % (prefix, len(inputs)))
+        if len(queries) != int(contract.QUERY_HZ * window_s):
+            problems.append("%s_queries_%d" % (prefix, len(queries)))
+        if window.get("errors"):
+            problems.append("%s_errors:%s" % (prefix, window["errors"][:2]))
+        # Per-ID closure + uniqueness on the RAW rows.
+        ids = [row.get("input_id") for row in inputs]
+        if len(set(ids)) != len(ids):
+            problems.append("%s_duplicate_input_id" % prefix)
+        by_id = {}
+        for row in timeline:
+            by_id.setdefault(row.get("input_id"), []).append(row)
+        missing_terminal = [i for i in ids
+                            if not any(r.get("receipt_status")
+                                       for r in by_id.get(i, []))]
+        if missing_terminal:
+            problems.append("%s_open_inputs:%d" % (prefix,
+                                                   len(missing_terminal)))
+        # Pressure events recomputed from the raw rows (>=1 per window).
+        events = _pressure_events(timeline, queries)
+        if not events:
+            problems.append("%s_without_pressure_event" % prefix)
+        verdict["w%d_pressure_events" % index] = len(events)
+        # Drain: derived from the offered-load end and the last receipt
+        # ARRIVAL -- never from the poll loop's boolean.
+        drain_start = drain_full.get("drain_start_ns")
+        arrivals = [r.get("arrival_mono_ns")
+                    for row in timeline
+                    for r in (row.get("receipt_events") or [])
+                    if isinstance(r.get("arrival_mono_ns"), int)]
+        arrivals += [row.get("receipt_arrival_mono_ns") for row in timeline
+                     if isinstance(row.get("receipt_arrival_mono_ns"), int)]
+        if not isinstance(drain_start, int) or not arrivals:
+            problems.append("%s_drain_boundaries_missing" % prefix)
+        else:
+            drain_time_s = (max(arrivals) - drain_start) / 1e9
+            verdict["w%d_drain_s" % index] = round(drain_time_s, 3)
+            if drain_time_s > drain_budget_s:
+                problems.append("%s_drain_%.1fs>%.0fs"
+                                % (prefix, drain_time_s, drain_budget_s))
+        pending = [row.get("input_id") for row in timeline
+                   if not row.get("receipt_status")]
+        if pending:
+            problems.append("%s_in_flight_at_end:%d" % (prefix,
+                                                        len(pending)))
+        # Offered-load schedule: stamps step 1/rate, ids == str(stamp).
+        stamps = [row.get("stamp_ns") for row in inputs]
+        step_ns = int(round(1e9 / derived_frozen))
+        if stamps and any(
+                s2 - s1 != step_ns for s1, s2 in zip(stamps, stamps[1:])):
+            problems.append("%s_stamp_grid_broken" % prefix)
+        for row in inputs:
+            if row.get("input_id") != str(row.get("stamp_ns")):
+                problems.append("%s_id_not_stamp" % prefix)
+                break
+        # Query terminal + epoch continuity (same node, no reset).
+        for row in queries:
+            if not row.get("status"):
+                problems.append("%s_query_without_terminal" % prefix)
+                break
+            identity = row.get("lease_identity") or {}
+            if isinstance(identity.get("epoch"), int):
+                window_epochs.add(identity["epoch"])
+        if last_drain_end is not None and \
+                isinstance(window.get("t0_ns"), int) and \
+                window["t0_ns"] <= last_drain_end:
+            problems.append("%s_overlaps_previous_drain" % prefix)
+        if isinstance(drain_full.get("drain_end_ns"), int):
+            last_drain_end = drain_full["drain_end_ns"]
+        # Summary cross-check for this window.
+        summary_row = next((w for w in ((score_summary or {}).get("windows")
+                                        or [])
+                            if w.get("index") == index), None)
+        if summary_row is not None:
+            if len(summary_row.get("pressure_events") or []) != len(events):
+                problems.append("%s_events_summary_mismatch" % prefix)
+
+    # ---- recovery: raw schedule + first read to COMPLETION ------------------
+    recovery_path = run / "recovery.json"
+    if not recovery_path.is_file():
+        problems.append("missing_artifact:recovery")
+        recovery = {}
+    else:
+        recovery = json.loads(recovery_path.read_text())
+    rec_queries = recovery.get("queries") or []
+    rec_inputs = recovery.get("inputs") or []
+    summary = recovery.get("summary") or {}
+    expected_inputs = int(contract.UPDATE_HZ * recovery_s)
+    expected_queries = int(contract.QUERY_HZ * recovery_s)
+    if len(rec_inputs) != expected_inputs:
+        problems.append("recovery_inputs_%d" % len(rec_inputs))
+    if len(rec_queries) != expected_queries:
+        problems.append("recovery_queries_%d" % len(rec_queries))
+    if summary.get("inputs") not in (None, len(rec_inputs)):
+        problems.append("recovery_inputs_summary_mismatch")
+    # Every recovery query judged: a non-normal status is a FINDING here --
+    # never filtered out of the statistics.
+    bad_status = [r.get("index") for r in rec_queries
+                  if r.get("status") not in NORMAL_QUERY_OK]
+    if bad_status:
+        problems.append("recovery_bad_status:%s" % bad_status[:5])
+    latencies = []
+    for row in rec_queries:
+        started, planned, ended = (row.get("started_mono_ns"),
+                                   row.get("planned_mono_ns"),
+                                   row.get("ended_mono_ns"))
+        if not all(isinstance(v, int) for v in (started, planned, ended)):
+            problems.append("recovery_query_boundary_missing")
+            continue
+        if ended < started:
+            problems.append("recovery_query_ended_before_started")
+            continue
+        latencies.append((ended - planned) / 1e6)
+    verdict["recovery_query_p95_ms"] = _p95(latencies)
+    if latencies:
+        if _p95(latencies) > P95_QUERY_MS:
+            problems.append("recovery_query_p95:%.1f" % _p95(latencies))
+        if max(latencies) > 500.0:
+            problems.append("recovery_query_max:%.1f" % max(latencies))
+    ages = [row.get("age_ns") / 1e9 for row in rec_queries
+            if isinstance(row.get("age_ns"), int)]
+    if ages and max(ages) > 1.0:
+        problems.append("recovery_age_max:%.2f" % max(ages))
+    # First valid read: the first SERVED attempt COMPLETING within 2 s of
+    # recovery start. A recorded start-based 0.0 with a TIMEOUT attempt is
+    # rejected; retries are preserved and the first served one binds.
+    first_read = summary.get("first_read") or {}
+    # Cross-check the duplicate first_read copy in the score summary: the two
+    # documents must agree -- a forged copy on either side is a finding.
+    summary_first = ((score_summary or {}).get("recovery")
+                     or {}).get("first_read")
+    if summary_first is not None and summary_first != first_read:
+        problems.append("first_read_copies_diverge")
+    attempts = first_read.get("attempts")
+    if attempts is None and first_read.get("attempt") is not None:
+        attempts = [first_read["attempt"]]   # pre-fix artifact format
+        verdict["first_read_format"] = "legacy_single_attempt(start-based)"
+    if not attempts:
+        problems.append("recovery_first_read:no_attempt_record")
+    else:
+        t0 = summary.get("t0_ns")
+        first_served = None
+        for attempt in attempts:
+            status = attempt.get("status")
+            started, ended = (attempt.get("started_mono_ns"),
+                              attempt.get("ended_mono_ns"))
+            if not isinstance(started, int) or not isinstance(ended, int) \
+                    or ended < started:
+                problems.append("recovery_first_read:attempt_boundaries")
+                break
+            latency = attempt.get("latency_ms")
+            if not _finite(latency) or \
+                    abs(latency - (ended - started) / 1e6) > 1.0:
+                problems.append("recovery_first_read:latency_not_recomputed")
+                break
+            if status not in UNSERVED_STATUSES:
+                first_served = attempt
+                break
+        if first_served is None:
+            problems.append("recovery_first_read:no_served_attempt")
+        elif not isinstance(t0, int):
+            problems.append("recovery_first_read:t0_missing")
+        else:
+            completion_s = (first_served["ended_mono_ns"] - t0) / 1e9
+            verdict["first_valid_read_completion_s"] = round(completion_s, 3)
+            if completion_s > RECOVERY_FIRST_READ_MAX_S:
+                problems.append("recovery_first_read:%.2fs>%.1fs"
+                                % (completion_s, RECOVERY_FIRST_READ_MAX_S))
+    # Same-node/epoch continuity across windows and recovery.
+    for row in rec_queries:
+        identity = row.get("lease_identity") or {}
+        if isinstance(identity.get("epoch"), int):
+            window_epochs.add(identity["epoch"])
+    verdict["epochs_seen"] = sorted(window_epochs)
+    if len(window_epochs) != 1:
+        problems.append("epoch_discontinuity:%s" % sorted(window_epochs))
+    # Stale summary window fields (kept for the record, cross-checked).
+    if score_summary is not None and \
+            score_summary.get("frozen_rate_hz") != derived_frozen:
+        problems.append("score_summary_frozen_rate_mismatch")
+
     verdict["problems"] = problems
+    verdict["status"] = "fail" if problems else "pass"
     return verdict
 
 
