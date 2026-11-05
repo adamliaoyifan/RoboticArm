@@ -79,6 +79,10 @@ class ChainClient(Node):
             "/uld_occ_observer/validity" if backend == "O"
             else "/luggage/cargo_map/validity",
             self._on_validity, latched)
+        self._surface_map = {}
+        self._surface_sub = self.create_subscription(
+            String, "/luggage/cargo_map/surface_2d",
+            self._on_surface_map, latched)
         self._last_sub = self.create_subscription(
             String, "/placement_planner/last_result",
             self._on_last_result, latched)
@@ -115,15 +119,32 @@ class ChainClient(Node):
         self._chain_clients["placement_v2"] = self.create_client(
             ComputePlacementV2, "/placement_planner/compute_placement_v2")
 
+    #: Services every chain must expose. placement_v2 exists only in the
+    #: planner's v2 surface mode (frame_scene_revision set) — the product
+    #: creates no V2 service otherwise, so it is NOT required here.
+    REQUIRED_SERVICES = ("reset", "validity", "placement")
+
     def wait_services(self, timeout_s=20.0):
         deadline = time.monotonic() + timeout_s
-        pending = [name for name, client in self._chain_clients.items()
-                   if client is not None]
+        names = [n for n in self.REQUIRED_SERVICES
+                 if self._chain_clients.get(n) is not None]
+        if self.backend == "O":
+            names.append("integrate_observation")
+        else:
+            names.append("integrate")
+        pending = list(names)
         while time.monotonic() < deadline and pending:
             pending = [name for name in pending
                        if not self._chain_clients[name].wait_for_service(
                            timeout_sec=0.2)]
         return not pending, pending
+
+    def wait_placement_v2(self, timeout_s=10.0):
+        """V2 service presence is a v2-mode deployment property."""
+        client = self._chain_clients.get("placement_v2")
+        if client is None:
+            return False
+        return client.wait_for_service(timeout_sec=timeout_s)
 
     def _call(self, name, request, timeout_s=30.0):
         """Synchronous service call with a REAL monotonic deadline (the
@@ -174,6 +195,25 @@ class ChainClient(Node):
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
         return self._clock_stop
+
+    def start_robot_stream(self, interval_s=0.10, stamp_offset_ns=50_000_000):
+        """Continuous frozen robot fixture: fresh joint_states at the
+        real subscription entry, stamped just behind the running scenario
+        clock (the production robot publishes a sequence, not one shot —
+        a solve that outlives one sample's 500ms window is normal)."""
+        import threading
+        self._robot_stop = threading.Event()
+
+        def _run():
+            while not self._robot_stop.wait(interval_s):
+                try:
+                    now = self.clock_now_ns()
+                    self.publish_joints(now - stamp_offset_ns)
+                except Exception:  # noqa: BLE001 - stream must survive
+                    pass
+
+        threading.Thread(target=_run, daemon=True).start()
+        return self._robot_stop
 
     def clock_now_ns(self):
         state = getattr(self, "_clock_state", None)
@@ -405,6 +445,16 @@ class ChainClient(Node):
             self._validity_seen = json.loads(msg.data)
         except ValueError:
             pass
+
+    def _on_surface_map(self, msg):
+        try:
+            self._surface_map = json.loads(msg.data)
+        except ValueError:
+            pass
+
+    @property
+    def surface_map(self):
+        return self._surface_map
 
     def _on_last_result(self, msg):
         try:
