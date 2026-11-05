@@ -142,6 +142,10 @@ def g_mapper_command(manifest, *, scene_revision="", cloud_topic=None):
         "-p freshness_window_sec:=2.0",
         "-p scene_tf_config:=%s" % manifest.get("scene_tf", ""),
         "-p resolution:=0.02",
+        # Full-ray budget for the S-free fan (the node default 2000
+        # subsamples the 8.4k-point frames and thins the observed
+        # support; the chain config freezes the full budget).
+        "-p max_raycast_points:=20000",
     ]
     if scene_revision:
         params.append("-p frame_scene_revision:=%s" % scene_revision)

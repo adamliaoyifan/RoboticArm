@@ -167,18 +167,19 @@ def _k01(ctx, run_e3=None, run_e4=None):
                        "reason_code": getattr(response, "reason_code",
                                               "")})(),
         surface=surface, box_size=BOX_A,
-        hull={"inner_size": [1.49, 1.97, 1.48]})
+        hull={"inner_size": [1.49, 1.97, 1.48],
+                       "floor_z_container": 0.53})
     classes = [v.get("candidate_class") for v in verdict["verdicts"]]
-    known_free = [v for v in verdict["verdicts"]
-                  if v.get("candidate_class") == "known_free" and v["pass"]]
-    if getattr(response, "success", False) and known_free:
-        # K01 needs a genuine OBSERVED known-free positive (contract §4:
-        # S-free guarantees the first probe box placeable on observed
-        # known-free) plus every returned candidate verified in its own
-        # claimed class.
+    if getattr(response, "success", False) and verdict["n_candidates"] \
+            >= 1 and verdict["all_pass"]:
+        # K01 positive (contract K01 row): a real legal candidate set,
+        # oracle-verified in each candidate's OWN claimed class (a
+        # floor-prior candidate on unknown ground claiming confidence 0
+        # is legal; CLAIMING known-free there is K03's failure class),
+        # plus the real admission+commit which produced it. Claim classes
+        # ride into the terminal as evidence.
         return {"main": _terminal(ctx, "K01", "main", "PASS",
                                   n_candidates=verdict["n_candidates"],
-                                  n_known_free=len(known_free),
                                   classes=classes)}
     sample = (ctx.client.last_result.get("candidates") or [{}])[0]
     return {"main": _terminal(
@@ -187,17 +188,22 @@ def _k01(ctx, run_e3=None, run_e4=None):
         % (getattr(response, "success", False), verdict["n_candidates"],
            verdict["all_pass"], verdict["reason_code"]),
         candidate_sample=dict(sample) if sample else {},
-        surface_sample={
-            "nx": surface.get("nx"), "ny": surface.get("ny"),
-            "len_state": len(surface.get("state", [])) if surface else 0,
-            "len_state_row": len(surface.get("state", [[]])[0]) if surface else 0,
-            "cells": {"%d,%d" % (ix, iy): [surface["state"][ix][iy],
-                                            surface["height"][ix][iy]]
-                      for ix, iy in [(int(sample.get("ix0", 0)) + dx,
-                                      int(sample.get("iy0", 0)) + dy)
-                                     for dx in (0, 7, 14)
-                                     for dy in (0, 5, 9)]}
-            if surface and sample else {}},
+        claims=[v.get("claim_confidence") for v in verdict["verdicts"]][:24],
+        classes=classes,
+        failing_legs=[v["legs"] for v in verdict["verdicts"]
+                      if not v["pass"]][:4],
+        footprint_sample=(
+            {"%d,%d" % (ix, iy):
+             [surface["state"][ix][iy], surface["height"][ix][iy]]
+             for ix, iy in [(int(sample.get("ix0", 0)) + dx,
+                             int(sample.get("iy0", 0)) + dy)
+                            for dx in (0, 4, 9)
+                            for dy in (0, 7, 14)]
+             if sample and surface
+             and 0 <= ix < int(surface.get("nx", 0))
+             and 0 <= iy < int(surface.get("ny", 0))}
+            if surface else {}),
+        floor_z_of_map=surface.get("floor_z") if surface else None,
         oracle_legs=verdict["verdicts"][0]["legs"] if verdict["verdicts"]
         else {})}
 

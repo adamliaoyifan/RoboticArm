@@ -109,18 +109,23 @@ def verify_candidate(candidate, *, surface, box_size, hull,
         return result
     result["n_cells"] = len(cells)
 
-    floor = float(surface.get("floor_z", 0.0) or 0.0)
+    # Frame discipline: surface heights are FLOOR-RELATIVE (the map's
+    # floor_z is the solver convention 0.0); candidate centers are
+    # container-frame. Convert the candidate bottom into the map's
+    # floor-relative frame via the hull's container floor height.
+    floor_rel = float(surface.get("floor_z", 0.0) or 0.0)
+    floor_container = float(hull.get("floor_z_container", 0.53))
     z0 = center[2] - size[2] / 2.0
+    z0_rel = z0 - floor_container
     occupied_conflict = unknown_interior = supported = 0
     for ix, iy in cells:
         height, state = _column_height(surface, ix, iy)
-        top = floor + height
-        if state == "occupied" and top > z0 + POLICY[
-                "float_tolerance_m"]:
+        top = floor_rel + height
+        if state == "occupied" and top > z0_rel + 1e-6:
             occupied_conflict += 1
         elif state == "unknown":
             unknown_interior += 1
-        elif abs(top - z0) <= 1e-6:
+        elif abs(top - z0_rel) <= 1e-6:
             supported += 1
     result["legs"]["occupied_overlap"] = (
         "PASS" if occupied_conflict == 0 else
@@ -154,10 +159,10 @@ def verify_candidate(candidate, *, surface, box_size, hull,
         result["legs"]["support"] = (
             "PASS" if claim < 0.5 else "FAIL_claim_mismatch")
         result["candidate_class"] = "floor_prior"
-    # Clearance: the box top must stay under the ceiling.
-    ceiling = floor + inner[2]
-    result["legs"]["clearance"] = "PASS" if center[2] + size[2] / 2.0 <= \
-        ceiling + POLICY["float_tolerance_m"] else "FAIL_above_ceiling"
+    # Clearance: the box top must stay under the ceiling (relative).
+    result["legs"]["clearance"] = "PASS" if \
+        (z0_rel + size[2]) <= inner[2] + POLICY["float_tolerance_m"] \
+        else "FAIL_above_ceiling"
     result["pass"] = all(v == "PASS" for v in result["legs"].values())
     return result
 

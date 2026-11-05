@@ -24,10 +24,23 @@ CASE_ORDER = ["K04", "K01", "K02", "K03", "K05", "K06", "K07", "K08",
 
 
 def _load_fixtures(manifest, hull):
-    """Scene fixture documents for one hull (verified at inventory)."""
+    """Scene fixture documents for one hull.
+
+    S-free comes from the frozen seed=20261105 generator payloads (the
+    run793 reuse set has no observed known-free region — coverage
+    analysis 085e785d); S-occupied/S-unknown reuse the verified 30k set.
+    """
     inputs = json.loads(Path(manifest["prep_inputs_json"]).read_text())
     fixtures = {}
-    for scene, combo_key in SCENE_SELECTION[hull].items():
+    sfree_dir = Path(manifest.get(
+        "sfree_dir", "")) / ("sfree_%s" % hull)
+    sfree_paths = sorted(sfree_dir.glob("*.yaml"))
+    if not sfree_paths:
+        raise RuntimeError("S-free payloads missing under %s" % sfree_dir)
+    fixtures["S-free"] = [yaml.safe_load(open(p).read())
+                          for p in sfree_paths]
+    for scene in ("S-occupied", "S-unknown"):
+        combo_key = SCENE_SELECTION[hull][scene]
         combo = inputs["combos"][combo_key]
         docs = []
         for frame in combo["frames"][:4]:
