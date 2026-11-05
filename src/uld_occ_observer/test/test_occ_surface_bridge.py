@@ -526,3 +526,44 @@ def test_live_bridge_chain_cross_checks_freespace(tmp_path):
             except subprocess.TimeoutExpired:
                 process.kill()
         log.close()
+
+
+def test_v2_record_carries_audited_datum_and_identity():
+    """[G1] The typed v2 projection follows the audited conversion.
+
+    Unobserved cells are unknown/unknown with a null top; floor-relative
+    heights become container-origin z; origin_xy is the lower-left corner;
+    the epoch travels losslessly as the wire's string field; the validity
+    generation of the read chain is preserved (the planner binds
+    map->generation unconditionally).
+    """
+    v1 = {
+        "resolution": 0.1, "nx": 2, "ny": 2,
+        "inner_size": [1.0, 0.8, 0.6], "floor_z": 0.0,
+        "height": [[0.3, 0.0], [0.0, 0.0]],
+        "state": [["occupied", "free"], ["unknown", "unknown"]],
+        "confidence": [["sensor", "sensor"], ["none", "none"]],
+        "geometry_hash": "gh", "map_revision": 4, "epoch": 9,
+        "validity_generation": 6,
+    }
+    identity = {"epoch": 9, "geometry_hash": "gh", "map_revision": 4,
+                "validity_generation": 6}
+    record = bridge.build_surface_v2_record(
+        v1, {"geometry_hash": "gh"}, identity, "scene-1", "map-rev-4")
+    assert record["state"] == [["occupied", "free"],
+                               ["unknown", "unknown"]]
+    assert record["confidence"] == [["sensor", "sensor"],
+                                    ["unknown", "unknown"]]
+    assert record["surface_z_container"][0][0] == 0.3
+    assert record["surface_z_container"][1][0] is None
+    assert record["origin_xy_container"] == [-0.5, -0.4]
+    assert record["floor_z_container"] == 0.0
+    assert record["ceiling_z_container"] == 0.6
+    assert record["height_datum"] == "container_origin"
+    assert record["time_basis"] == "scene"
+    assert record["epoch"] == "9"
+    assert record["validity_generation"] == 6
+    assert record["request_id"] == "map-rev-4"
+    # height_above_floor mirrors the tops (None for unknown).
+    assert record["height_above_floor"][0][0] == 0.3
+    assert record["height_above_floor"][1][0] is None

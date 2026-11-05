@@ -17,6 +17,48 @@ import unittest
 
 from rclpy.serialization import serialize_message, deserialize_message
 
+# [G1] The admission gate is mandatory: every stub that drives the real
+# planner callbacks carries an OPEN gate (VALID grid identity + fresh
+# robot sample + property-shaped clock), and every wire surface record
+# carries the epoch/validity_generation the gate binds.
+TEST_EPOCH = "0123456789abcdef0123456789abcdef"
+TEST_GENERATION = 7
+_TEST_NOW = [10_000_000_000]
+
+
+class _FakeTime:
+    @property
+    def nanoseconds(self):
+        return _TEST_NOW[0]
+
+
+def _open_validity_state(stub, *, epoch=TEST_EPOCH,
+                         generation=TEST_GENERATION):
+    from luggage_packing.placement_admission import (
+        AdmissionGate, MapObservation, RobotStateSample, ValidityObservation)
+    gate = AdmissionGate()
+    gate.observe_validity(ValidityObservation(
+        "VALID", epoch, generation, backend="grid_g", transition_mono_ns=1))
+    gate.observe_map(MapObservation(
+        epoch=epoch, generation=generation, backend="grid_g"))
+    gate.observe_robot_state(RobotStateSample(2))
+    stub._admission = gate
+    stub._validity_seen = True
+    stub._validity_backend = "grid_g"
+    stub._validity_topic = "/cargo_map/validity"
+    stub._validity_status_service = ""
+    stub._validity_status_client = None
+    stub._robot_max_age_ns = 10 ** 18
+    stub._dropped_zero_stamp_robot_samples = 0
+    stub._rejected_validity_messages = 0
+    stub._confirmed_restarts = 0
+    stub.get_clock = lambda: _ClockNs()
+
+
+class _ClockNs:
+    def now(self):
+        return _FakeTime()
+
 from luggage_description.frame_contracts import ContractError
 from luggage_description.frame_diagnostics import (
     BoundaryContext, BoundaryContractError,
@@ -523,9 +565,10 @@ class FrameMigrationPlacement(unittest.TestCase):
                 error=errors.append))
         planner = module['PlacementPlannerNode']
         for name in ('_surface_context', '_surface_view_from_record',
-                     '_on_surface_v2', '_on_surface'):
+                     '_on_surface_v2', '_on_surface', '_admit_surface_map'):
             setattr(stub, name,
                     types_module.MethodType(getattr(planner, name), stub))
+        _open_validity_state(stub)
         return stub, errors
 
     @staticmethod
@@ -536,6 +579,8 @@ class FrameMigrationPlacement(unittest.TestCase):
         )
         record = mapper.surface_contract_v2(SCENE, request_id)
         record['map_revision'] = int(revision)
+        record['epoch'] = TEST_EPOCH
+        record['validity_generation'] = TEST_GENERATION
         context = BoundaryContext(
             'F06', 'cargo_volume_mapper', 'placement_planner',
             request_id, SCENE, 'container_link', '', 'scene',
@@ -667,6 +712,8 @@ class FrameMigrationPlacement(unittest.TestCase):
             mapper = fresh_map()
             stub, errors = self._planner_stub(module, mapper, v2_mode=False)
             v1_dict = mapper.surface_map_2d()
+            v1_dict['epoch'] = TEST_EPOCH
+            v1_dict['validity_generation'] = TEST_GENERATION
             v1_message = type('V1Message', (), {})()
             v1_message.data = json.dumps(v1_dict, sort_keys=True)
             planner._on_surface(stub, v1_message)
@@ -700,6 +747,11 @@ class FrameMigrationPlacement(unittest.TestCase):
         stub._atlas_hook = lambda size: None
         stub._active_surface = types_module.MethodType(
             planner._active_surface, stub)
+        for name in ('_validity_admit', '_validity_commit', '_handle_v2',
+                     '_publish_last'):
+            setattr(stub, name,
+                    types_module.MethodType(getattr(planner, name), stub))
+        stub._publish_last = lambda payload: None
 
         with case('review3/surface-to-service-continuity',
                   {}) as observed:
@@ -775,12 +827,22 @@ class FrameMigrationPlacement(unittest.TestCase):
         import types as types_module
 
         def make_stub(active_revision):
-            return types_module.SimpleNamespace(
+            stub = types_module.SimpleNamespace(
                 _geometry_hash='hull', _v2_request_seq=0,
                 _placed_aabbs_v2=lambda *a: [],
                 _active_surface=lambda: {'map_revision': active_revision},
                 _allowed_yaws=[0.0], _params={},
-                _atlas_hook=lambda size: None)
+                _runtime=None, _committed=None,
+                _atlas_hook=lambda size: None,
+                _surface={'map_revision': active_revision},
+                get_logger=lambda: types_module.SimpleNamespace(
+                    error=lambda *_: None, warning=lambda *_: None))
+            for name in ('_validity_admit', '_validity_commit',
+                         '_handle_v2'):
+                setattr(stub, name, types_module.MethodType(
+                    getattr(planner, name), stub))
+            _open_validity_state(stub)
+            return stub
 
         def request(revision):
             req = ComputePlacementV2.Request()
@@ -860,9 +922,12 @@ class PlacedLedgerSingleSource(unittest.TestCase):
                 error=lambda *_: None))
         for name in ('_surface_context', '_surface_view_from_record',
                      '_on_surface_v2', '_on_committed', '_active_surface',
-                     '_placed_matches_ledger', '_ledger_aabbs'):
+                     '_placed_matches_ledger', '_ledger_aabbs',
+                     '_admit_surface_map', '_validity_admit',
+                     '_validity_commit', '_handle_v2'):
             setattr(stub, name,
                     types_module.MethodType(getattr(planner, name), stub))
+        _open_validity_state(stub)
         # If the request copy were used as the solver source, this blows up.
         def _no_request_copy(*_a, **_k):
             raise AssertionError('request placed copy must not be the source')

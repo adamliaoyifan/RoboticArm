@@ -104,16 +104,33 @@ def plan_attached_box(adapter, attachment, *, request_id, surface, inner_size,
 
 
 class HardwarePlacePlanner:
-    def __init__(self, node, adapter, *, group, max_state_age_s=1.):
+    """Live place planning with the common validity admission gate.
+
+    [G1/I3] Planning needs the SAME entry+commit double check placement
+    has: ``plan`` captures an admission token BEFORE the compute and the
+    commit re-check presents exactly that token — a reset landing
+    mid-computation (or an old cached surface surviving one) is rejected
+    here even when the surface object happens to be unchanged. The gate
+    is fed by this class's own validity/surface/joint subscriptions; the
+    robot freshness bound is the existing ``max_state_age_s`` contract.
+    """
+
+    def __init__(self, node, adapter, *, group, max_state_age_s=1.,
+                 validity_topic='/uld_occ_observer/validity',
+                 validity_backend='observer_o'):
         import tf2_ros
         from sensor_msgs.msg import JointState
         from std_msgs.msg import String
         from luggage_msgs.msg import SurfaceContractV2
         from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+        from luggage_planning.placement_admission import AdmissionGate
         self._node, self._adapter = node, adapter
         self._max_age_ns = int(max_state_age_s * 1e9)
         self._lock = threading.Lock()
         self._joints = self._surface = self._geometry = None
+        self._admission = AdmissionGate()
+        self._validity_backend = str(validity_backend)
+        self._rejected_maps = 0
         self._tf = tf2_ros.Buffer()
         self._listener = tf2_ros.TransformListener(self._tf, node)
         qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
@@ -124,13 +141,63 @@ class HardwarePlacePlanner:
                                      self._on_surface, qos, callback_group=group),
             node.create_subscription(String, '/luggage/cargo_map/surface_2d',
                                      self._on_geometry, qos, callback_group=group),
+            node.create_subscription(String, validity_topic,
+                                     self._on_validity, qos, callback_group=group),
         ]
 
+    def _on_validity(self, message):
+        """Bind the gate to the producer's latched validity stream.
+
+        Arrival re-stamped in this node's clock (one domain for the robot
+        comparison); malformed payloads or epochs illegal for this
+        deployment's backend are counted and dropped, never fatal.
+        """
+        from luggage_planning.placement_admission import (
+            EpochFormatError, ValidityObservation)
+        try:
+            payload = json.loads(message.data)
+            observation = ValidityObservation.from_json(
+                payload, backend=self._validity_backend)
+        except (ValueError, EpochFormatError):
+            self._rejected_validity = getattr(self, '_rejected_validity', 0) + 1
+            return
+        arrival = ValidityObservation(
+            state=observation.state, epoch=observation.epoch,
+            generation=observation.generation, reason=observation.reason,
+            reset_id=observation.reset_id,
+            transition_mono_ns=self._node.get_clock().now().nanoseconds,
+            map_revision=observation.map_revision,
+            observed_revision=observation.observed_revision,
+            geometry_hash=observation.geometry_hash,
+            config_digest=observation.config_digest,
+            clock_domain=observation.clock_domain,
+            backend=observation.backend,
+            producer_transition_mono_ns=(
+                observation.producer_transition_mono_ns))
+        self._admission.observe_validity(arrival)
+
     def _on_joints(self, message):
+        from luggage_planning.placement_admission import RobotStateSample
+        stamp = (int(message.header.stamp.sec) * 10**9
+                 + int(message.header.stamp.nanosec))
+        if stamp > 0:
+            # [I2] Zero-stamp samples are never re-stamped to now.
+            self._admission.observe_robot_state(RobotStateSample(
+                stamp, 'joint_states', {'name': list(message.name)}))
         with self._lock:
             self._joints = message
 
     def _on_surface(self, message):
+        from luggage_planning.placement_admission import MapObservation
+        decision = self._admission.observe_map(MapObservation(
+            epoch=str(getattr(message, 'epoch', '') or ''),
+            generation=int(getattr(message, 'validity_generation', 0) or 0),
+            map_revision=int(getattr(message, 'map_revision', 0) or 0),
+            geometry_hash=str(getattr(message, 'geometry_hash', '') or ''),
+            backend=self._validity_backend))
+        if not decision.admitted:
+            self._rejected_maps += 1
+            return
         with self._lock:
             self._surface = message
 
@@ -153,6 +220,15 @@ class HardwarePlacePlanner:
         age = self._node.get_clock().now().nanoseconds - stamp
         if stamp <= 0 or not 0 <= age <= self._max_age_ns:
             raise ValueError('joint state is stale or from a different clock')
+        # [G1/I3] Entry admission: the token is captured BEFORE the
+        # compute; a closed gate (no VALID map for this identity, no
+        # post-transition robot sample) refuses before any planning.
+        entry = self._admission.admit_planning(
+            now_mono_ns=self._node.get_clock().now().nanoseconds,
+            robot_max_age_ns=self._max_age_ns)
+        if not entry.admitted:
+            raise ValueError('validity gate closed: %s' % entry.reason)
+        token = entry.admission_token
         if (geometry.get('geometry_hash') != surface.geometry_hash
                 or geometry.get('map_revision') != surface.map_revision
                 or normalize_descriptor(geometry['geometry_descriptor']).geometry_hash != surface.geometry_hash):
@@ -176,4 +252,14 @@ class HardwarePlacePlanner:
         with self._lock:
             if self._surface != surface:
                 raise ValueError('OCC changed during place planning')
+        # [G1/I3] Commit re-check: present the token captured at entry —
+        # a reset that landed mid-computation voids it, so an old plan
+        # cannot commit even when the gate has since recovered.
+        commit = self._admission.commit_plan(
+            admission_token=token,
+            now_mono_ns=self._node.get_clock().now().nanoseconds,
+            robot_max_age_ns=self._max_age_ns)
+        if not commit.admitted:
+            raise ValueError('validity commit rejected during place '
+                             'planning: %s' % commit.reason)
         return result

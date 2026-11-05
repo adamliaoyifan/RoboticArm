@@ -13,7 +13,8 @@ SCALARS = ('geometry_hash', 'map_revision', 'height_datum', 'resolution_m',
            'floor_z_container', 'ceiling_z_container')
 FIELDS = (*IDENTITY_FIELDS, 'stamp_ns', 'kind', *SCALARS, 'origin_xy_container',
           'surface_z_container', 'state', 'confidence', 'height_above_floor',
-          'epoch', 'content_digest', 'occupancy_confirmed', 'change_event')
+          'epoch', 'content_digest', 'occupancy_confirmed', 'change_event',
+          'validity_generation')
 
 
 def _validate(record, context):
@@ -49,6 +50,11 @@ def surface_to_message(record, context):
         message.content_digest = str(record.get('content_digest', ''))
         message.occupancy_confirmed = bool(record.get('occupancy_confirmed', False))
         message.change_event = str(record.get('change_event', ''))
+        # [Reset validity] The publisher's lifecycle generation for this
+        # map (0 = not declared; the common consumer binds map->generation
+        # whenever the field is present and nonzero).
+        message.validity_generation = int(
+            record.get('validity_generation', 0) or 0)
         return message
     return at_boundary(record, context, encode)
 
@@ -95,6 +101,9 @@ def surface_from_message(message, context):
             record['occupancy_confirmed'] = bool(message.occupancy_confirmed)
             if message.change_event:
                 record['change_event'] = str(message.change_event)
+        if message.validity_generation:
+            record['validity_generation'] = int(
+                message.validity_generation)
         _validate(record, context)
         return deepcopy(record)
     return at_boundary(record, context, decode)

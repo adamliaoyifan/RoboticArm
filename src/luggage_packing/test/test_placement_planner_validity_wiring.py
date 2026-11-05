@@ -47,18 +47,24 @@ def make_stub(module):
     admission = module['AdmissionGate']()
     last_published = []
 
-    def fake_clock_now():
-        return NOW[0]
+    class _FakeTime:
+        # rclpy shape: ``Time.nanoseconds`` is an int PROPERTY. The old
+        # callable stub masked the real-node TypeError (the four
+        # `.nanoseconds()` call-site defects fixed in G1) — this stub now
+        # exercises the property-read form the production code uses.
+        @property
+        def nanoseconds(self):
+            return NOW[0]
 
     stub = types.SimpleNamespace(
         # reset-contract state (real gate, enforced stream)
         _admission=admission,
         _validity_seen=True,
         _validity_gate_enforce=True,
+        _validity_topic="/uld_occ_observer/validity",
+        _validity_backend="observer_o",
         _robot_max_age_ns=1_000_000_000,
-        get_clock=lambda: types.SimpleNamespace(
-            now=lambda: types.SimpleNamespace(
-                nanoseconds=fake_clock_now)),
+        get_clock=lambda: types.SimpleNamespace(now=lambda: _FakeTime()),
         # planner surfaces the handlers read
         _geometry_hash="geom-test",
         _runtime=None,
@@ -241,9 +247,13 @@ def test_v1_callback_wiring():
                                 robot_max_age_ns=1_000_000_000).admitted
 
 
-def test_gate_absent_keeps_legacy_behavior():
-    """No validity stream (no observer deployment): the gate never binds
-    and the callback behaves as before the contract."""
+def test_gate_absent_fails_closed():
+    """[G1/I1] No validity stream: fail closed, never the legacy floor-
+    prior success path. The gate is mandatory in a common deployment;
+    before the first validity publication every request is refused with
+    VALIDITY_GATE_UNBOUND and produces zero candidates/zero downstream
+    admission (the historical "unseen stream keeps pre-contract behavior"
+    branch is the exact defect this replaces)."""
     module = load_node_module()
     NOW[0] = 10_000_000_000
     stub, admission, _last = make_stub(module)
@@ -251,12 +261,15 @@ def test_gate_absent_keeps_legacy_behavior():
     install_fake_solver(module, [])
     request, response = v2_request()
     stub._handle_v2(request, response)
-    assert response.success is True
+    assert response.success is False
+    assert response.reason_code == "VALIDITY_GATE_CLOSED"
+    assert "VALIDITY_GATE_UNBOUND" in response.message
+    assert not response.candidates
     assert admission.validity.generation == 0
 
 
 if __name__ == "__main__":
     test_v2_callback_wiring()
     test_v1_callback_wiring()
-    test_gate_absent_keeps_legacy_behavior()
+    test_gate_absent_fails_closed()
     print("planner validity wiring checks passed")

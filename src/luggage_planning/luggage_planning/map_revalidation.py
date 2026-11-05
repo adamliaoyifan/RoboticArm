@@ -211,6 +211,18 @@ class MapRevalidator:
             return Reason.CERT_JOINT_DISCONTINUITY
         if latest.geometry_hash != planned.geometry_hash:
             return Reason.MAP_GEOMETRY_HASH_MISMATCH
+        # [G1/I3] Identity epochs/generations, when the snapshots carry
+        # them: a route planned in an older validity generation cannot be
+        # revalidated against a stream that moved on (legacy snapshots
+        # without the fields keep the digest/revision checks above).
+        planned_epoch = str(getattr(planned, "epoch", "") or "")
+        latest_epoch = str(getattr(latest, "epoch", "") or "")
+        if planned_epoch and latest_epoch and planned_epoch != latest_epoch:
+            return Reason.MAP_RESTART
+        planned_gen = int(getattr(planned, "validity_generation", 0) or 0)
+        latest_gen = int(getattr(latest, "validity_generation", 0) or 0)
+        if planned_gen and latest_gen and latest_gen != planned_gen:
+            return Reason.MAP_RESTART
         planned_heights = str(
             getattr(planned, "column_height_digest", "") or "")
         latest_heights = str(

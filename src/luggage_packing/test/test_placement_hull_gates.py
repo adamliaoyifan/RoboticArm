@@ -928,6 +928,12 @@ class TestH3NodeAdapterLive(unittest.TestCase):
         from std_msgs.msg import String
 
         surface = uld_map(res=0.05, descriptor=DEPLOY_DESCRIPTOR)
+        # [G1] Admission is mandatory: the map carries the observer-bound
+        # identity and a latched VALID validity publication plus a fresh
+        # joint_states sample open the gate (the pre-G1 test published a
+        # bare map against a gate that then did not bind).
+        surface["epoch"] = 1
+        surface["validity_generation"] = 3
         qos = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -935,8 +941,43 @@ class TestH3NodeAdapterLive(unittest.TestCase):
         self.planner.create_subscription(
             String, "/placement_planner/last_result",
             lambda msg: last.update(payload=json.loads(msg.data)), qos)
+        validity_pub = self.planner.create_publisher(
+            String, "/uld_occ_observer/validity", qos)
+        validity_pub.publish(String(data=json.dumps({
+            "state": "VALID", "epoch": 1, "generation": 3,
+            "reason": "observed", "reset_id": "",
+            "transition_mono_ns": 1, "map_revision": surface.get(
+                "map_revision", 1) or 1, "observed_revision": surface.get(
+                "map_revision", 1) or 1, "last_integrated_stamp_ns": 1,
+            "geometry_hash": surface.get("geometry_hash", ""),
+            "config_digest": "", "clock_domain": "ros"})))
         pub = self.planner.create_publisher(
             String, "/luggage/cargo_map/surface_2d", qos)
+        # The validity stream must bind BEFORE the map arrives (an
+        # admission attempt against the boot sentinel is a final reject
+        # for that delivery; the map is not re-delivered).
+        self.assertTrue(
+            self._spin_until(lambda: self.planner._validity_seen
+                             and self.planner._admission.validity.state
+                             == "VALID"),
+            "planner never bound the validity stream")
+        # The recovery rule needs a robot sample strictly NEWER than the
+        # validity arrival, so it is captured (and stamped) afterwards.
+        from sensor_msgs.msg import JointState
+        from builtin_interfaces.msg import Time as TimeMsg
+        import time as time_module
+        now = time_module.time()
+        robot = JointState()
+        robot.header.stamp = TimeMsg(
+            sec=int(now), nanosec=int((now % 1) * 1e9))
+        robot.name = ["joint_1"]
+        robot_pub = self.planner.create_publisher(
+            JointState, "/joint_states", 10)
+        robot_pub.publish(robot)
+        self.assertTrue(
+            self._spin_until(lambda: self.planner._admission.robot_state
+                             is not None),
+            "planner never recorded the robot sample")
         pub.publish(String(data=json.dumps(surface)))
         self.assertTrue(
             self._spin_until(lambda: self.planner._surface is not None),

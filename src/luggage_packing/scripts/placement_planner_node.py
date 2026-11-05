@@ -67,7 +67,14 @@ from luggage_description.scene_tf_config_utils import (
 )
 from luggage_packing.placement_reachability import make_atlas_annotate
 from luggage_packing.placement_admission import (
-    AdmissionGate, MapObservation, RobotStateSample, ValidityObservation)
+    BACKEND_GRID_G,
+    BACKEND_OBSERVER_O,
+    AdmissionGate,
+    EpochFormatError,
+    MapObservation,
+    RobotStateSample,
+    ValidityObservation,
+    normalize_epoch)
 from luggage_packing.placement_solver import (
     CODE_CARGO_MAP_GEOMETRY_MISMATCH,
     CODE_DETECT_FULL_GEOMETRY_REQUIRED,
@@ -256,8 +263,39 @@ class PlacementPlannerNode(Node):
         self.declare_parameter("validity_gate_enforce", True)
         self._validity_gate_enforce = bool(
             self.get_parameter("validity_gate_enforce").value)
+        # [G1] Common-consumer identity wiring: which validity stream this
+        # deployment consumes (observer_o: /uld_occ_observer/validity,
+        # grid_g: /cargo_map/validity) and the producer's status service
+        # used ONLY for controlled confirmation of an unfamiliar identity
+        # (a delayed old stream and a restarted producer are otherwise
+        # indistinguishable; I2 forbids guessing).
+        self.declare_parameter(
+            "validity_topic", "/uld_occ_observer/validity")
+        self.declare_parameter("validity_backend", "observer_o")
+        self.declare_parameter(
+            "validity_status_service",
+            "/uld_occ_observer/get_validity")
+        self._validity_backend = str(
+            self.get_parameter("validity_backend").value or "observer_o")
+        self._validity_topic = str(
+            self.get_parameter("validity_topic").value)
+        self._validity_status_service = str(
+            self.get_parameter("validity_status_service").value or "")
+        if not self._validity_gate_enforce:
+            # I1: disabling the validity gate must not be a silent test
+            # success path — a common deployment refuses to start.
+            raise RuntimeError(
+                "validity_gate_enforce=false is not a legal common-"
+                "consumer deployment: the admission gate is mandatory")
         self._robot_max_age_ns = int(max(0, int(
             self.get_parameter("robot_state_max_age_ms").value)) * 1_000_000)
+        # [G1] Controlled confirmation driver: when the gate parks an
+        # unfamiliar identity, this timer asks the producer's REAL status
+        # service for its current identity (never a stream re-read).
+        self._confirm_in_flight = False
+        self._validity_status_client = None
+        self._dropped_zero_stamp_robot_samples = 0
+        self._confirmed_restarts = 0
         # Atlas handles keyed by requested box size (payload selection is
         # per-request; see atlas_runtime.resolve_atlas_files).
         self._atlas_cache = {}
@@ -313,11 +351,23 @@ class PlacementPlannerNode(Node):
         # gates recovery. The validity arrival is re-stamped in this node's
         # clock so robot-sample comparisons stay in one time domain.
         self.create_subscription(
-            String, "/uld_occ_observer/validity",
+            String, self._validity_topic,
             self._on_validity, map_qos, callback_group=group)
         from sensor_msgs.msg import JointState
         self.create_subscription(
             JointState, "/joint_states", self._on_joint_state, 10,
+            callback_group=group)
+        if self._validity_status_service:
+            # Both producers expose the same field names on their status
+            # services (observer GetValidity / grid GetCargoValidity).
+            if self._validity_backend == "grid_g":
+                from luggage_msgs.srv import GetCargoValidity as _StatusSrv
+            else:
+                from uld_occ_observer.srv import GetValidity as _StatusSrv
+            self._validity_status_client = self.create_client(
+                _StatusSrv, self._validity_status_service)
+        self._confirm_timer = self.create_timer(
+            0.5, self._drive_pending_confirmation,
             callback_group=group)
 
         self.create_service(
@@ -431,19 +481,18 @@ class PlacementPlannerNode(Node):
 
         Returns ``(reason, admission)``: ``reason`` is None when planning
         may proceed, ``admission`` is the immutable token captured BEFORE
-        computing (None when the validity stream is absent/unenforced). The
-        matching commit must present exactly this token — re-reading the
-        board's current generation at commit is the gen1 defect (review
-        2026-11-03): after reset+recovery it admitted the old computation.
-        A deployment without the observer validity stream keeps its
-        pre-contract behavior (the gate only binds once a validity
-        publication exists); with the stream, the gate is closed until a
-        fresh VALID map and a post-transition robot-state sample exist.
+        computing. The matching commit must present exactly this token —
+        re-reading the board's current generation at commit is the gen1
+        defect (review 2026-11-03): after reset+recovery it admitted the
+        old computation. [G1] The gate is MANDATORY in a common
+        deployment: before the first validity publication it fails closed
+        (VALIDITY_GATE_UNBOUND) instead of serving the floor prior.
         """
-        if not self._validity_seen or not self._validity_gate_enforce:
-            return None, None
+        if not self._validity_seen:
+            return ("VALIDITY_GATE_UNBOUND: no validity publication "
+                    "observed on %s" % self._validity_topic), None
         decision = self._admission.admit_planning(
-            now_mono_ns=int(self.get_clock().now().nanoseconds()),
+            now_mono_ns=int(self.get_clock().now().nanoseconds),
             robot_max_age_ns=self._robot_max_age_ns)
         if decision.admitted:
             return None, decision.admission_token
@@ -457,13 +506,11 @@ class PlacementPlannerNode(Node):
         """Commit check BEFORE delivering a successful plan (§3): the
         second epoch/generation look against the admission captured before
         computing. Returns None to commit, else the rejection reason."""
-        if not self._validity_seen or not self._validity_gate_enforce:
-            return None
         token = planning_admission
         decision = self._admission.commit_plan(
             token.generation if token is not None else None,
             admission_token=token,
-            now_mono_ns=int(self.get_clock().now().nanoseconds()),
+            now_mono_ns=int(self.get_clock().now().nanoseconds),
             robot_max_age_ns=self._robot_max_age_ns)
         if decision.admitted:
             return None
@@ -475,30 +522,46 @@ class PlacementPlannerNode(Node):
                    decision.execution_active))
 
     def _on_validity(self, msg):
-        """Consume the observer's latched validity publication (§2/§3).
+        """Consume the producer's latched validity publication (§2/§3).
 
-        The arrival time replaces the observer's monotonic transition stamp
+        The arrival time replaces the producer's monotonic transition stamp
         so the robot-sample freshness comparison stays in one clock domain;
         arrival is strictly after the transition, which keeps the recovery
         rule conservative (a sample must post-date the transition, and a
-        sample newer than arrival certainly does).
+        sample newer than arrival certainly does). The producer's original
+        stamp is preserved on the observation (judge evidence). A malformed
+        payload or an epoch illegal for this deployment's backend is
+        counted and dropped — never served, never fatal.
         """
         try:
             payload = json.loads(msg.data)
         except ValueError:
+            self._rejected_validity_messages = \
+                getattr(self, "_rejected_validity_messages", 0) + 1
             return
-        observation = ValidityObservation.from_json(payload)
+        try:
+            observation = ValidityObservation.from_json(
+                payload, backend=self._validity_backend)
+        except EpochFormatError as error:
+            self._rejected_validity_messages = \
+                getattr(self, "_rejected_validity_messages", 0) + 1
+            self.get_logger().error(
+                "rejected validity payload (epoch format: %s)" % error)
+            return
         self._validity_seen = True
         observation = ValidityObservation(
             state=observation.state, epoch=observation.epoch,
             generation=observation.generation, reason=observation.reason,
             reset_id=observation.reset_id,
-            transition_mono_ns=self.get_clock().now().nanoseconds(),
+            transition_mono_ns=self.get_clock().now().nanoseconds,
             map_revision=observation.map_revision,
             observed_revision=observation.observed_revision,
             geometry_hash=observation.geometry_hash,
             config_digest=observation.config_digest,
-            clock_domain=observation.clock_domain)
+            clock_domain=observation.clock_domain,
+            backend=observation.backend,
+            producer_transition_mono_ns=(
+                observation.producer_transition_mono_ns))
         self._admission.observe_validity(observation)
         if observation.state != "VALID" and self._ever_admitted_map:
             # Invalidation observed: placement stops. The admitted map and
@@ -506,19 +569,68 @@ class PlacementPlannerNode(Node):
             # VALID map + post-transition robot state.
             if self._surface is not None:
                 self._surface = None
-            if getattr(self, "_v2_surface", None) is not None:
-                self._v2_surface = None
             self._admitted_map_revision = None
             self.get_logger().warning(
                 "validity %s epoch %s gen %s: admitted map invalidated"
                 % (observation.state, observation.epoch,
                    observation.generation))
 
+    def _drive_pending_confirmation(self):
+        """Resolve parked unfamiliar identities via the producer's status.
+
+        Runs only when the gate parked something AND the real status
+        service answers; a failed/unavailable query keeps the gate closed
+        with the parking intact (named, never a guess).
+        """
+        if (self._confirm_in_flight or not self._validity_status_client
+                or not self._admission.pending_confirmation):
+            return
+        self._confirm_in_flight = True
+        try:
+            if not self._validity_status_client.wait_for_service(
+                    timeout_sec=0.1):
+                return
+            future = self._validity_status_client.call_async(
+                self._validity_status_client.srv_type.Request())
+            import time as _time
+            deadline = _time.monotonic() + 1.0
+            while not future.done() and _time.monotonic() < deadline:
+                _time.sleep(0.02)
+            if not future.done():
+                return
+            response = future.result()
+            observation = ValidityObservation(
+                state=str(response.state),
+                epoch=(response.epoch if self._validity_backend == "grid_g"
+                       else int(response.epoch)),
+                generation=int(response.generation),
+                reason=str(response.reason or ""),
+                reset_id=str(response.reset_id or ""),
+                transition_mono_ns=self.get_clock().now().nanoseconds,
+                map_revision=int(response.map_revision),
+                observed_revision=int(response.observed_revision),
+                geometry_hash=str(response.geometry_hash or ""),
+                config_digest=str(response.config_digest or ""),
+                clock_domain=str(response.clock_domain or ""),
+                backend=self._validity_backend)
+            decision = self._admission.confirm_producer(observation)
+            if decision.admitted:
+                self._confirmed_restarts += 1
+                self.get_logger().warning(
+                    "confirmed producer identity via %s: epoch=%s gen=%s"
+                    % (self._validity_status_service,
+                       observation.epoch, observation.generation))
+        finally:
+            self._confirm_in_flight = False
+
     def _on_joint_state(self, msg):
         stamp = int(msg.header.stamp.sec) * 1_000_000_000 \
             + int(msg.header.stamp.nanosec)
         if not stamp:
-            stamp = int(self.get_clock().now().nanoseconds())
+            # [G1/I2] A zero stamp is not "now": backfilling would fabricate
+            # freshness. The sample is dropped and counted.
+            self._dropped_zero_stamp_robot_samples += 1
+            return
         self._admission.observe_robot_state(RobotStateSample(
             stamp, "joint_states", {"name": list(msg.name)}))
 
@@ -526,13 +638,28 @@ class PlacementPlannerNode(Node):
         """Admission-gate a freshly delivered surface map (v1 or v2).
 
         Returns True when the map is bound to the current VALID epoch and
-        generation; a mismatched map is counted and never stored.
+        generation; a mismatched map is counted and never stored. Epochs
+        are normalized per this deployment's backend (observer uint64 ->
+        decimal string, grid UUID verbatim); a malformed epoch rejects the
+        map instead of defaulting to 0.
         """
+        try:
+            epoch = normalize_epoch(surface.get("epoch"),
+                                    self._validity_backend)
+        except EpochFormatError:
+            self._rejected_maps += 1
+            self.get_logger().error(
+                "rejected %s cargo map: epoch format invalid for %s "
+                "(epoch=%r, rejected=%d)"
+                % (source, self._validity_backend, surface.get("epoch"),
+                   self._rejected_maps))
+            return False
         decision = self._admission.observe_map(MapObservation(
-            epoch=int(surface.get("epoch", 0) or 0),
+            epoch=epoch,
             generation=int(surface.get("validity_generation", 0) or 0),
             map_revision=int(surface.get("map_revision", 0) or 0),
             geometry_hash=str(surface.get("geometry_hash") or ""),
+            backend=self._validity_backend,
             payload=surface))
         if not decision.admitted:
             self._rejected_maps += 1
@@ -664,7 +791,7 @@ class PlacementPlannerNode(Node):
                 % (record.get("geometry_hash"), self._geometry_hash))
             return
         if not self._admit_surface_map({
-                "epoch": int(getattr(msg, "epoch", "0") or 0),
+                "epoch": str(getattr(msg, "epoch", "") or ""),
                 "validity_generation": int(
                     getattr(msg, "validity_generation", 0) or 0),
                 "map_revision": claimed_revision,

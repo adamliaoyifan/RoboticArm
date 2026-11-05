@@ -26,6 +26,7 @@ test can drive it directly; this file only adds the transport shell.
 from __future__ import annotations
 
 import json
+import sys
 
 import yaml
 
@@ -35,6 +36,70 @@ BRIDGE_VERSION = "occ_surface_bridge_v1"
 def load_geometry(geometry_path):
     document = yaml.safe_load(open(geometry_path).read())
     return json.loads(document["descriptor_json"])
+
+
+def build_surface_v2_record(v1_map, geometry, identity, scene_revision,
+                            request_id):
+    """SurfaceContractV2 record equivalent to the v1 view (G1, reviews pt 5).
+
+    Productizes the audited v1->v2 conversion (test_frame_migration_placement
+    round-trips): unobserved cells are unknown/unknown with a null top;
+    floor-relative heights become container-origin z with the floor at the
+    v1 convention's zero; origin_xy is the lower-left corner; identity is
+    carried losslessly (epoch int -> the wire's string field), including
+    the validity generation the read chain crossed.
+    """
+    floor = float(v1_map.get("floor_z", 0.0) or 0.0)
+    inner_l = float(v1_map["inner_size"][0])
+    inner_w = float(v1_map["inner_size"][1])
+    inner_h = float(v1_map["inner_size"][2])
+    surface_z, state, confidence = [], [], []
+    for ix in range(v1_map["nx"]):
+        z_row, s_row, c_row = [], [], []
+        for iy in range(v1_map["ny"]):
+            cell_state = v1_map["state"][ix][iy]
+            if cell_state == "unknown":
+                z_row.append(None)
+                s_row.append("unknown")
+                c_row.append("unknown")
+            else:
+                z_row.append(floor + float(v1_map["height"][ix][iy]))
+                s_row.append(cell_state)
+                c_row.append("verified_geometry"
+                             if v1_map["confidence"][ix][iy] == "geometry"
+                             else "sensor")
+        surface_z.append(z_row)
+        state.append(s_row)
+        confidence.append(c_row)
+    return {
+        "contract_version": 2,
+        "frame_id": "container_link",
+        "length_unit": "m",
+        "stamp_ns": 0,
+        "time_basis": "scene",
+        "scene_revision": str(scene_revision),
+        "request_id": str(request_id),
+        "kind": "surface",
+        "map_revision": int(v1_map.get("map_revision", 0) or 0),
+        "geometry_hash": v1_map["geometry_hash"],
+        "epoch": str(v1_map.get("epoch", "") or ""),
+        "content_digest": "",
+        "occupancy_confirmed": False,
+        "change_event": "",
+        "validity_generation": int(
+            v1_map.get("validity_generation", 0) or 0),
+        "height_datum": "container_origin",
+        "origin_xy_container": [-0.5 * inner_l, -0.5 * inner_w],
+        "resolution_m": float(v1_map["resolution"]),
+        "floor_z_container": floor,
+        "ceiling_z_container": floor + inner_h,
+        "surface_z_container": surface_z,
+        "state": state,
+        "confidence": confidence,
+        "height_above_floor": [
+            [None if z is None else z - floor for z in row]
+            for row in surface_z],
+    }
 
 
 def build_surface_map(columns, geometry, identity):
@@ -179,7 +244,6 @@ def collect_columns(observer_prefix, timeout_s=5.0):
 
 def main():
     import argparse
-    import sys
     import rclpy
     from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
     from std_msgs.msg import String
@@ -192,6 +256,14 @@ def main():
     parser.add_argument("--observer-prefix", default="/uld_occ_observer")
     parser.add_argument("--topic", default="surface_2d")
     parser.add_argument("--hz", type=float, default=1.0)
+    parser.add_argument("--publish-v2", action="store_true",
+                        help="also publish the typed SurfaceContractV2 "
+                             "stream (lower-left origin, container-origin "
+                             "z datum, lossless epoch/generation)")
+    parser.add_argument("--scene-revision", default="",
+                        help="scene revision for the v2 contract identity "
+                             "(required with --publish-v2)")
+    parser.add_argument("--v2-topic", default="/luggage/cargo_map/surface_v2")
     args = parser.parse_args()
 
     geometry = load_geometry(args.geometry)
@@ -203,6 +275,16 @@ def main():
     qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
                      durability=DurabilityPolicy.TRANSIENT_LOCAL)
     publisher = node.create_publisher(String, args.topic, qos)
+    v2_publisher = None
+    if args.publish_v2:
+        if not args.scene_revision:
+            node.get_logger().error(
+                "--publish-v2 requires --scene-revision (the v2 contract "
+                "binds the scene identity)")
+            return 2
+        from luggage_msgs.msg import SurfaceContractV2
+        v2_publisher = node.create_publisher(
+            SurfaceContractV2, args.v2_topic, qos)
     import time
     period = 1.0 / max(args.hz, 1e-6)
     next_publish = time.monotonic()
@@ -216,9 +298,31 @@ def main():
             try:
                 columns, identity = collect_columns(args.observer_prefix)
                 surface_map = build_surface_map(columns, geometry, identity)
+                if surface_map.get("error"):
+                    node.get_logger().error(
+                        "surface map rejected: %s"
+                        % surface_map["error"])
+                    continue
                 message = String()
                 message.data = json.dumps(surface_map)
                 publisher.publish(message)
+                if v2_publisher is not None:
+                    from luggage_description.frame_diagnostics import (
+                        BoundaryContext)
+                    from luggage_description.ros_frame_bindings.surfaces \
+                        import surface_to_message
+                    revision = int(surface_map.get("map_revision", 0) or 0)
+                    record = build_surface_v2_record(
+                        surface_map, geometry, identity,
+                        args.scene_revision, "map-rev-%d" % revision)
+                    context = BoundaryContext(
+                        "F06", "occ_surface_bridge", "placement_planner",
+                        record["request_id"], args.scene_revision,
+                        "container_link", "", "scene",
+                        geometry_hash=record["geometry_hash"],
+                        map_revision=revision)
+                    v2_publisher.publish(
+                        surface_to_message(record, context))
                 node.get_logger().info(
                     "published revision %s epoch %s (%s columns)"
                     % (surface_map.get("map_revision"), surface_map.get("epoch"),
