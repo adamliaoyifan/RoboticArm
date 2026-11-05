@@ -403,6 +403,51 @@ class PlacementPlannerNode(Node):
             "geometry_hash=%s)"
             % (self._aperture_y, self._geometry_hash))
 
+        # [G1/V2] Behavior-test park points (param-gated, off default):
+        # a listed point publishes its arrival on
+        # /placement_planner/test_stage and blocks until released on
+        # /placement_planner/test_release (30s safety timeout = missed
+        # barrier). Parking the SERVICE handler is safe for reset races:
+        # validity arrives on a separate reentrant group, so the gate
+        # advances while the computation is parked.
+        self.declare_parameter("behavior_test_hooks", "")
+        self._hook_points = {
+            name.strip() for name in str(
+                self.get_parameter("behavior_test_hooks").value).split(",")
+            if name.strip()}
+        self._hook_pub = self.create_publisher(
+            String, "/placement_planner/test_stage", 10)
+        self._hook_release = {}
+        import threading as _threading
+        self._hook_lock = _threading.Lock()
+
+        def _on_release(msg):
+            with self._hook_lock:
+                for name, event in list(self._hook_release.items()):
+                    if not msg.data or msg.data == name:
+                        event.set()
+
+        self._hook_sub = self.create_subscription(
+            String, "/placement_planner/test_release", _on_release, 10)
+
+    def behavior_hook(self, name, detail=""):
+        """Park at a named point when enabled (V2 race barriers)."""
+        if name not in self._hook_points:
+            return
+        import threading as _threading
+        with self._hook_lock:
+            event = _threading.Event()
+            self._hook_release[name] = event
+        message = String()
+        message.data = "%s:%s" % (name, detail)
+        self._hook_pub.publish(message)
+        released = event.wait(timeout=30.0)
+        with self._hook_lock:
+            self._hook_release.pop(name, None)
+        if not released:
+            self.get_logger().warning(
+                "behavior hook %s timed out (missed barrier)" % name)
+
     def _hull_geometry(self):
         """Authoritative kernel hull (cached; config is immutable here)."""
         return self._hull
@@ -1022,6 +1067,10 @@ class PlacementPlannerNode(Node):
             response.reason_code = "VALIDITY_GATE_CLOSED"
             response.message = gate
             return response
+        self.behavior_hook("after_admit", "token=%s" % (
+            planning_admission.seq if planning_admission is not None
+            else "?"))
+        self.behavior_hook("before_solve", "")
         if not bool(request.height_measured):
             response.success = False
             response.reason_code = CODE_DETECT_FULL_GEOMETRY_REQUIRED
@@ -1115,6 +1164,8 @@ class PlacementPlannerNode(Node):
         # Reset-contract commit check (§3) before the slot is committed:
         # against the admission captured before computing, never a re-read
         # of the board's current generation.
+        self.behavior_hook("before_commit", "")
+        self.behavior_hook("before_commit", "")
         commit = self._validity_commit(planning_admission)
         if commit is not None:
             response.success = False

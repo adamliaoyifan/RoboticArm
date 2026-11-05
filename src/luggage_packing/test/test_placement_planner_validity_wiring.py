@@ -88,6 +88,7 @@ def make_stub(module):
             {"center_base_link": [0, 0, 0], "center_world": [0, 0, 0]}),
         _annotate_frames=lambda candidate: candidate,
         _publish_last=last_published.append,
+        behavior_hook=lambda name, detail="": None,
         get_parameter=lambda name: types.SimpleNamespace(
             value=(False if name == "structural_search" else 8)),
     )

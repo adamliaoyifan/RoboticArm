@@ -745,6 +745,7 @@ class FrameMigrationPlacement(unittest.TestCase):
         stub._allowed_yaws = [0.0]
         stub._params = {}
         stub._atlas_hook = lambda size: None
+        stub.behavior_hook = lambda name, detail="": None
         stub._active_surface = types_module.MethodType(
             planner._active_surface, stub)
         for name in ('_validity_admit', '_validity_commit', '_handle_v2',
@@ -834,6 +835,7 @@ class FrameMigrationPlacement(unittest.TestCase):
                 _allowed_yaws=[0.0], _params={},
                 _runtime=None, _committed=None,
                 _atlas_hook=lambda size: None,
+                behavior_hook=lambda name, detail="": None,
                 _surface={'map_revision': active_revision},
                 get_logger=lambda: types_module.SimpleNamespace(
                     error=lambda *_: None, warning=lambda *_: None))
@@ -918,6 +920,7 @@ class PlacedLedgerSingleSource(unittest.TestCase):
             _hull=types_module.SimpleNamespace(descriptor=lambda: {}),
             _runtime=None, _allowed_yaws=[0.0], _params={},
             _atlas_hook=lambda size: None,
+            behavior_hook=lambda name, detail="": None,
             get_logger=lambda: types_module.SimpleNamespace(
                 error=lambda *_: None))
         for name in ('_surface_context', '_surface_view_from_record',
