@@ -13,7 +13,8 @@ SCALARS = ('geometry_hash', 'map_revision', 'height_datum', 'resolution_m',
            'floor_z_container', 'ceiling_z_container')
 FIELDS = (*IDENTITY_FIELDS, 'stamp_ns', 'kind', *SCALARS, 'origin_xy_container',
           'surface_z_container', 'state', 'confidence', 'height_above_floor',
-          'epoch', 'content_digest', 'occupancy_confirmed', 'change_event')
+          'epoch', 'content_digest', 'occupancy_confirmed', 'change_event',
+          'validity_generation')
 
 
 def _validate(record, context):
