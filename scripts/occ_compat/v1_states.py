@@ -152,6 +152,7 @@ def run_case(ctx, case_id, run_e3=None, run_e4=None):
 
 
 def _terminal(ctx, case, subprobe, state, reason="", **payload):
+    """(imported by v2_races)"""
     ctx.ledger.terminal(
         backend=ctx.backend, consumer="ALL", hull=ctx.hull,
         case_id=case, subprobe=subprobe, state=state, reason=reason,

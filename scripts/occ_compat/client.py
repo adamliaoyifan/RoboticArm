@@ -231,6 +231,25 @@ class ChainClient(Node):
             stop.set()
         self._robot_streams = []
 
+    def watch_stages(self):
+        """[V2] Stage/release plumbing for the planner behavior hooks."""
+        from std_msgs.msg import String
+        self._last_stage = ""
+
+        def _on_stage(msg):
+            self._last_stage = msg.data
+
+        self._stage_sub = self.create_subscription(
+            String, "/placement_planner/test_stage", _on_stage, 10)
+        self._release_pub = self.create_publisher(
+            String, "/placement_planner/test_release", 10)
+
+    def release_hook(self, name=""):
+        from std_msgs.msg import String
+        message = String()
+        message.data = name
+        self._release_pub.publish(message)
+
     def clock_now_ns(self):
         state = getattr(self, "_clock_state", None)
         if state is None:
@@ -378,9 +397,14 @@ class ChainClient(Node):
             request.clock_domain = "ros"
             # The observer pins epochs AND geometry on integrate: read
             # the CURRENT epoch from its own status service (never
-            # assume 1) and carry the fixture document's geometry hash.
-            status = self.get_validity()
-            request.epoch = int(getattr(status, "epoch", 1) or 1)
+            # assume 1) and carry the fixture document's geometry hash —
+            # unless the caller pinned a DEAD epoch explicitly (R01).
+            pin = frame_doc.get("epoch_pin")
+            if pin is not None:
+                request.epoch = int(pin) if str(pin).isdigit() else 0
+            else:
+                status = self.get_validity()
+                request.epoch = int(getattr(status, "epoch", 1) or 1)
             request.geometry_hash = str(frame_doc.get("geometry_hash", "")
                                         or "")
             translation = frame_doc.get("transform", {}).get(
@@ -411,6 +435,43 @@ class ChainClient(Node):
             result = self._call("integrate_observation", request,
                                 timeout_s)
         return result
+
+    def integrate_old_epoch(self, frame_doc, old_epoch):
+        """A frame pinned to a DEAD epoch through the real intake — the
+        chain-visible form of the store's entry-epoch seam (R01)."""
+        import copy
+        doc = copy.deepcopy(frame_doc)
+        doc["observation_id"] = str(doc.get("observation_id", "")) + \
+            "-R01-old"
+        if self.backend == "G":
+            # G's node intake takes expected_epoch on the service: the
+            # single pinned call IS the probe (no unpinned pre-call —
+            # that would itself write a new observation).
+            from luggage_msgs.srv import IntegrateCargoView, GetCargoMapStats
+            if "stats" not in self._chain_clients:
+                self._chain_clients["stats"] = self.create_client(
+                    GetCargoMapStats, "/cargo_map/get_stats")
+                self._chain_clients["stats"].wait_for_service(timeout_sec=5)
+            stats = self._call("stats", GetCargoMapStats.Request(), 10.0)
+            request = IntegrateCargoView.Request()
+            request.schema_version = 1
+            request.view_request_id = str(
+                doc.get("observation_id", "")) + "-pin"
+            stamp = int(doc.get("stamp_ns", 0) or 0)
+            request.source_acquisition_stamp.sec = stamp // 1_000_000_000
+            request.source_acquisition_stamp.nanosec = stamp % 1_000_000_000
+            request.settled = True
+            request.frame_count = 1
+            request.geometry_hash = str(getattr(
+                stats, "geometry_hash", "") or "")
+            request.expected_map_revision = int(getattr(
+                stats, "map_revision", 0) or 0)
+            request.expected_epoch = str(old_epoch)
+            result = self._call("integrate", request, 30.0)
+            return result
+        doc["epoch_pin"] = int(old_epoch) if str(old_epoch).isdigit() \
+            else 0
+        return self.integrate_frame(doc, observation_suffix="-R01old")
 
     def reset(self, *, reset_id, expected_epoch="", reason="",
               timeout_s=30.0):

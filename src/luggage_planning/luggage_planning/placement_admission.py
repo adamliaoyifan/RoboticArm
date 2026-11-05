@@ -411,6 +411,28 @@ class AdmissionGate:
     def confirm_producer(self, status: ValidityObservation) -> Decision:
         """Controlled confirmation of the producer's CURRENT identity.
 
+        Ghost-endpoint guard: a killed producer's DDS service endpoint
+        can keep answering for a lease period, flapping the status
+        between the dead and the live identity. A confirmation SWITCH
+        requires two consecutive agreeing statuses, and accepting an
+        identity purges every other parked key (they were superseded).
+        """
+        key = status.identity
+        previous = getattr(self, "_last_confirm_status_key", None)
+        self._last_confirm_status_key = key
+        if previous is not None and previous != key:
+            return Decision(False, "confirm_status_unstable",
+                            self._validity)
+        outcome = self._confirm_locked(status)
+        if outcome.admitted and self._validity.identity == key:
+            self.pending_confirmation = {
+                k: v for k, v in self.pending_confirmation.items()
+                if k == key}
+        return outcome
+
+    def _confirm_locked(self, status: ValidityObservation) -> Decision:
+        """The confirmation core.
+
         The node adapter calls this with the response of the producer's
         REAL status service (observer ``get_validity`` / grid
         ``/cargo_map/get_validity``) — never with a re-cached stream

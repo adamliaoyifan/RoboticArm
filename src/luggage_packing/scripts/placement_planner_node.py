@@ -1165,7 +1165,6 @@ class PlacementPlannerNode(Node):
         # against the admission captured before computing, never a re-read
         # of the board's current generation.
         self.behavior_hook("before_commit", "")
-        self.behavior_hook("before_commit", "")
         commit = self._validity_commit(planning_admission)
         if commit is not None:
             response.success = False
@@ -1412,6 +1411,10 @@ class PlacementPlannerNode(Node):
                     self._admission.executing_generations),
             })
             return response
+        self.behavior_hook("after_admit", "token=%s" % (
+            planning_admission.seq if planning_admission is not None
+            else "?"))
+        self.behavior_hook("before_solve", "")
         # E0/E4 contract: packing needs measured full geometry. A top-only
         # detection must not become a collision box inside the container.
         # Catalog size is spawn-only and is never a substitute for height.
@@ -1560,6 +1563,7 @@ class PlacementPlannerNode(Node):
         # while planning discards the candidate here — checked against the
         # admission captured before computing, never the board's current
         # generation (gen1 defect, review 2026-11-03).
+        self.behavior_hook("before_commit", "")
         commit = self._validity_commit(planning_admission)
         if commit is not None:
             response.success = False

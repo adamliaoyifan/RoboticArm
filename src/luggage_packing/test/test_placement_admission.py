@@ -296,9 +296,12 @@ def test_unseen_epoch_parks_until_confirmed():
     # status service confirms the restart (controlled confirmation).
     decision = gate.admit_planning(now_mono_ns=200)
     assert decision.admitted  # pre-restart view still coherent
-    gate.confirm_producer(m.ValidityObservation(
+    confirm_status = m.ValidityObservation(
         "VALID", 1, 1, backend=m.BACKEND_OBSERVER_O,
-        transition_mono_ns=300))
+        transition_mono_ns=300)
+    # Two consecutive agreeing statuses (ghost-endpoint guard).
+    gate.confirm_producer(confirm_status)
+    gate.confirm_producer(confirm_status)
     assert gate.validity.generation == 1
     # The confirmed restart invalidated the outstanding admission and the
     # map/robot premises: closed until fresh inputs arrive.
@@ -323,9 +326,11 @@ def test_grid_producer_restart_recovers_after_confirmation():
         transition_mono_ns=500))
     assert gate.validity.epoch == G_UUID
     assert (m.BACKEND_GRID_G, G_UUID_2) in gate.pending_confirmation
-    gate.confirm_producer(m.ValidityObservation(
+    confirm_status = m.ValidityObservation(
         "VALID", G_UUID_2, 1, backend=m.BACKEND_GRID_G,
-        transition_mono_ns=500))
+        transition_mono_ns=500)
+    gate.confirm_producer(confirm_status)
+    gate.confirm_producer(confirm_status)
     assert gate.validity.epoch == G_UUID_2
     gate.observe_map(m.MapObservation(
         epoch=G_UUID_2, generation=1, backend=m.BACKEND_GRID_G))
