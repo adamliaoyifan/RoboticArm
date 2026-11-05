@@ -69,11 +69,21 @@ from luggage_perception.occupancy_content_digest import (
     content_digest as _content_digest,
     norm_height as _norm_height,
 )
+from luggage_perception.occupancy_map_lifecycle import (
+    VALIDITY_MAX_AGE_NS,
+    MapValidityLedger,
+)
 from luggage_perception.occupancy_map_projection import (
     committed_dict as _project_committed,
     v1_surface_dict as _project_v1,
     v2_record as _project_v2,
 )
+
+#: A queued command captured before a reset must never write into the
+#: rebuilt map (I3). The premise legs only cover DECLARED expectations;
+#: this transaction-boundary rejection is authoritative and covers same
+#: stamps, clock rollback and queued requests alike.
+REASON_EPOCH_MISMATCH_UNDER_RACE = "EPOCH_MISMATCH_UNDER_RACE"
 
 
 #: Server-side ceiling on caller-supplied verify tolerances (moved from the
@@ -327,7 +337,9 @@ class OccupancyMapStore(object):
 
     def __init__(self, mapper, *, require_confirmation=False, clock_ns=None,
                  epoch=None, processed_cap=PROCESSED_CAP,
-                 reset_ledger_cap=RESET_LEDGER_CAP):
+                 reset_ledger_cap=RESET_LEDGER_CAP,
+                 validity_max_age_ns=VALIDITY_MAX_AGE_NS,
+                 lifecycle_backend=None):
         self._mapper = mapper
         self._pending = PendingConfirmation(bool(require_confirmation))
         self._clock_ns = clock_ns or time.time_ns
@@ -355,6 +367,13 @@ class OccupancyMapStore(object):
         self._query_indexes.initialize(mapper)
         self._query_registry = QuerySnapshotRegistry()
         mapper._voxel_delta = self._new_delta_builder()
+        # Reset-validity lifecycle: this store is its ONLY writer (every
+        # hook below runs under the transaction lock; the node converts
+        # the frozen records to topics/services and never guesses state).
+        self._lifecycle = MapValidityLedger(
+            self._clock_ns, backend=lifecycle_backend,
+            max_age_ns=validity_max_age_ns)
+        self._lifecycle.on_boot(self._epoch)
         self._snapshot = self._build_snapshot()
 
     # ------------------------------------------------------------------
@@ -396,6 +415,45 @@ class OccupancyMapStore(object):
         """One atomic read: immutable map and summary of exactly that map."""
         return self._status_bundle
 
+    @property
+    def lifecycle(self):
+        """The reset-validity ledger (owned; exposed for node adapters)."""
+        return self._lifecycle
+
+    def validity_bundle(self):
+        """One atomic read: (ValidityRecord, snapshot identity, events).
+
+        Status and map come from the same transaction state (I1): the
+        record, the identity it describes and the latched event log are
+        captured together under the transaction lock.
+        """
+        with self._txn_lock:
+            return (self._lifecycle.record, self._snapshot.identity,
+                    self._lifecycle.events())
+
+    def _snapshot_integrity_ok(self):
+        """Explicit snapshot-integrity predicate (I1; reviews pt 8).
+
+        Identity legs complete + query indexes published + all three wire
+        projections render without error. ``known_cells > 0`` alone is
+        NOT integrity. Runs lazily, only when the ledger's other
+        BUILDING->VALID premises already hold.
+        """
+        identity = self._snapshot.identity
+        if (not identity.epoch or identity.revision < 0
+                or not identity.content_digest):
+            return False
+        if self._query_indexes is None or self._status_bundle[1] is None:
+            return False
+        try:
+            _project_v1(self._snapshot, self._mapper.geometry_descriptor)
+            _project_v2(self._snapshot, "", "integrity-probe")
+            _project_committed(
+                self._snapshot, "container_link", (0.0, 0.0, 0.0))
+        except Exception:  # noqa: BLE001 - predicate, never a raise
+            return False
+        return True
+
     def summary(self):
         summary = self._status_bundle[1]
         if summary is None:
@@ -423,12 +481,20 @@ class OccupancyMapStore(object):
         reach the snapshot.
         """
         s = snapshot if snapshot is not None else self._snapshot
-        return _project_v1(s, self._mapper.geometry_descriptor)
+        projected = _project_v1(s, self._mapper.geometry_descriptor)
+        if s.identity == self._snapshot.identity:
+            # The lifecycle generation of THIS map at publication time
+            # (the consumer binds map->generation unconditionally).
+            projected["validity_generation"] = self._lifecycle.generation
+        return projected
 
     def v2_record(self, scene_revision, request_id, snapshot=None):
         """The SurfaceContractV2 record (deterministic projection)."""
         s = snapshot if snapshot is not None else self._snapshot
-        return _project_v2(s, scene_revision, request_id)
+        record = _project_v2(s, scene_revision, request_id)
+        if s.identity == self._snapshot.identity:
+            record["validity_generation"] = self._lifecycle.generation
+        return record
 
     def committed_dict(self, frame, container_in_world, snapshot=None):
         """The /committed ledger JSON payload (deterministic projection)."""
@@ -441,10 +507,15 @@ class OccupancyMapStore(object):
     def apply_update(self, update):
         if not isinstance(update, MapUpdate):
             raise TypeError("apply_update takes a MapUpdate")
+        # Entry-captured epoch (I3): compared inside the transaction so a
+        # command queued before a reset can never commit into the rebuilt
+        # map — this is the authoritative old-update rejection, not a
+        # stamp comparison.
+        epoch_at_entry = self._epoch
         with self._txn_lock:
-            return self._apply_locked(update)
+            return self._apply_locked(update, epoch_at_entry)
 
-    def _apply_locked(self, update):
+    def _apply_locked(self, update, epoch_at_entry=None):
         # 1. IDEMPOTENCY ---------------------------------------------
         # Order (pinned by tests — the unified contract):
         #   known id:  same full content   -> ALREADY_PROCESSED
@@ -544,6 +615,18 @@ class OccupancyMapStore(object):
                              "expected": update.expected_snapshot,
                              "current": self._snapshot.identity})
 
+        # 2b. ENTRY-EPOCH RACE -----------------------------------------
+        # A non-RESET command that entered before a reset linearized must
+        # fail closed here: premise legs only cover declared expectations,
+        # and idempotent replays already returned above.
+        if (epoch_at_entry is not None
+                and update.kind is not UpdateKind.RESET
+                and epoch_at_entry != self._epoch):
+            return self._reject(
+                REASON_EPOCH_MISMATCH_UNDER_RACE,
+                "update %r captured epoch %r but the map moved to %r"
+                % (key, epoch_at_entry, self._epoch))
+
         # 3. EVIDENCE --------------------------------------------------
         anchor = None
         token_at_start = None
@@ -579,6 +662,24 @@ class OccupancyMapStore(object):
 
         # 5. SNAPSHOT + idempotency ledger -----------------------------
         self._snapshot = self._build_snapshot(update, details)
+        if update.kind is UpdateKind.INTEGRATE_VIEW:
+            # An observation was ACCEPTED in this epoch: record the
+            # BUILDING->VALID premises (floor priors, bare message
+            # arrivals and empty receipts never reach here).
+            self._lifecycle.note_observation(
+                self._snapshot.identity,
+                int(update.acquisition_stamp_ns or 0))
+            diagnostic = self._lifecycle.observation_diagnostic(
+                int(update.acquisition_stamp_ns or 0))
+            if diagnostic.get("stamp_before_epoch_birth"):
+                details["observation_stamp_before_epoch_birth"] = True
+        # Try BUILDING->VALID on the freshly committed snapshot; stays
+        # BUILDING until every premise holds (integrity predicate runs
+        # lazily, only when the others already pass).
+        self._lifecycle.evaluate_valid(
+            self._snapshot.identity, self._mapper.geometry_hash,
+            self._clock_ns(), self._snapshot_integrity_ok)
+        details["validity_generation"] = self._lifecycle.generation
         self._remember(key, update, UpdateStatus.ACCEPTED, "")
         return UpdateResult(
             status=UpdateStatus.ACCEPTED, reason="",
@@ -663,8 +764,17 @@ class OccupancyMapStore(object):
             self._map_source = MAP_STATIC_EMPTY
             self._cargo_observed = False
             self._pose_at_confirm = None
+            old_epoch = self._epoch
             self._epoch = uuid.uuid4().hex
             details["epoch_rotated"] = True
+            # Reset linearization point for the validity lifecycle: the
+            # old identity dies inside this transaction, then the new
+            # epoch starts BUILDING (two latched events, atomically).
+            self._lifecycle.note_reset(
+                old_epoch, self._epoch,
+                reset_id=str(update.operation_id or ""),
+                reason=str(update.event or "explicit"))
+            details["validity_generation"] = self._lifecycle.generation
         elif update.kind in (UpdateKind.NOTE_EVENT, UpdateKind.CONTAINER_POSE):
             event = self._fact_event_name(update)
             if event is None:

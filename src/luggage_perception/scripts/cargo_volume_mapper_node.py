@@ -48,12 +48,14 @@ from luggage_msgs.srv import (
     AddPlacedBox,
     AddPlacedBoxV2,
     GetCargoMapStats,
+    GetCargoValidity,
     GetCargoVolumeV2,
     IntegrateCargoView,
     NotifyOccupancyEvent,
     RemovePlacedBox,
     RemovePlacedBoxV2,
     ResetCargoMap,
+    ResetCargoMapV2,
 )
 
 from luggage_description.frame_contracts import ContractError
@@ -146,6 +148,13 @@ class CargoVolumeMapperNode(Node):
         # byte-identical to its v1 behavior.
         self.declare_parameter("frame_scene_revision", "")
         self.declare_parameter("surface_v2_topic", "/luggage/cargo_map/surface_v2")
+        # [Reset validity] Lifecycle publication (I1): state/status come
+        # from the store's own transaction state, never from this node's
+        # guess; transient_local depth 64 replays recent transitions to
+        # late subscribers (mirrors the observer's validity topic).
+        self.declare_parameter(
+            "validity_topic", "/luggage/cargo_map/validity")
+        self.declare_parameter("validity_max_age_ms", 1000)
 
         config_path = str(self.get_parameter("scene_tf_config").value)
         if not config_path:
@@ -189,7 +198,9 @@ class CargoVolumeMapperNode(Node):
         self._store = OccupancyMapStore(
             self._mapper,
             require_confirmation=self._require_confirmed_map,
-            clock_ns=self._node_clock_ns)
+            clock_ns=self._node_clock_ns,
+            validity_max_age_ns=int(
+                self.get_parameter("validity_max_age_ms").value) * 1_000_000)
         self._pending = self._store.pending
         # [integration-prior-g1 merge] Node-side I/O state the merged
         # body still uses: view serialization + the acquisition identity
@@ -222,6 +233,13 @@ class CargoVolumeMapperNode(Node):
             String, "/luggage/cargo_map/surface_2d", transient)
         self._ledger_pub = self.create_publisher(
             String, "/luggage/cargo_map/committed", transient)
+        validity_qos = QoSProfile(
+            depth=64, reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self._validity_pub = self.create_publisher(
+            String,
+            str(self.get_parameter("validity_topic").value),
+            validity_qos)
         self.create_subscription(
             PointCloud2,
             str(self.get_parameter("cargo_cloud_topic").value),
@@ -243,6 +261,15 @@ class CargoVolumeMapperNode(Node):
         self.create_service(
             ResetCargoMap, "/cargo_map/reset",
             self._on_reset, callback_group=map_group)
+        # [Reset validity] Idempotent reset (I1) + lifecycle status
+        # query. Legacy /cargo_map/reset keeps its premise-less
+        # semantics untouched.
+        self.create_service(
+            ResetCargoMapV2, "/cargo_map/reset_v2",
+            self._on_reset_v2, callback_group=map_group)
+        self.create_service(
+            GetCargoValidity, "/cargo_map/get_validity",
+            self._on_get_validity, callback_group=map_group)
         self.create_service(
             GetCargoMapStats, "/cargo_map/get_stats",
             self._on_stats, callback_group=map_group)
@@ -642,6 +669,70 @@ class CargoVolumeMapperNode(Node):
         response.content_digest = result.identity.content_digest
         return response
 
+    def _on_reset_v2(self, request, response):
+        """Idempotent reset (I1): reset_id + optional expected_epoch.
+
+        Rides the store's bounded reset ledger: same id + same content
+        replays (ALREADY_PROCESSED), same id + different reason/content
+        is refused (OPERATION_ID_CONFLICT), a declared stale epoch is
+        refused (EPOCH_MISMATCH). A reset linearization rotates the
+        epoch and moves the lifecycle INVALID->BUILDING inside the one
+        transaction. No reply here fabricates validity: the lifecycle
+        generation after the transaction is reported verbatim.
+        """
+        _gate = getattr(self, "_gate_mutation", None)
+        if _gate is not None and not _gate(response):
+            return response
+        reset_id = str(request.reset_id or "").strip()
+        if not reset_id:
+            response.status = "RESET_ID_REQUIRED"
+            response.message = "reset_id is required"
+            return response
+        expected = str(request.expected_epoch or "").strip()
+        update = MapUpdate(
+            operation_id="reset-v2:" + reset_id,
+            kind=UpdateKind.RESET,
+            expected_snapshot=(SnapshotIdentity(expected, 0, "")
+                               if expected else None),
+            event=str(request.reason or "explicit"))
+        result = self._store.apply_update(update)
+        with self._lock:
+            self._clouds.clear()
+        self._publish_all(result.snapshot)
+        response.status = (result.status.value if result.accepted
+                           else result.reason)
+        response.message = result.reason or result.status.value
+        response.epoch = result.identity.epoch
+        response.generation = int(self._store.lifecycle.generation)
+        response.resulting_map_revision = int(result.identity.revision)
+        response.content_digest = result.identity.content_digest
+        return response
+
+    def _on_get_validity(self, _request, response):
+        """Lifecycle status from the SAME transaction state as the map.
+
+        events_json replays the latched transition log so a consumer
+        seeing an unfamiliar epoch can confirm the producer's current
+        identity (I2 controlled confirmation) instead of guessing.
+        """
+        record, _identity, _events = self._store.validity_bundle()
+        response.state = record.state
+        response.epoch = record.epoch
+        response.generation = record.generation
+        response.reason = record.reason
+        response.reset_id = record.reset_id
+        response.transition_mono_ns = record.transition_mono_ns
+        response.transition_stamp_ns = record.transition_stamp_ns
+        response.map_revision = record.map_revision
+        response.observed_revision = record.observed_revision
+        response.last_integrated_stamp_ns = record.last_integrated_stamp_ns
+        response.geometry_hash = record.geometry_hash
+        response.config_digest = record.config_digest
+        response.clock_domain = record.clock_domain
+        response.backend = record.backend
+        response.events_json = self._store.lifecycle.events_json()
+        return response
+
     def _on_volume(self, request, response):
         """Read only; same callback group as every owner map mutation.
 
@@ -794,6 +885,14 @@ class CargoVolumeMapperNode(Node):
             self._store.committed_dict(
                 self._frame, self._world_from_container, snapshot),
             sort_keys=True)))
+        # [Reset validity] Published from the store's transaction state in
+        # the same single-snapshot publication set (I1: status and map
+        # come from one consistent state; this node never guesses).
+        try:
+            record, _identity, _events = self._store.validity_bundle()
+            self._validity_pub.publish(String(data=record.as_json()))
+        except Exception as error:  # noqa: BLE001 - never break the map
+            self.get_logger().warning("validity publish failed: %s" % error)
         # ST04 F06: scene-bound v2 surface beside the byte-stable v1 JSON.
         if self._surface_v2_pub is not None:
             try:

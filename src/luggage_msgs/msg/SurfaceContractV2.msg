@@ -24,3 +24,8 @@ string epoch
 string content_digest
 bool occupancy_confirmed
 string change_event
+# [Reset validity] The observer validity generation the published map
+# crossed (plan OCTOMAP_RESET_VALIDITY_NEXT_20261103 §3): the planner
+# admission binds map -> epoch, and to generation when declared;
+# 0 = not declared (pre-reset-contract publishers).
+uint64 validity_generation

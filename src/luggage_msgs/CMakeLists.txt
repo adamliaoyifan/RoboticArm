@@ -23,6 +23,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/QueryCargoCellsV2.srv"
   "srv/QueryCargoDistanceV2.srv"
   "srv/GetCargoSurfacePatchV2.srv"
+  "srv/ResetCargoMapV2.srv"
+  "srv/GetCargoValidity.srv"
   "msg/AttachmentGeometryV2.msg"
   "msg/FrameIdentityV2.msg"
   "msg/RuntimeArtifactV2.msg"

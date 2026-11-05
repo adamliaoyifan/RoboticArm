@@ -1,0 +1,19 @@
+# Idempotent map reset (OCC-GRID-CONSUMER-COMPAT G1, I1).
+#
+# The legacy /cargo_map/reset service keeps its premise-less semantics
+# (fresh operation id per call, no replay). This v2 interface binds a
+# caller reset_id: retries with the same id and the same content replay
+# (ALREADY_PROCESSED); the same id with different content is refused
+# (OPERATION_ID_CONFLICT); a declared expected_epoch that is not the
+# current epoch is refused (EPOCH_MISMATCH) instead of wiping a newer
+# map. The reset linearization point rotates the epoch and moves the
+# validity lifecycle to INVALID then BUILDING (two latched events).
+string reset_id
+string expected_epoch
+string reason
+---
+string status          # OK|ALREADY_PROCESSED|OPERATION_ID_CONFLICT|EPOCH_MISMATCH|RESET_ID_REQUIRED|REJECTED
+string epoch           # epoch AFTER the reset (UUID string, empty on refusal)
+uint64 generation      # lifecycle generation AFTER the reset
+uint64 resulting_map_revision
+string content_digest
