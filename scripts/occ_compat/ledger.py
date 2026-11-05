@@ -87,10 +87,14 @@ class EventLedger:
 
 
 def load_events(archive):
-    """Read every events.jsonl under an archive/run dir (judge path)."""
+    """Read every events.jsonl under an archive/run dir — or the ledger
+    file itself (the judge's selftest points at one directly)."""
     events = []
-    for path in sorted(Path(archive).glob("**/events.jsonl")):
-        with open(path, encoding="utf-8") as stream:
+    path = Path(archive)
+    paths = [path] if path.is_file() else sorted(
+        path.glob("**/events.jsonl"))
+    for ledger in paths:
+        with open(ledger, encoding="utf-8") as stream:
             for line in stream:
                 if line.strip():
                     events.append(json.loads(line))

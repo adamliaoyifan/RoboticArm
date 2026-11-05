@@ -84,14 +84,15 @@ class CaseContext:
             rebased.append(rebased_doc)
         try:
             return self._integrate_frames(rebased[:count], suffix,
-                                          accepted)
+                                          accepted, case_id=suffix)
         finally:
             if paused:
                 last = rebased[min(count, len(rebased)) - 1][
                     "stamp_ns"] + 200_000_000
                 self.clock_stop = self.client.start_clock(last)
 
-    def _integrate_frames(self, docs, suffix, accepted):
+    def _integrate_frames(self, docs, suffix, accepted,
+                          case_id="-"):
         for index, doc in enumerate(docs):
             stamp = int(doc.get("stamp_ns", 0))
             for _ in range(4):
@@ -102,11 +103,12 @@ class CaseContext:
             status = str(getattr(receipt, "status", "") or "")
             self.ledger.emit(
                 backend=self.backend, consumer="-", hull=self.hull,
-                case_id="-", subprobe="", event_kind="integrate",
+                case_id=case_id, subprobe="", event_kind="integrate",
                 stage="input", state="OK" if status in (
                     "INTEGRATED", "accepted") else status,
-                reason=status, request_id=str(
-                    doc.get("observation_id", "")),
+                reason=status,
+                request_id="%s#%s" % (doc.get("observation_id", ""),
+                                      suffix),
                 result_repr=str(result)[:240])
             if status in ("INTEGRATED", "accepted"):
                 accepted += 1
@@ -203,6 +205,7 @@ def _k01(ctx, run_e3=None, run_e4=None):
         hull={"inner_size": [1.49, 1.97, 1.48],
                        "floor_z_container": 0.53})
     classes = [v.get("candidate_class") for v in verdict["verdicts"]]
+    sample = (ctx.client.last_result.get("candidates") or [{}])[0]
     if getattr(response, "success", False) and verdict["n_candidates"] \
             >= 1 and verdict["all_pass"]:
         # K01 positive (contract K01 row): a real legal candidate set,
@@ -211,9 +214,15 @@ def _k01(ctx, run_e3=None, run_e4=None):
         # is legal; CLAIMING known-free there is K03's failure class),
         # plus the real admission+commit which produced it. Claim classes
         # ride into the terminal as evidence.
-        return {"main": _terminal(ctx, "K01", "main", "PASS",
-                                  n_candidates=verdict["n_candidates"],
-                                  classes=classes)}
+        return {"main": _terminal(
+            ctx, "K01", "main", "PASS",
+            n_candidates=verdict["n_candidates"],
+            classes=classes,
+            oracle_legs=verdict["verdicts"][0]["legs"],
+            candidate_sample={k: sample.get(k) for k in (
+                "ix0", "iy0", "cells_x", "cells_y", "yaw",
+                "center_container", "confidence_ratio")} if (
+                verdict["verdicts"] and sample) else {})}
     sample = (ctx.client.last_result.get("candidates") or [{}])[0]
     return {"main": _terminal(
         ctx, "K01", "main", "FAIL",
@@ -380,8 +389,9 @@ def _k02(ctx, run_e3=None, run_e4=None):
     reason = _e3_conflict_verdict(surface, candidate_center, BOX_A,
                                   obstacle_aabb)
     refused = reason not in ("", None, "ok")
-    # Legal control: the unconstrained service still finds candidates.
-    control = ctx.client.place_v1(BOX_A)
+    # Legal control: the unconstrained service still finds candidates
+    # (ledgered — the judge recomputes this terminal from this row).
+    control = _placement(ctx, "K02", "main", BOX_A)
     control_ok = bool(getattr(control, "success", False)) or any(
         code in str(getattr(control, "reason_code", "")) for code in (
             "BIN_FULL", "NO_KNOWN_FREE"))
@@ -419,6 +429,12 @@ def _k03(ctx, run_e3=None, run_e4=None):
             ctx, "K03", "main", "NOT_EVALUATED",
             reason="S-unknown fixture shows no contiguous unknown run")}
     stats = _e3_window_stats(surface, cell, BOX_A)
+    ctx.ledger.emit(
+        backend=ctx.backend, consumer="E3", hull=ctx.hull,
+        case_id="K03", subprobe="main", event_kind="e3_window_stats",
+        stage="consumer", state="OK",
+        message="designated %s has_unknown=%s confidence=%.2f"
+                % (cell, stats["has_unknown"], stats["confidence"]))
     # The designated unknown-ground window must be classified unknown
     # with zero observed-confidence — never claimed known-free.
     ok = bool(stats["has_unknown"]) and stats["confidence"] < 0.5
@@ -471,6 +487,12 @@ def _k05(ctx, run_e3=None, run_e4=None):
     request.expected_map_revision = 1   # deliberately old
     response = ctx.client._call("placement_v2", request, 30.0)
     reason = str(getattr(response, "reason_code", "") or "")
+    ctx.ledger.emit(
+        backend=ctx.backend, consumer="E2", hull=ctx.hull, case_id="K05",
+        subprobe="revision-mismatch", event_kind="placement_request",
+        stage="consumer", state="REPLIED",
+        reason=reason,
+        message=str(getattr(response, "message", "") or "")[:120])
     results["revision-mismatch"] = (
         "PASS" if reason == "STALE_MAP_REVISION" and not getattr(
             response, "success", False) else "FAIL")
@@ -529,6 +551,12 @@ def _k07(ctx, run_e3=None, run_e4=None):
     receipt = getattr(result, "receipt", None) or result
     status = str(getattr(receipt, "status", "")
                  or str(getattr(receipt, "message", "")))
+    ctx.ledger.emit(
+        backend=ctx.backend, consumer="-", hull=ctx.hull,
+        case_id="K07", subprobe="main", event_kind="integrate",
+        stage="input", state="PROBED",
+        reason=status, request_id=str(doc.get("observation_id", "")),
+        result_repr=str(result)[:240])
     status_after = ctx.client.get_validity()
     revision_after = int(getattr(status_after, "map_revision", 0) or 0)
     refused = any(token in status for token in (
@@ -611,6 +639,12 @@ def _k08(ctx, run_e3=None, run_e4=None):
     admitted_epoch = (ctx.client.surface_map or {}).get("epoch")
     producer_epoch = (ctx.client.validity_record() or {}).get("epoch")
     lie_ok = admitted_epoch == producer_epoch
+    ctx.ledger.emit(
+        backend=ctx.backend, consumer="E2", hull=ctx.hull,
+        case_id="K08", subprobe="unit-lie", event_kind="datum_probe",
+        stage="consumer", state="OK" if lie_ok else "FAIL",
+        message="forged datum published; admitted epoch %s == producer %s"
+                % (admitted_epoch, producer_epoch))
 
     # Subprobe (b): legal conversion control — the unmodified healthy
     # typed message re-admits (identity unchanged, request succeeds).
@@ -693,7 +727,7 @@ def _k10(ctx, run_e3=None, run_e4=None):
                                   "pre-reset setup failed")}
     ctx.fresh_robot()
     time.sleep(0.3)
-    old = _placement(ctx, "K10", "pre", BOX_A)
+    old = _placement(ctx, "K10", "pre-reset-baseline", BOX_A)
     old_ok = bool(getattr(old, "success", False))
     # Stop the robot stream BEFORE the reset: the reset's INVALID clears
     # the gate's robot sample, and the first sample afterwards defines

@@ -145,6 +145,14 @@ def _placement_probe(ctx, case):
         response = (future.result() if future.done()
                     else {"error": "TIMEOUT"})
         ok = bool(getattr(response, "success", False))
+        # Every probe outcome is ledgered — the judge recomputes PASS
+        # terminals from these rows.
+        ctx.ledger.emit(
+            backend=ctx.backend, consumer="E1", hull=ctx.hull,
+            case_id=case, subprobe="healthy", event_kind="probe_detail",
+            stage="consumer", state="OK" if ok else "REFUSED",
+            reason=str(getattr(response, "reason_code", "")),
+            message=str(getattr(response, "message", ""))[:120])
         if ok:
             break
         time.sleep(1.5)
@@ -215,6 +223,12 @@ def run_r04(ctx):
                 and not getattr(response, "success", False)
                 and ("VALIDITY_COMMIT_REJECTED" in message
                      or "VALIDITY_GATE_CLOSED" in message))
+    ctx.ledger.emit(
+        backend=ctx.backend, consumer="E1", hull=ctx.hull,
+        case_id="R04", subprobe="main",
+        event_kind="placement_request", stage="consumer", state="REPLIED",
+        reason=str(getattr(response, "reason_code", "")),
+        message=message[:120])
     healthy = _placement_probe(ctx, "R04")
     return _terminal(
         ctx, "R04", "main", "PASS" if (rejected and healthy) else "FAIL",
@@ -229,7 +243,7 @@ def _spin_wait(ctx, future, timeout_s=35.0):
         rclpy.spin_once(ctx.client, timeout_sec=0.05)
     return future.done()
 
-def run_r05(ctx, service="v1"):
+def run_r05(ctx, service="v1", case="R05"):
     """Flagship: placement starts -> reset -> recovery -> the OLD
     computation's commit must be rejected (token voided by the advance).
     Single-threaded async flow: fire the request, spin while watching the
@@ -237,11 +251,11 @@ def run_r05(ctx, service="v1"):
     """
     from luggage_msgs.srv import ComputePlacement, ComputePlacementV2
     import rclpy
-    ctx.reset_producer("R05")
-    ctx.integrate_scene("S-free", 3, suffix="R05")
+    ctx.reset_producer(case)
+    ctx.integrate_scene("S-free", 3, suffix=case)
     if not ctx.client.wait_validity("VALID", 8.0) or \
             not ctx.wait_map_admitted():
-        return _terminal(ctx, "R05", "main", "FAIL", "setup failed")
+        return _terminal(ctx, case, "main", "FAIL", "setup failed")
     ctx.fresh_robot()
     time.sleep(0.4)
     if service == "v1":
@@ -277,11 +291,11 @@ def run_r05(ctx, service="v1"):
     if not parked:
         ctx.client.release_hook("after_admit")
         _spin_until(lambda: future.done(), 30.0)
-        return _terminal(ctx, "R05", "main", "NOT_EVALUATED",
+        return _terminal(ctx, case, "main", "NOT_EVALUATED",
                          reason="after_admit park never reached")
     # Injection INSIDE the computation window: reset + recovery.
-    ctx.reset_producer("R05-mid")
-    ctx.integrate_scene("S-free", 2, suffix="R05b")
+    ctx.reset_producer(case + "-mid")
+    ctx.integrate_scene("S-free", 2, suffix=case + "b")
     ctx.client.wait_validity("VALID", 10.0)
     ctx.wait_map_admitted()
     ctx.client.stop_robot_streams()
@@ -292,24 +306,30 @@ def run_r05(ctx, service="v1"):
     done = _spin_until(lambda: future.done(), 35.0)
     response = future.result() if done else None
     if response is None:
-        return _terminal(ctx, "R05", "main", "FAIL", "no response")
+        return _terminal(ctx, case, "main", "FAIL", "no response")
     message = str(getattr(response, "message", "") or "")
     rejected = (not getattr(response, "success", False)
                 and ("VALIDITY_COMMIT_REJECTED" in message
                      or "VALIDITY_GATE_CLOSED" in message
                      or "STALE_MAP_REVISION" in message))
+    ctx.ledger.emit(
+        backend=ctx.backend, consumer="E1" if service == "v1" else "E2",
+        hull=ctx.hull, case_id=case, subprobe="main",
+        event_kind="placement_request", stage="consumer", state="REPLIED",
+        reason=str(getattr(response, "reason_code", "")),
+        message=message[:120])
     # Healthy control: a fresh request in the recovered state succeeds.
     time.sleep(0.3)
-    healthy = _placement_probe(ctx, "R05")
+    healthy = _placement_probe(ctx, case)
     return _terminal(
-        ctx, "R05", "main", "PASS" if (rejected and healthy) else "FAIL",
+        ctx, case, "main", "PASS" if (rejected and healthy) else "FAIL",
         reason="old-commit rejected=%s healthy=%s msg=%s"
                % (rejected, healthy,
                   str(getattr(response, "message", ""))[:60]))
 
 
 def run_r06(ctx):
-    return run_r05(ctx, service="v2")
+    return run_r05(ctx, service="v2", case="R06")
 
 
 def run_r07(ctx):
