@@ -701,7 +701,6 @@ class CargoVolumeMapperNode(Node):
         self._publish_all(result.snapshot)
         response.status = (result.status.value if result.accepted
                            else result.reason)
-        response.message = result.reason or result.status.value
         response.epoch = result.identity.epoch
         response.generation = int(self._store.lifecycle.generation)
         response.resulting_map_revision = int(result.identity.revision)
