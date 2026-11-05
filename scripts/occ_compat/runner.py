@@ -50,20 +50,35 @@ def _load_fixtures(manifest, hull):
     return fixtures
 
 
+def _hull_manifest(manifest, hull):
+    """Per-hull view of the manifest (scene TF + O fixture geometry)."""
+    view = dict(manifest)
+    view["scene_tf"] = manifest.get("scene_tf_%s" % hull,
+                                    manifest.get("scene_tf", ""))
+    view["o_geometry"] = manifest.get("o_geometry_%s" % hull,
+                                      manifest.get("o_geometry", ""))
+    view["o_config"] = manifest.get("o_config_%s" % hull,
+                                    manifest.get("o_config", ""))
+    return view
+
+
 def _bring_up(backend, hull, manifest, root):
     """Spawn one backend chain; returns (stack, client, clock_stop)."""
     import rclpy
+    manifest = _hull_manifest(manifest, hull)
     stack = chains.ChainStack(root, "chain-%s-%s" % (backend, hull))
     if backend == "G":
-        stack.spawn("mapper", chains.g_mapper_command(manifest))
+        stack.spawn("mapper", chains.g_mapper_command(
+            manifest, scene_revision="scene-g1"))
         stack.spawn("planner", chains.planner_command(
-            manifest, backend="G"))
+            manifest, backend="G", scene_revision="scene-g1"))
     else:
-        observer, bridge = chains.o_chain_commands(manifest)
+        observer, bridge = chains.o_chain_commands(
+            manifest, scene_revision="scene-g1")
         stack.spawn("observer", observer)
         stack.spawn("bridge", bridge)
         stack.spawn("planner", chains.planner_command(
-            manifest, backend="O"))
+            manifest, backend="O", scene_revision="scene-g1"))
     time.sleep(8.0)
     if not all(p.alive() for p in stack.processes):
         raise RuntimeError("chain boot failed: %s" % [
@@ -76,10 +91,13 @@ def _bring_up(backend, hull, manifest, root):
     fixtures = _load_fixtures(manifest, hull)
     first = fixtures["S-free"][0]
     base = int(first["stamp_ns"])
-    # Fixture scene TF: static optical->container for the frame poses.
+    # Fixture scene TF: the fixture transform IS T_container_from_optical
+    # (p_container = R p_opt + t), so the static edge is
+    # parent=container_link -> child=optical_frame carrying it verbatim
+    # (the same convention as the observer's uld_from_optical).
     client.broadcast_transform(first.get("transform") or {}, base,
-                               static=True,
-                               frame_id=first.get("optical_frame"))
+                               static=True, frame_id="container_link",
+                               child_frame_id=first.get("optical_frame"))
     stop = client.start_clock(base)
     time.sleep(0.8)
     return stack, client, stop, fixtures

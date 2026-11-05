@@ -123,6 +123,10 @@ def planner_command(manifest, *, backend, scene_revision="",
             "/uld_occ_observer/get_validity" if backend == "O"
             else "/cargo_map/get_validity"),
         "-p robot_state_max_age_ms:=500",
+        # No precomputed atlas cells in the compat chains: disable the
+        # identity gate (placements use the no_atlas band, the same path
+        # the default cuboid scene takes when no cell matches).
+        "-p atlas_runtime_config:=/tmp/atlas_disabled.yaml",
     ]
     if scene_revision:
         params.append("-p frame_scene_revision:=%s" % scene_revision)
@@ -164,7 +168,7 @@ def o_chain_commands(manifest, *, scene_revision=""):
         "--ros-args -r __node:=uld_occ_observer "
         "-p use_sim_time:=true "
         "-p input_mode:=service "
-        "-p validity_max_age_ms:=1000 "
+        "-p validity_max_age_ms:=5000 "
         "-p optical_frame:=d555_color_optical_frame "
         "-p sensor_id:=cam0 "
         "-p geometry_file:={geometry} "
@@ -174,7 +178,8 @@ def o_chain_commands(manifest, *, scene_revision=""):
     bridge = (
         "{prefix}; exec python3 {c1}/src/uld_occ_observer/scripts/"
         "occ_surface_bridge.py --geometry {geometry} --config {config} "
-        "--topic /luggage/cargo_map/surface_2d --hz 2.0 {v2}"
+        "--topic /luggage/cargo_map/surface_2d --hz 2.0 "
+        "--max-age-ms 5000 {v2}"
     ).format(
         prefix=_bash_source_prefix(manifest["c1_install"]),
         c1=manifest["c1_root"],

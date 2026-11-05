@@ -177,10 +177,16 @@ class ChainClient(Node):
         run scenario time faster than the wall clock).
         """
         import threading
+        # Exactly ONE clock master: an older thread would publish a
+        # conflicting (earlier) sim time and drag consumers' now()
+        # backwards — staleness probes depend on monotone scenario time.
+        for stop in getattr(self, "_clock_stops", []):
+            stop.set()
         self._clock_state = {"sim_ns": int(sim_start_ns),
                              "wall": time.monotonic(),
                              "ratio": float(wall_ratio)}
         self._clock_stop = threading.Event()
+        self._clock_stops = [self._clock_stop]
 
         def _run():
             period = 1.0 / rate_hz
@@ -202,18 +208,28 @@ class ChainClient(Node):
         clock (the production robot publishes a sequence, not one shot —
         a solve that outlives one sample's 500ms window is normal)."""
         import threading
-        self._robot_stop = threading.Event()
+        stop = threading.Event()
+        # Every stream ever started is tracked: restarting never leaves
+        # an older thread publishing (stale-robot subprobes depend on
+        # ALL streams being stoppable).
+        self._robot_streams = getattr(self, "_robot_streams", [])
+        self._robot_streams.append(stop)
 
         def _run():
-            while not self._robot_stop.wait(interval_s):
+            while not stop.wait(interval_s):
                 try:
                     now = self.clock_now_ns()
-                    self.publish_joints(now - stamp_offset_ns)
+                    self.publish_joints(now - stamp_offset_ns, spin=False)
                 except Exception:  # noqa: BLE001 - stream must survive
                     pass
 
         threading.Thread(target=_run, daemon=True).start()
-        return self._robot_stop
+        return stop
+
+    def stop_robot_streams(self):
+        for stop in getattr(self, "_robot_streams", []):
+            stop.set()
+        self._robot_streams = []
 
     def clock_now_ns(self):
         state = getattr(self, "_clock_state", None)
@@ -298,7 +314,8 @@ class ChainClient(Node):
         for _ in range(spin):
             rclpy.spin_once(self, timeout_sec=0.02)
 
-    def publish_joints(self, stamp_ns, zero_stamp=False, names=None):
+    def publish_joints(self, stamp_ns, zero_stamp=False, names=None,
+                       spin=True):
         message = JointState()
         if not zero_stamp:
             message.header.stamp.sec = int(stamp_ns // 1_000_000_000)
@@ -307,7 +324,10 @@ class ChainClient(Node):
                                       for i in range(1, 7)])
         message.position = [0.0] * len(message.name)
         self._joint_pub.publish(message)
-        rclpy.spin_once(self, timeout_sec=0.05)
+        if spin:
+            # Single-threaded callers only: the executor is not reentrant
+            # (the robot stream thread publishes with spin=False).
+            rclpy.spin_once(self, timeout_sec=0.05)
 
     # -- observations -----------------------------------------------------
     def integrate_frame(self, frame_doc, *, observation_suffix="",
@@ -405,8 +425,12 @@ class ChainClient(Node):
             request = ResetObservation.Request()
             request.reset_id = str(reset_id)
             request.reason = str(reason)
-            if expected_epoch:
-                request.expected_epoch = int(expected_epoch)
+            # The observer REQUIRES expected_epoch == current (the store
+            # throws EPOCH_MISMATCH otherwise): pin the live epoch.
+            status = self.get_validity()
+            current = int(getattr(status, "epoch", 1) or 1)
+            request.expected_epoch = int(expected_epoch) if \
+                expected_epoch else current
         return self._call("reset", request, timeout_s)
 
     def get_validity(self, timeout_s=10.0):

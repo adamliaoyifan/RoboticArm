@@ -44,12 +44,14 @@ def build_surface_v2_record(v1_map, geometry, identity, scene_revision,
 
     Productizes the audited v1->v2 conversion (test_frame_migration_placement
     round-trips): unobserved cells are unknown/unknown with a null top;
-    floor-relative heights become container-origin z with the floor at the
-    v1 convention's zero; origin_xy is the lower-left corner; identity is
-    carried losslessly (epoch int -> the wire's string field), including
-    the validity generation the read chain crossed.
+    the v1 solver's floor-relative heights become CONTAINER-ORIGIN z
+    (floor_z_container = the geometry's container floor, not the v1
+    convention's 0.0 — the typed contract's datum is container_link);
+    origin_xy is the lower-left corner; identity is carried losslessly
+    (epoch int -> the wire's string field), including the validity
+    generation the read chain crossed.
     """
-    floor = float(v1_map.get("floor_z", 0.0) or 0.0)
+    floor = float(geometry.get("floor_z", 0.0) or 0.0)
     inner_l = float(v1_map["inner_size"][0])
     inner_w = float(v1_map["inner_size"][1])
     inner_h = float(v1_map["inner_size"][2])
@@ -164,7 +166,7 @@ def build_surface_map(columns, geometry, identity):
     }
 
 
-def collect_columns(observer_prefix, timeout_s=5.0):
+def collect_columns(observer_prefix, timeout_s=5.0, max_age_ms=1000):
     """read_surface chain via rclpy; returns (columns, identity) or raises."""
     import rclpy
     from rclpy.node import Node
@@ -182,7 +184,7 @@ def collect_columns(observer_prefix, timeout_s=5.0):
             if not client.wait_for_service(timeout_sec=timeout_s):
                 raise RuntimeError("service unavailable: %s" % client.srv_name)
         request = GetSnapshot.Request()
-        request.max_age_ms = 1000
+        request.max_age_ms = int(max_age_ms)
         future = get_snapshot.call_async(request)
         rclpy.spin_until_future_complete(node, future, timeout_sec=timeout_s)
         lease = future.result()
@@ -264,6 +266,9 @@ def main():
                         help="scene revision for the v2 contract identity "
                              "(required with --publish-v2)")
     parser.add_argument("--v2-topic", default="/luggage/cargo_map/surface_v2")
+    parser.add_argument("--max-age-ms", type=int, default=1000,
+                        help="snapshot freshness request bound (get_"
+                             "snapshot max_age_ms)")
     args = parser.parse_args()
 
     geometry = load_geometry(args.geometry)
@@ -296,7 +301,8 @@ def main():
                 continue
             next_publish += period
             try:
-                columns, identity = collect_columns(args.observer_prefix)
+                columns, identity = collect_columns(
+                    args.observer_prefix, max_age_ms=args.max_age_ms)
                 surface_map = build_surface_map(columns, geometry, identity)
                 if surface_map.get("error"):
                     node.get_logger().error(

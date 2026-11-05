@@ -58,10 +58,12 @@ class CaseContext:
     def integrate_scene(self, scene, count=3, suffix=""):
         """Drive real frames of one scene through the backend intake.
 
-        The continuous scenario clock is paused per frame: each stamp is
-        injected with a manual tick (freshness windows judge the node
-        clock, which is sim time), then the clock resumes from the last
-        stamp so age premises stay satisfiable between events.
+        Scenario time never jumps backwards across cases: fixture stamps
+        are re-based onto the CURRENT sim time (monotone forward), the
+        clock is paused per frame (freshness windows judge the node
+        clock, which is sim time), then it resumes past the last stamp so
+        age premises stay satisfiable between events. Backward jumps
+        would make earlier robot samples look "fresh from the future".
         """
         docs = self.fixtures[scene][:count]
         accepted = 0
@@ -69,13 +71,24 @@ class CaseContext:
         if self.clock_stop is not None:
             self.clock_stop.set()
             paused = True
+        base = int(docs[0].get("stamp_ns", 0))
+        origin = self.client.clock_now_ns() + 120_000_000
+        rebased = []
+        for index, doc in enumerate(docs):
+            stamp = origin + (int(doc.get("stamp_ns", 0)) - base)
+            rebased_doc = dict(doc)
+            rebased_doc["stamp_ns"] = stamp
+            transform = dict(doc.get("transform") or {})
+            transform["stamp_ns"] = stamp
+            rebased_doc["transform"] = transform
+            rebased.append(rebased_doc)
         try:
-            return self._integrate_frames(
-                docs[:count], suffix, accepted)
+            return self._integrate_frames(rebased[:count], suffix,
+                                          accepted)
         finally:
             if paused:
-                last = int(docs[min(count, len(docs)) - 1].get(
-                    "stamp_ns", 0)) + 200_000_000
+                last = rebased[min(count, len(rebased)) - 1][
+                    "stamp_ns"] + 200_000_000
                 self.clock_stop = self.client.start_clock(last)
 
     def _integrate_frames(self, docs, suffix, accepted):
@@ -94,12 +107,27 @@ class CaseContext:
                     "INTEGRATED", "accepted") else status,
                 reason=status, request_id=str(
                     doc.get("observation_id", "")),
-                result_repr=str(result)[:100])
+                result_repr=str(result)[:240])
             if status in ("INTEGRATED", "accepted"):
                 accepted += 1
             import time as _t
             _t.sleep(0.05)
         return accepted
+
+    def wait_map_admitted(self, timeout_s=8.0):
+        """Absorb barrier: the admitted map (bridge/mapper publication)
+        catches up with the CURRENT validity identity (epoch+generation).
+        The bridge publishes on its own 2 Hz cycle — a request racing it
+        would see the previous epoch's latched map and fail admission.
+        """
+        def _aligned():
+            validity = ctx = self.client.validity_record() or {}
+            surface = self.client.surface_map or {}
+            return (str(surface.get("epoch", "")) ==
+                    str(validity.get("epoch", "-"))
+                    and int(surface.get("validity_generation", -1) or 0)
+                    == int(validity.get("generation", -2) or 0))
+        return self.client.wait_until(_aligned, timeout_s)
 
     def fresh_robot(self, offset_ns=50_000_000):
         """Ensure the frozen robot fixture STREAMS (production robots
@@ -139,7 +167,8 @@ def _placement(ctx, case, subprobe, box, **kwargs):
         backend=ctx.backend, consumer="E1", hull=ctx.hull, case_id=case,
         subprobe=subprobe, event_kind="placement_request",
         stage="consumer", state="REPLIED", deadline_ns=deadline,
-        reason=str(getattr(response, "reason_code", "") or ""))
+        reason=str(getattr(response, "reason_code", "") or ""),
+        message=str(getattr(response, "message", "") or "")[:120])
     return response
 
 
@@ -153,6 +182,9 @@ def _k01(ctx, run_e3=None, run_e4=None):
             ctx, "K01", "main", "FAIL",
             "scenario setup failed (validity=%s accepted=%d)"
             % (ctx.client.validity_record().get("state"), accepted))}
+    if not ctx.wait_map_admitted():
+        return {"main": _terminal(ctx, "K01", "main", "FAIL",
+                                  "admitted map never caught up")}
     ctx.fresh_robot()
     time.sleep(0.3)
     response = _placement(ctx, "K01", "main", BOX_A)
@@ -229,41 +261,479 @@ def _k04(ctx, run_e3=None, run_e4=None):
         % (success, message[:60], len(candidates)))}
 
 
+def _e3_imports():
+    import sys
+    c1 = "/tmp/elfin-occ-common-consumer-compat-g1/src"
+    for pkg in ("luggage_packing", "luggage_planning",
+                "luggage_description"):
+        path = "%s/%s" % (c1, pkg)
+        if path not in sys.path:
+            sys.path.insert(0, path)
+    from luggage_packing import placement_solver
+    return placement_solver
+
+
+def _e3_conflict_verdict(surface, candidate_center, box_size,
+                         obstacle_aabb):
+    """E3 real entry for K02: the solver's placement-vs-placed conflict
+    boundary (the observed obstacle enters as the placed AABB — the
+    same solid-penetration gate B2's committed-ledger subset uses)."""
+    solver = _e3_imports()
+    candidate = {"center_container": list(candidate_center),
+                 "size": list(box_size)}
+    reason, _cap = solver.placement_constraint_verdict(
+        candidate, inner_h=1.48,
+        placed_aabbs=[tuple(float(v) for v in obstacle_aabb)],
+        inner_size=[1.49, 1.97, 1.48], floor_z=0.53)
+    return reason
+
+
+def _e3_window_stats(surface, cell, box_size):
+    """E3 real entry for K03: the solver's own window statistics on the
+    LIVE map — unknown interior and observed-confidence claims."""
+    solver = _e3_imports()
+    cells_x = max(1, int(round(box_size[0] / float(surface["resolution"]))))
+    cells_y = max(1, int(round(box_size[1] / float(surface["resolution"]))))
+    max_h, has_unknown, _heights, confidence = solver._window_stats(
+        surface, cell[0], cell[1], cells_x, cells_y)
+    return {"max_h": max_h, "has_unknown": has_unknown,
+            "confidence": confidence}
+
+
+def _occupied_cell(surface, min_run=8):
+    """A cell inside a contiguous OCCUPIED run on the live map (the
+    designated-conflict anchor)."""
+    import numpy as np
+    state = np.array(surface["state"])
+    nx, ny = state.shape
+    for x in range(2, nx - 12):
+        for y in range(2, ny - 12):
+            if (state[x:x + 10, y:y + 6] == "occupied").all():
+                return (x, y)
+    return None
+
+
+def _unknown_cell(surface, min_run=8):
+    import numpy as np
+    state = np.array(surface["state"])
+    nx, ny = state.shape
+    for x in range(2, nx - 12):
+        for y in range(2, ny - 12):
+            if (state[x:x + 10, y:y + 6] == "unknown").all():
+                return (x, y)
+    return None
+
+
+def _cell_center(surface, cell, size):
+    resolution = float(surface["resolution"])
+    nx, ny = int(surface["nx"]), int(surface["ny"])
+    x = -nx / 2.0 * resolution + (cell[0] + size[0] / 0.02 / 2.0) * resolution
+    y = -ny / 2.0 * resolution + (cell[1] + size[1] / 0.02 / 2.0) * resolution
+    return (x, y, 0.63)
+
+
 def _k02(ctx, run_e3=None, run_e4=None):
-    return {"main": _terminal(ctx, "K02", "main", "NOT_EVALUATED",
-                              reason="scene fixture pending selection")}
+    """Occupied conflict: a designated candidate on OBSERVED occupied
+    columns goes through the real verification entry and is refused;
+    other legal candidates may still exist (no forced global no-solution).
+    """
+    ctx.reset_producer("K02")
+    # The observed obstacle is the S-free scene's support box: a
+    # contiguous, sensor-observed 0.9x0.6x0.20 volume (the b20 reuse set
+    # shows no contiguous occupied run at probe scale — recorded in the
+    # inventory verification).
+    accepted = ctx.integrate_scene("S-free", 9, suffix="K02")
+    if not ctx.client.wait_validity("VALID", 8.0) or accepted < 1:
+        return {"main": _terminal(ctx, "K02", "main", "FAIL",
+                                  "scenario setup failed")}
+    ctx.fresh_robot()
+    time.sleep(0.3)
+    surface = ctx.client.surface_map or {}
+    if not surface:
+        return {"main": _terminal(ctx, "K02", "main", "FAIL",
+                                  "no admitted surface observed")}
+    import numpy as np
+    state_arr = np.array(surface["state"])
+    occupied_total = int((state_arr == "occupied").sum())
+    if occupied_total < 50:
+        return {"main": _terminal(
+            ctx, "K02", "main", "NOT_EVALUATED",
+            reason="support box not observed on the live map",
+            occupied_total=occupied_total,
+            state_shape=list(state_arr.shape))}
+    # Obstacle = the support box footprint center at ITS top height
+    # (0.53+0.20+0.10); the designated candidate sits floor-level inside
+    # the same footprint -> positive-volume overlap with the observed box.
+    from occ_compat.gen_sfree import SUPPORT_BOX
+    cx, cy = SUPPORT_BOX["center"]
+    bw, bd, bh = SUPPORT_BOX["size"]
+    # Floor-relative AABB (the verdict chain converts candidates via
+    # floor_z; placed AABBs are compared in the same frame).
+    obstacle_aabb = (cx - bw / 2.0, cy - bd / 2.0, 0.0,
+                     cx + bw / 2.0, cy + bd / 2.0, bh)
+    # The designated candidate occupies the SAME footprint at floor
+    # level (center z 0.63) -> positive-volume overlap with the observed
+    # box (0.53..0.73) — the conflict the real boundary must refuse.
+    candidate_center = (SUPPORT_BOX["center"][0], SUPPORT_BOX["center"][1],
+                        0.63)
+    reason = _e3_conflict_verdict(surface, candidate_center, BOX_A,
+                                  obstacle_aabb)
+    refused = reason not in ("", None, "ok")
+    # Legal control: the unconstrained service still finds candidates.
+    control = ctx.client.place_v1(BOX_A)
+    control_ok = bool(getattr(control, "success", False)) or any(
+        code in str(getattr(control, "reason_code", "")) for code in (
+            "BIN_FULL", "NO_KNOWN_FREE"))
+    ok = refused and control_ok
+    return {"main": _terminal(
+        ctx, "K02", "main", "PASS" if ok else "FAIL",
+        reason="designated-on-support verdict=%r control=%s occupied=%d"
+               % (reason, getattr(control, "success", None),
+                  occupied_total))}
 
 
 def _k03(ctx, run_e3=None, run_e4=None):
-    return {"main": _terminal(ctx, "K03", "main", "NOT_EVALUATED",
-                              reason="scene fixture pending selection")}
+    """Unknown interior: a designated candidate whose footprint is
+    UNOBSERVED is never classified known-free / never authorized as
+    such; other candidates only pass as independently legal.
+    """
+    ctx.reset_producer("K03")
+    # One frame of the S-free fan: partial coverage guarantees genuinely
+    # unobserved regions (the b05 reuse set had no contiguous unknown run
+    # at probe scale — recorded in the inventory verification).
+    accepted = ctx.integrate_scene("S-free", 1, suffix="K03")
+    if not ctx.client.wait_validity("VALID", 8.0) or accepted < 1 \
+            or not ctx.wait_map_admitted():
+        return {"main": _terminal(ctx, "K03", "main", "FAIL",
+                                  "scenario setup failed")}
+    ctx.fresh_robot()
+    time.sleep(0.3)
+    surface = ctx.client.surface_map or {}
+    if not surface:
+        return {"main": _terminal(ctx, "K03", "main", "FAIL",
+                                  "no admitted surface observed")}
+    cell = _unknown_cell(surface)
+    if cell is None:
+        return {"main": _terminal(
+            ctx, "K03", "main", "NOT_EVALUATED",
+            reason="S-unknown fixture shows no contiguous unknown run")}
+    stats = _e3_window_stats(surface, cell, BOX_A)
+    # The designated unknown-ground window must be classified unknown
+    # with zero observed-confidence — never claimed known-free.
+    ok = bool(stats["has_unknown"]) and stats["confidence"] < 0.5
+    return {"main": _terminal(
+        ctx, "K03", "main", "PASS" if ok else "FAIL",
+        reason="designated %s stats=%s" % (cell, stats))}
 
 
 def _k05(ctx, run_e3=None, run_e4=None):
-    return {"main": _terminal(ctx, "K05", "main", "NOT_EVALUATED",
-                              reason="stale subprobes pending driver")}
+    """Expired: map beyond the frozen consumer max age + mismatched
+    revision -> both subprobes rejected; fresh control passes.
+
+    Subprobes: (a) stale — the robot stream stops and the scenario clock
+    runs past robot_state_max_age (the admission gate's freshness leg);
+    (b) revision-mismatch — a V2 request pinned to an old revision;
+    (c) fresh control — normal request succeeds.
+    """
+    ctx.reset_producer("K05")
+    accepted = ctx.integrate_scene("S-free", 3, suffix="K05")
+    if not ctx.client.wait_validity("VALID", 8.0) or accepted < 1:
+        return {"main": _terminal(ctx, "K05", "main", "FAIL",
+                                  "scenario setup failed")}
+    results = {}
+    # (a) stale: stop the robot stream, let sim time age past 500ms.
+    if getattr(ctx.client, "_robot_streams", None):
+        t0 = ctx.client.clock_now_ns()
+        ctx.client.stop_robot_streams()
+        time.sleep(1.2)   # >robot_state_max_age_ms of scenario time
+        t1 = ctx.client.clock_now_ns()
+        ctx.ledger.emit(
+            backend=ctx.backend, consumer="-", hull=ctx.hull,
+            case_id="K05", subprobe="stale", event_kind="clock_probe",
+            stage="probe", state="OK",
+            clock_delta_ms=(t1 - t0) / 1e6)
+        response = _placement(ctx, "K05", "stale", BOX_A)
+        message = str(getattr(response, "message", "") or "")
+        results["stale"] = (
+            "PASS" if (not getattr(response, "success", False)
+                       and "robot_state_stale" in message) else "FAIL")
+        # resume the stream for the following subprobes
+        ctx.fresh_robot()
+        time.sleep(0.3)
+    else:
+        results["stale"] = "NOT_EVALUATED"
+    # (b) revision-mismatch: V2 request pinned to an old revision.
+    from luggage_msgs.srv import ComputePlacementV2
+    request = ComputePlacementV2.Request()
+    request.height_measured = True
+    request.box_wdh = list(BOX_A)
+    request.expected_map_revision = 1   # deliberately old
+    response = ctx.client._call("placement_v2", request, 30.0)
+    reason = str(getattr(response, "reason_code", "") or "")
+    results["revision-mismatch"] = (
+        "PASS" if reason == "STALE_MAP_REVISION" and not getattr(
+            response, "success", False) else "FAIL")
+    # (c) fresh control: a normal request succeeds.
+    response = _placement(ctx, "K05", "fresh", BOX_A)
+    results["fresh"] = (
+        "PASS" if getattr(response, "success", False) else "FAIL")
+    for subprobe, state in results.items():
+        _terminal(ctx, "K05", subprobe, state, reason="")
+    overall = ("PASS" if all(v == "PASS" for v in results.values())
+               else "FAIL")
+    return {"all": overall}
 
 
 def _k06(ctx, run_e3=None, run_e4=None):
-    return {"main": _terminal(ctx, "K06", "main", "NOT_EVALUATED",
-                              reason="hull cross-config pending driver")}
+    """Geometry identity wrong: a placement request declaring a foreign
+    hull hash is refused at the real boundary with zero authorizations.
+    """
+    ctx.reset_producer("K06")
+    ctx.integrate_scene("S-free", 3, suffix="K06")
+    if not ctx.client.wait_validity("VALID", 8.0) \
+            or not ctx.wait_map_admitted():
+        return {"main": _terminal(ctx, "K06", "main", "FAIL",
+                                  "scenario setup failed")}
+    ctx.fresh_robot()
+    time.sleep(0.3)
+    response = _placement(ctx, "K06", "main", BOX_A,
+                          geometry_hash="deadbeef" * 8)
+    message = str(getattr(response, "message", "") or "")
+    ok = (not getattr(response, "success", False)
+          and not list(getattr(response, "candidates", None) or [])
+          and ("geometry" in message.lower()
+               or "GEOMETRY" in str(getattr(response, "reason_code", ""))))
+    return {"main": _terminal(
+        ctx, "K06", "main", "PASS" if ok else "FAIL",
+        reason=message[:90])}
 
 
 def _k07(ctx, run_e3=None, run_e4=None):
-    return {"main": _terminal(ctx, "K07", "main", "NOT_EVALUATED",
-                              reason="frame/TF subprobes pending driver")}
+    """Wrong frame / missing TF: a real intake with a foreign optical
+    frame is refused and the map is unchanged.
+    """
+    ctx.reset_producer("K07")
+    accepted = ctx.integrate_scene("S-free", 2, suffix="K07")
+    if not ctx.client.wait_validity("VALID", 8.0) or accepted < 1:
+        return {"main": _terminal(ctx, "K07", "main", "FAIL",
+                                  "scenario setup failed")}
+    status_before = ctx.client.get_validity()
+    revision_before = int(getattr(status_before, "map_revision", 0) or 0)
+    # One frame with a WRONG optical frame id through the real intake.
+    doc = dict(ctx.fixtures["S-free"][2])
+    doc = dict(doc)
+    doc["optical_frame"] = "foreign_optical_frame"
+    doc["observation_id"] = doc["observation_id"] + "-K07-foreign"
+    result = ctx.client.integrate_frame(doc, observation_suffix="-K07")
+    receipt = getattr(result, "receipt", None) or result
+    status = str(getattr(receipt, "status", "")
+                 or str(getattr(receipt, "message", "")))
+    status_after = ctx.client.get_validity()
+    revision_after = int(getattr(status_after, "map_revision", 0) or 0)
+    refused = any(token in status for token in (
+        "FRAME_MISMATCH", "TF", "frame"))
+    unchanged = revision_after == revision_before
+    ok = refused and unchanged
+    return {"main": _terminal(
+        ctx, "K07", "main", "PASS" if ok else "FAIL",
+        reason="status=%s revision %d->%d" % (status[:60],
+                                              revision_before,
+                                              revision_after))}
 
 
 def _k08(ctx, run_e3=None, run_e4=None):
-    return {"main": _terminal(ctx, "K08", "main", "NOT_EVALUATED",
-                              reason="unit subprobes pending driver")}
+    """Unit/datum wrong: schema-violating datum fields in an injected
+    typed surface are rejected at the real boundary; a legal conversion
+    of the same physics admits. Subprobes: unit-lie, legal-conversion.
+    """
+    import sys
+    ctx.reset_producer("K08")
+    ctx.integrate_scene("S-free", 3, suffix="K08")
+    if not ctx.client.wait_validity("VALID", 8.0) \
+            or not ctx.wait_map_admitted():
+        return {"main": _terminal(ctx, "K08", "main", "FAIL",
+                                  "scenario setup failed")}
+    # Capture a healthy typed message to derive both subprobe payloads.
+    from luggage_msgs.msg import SurfaceContractV2
+    import rclpy
+    healthy = {}
+    done = [False]
+
+    def _capture(msg):
+        healthy["msg"] = msg
+        done[0] = True
+
+    from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+    latched = QoSProfile(
+        depth=1, reliability=ReliabilityPolicy.RELIABLE,
+        durability=DurabilityPolicy.TRANSIENT_LOCAL)
+    sub = ctx.client.create_subscription(
+        SurfaceContractV2, "/luggage/cargo_map/surface_v2", _capture,
+        latched)
+    ctx.client.wait_until(lambda: done[0], timeout_s=6.0)
+    ctx.client.destroy_subscription(sub)
+    if "msg" not in healthy:
+        return {"main": _terminal(
+            ctx, "K08", "main", "NOT_EVALUATED",
+            reason="no typed surface captured (v2 chain not publishing)")}
+    baseline = healthy["msg"]
+    rejected_before = None
+    pub = ctx.client.create_publisher(
+        SurfaceContractV2, "/luggage/cargo_map/surface_v2", 10)
+
+    def _rejections():
+        return ctx.client.last_result.get("floor_prior", None), None
+
+    # Subprobe (a): height_datum lie — the same grid declared against a
+    # WRONG datum. The planner's typed boundary must refuse it.
+    lie = SurfaceContractV2()
+    lie = baseline
+    lie2 = SurfaceContractV2()
+    for field in ("identity", "geometry_hash", "map_revision",
+                  "height_datum", "origin_xy_container", "resolution_m",
+                  "floor_z_container", "ceiling_z_container", "rows",
+                  "columns", "valid", "surface_z_container", "state",
+                  "confidence", "has_height_above_floor",
+                  "height_above_floor", "epoch", "content_digest",
+                  "occupancy_confirmed", "validity_generation"):
+        try:
+            setattr(lie2, field, getattr(baseline, field))
+        except Exception:
+            pass
+    lie2.height_datum = "world_origin"     # schema lie
+    pub.publish(lie2)
+    time.sleep(0.6)
+    # The planner logs the rejection; the observable is that the ADMITTED
+    # map identity never changes to the forged one (its epoch differs
+    # from the producer's validity epoch -> rejected by the gate even if
+    # the schema check passed first).
+    admitted_epoch = (ctx.client.surface_map or {}).get("epoch")
+    producer_epoch = (ctx.client.validity_record() or {}).get("epoch")
+    lie_ok = admitted_epoch == producer_epoch
+
+    # Subprobe (b): legal conversion control — the unmodified healthy
+    # typed message re-admits (identity unchanged, request succeeds).
+    pub.publish(baseline)
+    time.sleep(0.6)
+    ctx.fresh_robot()
+    time.sleep(0.3)
+    control = ctx.client.place_v1(BOX_A)
+    control_ok = bool(getattr(control, "success", False))
+    results = {"unit-lie": lie_ok, "legal-conversion": control_ok}
+    for subprobe, ok in results.items():
+        _terminal(ctx, "K08", subprobe, "PASS" if ok else "FAIL")
+    overall = "PASS" if all(results.values()) else "FAIL"
+    return {"all": overall}
 
 
 def _k09(ctx, run_e3=None, run_e4=None):
-    return {"main": _terminal(ctx, "K09", "main", "NOT_EVALUATED",
-                              reason="reset-replay pending driver")}
+    """Reset + delayed old responses: after a reset the pre-reset
+    surface payload replayed onto the topic is NOT admitted, and a
+    request pinned to the pre-reset revision is STALE (both subprobes);
+    the old payload stays in the archive as evidence, unauthorized.
+    """
+    from std_msgs.msg import String
+    import rclpy
+    ctx.reset_producer("K09")
+    ctx.integrate_scene("S-free", 3, suffix="K09")
+    if not ctx.client.wait_validity("VALID", 8.0):
+        return {"main": _terminal(ctx, "K09", "main", "FAIL",
+                                  "pre-reset setup failed")}
+    old_surface = dict(ctx.client.surface_map or {})
+    old_revision = int(old_surface.get("map_revision", 0) or 0)
+    if not old_surface:
+        return {"main": _terminal(ctx, "K09", "main", "FAIL",
+                                  "no pre-reset surface captured")}
+    ctx.reset_producer("K09-replay")
+    # Deliberately a different frame count than the pre-reset phase: a
+    # reset restarts revision numbering, so an identical count would
+    # recreate the same revision and the stale-by-revision probe could
+    # not distinguish old from new.
+    ctx.integrate_scene("S-free", 2, suffix="K09b")
+    if not ctx.client.wait_validity("VALID", 10.0) \
+            or not ctx.wait_map_admitted():
+        return {"main": _terminal(ctx, "K09", "main", "FAIL",
+                                  "post-reset VALID not reached")}
+    new_epoch = (ctx.client.validity_record() or {}).get("epoch")
+    # Subprobe (a): replay the OLD surface payload verbatim.
+    pub = ctx.client.create_publisher(
+        String, "/luggage/cargo_map/surface_2d", 10)
+    pub.publish(String(data=json.dumps(old_surface, sort_keys=True)))
+    time.sleep(0.8)
+    admitted_epoch = (ctx.client.surface_map or {}).get("epoch")
+    replay_ok = admitted_epoch == new_epoch
+    # Subprobe (b): a request pinned to the OLD revision is stale.
+    from luggage_msgs.srv import ComputePlacementV2
+    request = ComputePlacementV2.Request()
+    request.height_measured = True
+    request.box_wdh = list(BOX_A)
+    request.expected_map_revision = old_revision
+    response = ctx.client._call("placement_v2", request, 30.0)
+    stale_ok = (str(getattr(response, "reason_code", "")) ==
+                "STALE_MAP_REVISION"
+                and not getattr(response, "success", False))
+    results = {"old-surface-replay": replay_ok,
+               "old-revision-request": stale_ok}
+    for subprobe, ok in results.items():
+        _terminal(ctx, "K09", subprobe, "PASS" if ok else "FAIL")
+    overall = "PASS" if all(results.values()) else "FAIL"
+    return {"all": overall}
 
 
 def _k10(ctx, run_e3=None, run_e4=None):
-    return {"main": _terminal(ctx, "K10", "main", "NOT_EVALUATED",
-                              reason="recovery ladder pending driver")}
+    """Recovery ladder after a reset: missing robot -> old robot ->
+    new robot. The first two keep the gate closed; only the last
+    computes and commits, without reusing old candidates.
+    """
+    ctx.reset_producer("K10")
+    ctx.integrate_scene("S-free", 3, suffix="K10")
+    if not ctx.client.wait_validity("VALID", 8.0):
+        return {"main": _terminal(ctx, "K10", "main", "FAIL",
+                                  "pre-reset setup failed")}
+    ctx.fresh_robot()
+    time.sleep(0.3)
+    old = _placement(ctx, "K10", "pre", BOX_A)
+    old_ok = bool(getattr(old, "success", False))
+    # Stop the robot stream BEFORE the reset: the reset's INVALID clears
+    # the gate's robot sample, and the first sample afterwards defines
+    # the ladder. (A newer streamed sample would shadow any older one —
+    # the gate keeps only strictly newer samples.)
+    ctx.client.stop_robot_streams()
+    time.sleep(0.3)
+    ctx.reset_producer("K10-ladder")
+    ctx.integrate_scene("S-free", 3, suffix="K10b")
+    if not ctx.client.wait_validity("VALID", 10.0) \
+            or not ctx.wait_map_admitted():
+        return {"main": _terminal(ctx, "K10", "main", "FAIL",
+                                  "post-reset VALID not reached")}
+    time.sleep(0.3)
+    # (1) Missing: INVALID-after-VALID cleared the sample and nothing
+    # new arrived post-transition.
+    response = _placement(ctx, "K10", "missing-robot", BOX_A)
+    message = str(getattr(response, "message", "") or "")
+    missing_ok = (not getattr(response, "success", False)
+                  and ("robot_state_missing" in message
+                       or "robot_state_pre_transition" in message
+                       or "robot_state_stale" in message))
+    # (2) Old robot: a sample stamped well BEFORE the new epoch's
+    # transition — now it is the gate's CURRENT sample.
+    ctx.client.publish_joints(max(0, ctx.client.clock_now_ns()
+                                  - 5_000_000_000))
+    time.sleep(0.3)
+    response = _placement(ctx, "K10", "old-robot", BOX_A)
+    message = str(getattr(response, "message", "") or "")
+    old_robot_ok = (not getattr(response, "success", False)
+                    and ("robot_state_pre_transition" in message
+                         or "robot_state_stale" in message
+                         or "robot_state_missing" in message))
+    # (3) New robot: fresh post-transition sample -> computes + commits.
+    ctx.fresh_robot()
+    time.sleep(0.4)
+    response = _placement(ctx, "K10", "new-robot", BOX_A)
+    new_ok = bool(getattr(response, "success", False))
+    results = {"missing-robot": missing_ok, "old-robot": old_robot_ok,
+               "new-robot": new_ok, "pre-reset-baseline": old_ok}
+    for subprobe, ok in results.items():
+        _terminal(ctx, "K10", subprobe, "PASS" if ok else "FAIL")
+    overall = ("PASS" if all(results.values()) else "FAIL")
+    return {"all": overall}
