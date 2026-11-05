@@ -30,6 +30,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/CheckGraspLocalPaths.srv"
   "msg/GraspLocalBranch.msg"
   "srv/PreparePlacementPriorV2.srv"
+  "srv/ResetCargoMapV2.srv"
+  "srv/GetCargoValidity.srv"
   "msg/PlacementPriorChoiceV2.msg"
   "srv/ValidateSelectedRoute.srv"
   "srv/PlanObservationRouteV2.srv"
