@@ -146,6 +146,43 @@ class ChainClient(Node):
         message.clock.nanosec = int(sim_ns % 1_000_000_000)
         self._clock_pub.publish(message)
 
+    def start_clock(self, sim_start_ns, rate_hz=50.0, wall_ratio=1.0):
+        """Continuous /clock master: sim time advances with real time.
+
+        The producers' age premises (observer validity_max_age, planner
+        robot max age) are judged in the sim domain, so scenario time must
+        keep flowing between injected events — a stopped clock would age
+        every VALID out. ``wall_ratio`` scales the advance rate (tests may
+        run scenario time faster than the wall clock).
+        """
+        import threading
+        self._clock_state = {"sim_ns": int(sim_start_ns),
+                             "wall": time.monotonic(),
+                             "ratio": float(wall_ratio)}
+        self._clock_stop = threading.Event()
+
+        def _run():
+            period = 1.0 / rate_hz
+            while not self._clock_stop.wait(period):
+                now_wall = time.monotonic()
+                state = self._clock_state
+                state["sim_ns"] += int(
+                    (now_wall - state["wall"]) * 1e9 * state["ratio"])
+                state["wall"] = now_wall
+                self.tick(state["sim_ns"])
+
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+        return self._clock_stop
+
+    def clock_now_ns(self):
+        state = getattr(self, "_clock_state", None)
+        if state is None:
+            raise RuntimeError("continuous clock not started")
+        now_wall = time.monotonic()
+        return int(state["sim_ns"] + (now_wall - state["wall"]) * 1e9
+                   * state["ratio"])
+
     @staticmethod
     def _matrix_to_quaternion(rotation):
         """3x3 row-major rotation matrix (fixture form) -> quaternion."""
@@ -279,28 +316,37 @@ class ChainClient(Node):
             request.observation_id = str(
                 frame_doc.get("observation_id", "")) + observation_suffix
             request.clock_domain = "ros"
-            request.epoch = 0  # current
+            # The observer pins epochs AND geometry on integrate: read
+            # the CURRENT epoch from its own status service (never
+            # assume 1) and carry the fixture document's geometry hash.
+            status = self.get_validity()
+            request.epoch = int(getattr(status, "epoch", 1) or 1)
+            request.geometry_hash = str(frame_doc.get("geometry_hash", "")
+                                        or "")
             translation = frame_doc.get("transform", {}).get(
                 "translation", [0.0, 0.0, 0.0])
             qx, qy, qz, qw = self._matrix_to_quaternion(
                 frame_doc.get("transform", {}).get(
                     "rotation", [0.0, 0.0, 0.0, 1.0]))
-            request.transform.transform.translation.x = float(translation[0])
-            request.transform.transform.translation.y = float(translation[1])
-            request.transform.transform.translation.z = float(translation[2])
-            request.transform.transform.rotation.x = qx
-            request.transform.transform.rotation.y = qy
-            request.transform.transform.rotation.z = qz
-            request.transform.transform.rotation.w = qw
-            request.transform.header.stamp.sec = int(
+            request.uld_from_optical.transform.translation.x = float(translation[0])
+            request.uld_from_optical.transform.translation.y = float(translation[1])
+            request.uld_from_optical.transform.translation.z = float(translation[2])
+            request.uld_from_optical.transform.rotation.x = qx
+            request.uld_from_optical.transform.rotation.y = qy
+            request.uld_from_optical.transform.rotation.z = qz
+            request.uld_from_optical.transform.rotation.w = qw
+            request.uld_from_optical.header.stamp.sec = int(
                 stamp_ns // 1_000_000_000)
-            request.transform.header.stamp.nanosec = int(
+            request.uld_from_optical.header.stamp.nanosec = int(
                 stamp_ns % 1_000_000_000)
-            request.transform.header.frame_id = str(
+            # uld_from_optical convention (ros_adapters): the header
+            # says container_link -> optical_frame, the body carries the
+            # optical->ULD motion (fixture yaml verbatim).
+            request.uld_from_optical.header.frame_id = "container_link"
+            request.uld_from_optical.child_frame_id = str(
                 frame_doc.get("optical_frame", "optical_frame"))
-            request.transform.child_frame_id = "container_link"
             request.cloud = _points_to_cloud(
-                points, request.transform.header.frame_id,
+                points, request.uld_from_optical.child_frame_id,
                 stamp_ns // 1_000_000_000, stamp_ns % 1_000_000_000)
             result = self._call("integrate_observation", request,
                                 timeout_s)
