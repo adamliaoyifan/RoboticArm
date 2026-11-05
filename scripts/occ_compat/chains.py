@@ -38,6 +38,10 @@ _NODE_WRAPPER = (
 class ChainProcess:
     """One spawned ROS process with its own install prefix."""
 
+    #: Every stack gets its own ROS domain: a leaked process from a
+    #  previous rehearsal can never share this graph (backend-uniqueness).
+    domain = None
+
     def __init__(self, name, command, cwd, log_path):
         self.name = name
         self.log_path = Path(log_path)
@@ -45,6 +49,8 @@ class ChainProcess:
         self._log = open(self.log_path, "w")
         env = dict(os.environ)
         env.pop("PYTHONPATH", None)  # the wrapper sets the real one
+        if ChainProcess.domain:
+            env["ROS_DOMAIN_ID"] = str(ChainProcess.domain)
         self.process = subprocess.Popen(
             ["bash", "-c", command], cwd=str(cwd), env=env,
             stdout=self._log, stderr=subprocess.STDOUT)
@@ -131,9 +137,11 @@ def g_mapper_command(manifest, *, scene_revision="", cloud_topic=None):
     g = manifest["g_root"]
     params = [
         "--ros-args",
+        "-p use_sim_time:=true",
         "-p validity_max_age_ms:=1000",
         "-p freshness_window_sec:=2.0",
-        "-p use_sim_time:=true",
+        "-p scene_tf_config:=%s" % manifest.get("scene_tf", ""),
+        "-p resolution:=0.02",
     ]
     if scene_revision:
         params.append("-p frame_scene_revision:=%s" % scene_revision)
@@ -186,9 +194,7 @@ def preflight(manifest_path, out_dir, backend="G", timeout_s=120.0):
     result = {"backend": backend, "checks": {}}
 
     stack = ChainStack(out / ("preflight-%s" % backend), "preflight")
-    domain = str(os.getpid() % 40000 + 10000)
-    env = dict(os.environ)
-    env["ROS_DOMAIN_ID"] = domain
+    ChainProcess.domain = str(int(time.time()) % 40000 + 10000)
     # (processes inherit the domain via the wrapper's env)
     try:
         if backend == "G":
