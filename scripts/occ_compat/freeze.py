@@ -38,22 +38,61 @@ def _dirty(root):
     return relevant
 
 
-def _install_files(prefix, packages):
-    """Hash every installed module of the named packages."""
+#: Install-tree closure per package: python modules, message/config
+#: share payloads, launch scripts, top-level native libraries AND the
+#: lib/<pkg>/ executables the single-level glob used to miss (G2 §3.1:
+#: G23/C1 29/O8 node entry points were never hashed in freeze-v1).
+INSTALL_PATTERNS = (
+    ("lib/python3.10/dist-packages/**/*.py", "python-module"),
+    ("local/lib/python3.10/dist-packages/**/*.py", "python-module"),
+    ("lib/*/python3.10/dist-packages/**/*.py", "python-module"),
+    ("share/**/*.yaml", "config"),
+    ("share/**/*.srv", "message"),
+    ("share/**/*.msg", "message"),
+    ("share/**/*.xml", "manifest"),
+    ("share/**/*.py", "launch-script"),
+    ("lib/*", "native-lib"),
+    ("lib/*/*", "executable"),
+)
+
+
+def _install_files(prefix, packages, problems, side="", store=None):
+    """Hash the installed closure of the named packages.
+
+    Keys are ``package/relative_path`` so two packages can never silently
+    overwrite each other's entry (freeze-v1 keyed bare relative paths —
+    structurally unsafe, though G1's package set never actually
+    collided). A duplicate logical path is recorded as a problem instead
+    of being dropped. With ``store`` set, every hashed byte is also
+    copied into the content-addressed store for independent
+    verification."""
     out = {}
     for package in packages:
         base = Path(prefix) / package
-        for pattern in ("lib/python3.10/dist-packages/**/*.py",
-                        "local/lib/python3.10/dist-packages/**/*.py",
-                        "share/**/*.yaml", "share/**/*.srv",
-                        "share/**/*.msg", "lib/*"):
+        if not base.is_dir():
+            problems.append("%s install prefix missing: %s" % (side, base))
+            continue
+        for pattern, role in INSTALL_PATTERNS:
             for path in sorted(base.glob(pattern)):
-                if path.is_file():
-                    out[str(path.relative_to(base))] = sha256_file(path)
+                if not path.is_file():
+                    continue
+                key = "%s/%s" % (package, path.relative_to(base))
+                if key in out:
+                    problems.append(
+                        "%s duplicate install path: %s" % (side, key))
+                    continue
+                digest = sha256_file(path)
+                if store is not None:
+                    _store_copy(store, path, problems, digest)
+                out[key] = {
+                    "sha256": digest,
+                    "size": path.stat().st_size,
+                    "role": role,
+                }
     return out
 
 
-def _source_files(root, packages):
+def _source_files(root, packages, store=None, problems=None):
     out = {}
     for package in packages:
         base = Path(root) / "src" / package
@@ -66,8 +105,41 @@ def _source_files(root, packages):
                     # non-deterministic across otherwise-identical trees
                     and "__pycache__" not in path.parts
                     and path.suffix != ".pyc"):
-                out[str(path.relative_to(base))] = sha256_file(path)
+                digest = sha256_file(path)
+                if store is not None and problems is not None:
+                    _store_copy(store, path, problems, digest)
+                out[str(path.relative_to(base))] = digest
     return out
+
+
+def _store_copy(out, source_path, problems, digest=None):
+    """Copy one payload into the freeze's content-addressed store.
+
+    The store holds real bytes so an independent verifier can recompute
+    hashes without reading the (volatile) worktrees — G2 §3.1: an
+    archive must contain the bytes or reference a hash-verified
+    read-only store, never a bare /tmp path."""
+    digest = digest or sha256_file(source_path)
+    shard = out / "store" / digest[:2] / digest
+    if shard.exists():
+        if sha256_file(shard) != digest:  # corrupted pre-existing shard
+            problems.append("store shard corrupt: %s" % digest)
+        return digest
+    shard.parent.mkdir(parents=True, exist_ok=True)
+    shard.write_bytes(source_path.read_bytes())
+    return digest
+
+
+def _t1_files(c1_root, out, problems):
+    """Hash (and store) every T1 script the campaign CLI executes."""
+    scripts = {}
+    entry = c1_root / "scripts/occ_consumer_compat.py"
+    _store_copy(out, entry, problems)
+    scripts["occ_consumer_compat.py"] = sha256_file(entry)
+    for path in sorted((c1_root / "scripts/occ_compat").glob("*.py")):
+        _store_copy(out, path, problems)
+        scripts["occ_compat/" + path.name] = sha256_file(path)
+    return scripts
 
 
 def run_freeze(manifest_path, out_dir):
@@ -97,11 +169,11 @@ def run_freeze(manifest_path, out_dir):
             "branch": _git(g_root, "rev-parse", "--abbrev-ref", "HEAD"),
             "packages": {
                 "luggage_perception": _source_files(
-                    g_root, ("luggage_perception",)),
+                    g_root, ("luggage_perception",), out, problems),
                 "luggage_msgs": _source_files(
-                    g_root, ("luggage_msgs",)),
+                    g_root, ("luggage_msgs",), out, problems),
                 "luggage_description": _source_files(
-                    g_root, ("luggage_description",)),
+                    g_root, ("luggage_description",), out, problems),
             },
         },
         "C1": {
@@ -109,26 +181,20 @@ def run_freeze(manifest_path, out_dir):
             "branch": _git(c1_root, "rev-parse", "--abbrev-ref", "HEAD"),
             "packages": {
                 "luggage_packing": _source_files(
-                    c1_root, ("luggage_packing",)),
+                    c1_root, ("luggage_packing",), out, problems),
                 "luggage_planning": _source_files(
-                    c1_root, ("luggage_planning",)),
+                    c1_root, ("luggage_planning",), out, problems),
                 "luggage_description": _source_files(
-                    c1_root, ("luggage_description",)),
+                    c1_root, ("luggage_description",), out, problems),
                 "luggage_msgs": _source_files(
-                    c1_root, ("luggage_msgs",)),
+                    c1_root, ("luggage_msgs",), out, problems),
                 "uld_occ_observer_scripts": _source_files(
-                    c1_root, ("uld_occ_observer",)),
+                    c1_root, ("uld_occ_observer",), out, problems),
             },
         },
         "T1": {
             "commit": c1_sha,
-            "scripts": {
-                **{"occ_consumer_compat.py": sha256_file(
-                    c1_root / "scripts/occ_consumer_compat.py")},
-                **{"occ_compat/" + p.name: sha256_file(p)
-                   for p in sorted(
-                       (c1_root / "scripts/occ_compat").glob("*.py"))},
-            },
+            "scripts": _t1_files(c1_root, out, problems),
         },
         "O_CONTROL": {
             "commit": o_sha,
@@ -141,20 +207,33 @@ def run_freeze(manifest_path, out_dir):
         "G": _install_files(
             manifest["g_install"],
             ("luggage_perception", "luggage_msgs",
-             "luggage_description", "st09_contracts")),
+             "luggage_description", "st09_contracts"),
+            problems, "G", out),
         "C1": _install_files(
             manifest["c1_install"],
             ("luggage_packing", "luggage_planning",
              "luggage_description", "luggage_msgs",
-             "uld_occ_observer")),
+             "uld_occ_observer"),
+            problems, "C1", out),
         "O_CONTROL": _install_files(
-            manifest["o_install"], ("uld_occ_observer",)),
+            manifest["o_install"], ("uld_occ_observer",),
+            problems, "O_CONTROL", out),
     }
 
+    store_shards = sorted(out.glob("store/*/*"))
     freeze_doc = {
-        "schema": "freeze-v1",
+        "schema": "freeze-v2",
         "source_map": source_map,
         "install_manifest": install_manifest,
+        "store": {
+            "kind": "content-addressed-sha256",
+            "layout": "store/<sha256[:2]>/<sha256>",
+            "shards": len(store_shards),
+            "bytes": sum(s.stat().st_size for s in store_shards),
+            "note": "real payload bytes for independent a0 verification; "
+                    "the freeze generator's declarations are not trusted "
+                    "by the judge",
+        },
         "dirty": {"G": g_dirty, "C1": c1_dirty, "O": []},
         "excluded": {
             "patterns": list(EXCLUDED_DIRS),
@@ -168,6 +247,8 @@ def run_freeze(manifest_path, out_dir):
     (out / "FREEZE.json").write_text(json.dumps(freeze_doc, indent=1))
     summary = {
         "G": g_sha, "C1": c1_sha, "T1": c1_sha, "O": o_sha,
+        "schema": freeze_doc["schema"],
+        "store_shards": len(store_shards),
         "problems": problems,
         "g_dirty_count": len(g_dirty), "c1_dirty_count": len(c1_dirty),
     }
