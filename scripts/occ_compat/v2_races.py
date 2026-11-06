@@ -321,19 +321,44 @@ def run_r05(ctx, service="v1", case="R05"):
         return _terminal(ctx, case, "main", "NOT_EVALUATED",
                          reason="after_admit park never reached")
     # Injection INSIDE the computation window: reset + recovery.
+    _checkpoint("injection_begin")
     ctx.reset_producer(case + "-mid")
     ctx.integrate_scene("S-free", 2, suffix=case + "b")
-    ctx.client.wait_validity("VALID", 10.0)
-    ctx.wait_map_admitted()
+    recovered_valid = ctx.client.wait_validity("VALID", 10.0)
+    recovered_admit = ctx.wait_map_admitted()
+    _checkpoint("recovery", valid=recovered_valid,
+                admitted=recovered_admit)
     ctx.client.stop_robot_streams()
     ctx.fresh_robot()
     time.sleep(0.5)
     ctx.client.release_hook("after_admit")
     ctx.client.release_hook("before_solve")
-    done = _spin_until(lambda: future.done(), 35.0)
+    # The chain parks THREE hooks; the old driver released only two and
+    # bet on the product's own park timeout to clear before_commit. G
+    # scraped past at ~31.9s, O overran the driver's 35s spin — run02's
+    # 35.6s "no response" was exactly this gamble lost. Release every
+    # park the planner actually reaches while waiting for the reply.
+    def _release_and_check():
+        stage = str(getattr(ctx.client, "_last_stage", ""))
+        if stage:
+            ctx.client.release_hook(stage.split(":")[0])
+            ctx.client._last_stage = ""
+        return future.done()
+
+    _checkpoint("hooks_released")
+    done = _spin_until(_release_and_check, 35.0)
+    _checkpoint("response_collected", done=done)
     response = future.result() if done else None
     if response is None:
-        return _terminal(ctx, case, "main", "FAIL", "no response")
+        # The request stayed pending past its real deadline: preserved
+        # as an explicit terminal with the full checkpoint window —
+        # never a silent drop (the run02 evidence gap).
+        return _terminal(
+            ctx, case, "main", "FAIL",
+            reason="no response: request pending past 30s deadline; "
+                   "parked=%s recovery=%s/%s released, last_stage=%s"
+                   % (parked, recovered_valid, recovered_admit,
+                      str(getattr(ctx.client, "_last_stage", ""))[:40]))
     message = str(getattr(response, "message", "") or "")
     rejected = (not getattr(response, "success", False)
                 and ("VALIDITY_COMMIT_REJECTED" in message
