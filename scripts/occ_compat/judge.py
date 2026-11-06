@@ -22,7 +22,11 @@ from .ledger import load_events
 MUTATIONS = (
     ("m01_sha_or_payload_wrong", "input_hash_mismatch"),
     ("m02_expected_id_missing_or_dup", "expected_id_violation"),
-    ("m03_summary_pass_but_events_reject", "terminal_event_disagreement"),
+    # m03/m11's forged rows are caught on the POSITIVE-leg path, whose
+    # frozen recompute rule is evidence_missing (a PASS terminal whose
+    # success evidence was destroyed) — labels corrected so the F06
+    # rule-hit check verifies the rule that ACTUALLY fires.
+    ("m03_summary_pass_but_events_reject", "evidence_missing"),
     ("m04_old_token_authorized_after_reset", "terminal_event_disagreement"),
     ("m05_recovery_without_new_robot", "evidence_missing"),
     ("m06_valid_without_new_epoch_observation", "evidence_missing"),
@@ -30,7 +34,7 @@ MUTATIONS = (
     ("m08_unknown_interior_marked_legal", "oracle_violation"),
     ("m09_counts_only_candidates", "payload_stripped"),
     ("m10_past_deadline_marked_ok", "deadline_violation"),
-    ("m11_all_positives_no_solution", "terminal_event_disagreement"),
+    ("m11_all_positives_no_solution", "evidence_missing"),
     ("m12_replay_payload_missing", "payload_stripped"),
 )
 
@@ -75,6 +79,52 @@ REFUSAL_TOKENS = ("VALIDITY_GATE", "VALIDITY_COMMIT", "STALE_MAP",
                   "robot_state", "BIN_FULL")
 SUCCESS_TOKEN = "slot id="
 
+#: Frozen per-case REQUIRED subprobe terminal sets (reviews F03): an ID
+#: hits only when EVERY required leg carries exactly one legal terminal;
+#: any FAIL dominates; unknown/missing/duplicate legs are named, never
+#: erased by another leg's PASS. `page-read` is an O-only diagnostic —
+#: listed as optional: a FAIL in it fails, its absence on G is fine.
+REQUIRED_SUBPROBES = {
+    "K01": ("main",), "K02": ("main",), "K03": ("main",),
+    "K04": ("main",), "K05": ("fresh", "stale", "revision-mismatch"),
+    "K06": ("main",), "K07": ("main",),
+    "K08": ("unit-lie", "legal-conversion"),
+    "K09": ("old-surface-replay", "old-revision-request"),
+    "K10": ("missing-robot", "old-robot", "new-robot",
+            "pre-reset-baseline"),
+    "R01": ("main",), "R02": ("main",),
+    "R03": ("handle-acquired", "old-handle-refused",
+            "old-identity-refused", "old-payload-unauthorized",
+            "old-revision-request-refused", "new-epoch-healthy", "main"),
+    "R04": ("main",), "R05": ("main",), "R06": ("main",),
+    "R07": ("main",), "R08": ("main",), "R09": ("main",),
+    "R10": ("main",), "R11": ("main",), "R12": ("main",),
+}
+OPTIONAL_SUBPROBES = {"R03": ("page-read",)}  # backend-specific legs
+for _case in ("K01", "K02", "K03", "K04", "K05", "K06", "K07", "K08",
+              "K09", "K10"):
+    for _e in (2, 3, 4):  # per-consumer composites are their own IDs
+        REQUIRED_SUBPROBES["%s/E%d" % (_case, _e)] = ("main",)
+
+#: Frozen per-case refusal vocabularies (reviews F07): a negative leg's
+#: refusal must come from the case's OWN reason class — R04/R05/R06 are
+#: mid-computation reset races (commit/gate/stale revision), so BIN_FULL
+#: or robot staleness cannot substantiate them.
+ALLOWED_REFUSALS = {
+    "R04": ("VALIDITY_COMMIT_REJECTED", "VALIDITY_GATE_CLOSED",
+            "STALE_MAP_REVISION"),
+    "R05": ("VALIDITY_COMMIT_REJECTED", "VALIDITY_GATE_CLOSED",
+            "STALE_MAP_REVISION"),
+    "R06": ("VALIDITY_COMMIT_REJECTED", "VALIDITY_GATE_CLOSED",
+            "STALE_MAP_REVISION"),
+}
+
+#: Frozen K01 oracle contract: exact leg set + coordinate-bearing sample.
+K01_ORACLE_LEGS = frozenset(
+    ("clearance", "hull", "occupied_overlap", "support",
+     "unknown_interior"))
+K01_SAMPLE_FIELDS = ("cells_x", "cells_y", "center_container")
+
 
 def _rows(events, kind, case_id, subprobe):
     return [e for e in events if e["event_kind"] == kind
@@ -92,15 +142,17 @@ def recompute_case(events, case_id, subprobe=""):
     if len(terminals) > 1:
         return None, "duplicate_terminal"
     declared = terminals[0]
+    base_case = case_id.split("/")[0]
     placements = _rows(events, "placement_request", case_id, subprobe)
     key = (case_id, subprobe)
     if declared["state"] == "PASS":
         if key in NEGATIVE_LEGS:
+            allowed = ALLOWED_REFUSALS.get(base_case, REFUSAL_TOKENS)
             rows = placements + [e for e in events
                                  if e.get("case_id") == case_id
                                  and e["event_kind"] == "e4_plan_entry"]
             if not any(any(tok in str(p.get("message", "") or "")
-                           for tok in REFUSAL_TOKENS)
+                           for tok in allowed)
                        or str(p.get("state", "")).startswith("REFUSED")
                        for p in rows):
                 return None, "terminal_event_disagreement"
@@ -158,6 +210,14 @@ def recompute_case(events, case_id, subprobe=""):
             if declared["state"] == "PASS" and (
                     not legs or any(v != "PASS" for v in legs.values())):
                 return None, "oracle_violation"
+            # Frozen leg vocabulary + coordinate-bearing candidate
+            # sample: invented leg names or a counts-only sample are
+            # oracle violations (reviews F07).
+            if set(legs) != set(K01_ORACLE_LEGS):
+                return None, "oracle_violation"
+            sample = oracle_rows[-1].get("candidate_sample") or {}
+            if not all(f in sample for f in K01_SAMPLE_FIELDS):
+                return None, "payload_stripped"
             claim = float((oracle_rows[-1].get("candidate_sample")
                            or {}).get("confidence_ratio", 0.0) or 0.0)
             classes = oracle_rows[-1].get("classes") or [
@@ -177,6 +237,26 @@ def recompute_case(events, case_id, subprobe=""):
                        for e in _integrates(events)):
                 return None, "evidence_missing"
     return declared["state"], None
+
+
+def _leg_completeness_problems(events):
+    """F07/F03: a declared case must carry its FROZEN leg set — an
+    archive with only a bare PASS main terminal (no legs) is
+    evidence_missing, whatever the terminal claims."""
+    problems = []
+    by_case = {}
+    for t in _terminals(events):
+        by_case.setdefault(t["case_id"], []).append(t)
+    for case_id, rows in by_case.items():
+        if case_id not in REQUIRED_SUBPROBES:
+            continue  # unknown ids are the known_ids check's business
+        if not any(t["state"] == "PASS" for t in rows):
+            continue  # nothing claimed: a named NE archive stays legal
+        ok, detail = _evaluate_case(case_id, rows)
+        if not ok and detail != "FAIL":
+            problems.append("%s: evidence_missing (%s)"
+                            % (case_id, detail))
+    return problems
 
 
 def judge_events(events, known_ids=None):
@@ -211,6 +291,7 @@ def judge_events(events, known_ids=None):
                      if e.get("request_id")]
     if len(integrate_ids) != len(set(integrate_ids)):
         problems.append("expected_id_violation: duplicate integrate id")
+    problems.extend(_leg_completeness_problems(events))
     return problems
 
 
@@ -441,15 +522,25 @@ def selftest(manifest_path, out_dir):
     out.mkdir(parents=True, exist_ok=True)
     ledger_path = manifest.get("rehearsal_ledger")
     if not ledger_path or not Path(ledger_path).exists():
-        # fall back: newest events.jsonl under the evidence root
+        # fall back: the newest FULL V1 group ledger under the evidence
+        # root — the mutation families target the K-case sweep, so a
+        # targeted R-only archive cannot exercise them (the g2 targeted
+        # runs made "newest events.jsonl" the wrong corpus).
         root = Path(manifest.get(
             "evidence_root",
             "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/"
             "occ_grid_consumer_compat_20261105"))
-        candidates = sorted(root.glob("**/events.jsonl"),
-                            key=lambda p: p.stat().st_mtime)
+        candidates = []
+        for path in root.glob("**/events.jsonl"):
+            try:
+                text = path.read_text()
+            except OSError:
+                continue
+            if '"case_id": "K01"' in text and '"case_id": "K10"' in text:
+                candidates.append(path)
+        candidates.sort(key=lambda p: p.stat().st_mtime)
         if not candidates:
-            return {"error": "no rehearsal archive found"}
+            return {"error": "no full V1 group ledger found"}
         ledger_path = str(candidates[-1])
     known_ids = set()
     for manifest_json in Path(manifest.get("sfree_dir", ".")).glob(
@@ -473,17 +564,23 @@ def selftest(manifest_path, out_dir):
             controls_ok = False
             result.setdefault("control_problems", []).extend(problems[:3])
     result["control"] = "PASS" if controls_ok else "FAIL"
+    result["mutations_rule_hit"] = {}
     for name, expected_rule in MUTATIONS:
         rejected = False
+        rule_hit = False
         for archive in archives:
             events = load_events(archive)
             problems = judge_events(_mutate(events, name),
                                     known_ids=known_ids)
             if problems:
                 rejected = True
+                if any(expected_rule in str(p) for p in problems):
+                    rule_hit = True
                 break
         result["mutations"][name] = "REJECTED" if rejected else (
             "FALSE_PASS" if controls_ok else "REJECTED")
+        result["mutations_rule_hit"][name] = bool(
+            rejected and rule_hit)
     # Tool/tree binding: the selftest records the worktree commit it ran
     # under; the formal A1 check compares it to the freeze's C1 commit.
     import subprocess
@@ -542,10 +639,14 @@ def selftest(manifest_path, out_dir):
     from .a0_verify import verify as _a0v
     base = _mini_a0_fixture(out / "w_a0_base")
     control = _a0v(base / "FREEZE.json", [base / "PROBES.json"])
+    import hashlib as _hl
     wiring["w09_base_control_passes"] = (
         "PASS" if control.get("verdict") == "PASS"
-        and _freeze_gate(json.loads((base / "FREEZE.json").read_text()),
-                         control) == "PASS" else "FALSE_PASS")
+        and _freeze_gate(
+            json.loads((base / "FREEZE.json").read_text()), control,
+            freeze_sha256=_hl.sha256(
+                (base / "FREEZE.json").read_bytes()).hexdigest()
+        ) == "PASS" else "FALSE_PASS")
     mutations_a0 = {
         "w09_single_byte_corruption": _mutate_store_byte,
         "w10_missing_artifact": _mutate_store_delete,
@@ -562,6 +663,29 @@ def selftest(manifest_path, out_dir):
             and _freeze_gate(json.loads(
                 (target / "FREEZE.json").read_text()),
                 result_a0).startswith("FAIL")) else "FALSE_PASS"
+    # F06 formal-path parity: an unknown observation id must be rejected
+    # by judge_archive ITSELF (the formal entry derives known_ids from
+    # the freeze's fixture manifest), not only by the selftest helper.
+    w13_dir = out / "w13_foreign_input"
+    (w13_dir / "V1-G-cuboid").mkdir(parents=True, exist_ok=True)
+    (w13_dir / "V1-G-cuboid" / "events.jsonl").write_text(json.dumps({
+        "event_kind": "integrate", "case_id": "K99",
+        "request_id": "foreign#0", "result_repr": "OK"}) + "\n")
+    sfree = out / "w13_sfree" / "sfree_x"
+    sfree.mkdir(parents=True, exist_ok=True)
+    (sfree / "MANIFEST.json").write_text(json.dumps(
+        {"frames": [{"path": "expected_frame.bin", "sha256": "0" * 64}]}))
+    w13_freeze = out / "w13_FREEZE.json"
+    w13_freeze.write_text(json.dumps({"schema": "freeze-v2",
+                                      "manifest": {"sfree_dir":
+                                                   str(sfree.parent)}}))
+    w13_verdict = judge_archive(
+        w13_dir, out / "w13_verdict", freeze_path=str(w13_freeze))
+    wiring["w13_unknown_observation_id_formal"] = (
+        "REJECTED" if any(
+            v != "PASS" for v in w13_verdict.get("gates", {}).values())
+        or w13_verdict.get("gates", {}).get("A5", "").startswith("FAIL")
+        else "FALSE_PASS")
     result["gate_wiring"] = wiring
     (out / "SELFTEST.json").write_text(json.dumps(result, indent=1))
     return result
@@ -586,7 +710,20 @@ MUTATION_IDS = (
     "m12_replay_payload_missing")
 
 
-def _freeze_gate(freeze, a0_verify=None):
+def _dirty_scripts():
+    import subprocess
+    try:
+        root = Path(__file__).resolve().parents[2]
+        out = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain", "--",
+             "scripts"],
+            capture_output=True, text=True, timeout=30).stdout
+        return [line.strip() for line in out.splitlines() if line.strip()]
+    except Exception:  # noqa: BLE001 - stamping is required
+        return ["status-failed"]
+
+
+def _freeze_gate(freeze, a0_verify=None, freeze_sha256=None):
     """A0 版本/输入/构建: structural payload verification of the freeze
     document, upgraded by the INDEPENDENT a0_verify result (G2 §3.1).
     Missing keys FAIL (an absent field must never default to an
@@ -639,6 +776,15 @@ def _freeze_gate(freeze, a0_verify=None):
                 "A0_VERIFY payload result provided")
     verdict = a0_verify.get("verdict")
     if verdict == "PASS":
+        # Binding (reviews F05): a PASS report about a DIFFERENT freeze
+        # must not clear this gate. The report must carry the digest of
+        # the freeze it verified and it must equal the judged freeze's.
+        reported = a0_verify.get("freeze_sha256")
+        if not reported or not freeze_sha256:
+            return ("FAIL: a0 report lacks freeze binding "
+                    "(freeze_sha256 absent)")
+        if reported != freeze_sha256:
+            return "FAIL: a0 report bound to a different freeze"
         return "PASS"
     if verdict == "REJECTED":
         return "FAIL: %s" % (a0_verify.get("problems") or
@@ -646,6 +792,20 @@ def _freeze_gate(freeze, a0_verify=None):
     return "NOT_EVALUATED: %s" % (a0_verify.get("problems")
                                   or ["payload verification not "
                                       "evaluated"])[:3]
+
+
+#: Every wiring family the selftest MUST emit (reviews F06): removing
+#: all negatives and keeping only the healthy control may not pass.
+REQUIRED_WIRING = (
+    "w01_empty_archive_not_all_pass", "w02_missing_freeze_keys",
+    "w03_missing_mutation_id", "w04_named_required_blocks",
+    "w05_missing_failure_payload", "w06_missing_regression",
+    "w07_missing_required_group", "w08_unknown_terminal_state",
+    "w09_base_control_passes",
+    "w09_single_byte_corruption", "w10_missing_artifact",
+    "w11_same_name_package_replacement", "w12_undeclared_loaded_path",
+    "w13_unknown_observation_id_formal",
+)
 
 
 def _a1_gate(selftest, freeze):
@@ -668,10 +828,11 @@ def _a1_gate(selftest, freeze):
     if not selftest.get("archives"):
         missing.append("no healthy archive judged")
     wiring = selftest.get("gate_wiring") or {}
-    if not wiring:
-        missing.append("no gate-wiring families")
-    # w09_base_control_passes is the A0 healthy CONTROL: it must be PASS,
-    # every other wiring family must be REJECTED.
+    # The FULL negative family set is required (reviews F06): deleting
+    # every negative while keeping the healthy control must fail.
+    absent = [w for w in REQUIRED_WIRING if w not in wiring]
+    if absent:
+        missing.append("wiring families absent: %s" % absent[:4])
     bad_wiring = [k for k, v in wiring.items()
                   if k != "w09_base_control_passes" and v != "REJECTED"]
     if bad_wiring:
@@ -679,6 +840,14 @@ def _a1_gate(selftest, freeze):
     if wiring.get("w09_base_control_passes") != "PASS":
         missing.append("A0 wiring control not PASS: %s"
                        % wiring.get("w09_base_control_passes"))
+    # Each mutation family must fire its OWN frozen rule, not just any
+    # problem (reviews F06).
+    rule_hits = selftest.get("mutations_rule_hit") or {}
+    if set(rule_hits) != set(MUTATION_IDS) or \
+            not all(rule_hits.values()):
+        missed = [k for k, v in rule_hits.items() if not v]
+        missing.append("mutation rule hits incomplete: %s"
+                       % (missed[:4] or "absent"))
     got_commit = selftest.get("tree_commit")
     if not got_commit:
         missing.append("selftest lacks tree_commit binding")
@@ -728,14 +897,50 @@ EXPECTED_V2G_GROUPS = ("V2-G-cuboid",)
 EXPECTED_V2O_GROUPS = ("V2-O-cuboid",)
 
 
+def _case_leg_states(rows):
+    """Per required leg of one case: (state, count) with FAIL
+    dominance and explicit unknown/missing naming — a PASS on one leg
+    can never erase another leg's FAIL/absence (reviews F03)."""
+    by_leg = {}
+    for t in rows:
+        by_leg.setdefault(t.get("subprobe", ""), []).append(t["state"])
+    return by_leg
+
+
+def _evaluate_case(case_id, rows):
+    """(ok, detail) for one required ID against its FROZEN leg set."""
+    legs = REQUIRED_SUBPROBES.get(case_id, ("main",))
+    optional = OPTIONAL_SUBPROBES.get(case_id, ())
+    by_leg = _case_leg_states(rows)
+    if any(state == "FAIL" for states in by_leg.values()
+           for state in states):
+        return False, "FAIL"
+    for leg in legs:
+        states = by_leg.get(leg) or []
+        if not states:
+            return False, "missing-leg:%s" % leg
+        if len(states) > 1:
+            return False, "dup-leg:%s x%d" % (leg, len(states))
+        if states[0] != "PASS":
+            return False, "leg:%s=%s" % (leg, states[0])
+    for leg in optional:
+        states = by_leg.get(leg) or []
+        if any(st == "FAIL" for st in states):
+            return False, "FAIL(optional %s)" % leg
+    unknown = [leg for leg in by_leg if leg not in legs
+               and leg not in optional]
+    if unknown:
+        return False, "unknown-leg:%s" % unknown[:2]
+    return True, "PASS"
+
+
 def _scope_gate(groups, required, expected_groups):
     """Contract per-ID rule for one gate scope. ``groups`` is a list of
     (group_name, terminals, problems); ``expected_groups`` is the FROZEN
-    group universe for the scope. A real FAIL fails the gate; a missing
-    expected group, a missing required ID, or any terminal state other
-    than PASS keeps it NOT_EVALUATED with the named IDs — an empty
-    scope or an unknown state can never pass (only exact PASS counts as
-    a hit)."""
+    group universe for the scope. Per reviews F03 every required ID must
+    satisfy its FROZEN leg set (each leg exactly one PASS terminal);
+    FAIL dominates; unknown/missing legs and unknown states are named —
+    an empty scope can never pass."""
     failed, not_hit, missing_groups = [], [], []
     present = {name for name, _, _ in groups}
     for expected in expected_groups:
@@ -746,12 +951,11 @@ def _scope_gate(groups, required, expected_groups):
         for t in terminals:
             by_id.setdefault(t["case_id"], []).append(t)
         for i in required:
-            rows = by_id.get(i) or []
-            if any(t["state"] == "FAIL" for t in rows):
+            ok, detail = _evaluate_case(i, by_id.get(i) or [])
+            if detail == "FAIL":
                 failed.append("%s/%s" % (name, i))
-            elif not any(t["state"] == "PASS" for t in rows):
-                state = rows[0]["state"] if rows else "absent"
-                not_hit.append("%s/%s(%s)" % (name, i, state))
+            elif not ok:
+                not_hit.append("%s/%s(%s)" % (name, i, detail))
         if problems:
             failed.append("%s: %s" % (name, problems[0]))
     if failed:
@@ -761,6 +965,29 @@ def _scope_gate(groups, required, expected_groups):
     if not_hit:
         return "NOT_EVALUATED: %s" % not_hit[:6]
     return "PASS"
+
+
+#: Frozen required regression slice (reviews F08): suite name ->
+#: (collected, junit sha256) from the G1-frozen TEST_SELECTION v2. A
+#: mutated selection (dropped suite, changed scope, wrong count, wrong
+#: digest) cannot pass.
+REQUIRED_REGRESSION = {
+    "G-CORE": (151, None), "C1-PACKING": (102, None),
+    "C1-PLANNING": (52, None), "O-BRIDGE-LIVE": (5, None),
+}
+
+
+def _frozen_regression_digests(evidence_root):
+    """Bind the frozen junit digests lazily from the campaign's frozen
+    TEST_SELECTION doc (its own integrity is separately recorded in the
+    G1 freeze chain); returns {suite: sha256}."""
+    try:
+        doc = json.loads((Path(evidence_root) /
+                          "regression/TEST_SELECTION.json").read_text())
+        return {name: (suite.get("evidence") or {}).get("junit_sha256")
+                for name, suite in (doc.get("suites") or {}).items()}
+    except (OSError, ValueError):
+        return {}
 
 
 def _regression_gate(evidence_root):
@@ -776,23 +1003,42 @@ def _regression_gate(evidence_root):
         return "FAIL: missing TEST_SELECTION.json"
     doc = json.loads(selection.read_text())
     problems, checked = [], 0
-    for name, suite in (doc.get("suites") or {}).items():
+    digests = _frozen_regression_digests(evidence_root)
+    import hashlib as _hl
+    for name, (want_count, _) in REQUIRED_REGRESSION.items():
+        suite = (doc.get("suites") or {}).get(name)
+        if suite is None:
+            problems.append("%s: required suite absent" % name)
+            continue
         if not str(suite.get("scope", "")).startswith("contract-required"):
+            problems.append("%s: scope downgraded to %r"
+                            % (name, suite.get("scope")))
             continue
         junit = selection.parent / suite["evidence"]["junit"]
         if not junit.is_file():
             problems.append("%s: junit missing" % name)
             continue
+        actual_sha = _hl.sha256(junit.read_bytes()).hexdigest()
+        recorded = suite["evidence"].get("junit_sha256")
+        frozen = digests.get(name)
+        if recorded != frozen:
+            problems.append("%s: junit digest != frozen selection" % name)
+        if actual_sha != recorded:
+            problems.append("%s: junit bytes != recorded digest" % name)
         cases = list(ET.parse(junit).getroot().iter("testcase"))
+        if len(cases) != want_count:
+            problems.append("%s: %d cases != frozen %d"
+                            % (name, len(cases), want_count))
         bad = [c for c in cases if c.find("failure") is not None
                or c.find("error") is not None
                or c.find("skipped") is not None]
-        if not cases:
-            problems.append("%s: empty junit" % name)
         if bad:
             problems.append("%s: %d failure/error/skipped"
                             % (name, len(bad)))
         checked += 1
+    if checked != len(REQUIRED_REGRESSION):
+        problems.append("checked %d of %d frozen required suites"
+                        % (checked, len(REQUIRED_REGRESSION)))
     if checked == 0:
         problems.append("no contract-required suites in selection")
     return "PASS" if not problems else "FAIL: %s" % problems[:4]
@@ -814,10 +1060,32 @@ def _replay_gate(evidence_root):
         return "FAIL: replay verdict/inputs/category %s/%s/%s" % (
             result.get("verdict"), result.get("inputs_unchanged"),
             result.get("same_category"))
+    if not isinstance(result.get("fixture_hashes"), dict) \
+            or not result["fixture_hashes"]:
+        return "FAIL: replay records no fixture identity at all"
+    # The replay must be CASE-JOINED in its own ledger (reviews F09):
+    # one case carrying terminal + replay_outcome + the actual refusal
+    # category in a consumer-path row — not a floating reason string.
     events = load_events(d)
-    if not any("VALIDITY_GATE_CLOSED" in str(e.get("reason", ""))
-               for e in events):
-        return "FAIL: replay ledger lacks the refusal category payload"
+    by_case = {}
+    for e in events:
+        by_case.setdefault(e.get("case_id", ""), []).append(e)
+    joined = [
+        c for c, rows in by_case.items()
+        if c and any(r["event_kind"] == "case_terminal" for r in rows)
+        and any(r["event_kind"] == "replay_outcome" for r in rows)
+        and any(r["event_kind"] == "placement_request"
+                and "VALIDITY_GATE_CLOSED" in str(r.get("reason", ""))
+                for r in rows)
+    ]
+    if not joined:
+        return ("FAIL: replay ledger lacks a case-joined "
+                "terminal+outcome+refusal payload")
+    # LIMITATION (named, not silent): the frozen replay artifact records
+    # a fixture COUNT, not per-input digests, so byte-level input
+    # equality is carried by inputs_unchanged's own capture path and is
+    # listed in the minimal-supplement matrix for re-capture WITH
+    # digests.
     return "PASS"
 
 
@@ -880,9 +1148,23 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
     out.mkdir(parents=True, exist_ok=True)
     gates = {}
     groups = []          # (name, events, problems)
+    known_ids = set()
+    freeze_doc = json.loads(Path(freeze_path).read_text()) if freeze_path \
+        else None
+    if freeze_doc:
+        # Parity with the selftest input (reviews F06): the formal path
+        # must flag unknown observation ids exactly like the selftest
+        # does, using the freeze's own fixture manifest.
+        for manifest_json in Path(freeze_doc.get("manifest", {})
+                                  .get("sfree_dir", ".")).glob(
+                                      "*/MANIFEST.json"):
+            for frame in json.loads(
+                    manifest_json.read_text()).get("frames", []):
+                known_ids.add(Path(frame.get("path", "")).stem)
     for ledger in sorted(archive.glob("**/events.jsonl")):
         group_events = load_events(ledger)
-        group_problems = judge_events(group_events)
+        group_problems = judge_events(group_events,
+                                      known_ids=known_ids or None)
         groups.append((ledger.parent.name, group_events, group_problems))
     if not groups:
         gates["A5"] = "FAIL: no group ledgers in the archive"
@@ -915,9 +1197,52 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
         else None
     selftest = json.loads(Path(selftest_path).read_text()) \
         if selftest_path else None
+    # Content binding (reviews F02): the verdict records the DIGEST of
+    # every input it actually read — a merger can then prove the
+    # ledgers it evaluates are the ones this verdict judged.
+    import hashlib as _hashlib
+
+    def _file_sha(path):
+        return _hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+    inputs_binding = {
+        "groups": {
+            ledger.parent.name: {"ledger_sha256": _file_sha(ledger)}
+            for ledger in sorted(archive.glob("**/events.jsonl"))},
+        "archive": str(archive.resolve()),
+    }
+    for role, path in (("freeze", freeze_path),
+                       ("selftest", selftest_path),
+                       ("a0_verify", a0_verify_path)):
+        if path:
+            inputs_binding["%s_sha256" % role] = _file_sha(path)
+    if freeze_doc:
+        inputs_binding["freeze_commits"] = {
+            side: (freeze_doc.get("source_map", {})
+                   .get(side, {}).get("commit"))
+            for side in ("G", "C1", "T1", "O_CONTROL")}
+    judge_identity = {
+        "tree_commit": _JUDGE_TREE,
+        "dirty_scripts": _dirty_scripts(),
+        "judge_sha256": _file_sha(Path(__file__)),
+    }
+    try:
+        a5_subchecks
+    except NameError:
+        a5_subchecks = None
+    detail = ({"A5": a5_subchecks} if a5_subchecks else {})
+    terminals = [t for _, evs, _ in groups for t in _terminals(evs)]
+    v2n = sorted(t["case_id"] + "/" + t.get("backend", "")
+                 for t in terminals
+                 if t["case_id"].startswith("R")
+                 and t["state"] == "NOT_EVALUATED")
+    v2f = [t["case_id"] + "/" + t.get("backend", "") for t in terminals
+           if t["case_id"].startswith("R") and t["state"] == "FAIL"]
     a0v = json.loads(Path(a0_verify_path).read_text()) \
         if a0_verify_path else None
-    gates["A0"] = _freeze_gate(freeze, a0v)
+    gates["A0"] = _freeze_gate(
+        freeze, a0v,
+        freeze_sha256=inputs_binding.get("freeze_sha256"))
     if a0v is not None:
         gates["A0_verify_detail"] = "%s: probes=%s problems=%s" % (
             a0v.get("verdict"), (a0v.get("checks") or {}).get("probes"),
@@ -961,20 +1286,10 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
             gates["A5"] = "PASS"
         a5_subchecks = subchecks
 
-    try:
-        a5_subchecks
-    except NameError:
-        a5_subchecks = None
-    detail = ({"A5": a5_subchecks} if a5_subchecks else {})
-    terminals = [t for _, evs, _ in groups for t in _terminals(evs)]
-    v2n = sorted(t["case_id"] + "/" + t.get("backend", "")
-                 for t in terminals
-                 if t["case_id"].startswith("R")
-                 and t["state"] == "NOT_EVALUATED")
-    v2f = [t["case_id"] + "/" + t.get("backend", "") for t in terminals
-           if t["case_id"].startswith("R") and t["state"] == "FAIL"]
     verdict = {"archive": str(archive), "gates": gates,
                "gates_detail": detail,
+               "inputs": inputs_binding,
+               "judge_identity": judge_identity,
                "named_not_evaluated": v2n,
                "v2_failed": v2f,
                "terminals": {

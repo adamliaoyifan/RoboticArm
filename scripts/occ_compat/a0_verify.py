@@ -32,12 +32,15 @@ def _iter_shards(store_dir):
             yield shard
 
 
-def _probe_entries(probe_paths):
-    """Load MODULE_PROBES/IMPORT_PROBES json files into one probe list."""
+def _probe_entries(probe_paths, problems):
+    """Load MODULE_PROBES/IMPORT_PROBES json files into one probe list.
+    A missing probe file is a NAMED problem, never a silent skip
+    (reviews F04)."""
     probes = []
     for path in probe_paths:
         path = Path(path)
         if not path.exists():
+            problems.append("probe file missing: %s" % path)
             continue
         doc = json.loads(path.read_text())
         rows = doc if isinstance(doc, list) else (
@@ -48,12 +51,16 @@ def _probe_entries(probe_paths):
     return probes
 
 
-def verify(freeze_path, probe_paths):
+def verify(freeze_path, probe_paths, ledger_paths=()):
     freeze = json.loads(Path(freeze_path).read_text())
-    freeze_dir = Path(freeze_path).resolve().parent
+    freeze_path = Path(freeze_path)
+    freeze_dir = freeze_path.resolve().parent
+    import hashlib
     result = {
         "schema": SCHEMA,
         "freeze": str(freeze_path),
+        "freeze_sha256": hashlib.sha256(
+            freeze_path.read_bytes()).hexdigest(),
         "freeze_schema": freeze.get("schema"),
         "probes_sources": [str(p) for p in probe_paths],
         "problems": [],
@@ -138,7 +145,19 @@ def verify(freeze_path, probe_paths):
     #    chains launch straight from the C1/G source trees. No
     #    undeclared loaded path, no cross-wired package, no post-freeze
     #    byte drift.
-    probes = _probe_entries(probe_paths)
+    probes = _probe_entries(probe_paths, result["problems"])
+    # Coverage floor (reviews F04): zero probes or a missing probe file
+    # can never PASS, and a real chain run always loads BOTH imported
+    # modules AND spawned executables.
+    if not probe_paths:
+        result["problems"].append("no probe files provided at all")
+    kinds = {p.get("kind") for p in probes}
+    if "module" not in kinds:
+        result["problems"].append(
+            "no module probes — runtime import identity unproven")
+    if "executable" not in kinds:
+        result["problems"].append(
+            "no executable probes — spawned entry identity unproven")
     fm = freeze.get("manifest") or {}
 
     def _bind(path):
@@ -212,6 +231,37 @@ def verify(freeze_path, probe_paths):
         result["problems"].append("every probe unmatched — probe/manifest "
                                   "prefix binding is broken")
 
+    # Input closure (reviews F04): every observation id the run actually
+    # integrated must belong to the frozen fixture frame set — verified
+    # against the manifest's OWN recorded per-frame digests (the frame
+    # files' current bytes must still match, so the closure is honest
+    # about the bytes that exist, never a post-hoc hash).
+    if ledger_paths:
+        known = {}
+        for manifest_json in sorted(Path(fm.get("sfree_dir", ".")).glob(
+                "*/MANIFEST.json")):
+            for frame in json.loads(
+                    manifest_json.read_text()).get("frames", []):
+                stem = Path(str(frame.get("path", ""))).stem
+                known[stem] = frame.get("sha256")
+        unknown_ids = []
+        for ledger_path in ledger_paths:
+            for line in Path(ledger_path).read_text().splitlines():
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if row.get("event_kind") != "integrate":
+                    continue
+                stem = str(row.get("request_id", "")).split("#")[0]
+                if stem not in known:
+                    unknown_ids.append(stem)
+        result["checks"]["ledger_inputs_unmatched"] = len(unknown_ids)
+        if unknown_ids:
+            result["problems"].append(
+                "%d integrated observation id(s) outside the frozen "
+                "fixture set (first: %s)"
+                % (len(unknown_ids), unknown_ids[0]))
+
     result["verdict"] = "REJECTED" if result["problems"] else "PASS"
     return result
 
@@ -221,9 +271,11 @@ def main():
     parser.add_argument("--freeze", required=True)
     parser.add_argument("--probes", nargs="*", default=[],
                         help="MODULE_PROBES/IMPORT_PROBES json files")
+    parser.add_argument("--ledgers", nargs="*", default=[],
+                        help="run events.jsonl files for input closure")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
-    result = verify(args.freeze, args.probes)
+    result = verify(args.freeze, args.probes, args.ledgers)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=1))
