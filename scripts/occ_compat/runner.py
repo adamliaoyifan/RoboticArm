@@ -192,8 +192,18 @@ def run_matrices(freeze_path, matrices, out_dir):
                     summary["groups"]["V1|%s|%s" % (backend, hull)] = {
                         "error": str(error)[:200]}
     if "V2" in matrices:
-        summary["groups"]["V2"] = {"status": "NOT_EVALUATED",
-                                   "reason": "race driver pending"}
+        from . import v2_races
+        for backend in ("G", "O"):
+            group_root = out / ("V2-%s-cuboid" % backend)
+            group_root.mkdir(parents=True, exist_ok=True)
+            try:
+                results = v2_races.run_v2_group(
+                    backend, "cuboid", manifest, group_root,
+                    "v2-%s-cuboid" % backend.lower())
+                summary["groups"]["V2|%s|cuboid" % backend] = results
+            except Exception as error:  # noqa: BLE001 - named failure
+                summary["groups"]["V2|%s|cuboid" % backend] = {
+                    "error": str(error)[:200]}
     verdict = "NOT_EVALUATED"
     flat = [state for group in summary["groups"].values()
             if isinstance(group, dict)
