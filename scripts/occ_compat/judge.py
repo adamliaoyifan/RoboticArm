@@ -355,97 +355,344 @@ def selftest(manifest_path, out_dir):
                 break
         result["mutations"][name] = "REJECTED" if rejected else (
             "FALSE_PASS" if controls_ok else "REJECTED")
+    # Tool/tree binding: the selftest records the worktree commit it ran
+    # under; the formal A1 check compares it to the freeze's C1 commit.
+    import subprocess
+    try:
+        root = Path(__file__).resolve().parents[2]
+        result["tree_commit"] = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=30).stdout.strip()
+    except Exception as error:  # noqa: BLE001 - binding is required
+        result["tree_commit"] = ""
+        result["tree_commit_error"] = str(error)[:80]
+    # Gate-wiring families (reviews 2026-11-06_1548): each feeds the
+    # formal gate functions a KNOWN-BAD input and must NOT pass. These
+    # verify the wiring this judge was rebuilt for — empty archives,
+    # missing freeze fields, missing mutation ids, named required cases
+    # and missing failure payloads can no longer slip through.
+    wiring = {}
+    empty_dir = out / "w_empty_archive"
+    empty_dir.mkdir(parents=True, exist_ok=True)
+    wiring["w01_empty_archive_not_all_pass"] = "REJECTED" if any(
+        v != "PASS" for v in judge_archive(
+            empty_dir, out / "w_empty_verdict").get("gates", {}).values()
+    ) or not judge_archive(
+        empty_dir, out / "w_empty_verdict").get("gates") else "FALSE_PASS"
+    wiring["w02_missing_freeze_keys"] = "REJECTED" if _freeze_gate(
+        {}).startswith("FAIL") else "FALSE_PASS"
+    partial = {"mutations": dict(result["mutations"]),
+               "control": "PASS", "archives": result["archives"]}
+    partial["mutations"].pop("m07_epoch_truncated_or_cross_backend")
+    wiring["w03_missing_mutation_id"] = "REJECTED" if _a1_gate(
+        partial, None).startswith("FAIL") else "FALSE_PASS"
+    terminals = [dict(case_id=i, state="NOT_EVALUATED")
+                 for i in V2_REQUIRED]
+    terminals.append(dict(case_id="R03", state="NOT_EVALUATED"))
+    named = _scope_gate([("V2-G-synth", terminals, [])],
+                        V2_REQUIRED, "V2-G")
+    wiring["w04_named_required_blocks"] = (
+        "REJECTED" if named.startswith("NOT_EVALUATED")
+        or named.startswith("FAIL") else "FALSE_PASS")
+    wiring["w05_missing_failure_payload"] = "REJECTED" if _replay_gate(
+        out / "w_missing_replay").startswith("FAIL") else "FALSE_PASS"
+    wiring["w06_missing_regression"] = "REJECTED" if _regression_gate(
+        out / "w_missing_regression").startswith("FAIL") else "FALSE_PASS"
+    result["gate_wiring"] = wiring
     (out / "SELFTEST.json").write_text(json.dumps(result, indent=1))
     return result
 
 
-def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None):
-    """Formal A0-A5 verdict from the archive (recomputed, never
+#: Contract c7039905 §5 — the per-ID required sets (frozen EXPECTED).
+#: Quantity floors never substitute: a gate only passes when every
+#: required case ID is present and PASS in its scope.
+V1_REQUIRED = tuple(
+    ["K%02d" % i for i in range(1, 11)]
+    + ["K%02d/E%d" % (i, e) for i in range(1, 11) for e in (2, 3, 4)])
+V2_REQUIRED = tuple("R%02d" % i for i in range(1, 13))
+MUTATION_IDS = (
+    "m01_sha_or_payload_wrong", "m02_expected_id_missing_or_dup",
+    "m03_summary_pass_but_events_reject",
+    "m04_old_token_authorized_after_reset",
+    "m05_recovery_without_new_robot",
+    "m06_valid_without_new_epoch_observation",
+    "m07_epoch_truncated_or_cross_backend",
+    "m08_unknown_interior_marked_legal", "m09_counts_only_candidates",
+    "m10_past_deadline_marked_ok", "m11_all_positives_no_solution",
+    "m12_replay_payload_missing")
+
+
+def _freeze_gate(freeze):
+    """A0 版本/输入/构建: structural payload verification of the freeze
+    document. Missing keys FAIL (an absent field must never default to
+    an empty-and-therefore-clean reading); the two C1 sides must share
+    one commit and every side ships non-empty source and install maps."""
+    if freeze is None:
+        return "FAIL: no freeze document provided"
+    missing = []
+    source = freeze.get("source_map") or {}
+    for side in ("G", "C1", "T1", "O_CONTROL"):
+        if not (source.get(side) or {}).get("commit"):
+            missing.append("source_map.%s.commit" % side)
+    for side in ("G", "C1"):
+        if not (source.get(side) or {}).get("packages"):
+            missing.append("source_map.%s.packages" % side)
+    installs = freeze.get("install_manifest") or {}
+    for side in ("G", "C1", "O_CONTROL"):
+        if not installs.get(side):
+            missing.append("install_manifest.%s" % side)
+    dirty = freeze.get("dirty")
+    if not isinstance(dirty, dict) or "G" not in dirty or "C1" not in dirty:
+        missing.append("dirty.G/C1 presence")
+    else:
+        if dirty.get("G"):
+            missing.append("dirty.G nonempty")
+        if dirty.get("C1"):
+            missing.append("dirty.C1 nonempty")
+    if freeze.get("problems") is None:
+        missing.append("problems presence")
+    elif freeze["problems"]:
+        missing.append("problems nonempty")
+    if (source.get("C1") or {}).get("commit") != \
+            (source.get("T1") or {}).get("commit"):
+        missing.append("C1/T1 commit divergence")
+    if not (freeze.get("manifest") or {}).get("sfree_dir"):
+        missing.append("manifest.sfree_dir")
+    return "PASS" if not missing else "FAIL: %s" % missing[:4]
+
+
+def _a1_gate(selftest, freeze):
+    """A1 判官接线: exactly the twelve canonical mutation families, all
+    REJECTED; a healthy control judged PASS; the gate-wiring families
+    all rejected; and the selftest bound to the freeze's C1 commit."""
+    if selftest is None:
+        return "FAIL: no selftest result provided"
+    missing = []
+    if selftest.get("control") != "PASS":
+        missing.append("control=%s" % selftest.get("control"))
+    mutations = selftest.get("mutations") or {}
+    got, need = set(mutations), set(MUTATION_IDS)
+    if got != need:
+        missing.append("mutation ids +%s/-%s"
+                       % (sorted(got - need)[:3], sorted(need - got)[:3]))
+    bad = [k for k, v in mutations.items() if v != "REJECTED"]
+    if bad:
+        missing.append("not rejected: %s" % bad[:3])
+    if not selftest.get("archives"):
+        missing.append("no healthy archive judged")
+    wiring = selftest.get("gate_wiring") or {}
+    if not wiring:
+        missing.append("no gate-wiring families")
+    bad_wiring = [k for k, v in wiring.items() if v != "REJECTED"]
+    if bad_wiring:
+        missing.append("gate wiring not rejected: %s" % bad_wiring[:3])
+    expect = (freeze or {}).get("source_map", {}).get("C1", {}).get("commit")
+    got_commit = selftest.get("tree_commit")
+    if not got_commit:
+        missing.append("selftest lacks tree_commit binding")
+    elif expect and got_commit != expect:
+        missing.append("tree binding %s != freeze %s"
+                       % (got_commit[:8], expect[:8]))
+    return "PASS" if not missing else "FAIL: %s" % missing[:4]
+
+
+def _scope_gate(groups, required, label):
+    """Contract per-ID rule for one gate scope. ``groups`` is a list of
+    (group_name, terminals, problems). A real FAIL fails the gate; a
+    missing or NOT_EVALUATED required ID keeps it NOT_EVALUATED with the
+    named IDs — never a quantity floor."""
+    failed, not_hit = [], []
+    for name, terminals, problems in groups:
+        by_id = {}
+        for t in terminals:
+            by_id.setdefault(t["case_id"], []).append(t)
+        for i in required:
+            rows = by_id.get(i) or []
+            if any(t["state"] == "FAIL" for t in rows):
+                failed.append("%s/%s" % (name, i))
+            elif not rows or all(t["state"] == "NOT_EVALUATED"
+                                 for t in rows):
+                not_hit.append("%s/%s" % (name, i))
+        if problems:
+            failed.append("%s: %s" % (name, problems[0]))
+    if failed:
+        return "FAIL: %s" % failed[:4]
+    if not_hit:
+        return "NOT_EVALUATED: %s" % not_hit[:6]
+    return "PASS"
+
+
+def _regression_gate(evidence_root):
+    """A5 regression slice: re-verify the contract-required suites'
+    junit payloads directly (existence, nonzero cases, zero
+    failure/error/skipped) — never the recorded summary strings."""
+    if evidence_root is None:
+        return "FAIL: no evidence root provided"
+    import xml.etree.ElementTree as ET
+    root = Path(evidence_root)
+    selection = root / "regression/TEST_SELECTION.json"
+    if not selection.is_file():
+        return "FAIL: missing TEST_SELECTION.json"
+    doc = json.loads(selection.read_text())
+    problems, checked = [], 0
+    for name, suite in (doc.get("suites") or {}).items():
+        if not str(suite.get("scope", "")).startswith("contract-required"):
+            continue
+        junit = root / suite["evidence"]["junit"]
+        if not junit.is_file():
+            problems.append("%s: junit missing" % name)
+            continue
+        cases = list(ET.parse(junit).getroot().iter("testcase"))
+        bad = [c for c in cases if c.find("failure") is not None
+               or c.find("error") is not None
+               or c.find("skipped") is not None]
+        if not cases:
+            problems.append("%s: empty junit" % name)
+        if bad:
+            problems.append("%s: %d failure/error/skipped"
+                            % (name, len(bad)))
+        checked += 1
+    if checked == 0:
+        problems.append("no contract-required suites in selection")
+    return "PASS" if not problems else "FAIL: %s" % problems[:4]
+
+
+def _replay_gate(evidence_root):
+    """A5 failure-payload slice: the injected-failure replay is PASS with
+    unchanged inputs AND its ledger carries the actual refusal category
+    (payload check, not the summary verdict)."""
+    if evidence_root is None:
+        return "FAIL: no evidence root provided"
+    d = Path(evidence_root) / "replay/k04main"
+    if not (d / "REPLAY_RESULT.json").is_file():
+        return "FAIL: missing failure-replay evidence (replay/k04main)"
+    result = json.loads((d / "REPLAY_RESULT.json").read_text())
+    if (result.get("verdict") != "PASS"
+            or result.get("inputs_unchanged") is not True
+            or result.get("same_category") is not True):
+        return "FAIL: replay verdict/inputs/category %s/%s/%s" % (
+            result.get("verdict"), result.get("inputs_unchanged"),
+            result.get("same_category"))
+    events = load_events(d)
+    if not any("VALIDITY_GATE_CLOSED" in str(e.get("reason", ""))
+               for e in events):
+        return "FAIL: replay ledger lacks the refusal category payload"
+    return "PASS"
+
+
+def _fail_evidence_gate(groups):
+    """A5 completeness slice: every FAIL terminal must be corroborated by
+    a consumer-path event for its case (placement_request / stage /
+    hook). Integrates alone cannot substantiate a consumer-bound failure
+    — formal_run02's R05-O (a no-reply FAIL with three integrates and
+    zero consumer events) is INCOMPLETE_EVIDENCE, not a clean fail."""
+    for name, events, _ in groups:
+        for t in _terminals(events):
+            if t["state"] != "FAIL":
+                continue
+            rows = [e for e in events
+                    if e.get("case_id") == t["case_id"]
+                    and e.get("event_kind") not in (
+                        "case_terminal", "case_complete", "input")]
+            if not any(e.get("event_kind") in (
+                    "placement_request", "stage_marker", "hook",
+                    "replay_outcome") for e in rows):
+                return ("INCOMPLETE_EVIDENCE: %s/%s FAIL lacks "
+                        "consumer-path events" % (name, t["case_id"]))
+    return "PASS"
+
+
+def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
+                  evidence_root=None):
+    """Formal A0-A5 verdict per contract c7039905 §5 (recomputed, never
     self-reported).
 
-    Multi-group archives: every group ledger is judged ON ITS OWN (the
-    duplicate-terminal and recompute rules are per-(run, backend, hull,
-    case, subprobe) — the same case_id legitimately appears once per
-    group, so a global key would manufacture phantom duplicates).
-    Gates: A2 = the V2 race matrix; A3 = G side; A4 = O side; A5 = ledger
-    integrity; any FAIL in a gate's scope blocks that gate (itemized
-    passes never cover a failing or named case). A1 comes from a selftest
-    result produced on this tree, A0 from the freeze manifest."""
+    Every group ledger is judged on its own (integrity rules are per
+    (run, backend, hull, case, subprobe)). Gates follow the contract's
+    own names and scopes: A2 = G's twelve V2 cases all hit; A3 = every
+    required consumer's V1 forty-case set on BOTH backends and hulls;
+    A4 = the fixed-O side (V1 O groups plus V2-O's twelve); A5 = ledger
+    integrity plus required regression payloads plus the failure replay
+    plus FAIL-evidence completeness. A required case that is missing or
+    NOT_EVALUATED keeps its gate NOT_EVALUATED — named IDs, never a
+    quantity floor."""
     archive = Path(archive)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     gates = {}
-    events = []
-    problems = []
-    ledgers = sorted(archive.glob("**/events.jsonl"))
-    for ledger in ledgers:
+    groups = []          # (name, events, problems)
+    for ledger in sorted(archive.glob("**/events.jsonl")):
         group_events = load_events(ledger)
-        events.extend(group_events)
-        for problem in judge_events(group_events):
-            problems.append("%s: %s" % (ledger.parent.name, problem))
-    terminals = _terminals(events)
+        group_problems = judge_events(group_events)
+        groups.append((ledger.parent.name, group_events, group_problems))
+    if not groups:
+        gates["A5"] = "FAIL: no group ledgers in the archive"
 
-    def scope(rows):
-        passed = [t for t in rows if t["state"] == "PASS"]
-        failed = [t for t in rows if t["state"] == "FAIL"]
-        named = [t for t in rows if t["state"] == "NOT_EVALUATED"]
-        return passed, failed, named
+    v1_groups = [(n, _terminals(e), p) for n, e, p in groups
+                 if n.startswith("V1-")]
+    v2_groups = [(n, _terminals(e), p) for n, e, p in groups
+                 if n.startswith("V2-")]
+    gates["A2"] = _scope_gate(
+        [g for g in v2_groups if "-G-" in g[0]], V2_REQUIRED, "V2-G")
+    gates["A3"] = _scope_gate(v1_groups, V1_REQUIRED, "V1")
+    # A4 固定O回归: the O half of V1 (both hulls, the 40-case set each)
+    # plus V2-O's twelve — both scopes per-ID, FAIL dominating.
+    o_v1 = [g for g in v1_groups if "-O-" in g[0]]
+    o_v2 = [g for g in v2_groups if "-O-" in g[0]]
+    a4_v1 = _scope_gate(o_v1, V1_REQUIRED, "V1-O")
+    a4_v2 = _scope_gate(o_v2, V2_REQUIRED, "V2-O")
+    if a4_v1.startswith("FAIL") or a4_v2.startswith("FAIL"):
+        gates["A4"] = "FAIL: %s" % "; ".join(
+            g for g in (a4_v1, a4_v2) if g.startswith("FAIL"))
+    elif "NOT_EVALUATED" in (a4_v1, a4_v2):
+        gates["A4"] = "NOT_EVALUATED: %s" % "; ".join(
+            g for g in (a4_v1, a4_v2) if g != "PASS")
+    else:
+        gates["A4"] = "PASS"
 
-    v1 = [t for t in terminals if t["case_id"].startswith("K")]
-    v2 = [t for t in terminals if t["case_id"].startswith("R")]
-    g_v1 = [t for t in v1 if t.get("backend") == "G"]
-    o_v1 = [t for t in v1 if t.get("backend") == "O"]
-    g_v2 = [t for t in v2 if t.get("backend") == "G"]
-    o_v2 = [t for t in v2 if t.get("backend") == "O"]
+    freeze = json.loads(Path(freeze_path).read_text()) if freeze_path \
+        else None
+    selftest = json.loads(Path(selftest_path).read_text()) \
+        if selftest_path else None
+    gates["A0"] = _freeze_gate(freeze)
+    gates["A1"] = _a1_gate(selftest, freeze)
 
-    def gate(scope_rows, min_pass, label):
-        passed, failed, named = scope(scope_rows)
-        if failed:
-            return "FAIL: %s" % [f["case_id"] for f in failed][:3]
-        if not scope_rows or len(passed) < min_pass:
-            return "NOT_EVALUATED" if not scope_rows else \
-                "FAIL: only %d/%d passed" % (len(passed), len(scope_rows))
-        return "PASS"
-
-    v2p, v2f, v2n = scope(v2)
-    gates["A2"] = gate(v2, 20, "V2")
-    gates["A3"] = gate(g_v1 + g_v2, 91, "G")   # 80 V1 traceable + 11 V2
-    gates["A4"] = gate(o_v1 + o_v2, 90, "O")   # 80 V1 traceable + 10 V2
-    gates["A5"] = "PASS" if not problems else "FAIL: %s" % problems[:3]
-    gates["A1"] = "NOT_EVALUATED"
-    gates["A0"] = "NOT_EVALUATED"
-    if selftest_path:
-        result = json.loads(Path(selftest_path).read_text())
-        mutations = result.get("mutations", {})
-        rejected = sum(1 for v in mutations.values() if v == "REJECTED")
-        if (result.get("control") == "PASS" and mutations
-                and rejected == len(mutations)):
-            gates["A1"] = "PASS"
+    if "A5" not in gates:
+        all_problems = [p for _, _, probs in groups for p in probs]
+        fail_ev = _fail_evidence_gate(groups)
+        reg = _regression_gate(evidence_root)
+        rep = _replay_gate(evidence_root)
+        if fail_ev != "PASS":
+            gates["A5"] = fail_ev
+        elif all_problems:
+            gates["A5"] = "FAIL: %s" % all_problems[:3]
+        elif reg != "PASS":
+            gates["A5"] = reg
+        elif rep != "PASS":
+            gates["A5"] = rep
         else:
-            gates["A1"] = ("FAIL: control=%s mutations %d/%d"
-                           % (result.get("control"), rejected,
-                              len(mutations)))
-    if freeze_path:
-        freeze = json.loads(Path(freeze_path).read_text())
-        dirty = freeze.get("dirty", {})
-        problems_f = freeze.get("problems", [])
-        if (not problems_f and not dirty.get("G") and not dirty.get("C1")):
-            gates["A0"] = "PASS"
-        else:
-            gates["A0"] = "FAIL: problems=%s dirty=%s/%s" % (
-                problems_f[:2], len(dirty.get("G", [])),
-                len(dirty.get("C1", [])))
-    p1, f1, n1 = scope(v1)
+            gates["A5"] = "PASS"
+
+    terminals = [t for _, evs, _ in groups for t in _terminals(evs)]
+    v2n = sorted(t["case_id"] + "/" + t.get("backend", "")
+                 for t in terminals
+                 if t["case_id"].startswith("R")
+                 and t["state"] == "NOT_EVALUATED")
+    v2f = [t["case_id"] + "/" + t.get("backend", "") for t in terminals
+           if t["case_id"].startswith("R") and t["state"] == "FAIL"]
     verdict = {"archive": str(archive), "gates": gates,
-               "problems": problems[:10],
-               "named_not_evaluated": sorted(
-                   t["case_id"] + "/" + t.get("backend", "")
-                   for t in v2n),
-               "terminals": {"V1_pass": len(p1), "V1_total": len(v1),
-                             "V2_pass": len(v2p), "V2_total": len(v2),
-                             "V2_named": len(v2n),
-                             "V2_failed": [t["case_id"] + "/"
-                                           + t.get("backend", "")
-                                           for t in v2f]}}
+               "named_not_evaluated": v2n,
+               "v2_failed": v2f,
+               "terminals": {
+                   "V1_pass": sum(1 for t in terminals
+                                  if t["case_id"].startswith("K")
+                                  and t["state"] == "PASS"),
+                   "V1_total": sum(1 for t in terminals
+                                   if t["case_id"].startswith("K")),
+                   "V2_pass": sum(1 for t in terminals
+                                  if t["case_id"].startswith("R")
+                                  and t["state"] == "PASS"),
+                   "V2_total": sum(1 for t in terminals
+                                   if t["case_id"].startswith("R"))}}
     (out / "VERDICT.json").write_text(json.dumps(verdict, indent=1))
     return verdict

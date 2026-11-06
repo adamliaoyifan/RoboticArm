@@ -59,6 +59,9 @@ def main(argv=None):
             subparser.add_argument(
                 "--freeze", default=None,
                 help="FREEZE.json the run was produced under (gate A0)")
+            subparser.add_argument(
+                "--evidence-root", default=None,
+                help="campaign evidence root (A5 regression + replay)")
         subparser.set_defaults(func=getattr(cli, "cmd_" + name))
     args = parser.parse_args(argv)
     return args.func(args)

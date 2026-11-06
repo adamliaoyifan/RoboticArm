@@ -44,9 +44,13 @@ def cmd_selftest(args):
     mutations = result.get("mutations", {})
     control = result.get("control")
     rejected = sum(1 for v in mutations.values() if v == "REJECTED")
-    ok = control == "PASS" and rejected == len(mutations) and mutations
-    print("selftest: %d/%d mutations rejected, control=%s"
-          % (rejected, len(mutations), control))
+    wiring = result.get("gate_wiring", {})
+    ok = (control == "PASS" and rejected == len(mutations) and mutations
+          and wiring and all(v == "REJECTED" for v in wiring.values()))
+    print("selftest: %d/%d mutations rejected, control=%s, wiring=%d/%d"
+          % (rejected, len(mutations), control,
+             sum(1 for v in wiring.values() if v == "REJECTED"),
+             len(wiring)))
     if not mutations:
         print("selftest: NO mutations ran — refusing vacuous pass")
         ok = False
@@ -78,7 +82,9 @@ def cmd_judge(args):
                                      selftest_path=getattr(
                                          args, "selftest", None),
                                      freeze_path=getattr(
-                                         args, "freeze", None))
+                                         args, "freeze", None),
+                                     evidence_root=getattr(
+                                         args, "evidence_root", None))
     _write_result(args.out, "VERDICT", result)
     gates = result.get("gates", {})
     print("judge: " + " ".join("%s=%s" % (k, v)
