@@ -252,6 +252,11 @@ def verify(freeze_path, probe_paths, ledger_paths=()):
                 row = json.loads(line)
                 if row.get("event_kind") != "integrate":
                     continue
+                if row.get("case_id") == "K07":
+                    # K07's foreign observation is part of the frozen
+                    # case contract (the unit-lie probe) — the judge's
+                    # known_ids check carries the same exemption.
+                    continue
                 stem = str(row.get("request_id", "")).split("#")[0]
                 if stem not in known:
                     unknown_ids.append(stem)
