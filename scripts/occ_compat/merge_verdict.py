@@ -535,13 +535,15 @@ def main():
         print(binding)
         return 2
     # Product/interface consistency (F02 static gap): every contributing
-    # run must have judged the SAME product commits.
-    commits = {json.dumps(v.get("inputs", {}).get("freeze_commits"),
-                          sort_keys=True)
+    # run must have judged the SAME PRODUCT commits (G/C1/O_CONTROL).
+    # T1 is the tool and may legitimately advance WITHIN the generation
+    # — its per-run identity is already bound by each verdict's own
+    # freeze digest and judge identity.
+    digests = {v.get("inputs", {}).get("product_source_sha256")
                for v in verdicts_by_run.values()}
-    if len(commits) > 1:
-        print("merge_verdict: contributing runs bind different product "
-              "commits (exit 2)")
+    if None in digests or len(digests) > 1:
+        print("merge_verdict: contributing runs bind different (or "
+              "unbound) product source digests (exit 2)")
         return 2
 
     gates = {}

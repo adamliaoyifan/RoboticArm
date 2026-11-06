@@ -1221,16 +1221,20 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
             side: (freeze_doc.get("source_map", {})
                    .get(side, {}).get("commit"))
             for side in ("G", "C1", "T1", "O_CONTROL")}
+        # PRODUCT source digest: the G/C1/O package file maps, NOT the
+        # worktree commits — the C1 worktree hosts the tool too, so its
+        # commit advances with T1 while the product bytes stay frozen.
+        packages = {
+            side: (freeze_doc.get("source_map", {}).get(side, {})
+                   .get("packages", {}))
+            for side in ("G", "C1", "O_CONTROL")}
+        inputs_binding["product_source_sha256"] = _hashlib.sha256(
+            json.dumps(packages, sort_keys=True).encode()).hexdigest()
     judge_identity = {
         "tree_commit": _JUDGE_TREE,
         "dirty_scripts": _dirty_scripts(),
         "judge_sha256": _file_sha(Path(__file__)),
     }
-    try:
-        a5_subchecks
-    except NameError:
-        a5_subchecks = None
-    detail = ({"A5": a5_subchecks} if a5_subchecks else {})
     terminals = [t for _, evs, _ in groups for t in _terminals(evs)]
     v2n = sorted(t["case_id"] + "/" + t.get("backend", "")
                  for t in terminals
@@ -1286,6 +1290,11 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
             gates["A5"] = "PASS"
         a5_subchecks = subchecks
 
+    try:
+        a5_subchecks
+    except NameError:
+        a5_subchecks = None
+    detail = ({"A5": a5_subchecks} if a5_subchecks else {})
     verdict = {"archive": str(archive), "gates": gates,
                "gates_detail": detail,
                "inputs": inputs_binding,
