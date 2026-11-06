@@ -17,6 +17,15 @@ from .v1_states import BOX_A, CaseContext, _terminal
 
 #: Hook release helper: wait for the planner's stage marker, run the
 #: injection, then release.
+def _proc_starttime(pid):
+    """/proc/<pid>/stat field 22 — proves WHICH incarnation a pid is."""
+    try:
+        with open("/proc/%d/stat" % int(pid)) as stat:
+            return int(stat.read().rsplit(")", 1)[1].split()[19])
+    except (OSError, ValueError, IndexError):
+        return -1
+
+
 def _hook_wait(client, stage, timeout_s=10.0):
     return client.wait_until(
         lambda: stage in str(getattr(client, "_last_stage", "")),
@@ -272,7 +281,24 @@ def run_r05(ctx, service="v1", case="R05"):
         request.expected_map_revision = int(
             (ctx.client.surface_map or {}).get("map_revision", 0))
         client_name = "placement_v2"
+    submitted_ns = mono_ns()
     future = ctx.client._chain_clients[client_name].call_async(request)
+
+    def _checkpoint(stage, **extra):
+        """G2 §6 R05 forensic checkpoints: every stage boundary of the
+        in-flight computation carries a wall timestamp plus the
+        client-observed planner stage, so a no-response failure is
+        attributable to its exact window from the ledger alone."""
+        ctx.ledger.emit(
+            backend=ctx.backend,
+            consumer="E1" if service == "v1" else "E2",
+            hull=ctx.hull, case_id=case, subprobe="main",
+            event_kind="r05_checkpoint", stage=stage, state="OK",
+            age_ms=(mono_ns() - submitted_ns) // 1_000_000,
+            planner_stage=str(getattr(ctx.client, "_last_stage", ""))[:40],
+            **extra)
+
+    _checkpoint("request_submitted")
 
     def _spin_until(predicate, timeout_s):
         deadline = time.monotonic() + timeout_s
@@ -288,6 +314,7 @@ def run_r05(ctx, service="v1", case="R05"):
     parked = _spin_until(
         lambda: "after_admit" in str(
             getattr(ctx.client, "_last_stage", "")), 12.0)
+    _checkpoint("park_state", parked=parked)
     if not parked:
         ctx.client.release_hook("after_admit")
         _spin_until(lambda: future.done(), 30.0)
@@ -454,13 +481,25 @@ def run_r12(ctx, stack, restart_producer):
         return _terminal(ctx, "R12", "main", "FAIL", "setup failed")
     pre_epoch = (ctx.client.validity_record() or {}).get("epoch")
     proc2 = restart_producer()
-    # FastRTPS ghost endpoints linger ~a lease period after a kill;
-    # give discovery time to evict the dead identity before re-driving.
+    # Discovery residue of the killed participant can linger ~a lease
+    # period; give the graph time to evict the dead identity before
+    # re-driving. (run03's blocker was NOT this: the old node was an
+    # orphaned LIVE process — see producer_restart events.)
     time.sleep(25.0)
-    # Ghost services may still answer on this domain; retry the frames
-    # until the NEW producer's OWN log shows integrations landing.
+    # Retry the frames until they LAND on the new producer; every
+    # attempt logs the status-service epoch it pinned from, so a
+    # mismatch is attributable from the ledger alone.
     accepted_log = 0
     for attempt in range(4):
+        status = ctx.client.get_validity()
+        ctx.ledger.emit(
+            backend=ctx.backend, consumer="-", hull=ctx.hull,
+            case_id="R12", subprobe="restart-status",
+            event_kind="probe_detail", stage="restart",
+            state=str(getattr(status, "state", "")),
+            reason="epoch=%s gen=%s (attempt %d)" % (
+                getattr(status, "epoch", "?"),
+                getattr(status, "generation", "?"), attempt))
         ctx.integrate_scene("S-free", 3, suffix="R12b-%d" % attempt)
         time.sleep(0.6)
         log = proc2.log_path.read_text(errors="ignore") \
@@ -509,23 +548,16 @@ def run_r12(ctx, stack, restart_producer):
         return _terminal(ctx, "R12", "main", "PASS",
                          reason="epoch %s->%s" % (
                              pre_epoch, post.get("epoch")))
-    if (ctx.backend == "O" and confirmed and new_identity):
-        # Producer identity recovery IS proven (planner confirmed the
-        # new epoch; the observer restarted cleanly). The blocked leg is
-        # the bridge's snapshot chain: post-kill DDS ghost endpoints of
-        # the OLD observer keep answering get_snapshot STALE on this
-        # domain, so no fresh map reaches the consumer. Environmental,
-        # named — not a product FAIL.
-        return _terminal(
-            ctx, "R12", "main", "NOT_EVALUATED",
-            reason="identity recovery proven (confirmed epoch %s); "
-                   "bridge snapshot chain blocked by post-kill DDS "
-                   "ghost endpoints (get_snapshot STALE from the dead "
-                   "observer)" % post.get("epoch"))
+    # G2: the run03 "ghost endpoint" NE is RETIRED — the old observer
+    # was an orphaned LIVE process (wrapper-only kill), now impossible
+    # (kill_tree proves the group empty). A blocked recovery is a real
+    # FAIL with forensic fields, or a named NE only when the environment
+    # itself (not the chain) is provably unavailable.
     return _terminal(
         ctx, "R12", "main", "FAIL",
-        reason="epoch %s->%s confirmed=%s healthy=%s"
-               % (pre_epoch, post.get("epoch"), confirmed, healthy))
+        reason="epoch %s->%s confirmed=%s healthy=%s accepted_log=%d"
+               % (pre_epoch, post.get("epoch"), confirmed, healthy,
+                  accepted_log))
 
 
 def _placement_probe_quiet(ctx):
@@ -535,7 +567,251 @@ def _placement_probe_quiet(ctx):
         return False
 
 
-def run_v2_group(backend, hull, manifest, run_root, run_id):
+def run_r03(ctx, case="R03"):
+    """Typed query-resume across a REAL reset (G2 plan §4).
+
+    Six steps on the live chain: (1) integrate to VALID and acquire a
+    typed handle of the CURRENT identity, reading at least one page;
+    (2) checkpoint the handle/epoch/generation/revision/cursor plus the
+    page payload; (3) reset the producer for real; (4) drive the
+    backend's REAL resume entry with the OLD handle/cursor — the native
+    rejection must come back with zero authorizable output (a 30s
+    timeout is a FAIL, not a refusal); (5) redeliver the captured old
+    payload to the consumer boundary and prove the identity check
+    refuses; (6) new-epoch observation + fresh robot rebuild the full
+    chain with a real placement success. G uses /cargo_map/query_cells_v2
+    (snapshot token + HMAC cursor); O uses its own lease semantics
+    (get_snapshot handle + read_surface cursor) — no invented common
+    interface."""
+    subprobes = {}
+
+    def _leg(name, ok, detail=""):
+        ok = bool(ok)
+        subprobes[name] = ok
+        ctx.ledger.emit(
+            backend=ctx.backend, consumer="-", hull=ctx.hull,
+            case_id=case, subprobe=name,
+            event_kind="probe_detail", stage="typed_resume",
+            state="PASS" if ok else "FAIL", reason=str(detail)[:160])
+        _terminal(ctx, case, name, "PASS" if ok else "FAIL",
+                  reason=str(detail)[:160])
+        return ok
+
+    ctx.reset_producer(case)
+    ctx.integrate_scene("S-free", 3, suffix=case)
+    if not ctx.client.wait_validity("VALID", 8.0) \
+            or not ctx.wait_map_admitted():
+        return _terminal(ctx, case, "main", "FAIL", "setup failed")
+    old_surface = dict(ctx.client.surface_map or {})
+    old_revision = int(old_surface.get("map_revision", 0) or 0)
+    old_page_count = 0
+    resume_request_factory = None
+
+    if ctx.backend == "G":
+        from luggage_msgs.srv import QueryCargoCellsV2
+
+        def _cells_request(use_current, token="", cursor="",
+                           identity_msg=None, request_id="r03"):
+            request = QueryCargoCellsV2.Request()
+            request.mode = QueryCargoCellsV2.Request.CELLS
+            request.query.request_id = "%s-%d" % (
+                request_id, time.monotonic_ns())
+            request.query.frame_id = "container_link"
+            request.query.use_current = use_current
+            request.query.snapshot_token = token
+            request.query.cursor = cursor
+            request.query.limit = 64
+            request.query.release_after_query = False
+            if identity_msg is not None:
+                for field in ("epoch", "revision", "content_digest",
+                              "voxel_digest", "index_schema_version"):
+                    setattr(request.query.expected_identity, field,
+                            getattr(identity_msg, field))
+            return request
+
+        page1 = ctx.client.call_service(
+            "query_cells", QueryCargoCellsV2, "/cargo_map/query_cells_v2",
+            _cells_request(True, request_id="r03-p1"))
+        if not hasattr(page1, "meta"):
+            return _terminal(ctx, case, "main", "FAIL",
+                             "page1 no response: %s" % page1)
+        meta1 = page1.meta
+        old_page_count = int(meta1.returned_count or 0)
+        _leg("handle-acquired",
+             meta1.status == "OK" and old_page_count > 0
+             and bool(meta1.snapshot_token),
+             "status=%s token=%s returned=%d"
+             % (meta1.status, bool(meta1.snapshot_token), old_page_count))
+        if not subprobes.get("handle-acquired"):
+            return _terminal(ctx, case, "main", "FAIL",
+                             "typed acquire failed: %s/%s"
+                             % (meta1.status, meta1.reason))
+        token = meta1.snapshot_token
+        cursor = meta1.next_cursor
+        identity = meta1.identity
+
+        def resume_request():
+            return ctx.client.call_service(
+                "query_cells", QueryCargoCellsV2, "/cargo_map/query_cells_v2",
+                _cells_request(
+                    False, token=token, cursor=cursor, identity_msg=identity,
+                    request_id="r03-resume"))
+
+        def pinned_only_request():
+            return ctx.client.call_service(
+                "query_cells", QueryCargoCellsV2, "/cargo_map/query_cells_v2",
+                _cells_request(
+                    False, token="", cursor="", identity_msg=identity,
+                    request_id="r03-pinned"))
+
+        resume_request_factory = ("G", resume_request, pinned_only_request)
+    else:
+        from uld_occ_observer.srv import GetSnapshot, ReadSurface
+        record = ctx.client.validity_record() or {}
+        old_epoch = int(str(record.get("epoch", "0") or 0))
+        old_generation = int(record.get("generation", 0) or 0)
+
+        snap = GetSnapshot.Request()
+        snap.expected_epoch = old_epoch
+        snap.max_age_ms = 5000
+        snap.allow_stale = False
+        response = ctx.client.call_service(
+            "get_snapshot", GetSnapshot, "/uld_occ_observer/get_snapshot",
+            snap)
+        handle = getattr(response, "handle", "") or ""
+        _leg("handle-acquired",
+             getattr(response, "status", "") == "OK" and bool(handle),
+             "status=%s handle=%s" % (getattr(response, "status", ""),
+                                      bool(handle)))
+        if not handle:
+            return _terminal(ctx, case, "main", "FAIL",
+                             "lease acquire failed: %s" % response)
+
+        def _read(handle_, cursor_):
+            # The lease semantics ARE the identity binding: the request
+            # carries only handle+cursor; the server checks the handle's
+            # epoch against its own (snapshot_repository rejects on
+            # mismatch). No invented validity field on the request.
+            request = ReadSurface.Request()
+            request.handle = handle_
+            request.cursor = int(cursor_)
+            request.limit = 256
+            return ctx.client.call_service(
+                "read_surface", ReadSurface,
+                "/uld_occ_observer/read_surface", request)
+
+        page1 = _read(handle, 0)
+        old_page_count = len(getattr(page1, "x", []) or [])
+        _leg("page-read",
+             getattr(page1, "status", "") == "OK" and old_page_count > 0,
+             "status=%s cells=%d next_cursor=%s"
+             % (getattr(page1, "status", ""), old_page_count,
+                getattr(page1, "next_cursor", "?")))
+        if not subprobes.get("page-read"):
+            return _terminal(ctx, case, "main", "FAIL",
+                             "first page failed: %s" % page1)
+        old_cursor = int(page1.next_cursor or 0)
+
+        def resume_request():
+            return _read(handle, old_cursor)
+
+        def pinned_only_request():
+            snap2 = GetSnapshot.Request()
+            snap2.expected_epoch = old_epoch
+            snap2.max_age_ms = 0
+            snap2.allow_stale = False
+            return ctx.client.call_service(
+                "get_snapshot", GetSnapshot,
+                "/uld_occ_observer/get_snapshot", snap2)
+
+        resume_request_factory = ("O", resume_request, pinned_only_request)
+
+    # Step 2: checkpoint — the handle demonstrably existed BEFORE the
+    # reset (its payload is archived, not just asserted).
+    ctx.ledger.emit(
+        backend=ctx.backend, consumer="-", hull=ctx.hull, case_id=case,
+        subprobe="handle-checkpoint", event_kind="probe_detail",
+        stage="typed_resume", state="OK",
+        old_revision=old_revision,
+        page_payload_cells=old_page_count,
+        old_surface_epoch=str(old_surface.get("epoch", ""))[:40])
+
+    # Step 3: the real reset, then a new-epoch map.
+    ctx.reset_producer("%s-reset" % case)
+    ctx.integrate_scene("S-free", 2, suffix="%s-b" % case)
+    if not ctx.client.wait_validity("VALID", 10.0) \
+            or not ctx.wait_map_admitted():
+        return _terminal(ctx, case, "main", "FAIL",
+                         "post-reset VALID not reached")
+    new_epoch = str((ctx.client.validity_record() or {}).get("epoch", ""))
+
+    # Step 4: the OLD handle/cursor through the real resume entry.
+    backend_kind, resume_request, pinned_only_request = resume_request_factory
+    response = resume_request()
+    if isinstance(response, dict):
+        return _terminal(ctx, case, "main", "FAIL",
+                         "resume call failed: %s" % response)
+    if backend_kind == "G":
+        status = str(response.meta.status)
+        authorized = int(response.count or 0)
+    else:
+        status = str(response.status)
+        authorized = len(getattr(response, "x", []) or [])
+    _leg("old-handle-refused", status != "OK" and authorized == 0,
+         "native status=%s authorized_payload=%d" % (status, authorized))
+    # The identity-only leg (no token): the epoch rotation itself must
+    # reject a pinned old identity, independent of token TTLs.
+    pinned = pinned_only_request()
+    if isinstance(pinned, dict):
+        pinned_status = "NO_RESPONSE"
+    elif backend_kind == "G":
+        pinned_status = str(pinned.meta.status)
+    else:
+        pinned_status = str(pinned.status)
+    _leg("old-identity-refused", pinned_status not in ("OK", ""),
+         "pinned status=%s" % pinned_status)
+
+    # Step 5: redeliver the captured old payload to the consumer
+    # boundary — the planner's identity check must refuse it.
+    from std_msgs.msg import String
+    pub = ctx.client.create_publisher(
+        String, "/luggage/cargo_map/surface_2d", 10)
+    pub.publish(String(data=json.dumps(old_surface, sort_keys=True)))
+    time.sleep(0.8)
+    admitted_epoch = str((ctx.client.surface_map or {}).get("epoch", ""))
+    _leg("old-payload-unauthorized", admitted_epoch == new_epoch,
+         "admitted_epoch=%s new_epoch=%s" % (admitted_epoch[:16],
+                                             new_epoch[:16]))
+    from luggage_msgs.srv import ComputePlacementV2
+    request = ComputePlacementV2.Request()
+    request.height_measured = True
+    request.box_wdh = list(BOX_A)
+    request.expected_map_revision = old_revision
+    stale = ctx.client._call("placement_v2", request, 30.0)
+    if isinstance(stale, dict):
+        return _terminal(ctx, case, "main", "FAIL",
+                         "placement_v2 unavailable: %s" % stale)
+    ctx.ledger.emit(
+        backend=ctx.backend, consumer="E2", hull=ctx.hull, case_id=case,
+        subprobe="old-revision-request",
+        event_kind="placement_request", stage="consumer", state="REPLIED",
+        reason=str(getattr(stale, "reason_code", "")),
+        message=str(getattr(stale, "message", "") or "")[:120])
+    _leg("old-revision-request-refused",
+         not getattr(stale, "success", False),
+         "reason=%s" % getattr(stale, "reason_code", ""))
+
+    # Step 6: healthy new-epoch chain with a fresh robot.
+    ctx.fresh_robot()
+    time.sleep(0.5)
+    healthy = _placement_probe(ctx, case)
+    _leg("new-epoch-healthy", healthy)
+    overall = "PASS" if all(subprobes.values()) else "FAIL"
+    return _terminal(ctx, case, "main", overall,
+                     reason="legs=%s" % json.dumps(subprobes))
+
+
+def run_v2_group(backend, hull, manifest, run_root, run_id, cases=None):
     """One V2 group: bring up the chain (hooks ENABLED on the planner),
     run the race dispatch, tear down."""
     from . import chains, runner
@@ -610,15 +886,22 @@ def run_v2_group(backend, hull, manifest, run_root, run_id):
         client.watch_stages()
 
         def _restart_producer():
-            import subprocess as _sub
+            # G2 forensics: the old producer must be DEAD dead — kill the
+            # whole process TREE (wrapper + ros2 run + node) and prove the
+            # group empty. run03's "ghost endpoints" were an ORPHANED LIVE
+            # node: killing only the wrapper pid left the observer
+            # answering at the dead epoch on the same domain.
             proc = next(p for p in stack.processes
                         if p.name == producer_name)
-            # SIGKILL (SIGTERM leaves FastRTPS ghost endpoints answering
-            # on this domain for a lease period — R12 flapped between a
-            # dead and a live identity through exactly that).
-            proc.process.kill()
-            proc.process.wait(timeout=10)
+            old_pid = proc.process.pid
+            old_starttime = _proc_starttime(old_pid)
+            proc.kill_tree()
             stack.processes.remove(proc)
+            ledger.emit(
+                backend=backend, consumer="-", hull=hull, case_id="-",
+                subprobe="", event_kind="producer_restart",
+                stage="restart", state="KILLED_VERIFIED_EMPTY",
+                old_pid=old_pid, old_starttime_ns=old_starttime)
             if backend == "G":
                 proc2 = stack.spawn(producer_name, chains.g_mapper_command(
                     manifest, scene_revision="scene-g1"))
@@ -626,12 +909,17 @@ def run_v2_group(backend, hull, manifest, run_root, run_id):
                 observer, _ = chains.o_chain_commands(
                     manifest, scene_revision="scene-g1")
                 proc2 = stack.spawn(producer_name, observer)
+            ledger.emit(
+                backend=backend, consumer="-", hull=hull, case_id="-",
+                subprobe="", event_kind="producer_restart",
+                stage="restart", state="RESPAWNED",
+                new_pid=proc2.process.pid,
+                new_starttime_ns=_proc_starttime(proc2.process.pid))
             return proc2
 
         def _restart_planner():
             proc = next(p for p in stack.processes if p.name == "planner")
-            proc.process.kill()
-            proc.process.wait(timeout=10)
+            proc.kill_tree()
             stack.processes.remove(proc)
             _spawn_planner(hooks=True)
 
@@ -698,14 +986,20 @@ def run_v2_group(backend, hull, manifest, run_root, run_id):
                        % (missing, healthy, message[:50]))
 
         dispatch = {
-            "R01": run_r01, "R02": run_r02, "R04": run_r04,
-            "R05": run_r05, "R06": run_r06,
+            "R01": run_r01, "R02": run_r02, "R03": run_r03,
+            "R04": run_r04, "R05": run_r05, "R06": run_r06,
             "R07": run_r07, "R08": run_r08, "R09": run_r09,
             "R10": _run_r10, "R11": _run_r11,
             "R12": lambda c: run_r12(c, stack, _restart_producer),
         }
-        for case in ("R01", "R02", "R04", "R05", "R06", "R07", "R08",
-                     "R09", "R10", "R11", "R12"):
+        all_cases = ("R01", "R02", "R03", "R04", "R05", "R06", "R07",
+                     "R08", "R09", "R10", "R11", "R12")
+        # Per-case execution (G2 §7): EXPECTED stays the full set; the
+        # unselected IDs simply do not run here and their authoritative
+        # source is the REUSE_MAP, never a default PASS.
+        selected = tuple(all_cases) if not cases else tuple(
+            c for c in all_cases if c in set(cases))
+        for case in selected:
             started = mono_ns()
             try:
                 state = dispatch[case](ctx)
@@ -720,19 +1014,16 @@ def run_v2_group(backend, hull, manifest, run_root, run_id):
                 subprobe="", event_kind="case_complete", stage="case",
                 state="DONE",
                 duration_ms=(mono_ns() - started) // 1_000_000)
-        # R01/R03/R04/R10/R11: store-seam proofs live in the G unit tests
-        # (entry-epoch race, retired handles) and consumer-restart cases
-        # need a dedicated planner-restart driver — recorded, not faked.
-        results["R03"] = {"main": _terminal(
-            ctx, "R03", "main", "NOT_EVALUATED",
-            reason="retired-handle expiry proven at store level "
-                   "(test_occupancy_map_lifecycle retired-handle cases); "
-                   "chain driver for the typed query resume path "
-                   "pending")}
         stop.set()
         client.destroy_node()
-        stack.stop_all()
     finally:
+        try:
+            stack.stop_all()
+        except Exception as error:  # noqa: BLE001 - teardown never masks
+            ledger.emit(backend=backend, consumer="-", hull=hull,
+                        case_id="-", subprobe="", event_kind="teardown",
+                        stage="teardown", state="ERROR",
+                        reason=str(error)[:100])
         ledger.close()
         try:
             if rclpy.ok():

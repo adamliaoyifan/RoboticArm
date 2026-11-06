@@ -158,6 +158,16 @@ class ChainClient(Node):
             return {"error": "TIMEOUT", "deadline_s": timeout_s}
         return future.result()
 
+    def call_service(self, name, srv_type, topic, request, timeout_s=30.0):
+        """Ad-hoc service call on a lazily created client — the typed
+        query and observer lease surfaces the R03/R12 drivers drive. A
+        missing service is a NAMED error dict, never an exception."""
+        if self._chain_clients.get(name) is None:
+            self._chain_clients[name] = self.create_client(srv_type, topic)
+        if not self._chain_clients[name].wait_for_service(timeout_sec=5.0):
+            return {"error": "SERVICE_UNAVAILABLE", "topic": topic}
+        return self._call(name, request, timeout_s)
+
     # -- fixture inputs ---------------------------------------------------
     def tick(self, sim_ns):
         """Advance /clock to sim_ns (fixture scenario time only)."""

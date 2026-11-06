@@ -49,6 +49,11 @@ def main(argv=None):
         subparser = sub.add_parser(name, help=help_text)
         for arg in needs:
             subparser.add_argument("--" + arg, required=True)
+        if name == "verify":
+            subparser.add_argument(
+                "--cases", default="",
+                help="comma-separated case ids for the targeted G2 "
+                     "supplement; empty runs the full matrix")
         if name == "preflight":
             subparser.add_argument("--backend", default="G",
                                    choices=["G", "O"])

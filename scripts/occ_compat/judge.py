@@ -64,8 +64,8 @@ for _case in ("K04",):
 POSITIVE_LEGS = {
     ("K01", "main"), ("K05", "fresh"), ("K10", "new-robot"),
     ("K10", "pre-reset-baseline"), ("K10", "pre"),
-    ("R02", "main"), ("R07", "main"), ("R08", "main"), ("R09", "main"),
-    ("R10", "main"), ("R11", "main"), ("R12", "main"),
+    ("R02", "main"), ("R03", "main"), ("R07", "main"), ("R08", "main"),
+    ("R09", "main"), ("R10", "main"), ("R11", "main"), ("R12", "main"),
 }
 for _case in ("K01", "K02", "K03", "K05", "K06", "K07", "K08", "K09",
               "K10"):

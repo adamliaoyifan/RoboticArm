@@ -172,7 +172,7 @@ def run_v1_group(backend, hull, manifest, run_root, run_id):
 
 
 def _run_group_subprocess(matrix, backend, hull, freeze_path, group_root,
-                          domain, run_id, timeout_s=5400):
+                          domain, run_id, timeout_s=5400, cases=None):
     """One group in its own interpreter/session; returns (results, note).
 
     A fresh interpreter keeps rclpy lifecycles independent (in-process
@@ -194,6 +194,8 @@ def _run_group_subprocess(matrix, backend, hull, freeze_path, group_root,
            "--matrix", matrix, "--backend", backend, "--hull", hull,
            "--freeze", str(freeze_path), "--out", str(group_root),
            "--domain", str(domain), "--run-id", run_id]
+    if cases:
+        cmd += ["--cases", ",".join(cases)]
     child = subprocess.Popen(
         cmd, cwd=scripts_dir, env=env, start_new_session=True,
         stdout=open(group_root / "GROUP_DRIVER.log", "w"),
@@ -229,7 +231,7 @@ def _run_group_subprocess(matrix, backend, hull, freeze_path, group_root,
     return json.loads(result_path.read_text()).get("results", {}), note
 
 
-def run_matrices(freeze_path, matrices, out_dir):
+def run_matrices(freeze_path, matrices, out_dir, cases=None):
     """verify entry: sequence the requested matrices (V1 first, then V2).
 
     Every group runs as an isolated subprocess (see
@@ -263,7 +265,8 @@ def run_matrices(freeze_path, matrices, out_dir):
             results, note = _run_group_subprocess(
                 matrix, backend, hull, freeze_path, group_root,
                 domain,
-                "%s-%s-%s" % (matrix.lower(), backend.lower(), hull))
+                "%s-%s-%s" % (matrix.lower(), backend.lower(), hull),
+                cases=cases)
             entry = results if results is not None else {
                 "error": note or "no result"}
             if note and results is not None:

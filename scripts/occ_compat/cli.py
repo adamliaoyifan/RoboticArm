@@ -74,7 +74,10 @@ def cmd_freeze(args):
 def cmd_verify(args):
     from . import runner
     result = runner.run_matrices(args.freeze, args.matrix.split(","),
-                                 args.out)
+                                 args.out,
+                                 cases=[c for c in getattr(
+                                     args, "cases", "").split(",") if c]
+                                 or None)
     _write_result(args.out, "VERIFY_RESULT", result)
     print("verify: %s" % result.get("verdict"))
     return 0 if result.get("verdict") == "PASS" else 1

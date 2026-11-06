@@ -25,6 +25,9 @@ def main(argv=None):
     parser.add_argument("--out", required=True)
     parser.add_argument("--domain", required=True, type=int)
     parser.add_argument("--run-id", required=True)
+    parser.add_argument("--cases", default="",
+                        help="comma-separated case ids (G2 targeted "
+                             "supplement); empty runs the full matrix")
     args = parser.parse_args(argv)
 
     from . import chains, runner
@@ -45,8 +48,10 @@ def main(argv=None):
             args.backend, args.hull, manifest, out, args.run_id)
     else:
         from . import v2_races
+        selected = [c for c in args.cases.split(",") if c.strip()]
         results = v2_races.run_v2_group(
-            args.backend, args.hull, manifest, out, args.run_id)
+            args.backend, args.hull, manifest, out, args.run_id,
+            cases=selected or None)
     _write_probes(out)
     json.dump({"group": "%s-%s-%s" % (args.matrix, args.backend, args.hull),
                "results": results, "domain": args.domain},

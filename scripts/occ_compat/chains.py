@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -60,9 +61,50 @@ class ChainProcess:
         env.pop("PYTHONPATH", None)  # the wrapper sets the real one
         if ChainProcess.domain:
             env["ROS_DOMAIN_ID"] = str(ChainProcess.domain)
+        # Each chain process gets its OWN session: the command is
+        # `bash -c "... exec ros2 run <pkg> <node>"`, and ros2 run is a
+        # python launcher that spawns the actual node as a CHILD —
+        # killing only the wrapper pid (the G1 R12 "ghost endpoint") left
+        # the node orphaned and LIVE, still answering services at the
+        # dead epoch on the same domain. A dedicated process group lets
+        # stop()/kill_tree() take the whole tree down.
         self.process = subprocess.Popen(
             ["bash", "-c", command], cwd=str(cwd), env=env,
+            start_new_session=True,
             stdout=self._log, stderr=subprocess.STDOUT)
+
+    def _signal_tree(self, sig):
+        """Signal the process GROUP (wrapper + ros2 run + node child)."""
+        try:
+            os.killpg(self.process.pid, sig)
+        except ProcessLookupError:
+            pass
+
+    def tree_empty(self, timeout_s=5.0):
+        """True when nothing from this process group survives."""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(self.process.pid, 0)
+            except ProcessLookupError:
+                return True
+            time.sleep(0.1)
+        return False
+
+    def kill_tree(self):
+        """SIGKILL the whole group and PROVE it is empty afterwards —
+        a restart (R10/R11/R12) must never leave the old producer
+        answering beside the new one."""
+        self._signal_tree(signal.SIGKILL)
+        try:
+            self.process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+        empty = self.tree_empty(5.0)
+        if not empty:
+            raise RuntimeError(
+                "process tree of %r still alive after SIGKILL" % self.name)
+        self._log.close()
 
     def _probe_executable(self, command):
         """Runtime identity (G2 §3.1): hash the actual entry file this
@@ -105,12 +147,12 @@ class ChainProcess:
 
     def stop(self, timeout=10.0):
         if self.process.poll() is None:
-            self.process.terminate()
+            self._signal_tree(signal.SIGTERM)
             try:
                 self.process.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=5)
+                self.kill_tree()
+                return
         self._log.close()
 
     def tail(self, lines=5):
