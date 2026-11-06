@@ -538,7 +538,7 @@ def _regression_gate(evidence_root):
     for name, suite in (doc.get("suites") or {}).items():
         if not str(suite.get("scope", "")).startswith("contract-required"):
             continue
-        junit = root / suite["evidence"]["junit"]
+        junit = selection.parent / suite["evidence"]["junit"]
         if not junit.is_file():
             problems.append("%s: junit missing" % name)
             continue
