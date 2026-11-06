@@ -39,7 +39,12 @@ def _per_id_state(evidence_root, run, group, case_id):
 
 
 def _scope(reuse, evidence_root, groups, required):
-    """Per-ID rule over the REUSE_MAP's authoritative sources."""
+    """Per-ID rule over the REUSE_MAP's authoritative sources — but the
+    STATE is always recomputed from the source run's original ledger
+    (reviews 2026-11-06: a merger that trusts the map's recorded
+    state_run03 is not an independent verdict). A map entry only picks
+    WHICH ledger is authoritative; if that ledger disagrees with the
+    map, the ledger wins and the disagreement is named."""
     failed, not_hit = [], []
     for group in groups:
         entries = reuse["groups"].get(group, {})
@@ -49,9 +54,14 @@ def _scope(reuse, evidence_root, groups, required):
                 not_hit.append("%s/%s(no-map-entry)" % (group, case_id))
                 continue
             source = entry["source"]
-            state = (entry["state_run03"] if source == "run03"
-                     else _per_id_state(evidence_root, "g2/run01",
-                                        group, case_id))
+            run = "g2/run01" if source.startswith("g2") else "formal_run03"
+            state = _per_id_state(evidence_root, run, group, case_id)
+            recorded = entry.get("state_run03") if source == "run03" \
+                else None
+            if recorded is not None and recorded != state:
+                not_hit.append("%s/%s(map-vs-ledger %s!=%s)"
+                               % (group, case_id, recorded, state))
+                continue
             if state == "FAIL":
                 failed.append("%s/%s" % (group, case_id))
             elif state != "PASS":
