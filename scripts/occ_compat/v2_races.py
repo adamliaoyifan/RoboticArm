@@ -740,3 +740,10 @@ def run_v2_group(backend, hull, manifest, run_root, run_id):
         except Exception:  # noqa: BLE001
             pass
     return results
+
+
+#: Stable dispatch used by the replay driver (name -> handler).
+RACE_DISPATCH = {
+    "R01": run_r01, "R02": run_r02, "R04": run_r04, "R05": run_r05,
+    "R06": run_r06, "R07": run_r07, "R08": run_r08, "R09": run_r09,
+}
