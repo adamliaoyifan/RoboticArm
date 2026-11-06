@@ -9,6 +9,7 @@ a new run).
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -170,40 +171,107 @@ def run_v1_group(backend, hull, manifest, run_root, run_id):
     return results
 
 
+def _run_group_subprocess(matrix, backend, hull, freeze_path, group_root,
+                          domain, run_id, timeout_s=5400):
+    """One group in its own interpreter/session; returns (results, note).
+
+    A fresh interpreter keeps rclpy lifecycles independent (in-process
+    sequencing degraded into InvalidHandle teardowns that leaked whole
+    chains onto the shared default domain — formal_run01), a unique
+    ROS_DOMAIN_ID fences any leak, PDEATHSIG cleans the chain if the
+    child dies, and the session (process group) is verified EMPTY after
+    exit so nothing survives into the next group.
+    """
+    import os
+    import signal
+    import subprocess
+    import sys
+    scripts_dir = str(Path(__file__).resolve().parent.parent)
+    group_root.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    env["PYTHONPATH"] = scripts_dir + ":" + env.get("PYTHONPATH", "")
+    cmd = [sys.executable, "-m", "occ_compat.group_main",
+           "--matrix", matrix, "--backend", backend, "--hull", hull,
+           "--freeze", str(freeze_path), "--out", str(group_root),
+           "--domain", str(domain), "--run-id", run_id]
+    child = subprocess.Popen(
+        cmd, cwd=scripts_dir, env=env, start_new_session=True,
+        stdout=open(group_root / "GROUP_DRIVER.log", "w"),
+        stderr=subprocess.STDOUT)
+    try:
+        code = child.wait(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        child.wait()
+        return None, "group driver timeout after %ss (session killed)" % timeout_s
+    note = ""
+    try:
+        os.killpg(child.pid, 0)
+        # the session still has members: kill them and name the leak
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        note = "leaked session members after driver exit (killed)"
+    except ProcessLookupError:
+        pass
+    result_path = group_root / "GROUP_RESULT.json"
+    if code != 0 or not result_path.exists():
+        tail = ""
+        log = group_root / "GROUP_DRIVER.log"
+        if log.exists():
+            tail = log.read_text().strip().splitlines()[-1][:120] if \
+                log.read_text().strip() else ""
+        return None, ("driver exit=%s %s" % (code, tail)).strip()[:200]
+    return json.loads(result_path.read_text()).get("results", {}), note
+
+
 def run_matrices(freeze_path, matrices, out_dir):
-    """verify entry: sequence the requested matrices (V1 first, then V2)."""
-    freeze = json.loads(Path(freeze_path).read_text())
-    manifest = freeze["manifest"]
+    """verify entry: sequence the requested matrices (V1 first, then V2).
+
+    Every group runs as an isolated subprocess (see
+    _run_group_subprocess) on its own ROS domain."""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     run_id = "v1-%d" % int(time.time())
-    summary = {"run_id": run_id, "matrices": matrices, "groups": {}}
+    # FastRTPS rejects domainId > 232 ("Calculated port number is too
+    # high"); rotate within the legal range, seeded per run for spread.
+    base_domain = os.getpid() % 230 + 1
+    summary = {"run_id": run_id, "matrices": matrices, "groups": {},
+               "isolation": "one subprocess + unique ROS domain per group"}
+    index = 0
+    plan = []
     if "V1" in matrices:
         for backend in ("G", "O"):
             for hull in ("cuboid", "chamfer"):
-                group_root = out / ("V1-%s-%s" % (backend, hull))
-                group_root.mkdir(parents=True, exist_ok=True)
-                try:
-                    results = run_v1_group(
-                        backend, hull, manifest, group_root, run_id)
-                    summary["groups"]["V1|%s|%s" % (backend, hull)] = \
-                        results
-                except Exception as error:  # noqa: BLE001 - named failure
-                    summary["groups"]["V1|%s|%s" % (backend, hull)] = {
-                        "error": str(error)[:200]}
+                plan.append(("V1", backend, hull))
     if "V2" in matrices:
-        from . import v2_races
         for backend in ("G", "O"):
-            group_root = out / ("V2-%s-cuboid" % backend)
-            group_root.mkdir(parents=True, exist_ok=True)
-            try:
-                results = v2_races.run_v2_group(
-                    backend, "cuboid", manifest, group_root,
-                    "v2-%s-cuboid" % backend.lower())
-                summary["groups"]["V2|%s|cuboid" % backend] = results
-            except Exception as error:  # noqa: BLE001 - named failure
-                summary["groups"]["V2|%s|cuboid" % backend] = {
-                    "error": str(error)[:200]}
+            plan.append(("V2", backend, "cuboid"))
+    for matrix, backend, hull in plan:
+        key = "%s|%s|%s" % (matrix, backend, hull)
+        group_root = out / ("%s-%s-%s" % (matrix, backend, hull))
+        group_root.mkdir(parents=True, exist_ok=True)
+        index += 1
+        domain = base_domain + index
+        if domain > 230:
+            domain = domain - 230
+        try:
+            results, note = _run_group_subprocess(
+                matrix, backend, hull, freeze_path, group_root,
+                domain,
+                "%s-%s-%s" % (matrix.lower(), backend.lower(), hull))
+            entry = results if results is not None else {
+                "error": note or "no result"}
+            if note and results is not None:
+                entry = dict(entry)
+                entry["isolation_note"] = note
+            summary["groups"][key] = entry
+        except Exception as error:  # noqa: BLE001 - named failure
+            summary["groups"][key] = {"error": str(error)[:200]}
     verdict = "NOT_EVALUATED"
     flat = [state for group in summary["groups"].values()
             if isinstance(group, dict)
