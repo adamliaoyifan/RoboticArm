@@ -239,8 +239,13 @@ def main():
     gates["A5"], excused = _a5_gate(reuse, g2_verdicts)
 
     verdict = {
-        "schema": "g2-merged-verdict-v3",
-        "policy": ("same-generation combination over freeze-v2 runs only: "
+        "schema": "g2-merged-verdict-v4",
+        "policy": ("v4: reads the judge's COMPLETE structured A5 "
+                   "sub-checks (scope/rule/group/case per issue); global "
+                   "or unknown sub-check failures always bind; local "
+                   "issues excusable only via explicit supersession by a "
+                   "run whose own A0/A1/A5 all PASS; verdicts without "
+                   "structured detail bind NOT_EVALUATED. "
                    "each contributing run carries its own payload-closed "
                    "A0 and is judged against its own freeze; per-ID states "
                    "are recomputed from the authoritative run's original "
