@@ -170,6 +170,16 @@ def verify(freeze_path, probe_paths):
                 if isinstance(files, dict) and rest in files:
                     return files[rest], "%s/src/%s/%s" % (
                         side, package_dir, rest)
+        # T1's own scripts tree: the client interpreter loads occ_compat
+        # modules straight from <c1_root>/scripts — bound against the
+        # T1 section of the source map.
+        c1_root = str(Path(fm.get("c1_root", ".")).resolve())
+        if path.startswith(c1_root + os.sep + "scripts" + os.sep):
+            rel = path[len(c1_root) + len("/scripts/"):]
+            scripts = (source.get("T1") or {}).get("scripts", {})
+            if rel in scripts:
+                return scripts[rel], "T1/scripts/%s" % rel
+            return None, "t1-script-not-declared:%s" % rel
         return None, "no-declared-prefix"
 
     flat_installs = {}
