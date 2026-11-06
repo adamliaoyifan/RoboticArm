@@ -60,7 +60,12 @@ def _source_files(root, packages):
         for path in sorted(base.rglob("*")):
             if (path.is_file()
                     and "/build/" not in str(path)
-                    and "/install/" not in str(path)):
+                    and "/install/" not in str(path)
+                    # bytecode caches are not source: their hashes depend
+                    # on which tests ran last, which made the freeze
+                    # non-deterministic across otherwise-identical trees
+                    and "__pycache__" not in path.parts
+                    and path.suffix != ".pyc"):
                 out[str(path.relative_to(base))] = sha256_file(path)
     return out
 
