@@ -38,13 +38,18 @@ def cmd_selftest(args):
     from . import judge as judge_mod
     result = judge_mod.selftest(args.manifest, args.out)
     _write_result(args.out, "SELFTEST_RESULT", result)
-    ok = all(v == "REJECTED" for v in result.get("mutations", {}).values()) \
-        and all(v == "PASS" for v in result.get("controls", {}).values())
-    print("selftest: %d/%d mutations rejected, %d/%d controls passed"
-          % (sum(1 for v in result.get("mutations", {}).values()
-                 if v == "REJECTED"), len(result.get("mutations", {})),
-             sum(1 for v in result.get("controls", {}).values()
-                 if v == "PASS"), len(result.get("controls", {}))))
+    # judge.selftest reports ONE control verdict over every archive it
+    # judged ("control": PASS|FAIL) plus per-mutation REJECTED verdicts.
+    # Reading a wrong key here would make a FAILING control exit 0.
+    mutations = result.get("mutations", {})
+    control = result.get("control")
+    rejected = sum(1 for v in mutations.values() if v == "REJECTED")
+    ok = control == "PASS" and rejected == len(mutations) and mutations
+    print("selftest: %d/%d mutations rejected, control=%s"
+          % (rejected, len(mutations), control))
+    if not mutations:
+        print("selftest: NO mutations ran — refusing vacuous pass")
+        ok = False
     return 0 if ok else 1
 
 
