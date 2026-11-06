@@ -695,9 +695,43 @@ def _a1_gate(selftest, freeze):
             "C1", {}).get("commit")
         if expect and (freeze or {}).get("schema") == "freeze-v2" \
                 and expect != _JUDGE_TREE:
-            missing.append("freeze-v2 collection %s != judge tree %s"
-                           % (expect[:8], _JUDGE_TREE[:8]))
+            # Judge-side advancement is legitimate (a freeze-v2 run may
+            # be re-judged offline by a newer judge) ONLY when nothing
+            # the run's COLLECTION executed has drifted: the diff
+            # freeze-C1..judge-tree under scripts/ must touch judge-side
+            # files exclusively — any collection module or any change
+            # outside scripts/ binds.
+            drift = _collection_drift(expect, _JUDGE_TREE)
+            if drift:
+                missing.append(
+                    "freeze-v2 collection %s vs judge tree %s drifted "
+                    "outside judge-side files: %s"
+                    % (expect[:8], _JUDGE_TREE[:8], drift[:4]))
     return "PASS" if not missing else "FAIL: %s" % missing[:4]
+
+
+#: Files whose post-freeze change cannot affect how a run was
+#: COLLECTED (judge/freeze/merger analysis only). Everything else under
+#: scripts/ is collection-relevant and binds.
+_JUDGE_SAFE_FILES = {
+    "judge.py", "a0_verify.py", "merge_verdict.py", "reuse_map.py",
+    "freeze.py", "cli.py", "occ_consumer_compat.py",
+}
+
+
+def _collection_drift(freeze_commit, judge_commit):
+    import subprocess
+    try:
+        root = Path(__file__).resolve().parents[2]
+        out = subprocess.run(
+            ["git", "-C", str(root), "diff", "--name-only",
+             freeze_commit, judge_commit, "--", "scripts"],
+            capture_output=True, text=True, timeout=60).stdout
+    except Exception:  # noqa: BLE001 - binding is required
+        return ["diff-failed"]
+    drifted = [line.strip() for line in out.splitlines() if line.strip()]
+    return [path for path in drifted
+            if path.split("/")[-1] not in _JUDGE_SAFE_FILES]
 
 
 def _judge_tree():
@@ -824,6 +858,19 @@ def _fail_evidence_gate(groups):
     hook). Integrates alone cannot substantiate a consumer-bound failure
     — formal_run02's R05-O (a no-reply FAIL with three integrates and
     zero consumer events) is INCOMPLETE_EVIDENCE, not a clean fail."""
+    issues = _fail_evidence_issues(groups)
+    if issues:
+        first = issues[0]
+        return ("INCOMPLETE_EVIDENCE: %s/%s FAIL lacks consumer-path "
+                "events (+%d more)" % (first["group"], first["case"],
+                                       len(issues) - 1))
+    return "PASS"
+
+
+def _fail_evidence_issues(groups):
+    """Structured form: one issue per FAIL terminal lacking consumer-
+    path evidence (scope/rule/group/case — reviews 2026-11-06_2332)."""
+    issues = []
     for name, events, _ in groups:
         for t in _terminals(events):
             if t["state"] != "FAIL":
@@ -835,9 +882,14 @@ def _fail_evidence_gate(groups):
             if not any(e.get("event_kind") in (
                     "placement_request", "stage_marker", "hook",
                     "replay_outcome") for e in rows):
-                return ("INCOMPLETE_EVIDENCE: %s/%s FAIL lacks "
-                        "consumer-path events" % (name, t["case_id"]))
-    return "PASS"
+                issues.append({
+                    "scope": "case-local",
+                    "rule": "fail_evidence",
+                    "group": name,
+                    "case": t["case_id"],
+                    "detail": "FAIL terminal lacks consumer-path events",
+                })
+    return issues
 
 
 def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
@@ -904,21 +956,47 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
     gates["A1"] = _a1_gate(selftest, freeze)
 
     if "A5" not in gates:
+        # EVERY sub-check runs and is reported (reviews 2026-11-06_2332:
+        # an if/elif first-defect-wins string let a local K03/E4 gap
+        # hide a simultaneous GLOBAL regression/replay failure — the
+        # merger then excused the local one and the global hid behind
+        # it). The headline string lists ALL failing sub-checks; the
+        # structured detail carries scope/rule/group/case per issue.
         all_problems = [p for _, _, probs in groups for p in probs]
-        fail_ev = _fail_evidence_gate(groups)
+        fail_issues = _fail_evidence_issues(groups)
         reg = _regression_gate(evidence_root)
         rep = _replay_gate(evidence_root)
-        if fail_ev != "PASS":
-            gates["A5"] = fail_ev
-        elif all_problems:
-            gates["A5"] = "FAIL: %s" % all_problems[:3]
-        elif reg != "PASS":
-            gates["A5"] = reg
-        elif rep != "PASS":
-            gates["A5"] = rep
+        subchecks = {
+            "fail_evidence": {
+                "scope": "case-local" if fail_issues else "clean",
+                "state": ("INCOMPLETE_EVIDENCE" if fail_issues
+                          else "PASS"),
+                "issues": fail_issues},
+            "ledger": {
+                "scope": "global", "state": ("FAIL" if all_problems
+                                             else "PASS"),
+                "issues": [{"scope": "global", "rule": "ledger",
+                            "detail": p} for p in all_problems]},
+            "regression": {
+                "scope": "global", "state": reg, "issues": []},
+            "replay": {
+                "scope": "global", "state": rep, "issues": []},
+        }
+        failing = [(name, sc) for name, sc in subchecks.items()
+                   if sc["state"] != "PASS"]
+        if failing:
+            gates["A5"] = "; ".join(
+                "%s=%s" % (name, sc["state"][:70])
+                for name, sc in failing)
         else:
             gates["A5"] = "PASS"
+        a5_subchecks = subchecks
 
+    try:
+        a5_subchecks
+    except NameError:
+        a5_subchecks = None
+    detail = ({"A5": a5_subchecks} if a5_subchecks else {})
     terminals = [t for _, evs, _ in groups for t in _terminals(evs)]
     v2n = sorted(t["case_id"] + "/" + t.get("backend", "")
                  for t in terminals
@@ -927,6 +1005,7 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
     v2f = [t["case_id"] + "/" + t.get("backend", "") for t in terminals
            if t["case_id"].startswith("R") and t["state"] == "FAIL"]
     verdict = {"archive": str(archive), "gates": gates,
+               "gates_detail": detail,
                "named_not_evaluated": v2n,
                "v2_failed": v2f,
                "terminals": {

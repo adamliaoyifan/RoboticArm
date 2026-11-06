@@ -89,16 +89,26 @@ def _run_of(verdict):
     return match.group(0) if match else None
 
 
-def _a5_gate(reuse, g2_verdicts):
-    """A5 over the contributing runs, fail-closed.
+#: Sub-checks that are case-LOCAL (each issue carries group/case and
+#: may be superseded by a newer collection of that case). Everything
+#: else in the structured A5 detail is GLOBAL and always binds.
+_LOCAL_SUBCHECKS = {"fail_evidence"}
 
-    A non-PASS A5 may only be excused when EVERY case it names is (a)
-    still authoritatively supplied by THIS run's ledger — no — by
-    ANOTHER provided run whose own verdict carries A0/A1/A5 all PASS
-    (the superseding evidence must be valid on its own). A defect that
-    names no case ID (regression missing, replay missing, ledger
-    problems…) is GLOBAL and can never be excused; an unrecognized run
-    binding likewise binds. Only the A5 string itself is read."""
+
+def _a5_gate(reuse, g2_verdicts):
+    """A5 over the contributing runs, fail-closed (reviews
+    2026-11-06_2332).
+
+    Reads the STRUCTURED A5 sub-check detail only — never a single
+    problem string, which the upstream judge used to truncate to the
+    first defect and thereby hide a simultaneous global failure behind
+    an excusable local one. Rules: (1) a verdict without complete
+    structured detail cannot be verified and binds as NOT_EVALUATED —
+    no single-problem guessing; (2) every GLOBAL sub-check
+    (ledger/regression/replay/unknown names) must be PASS or it binds;
+    (3) a case-LOCAL issue may be excused only when its ID is
+    authoritatively superseded by a provided run whose own A0/A1/A5 all
+    PASS."""
     verdicts_by_run = {}
     for verdict in g2_verdicts:
         run_dir = _run_of(verdict)
@@ -109,47 +119,64 @@ def _a5_gate(reuse, g2_verdicts):
 
     problems, excuses = [], []
     for run_dir, verdict in sorted(verdicts_by_run.items()):
-        a5 = str(verdict["gates"].get("A5", ""))
-        if a5 == "PASS":
-            continue
-        named = sorted(set(_CASE_IN_A5.findall(a5)))
-        if not named:
+        subchecks = ((verdict.get("gates_detail") or {})
+                     .get("A5"))
+        if not isinstance(subchecks, dict) or not subchecks:
             problems.append(
-                "%s A5 global/unnamed defect not excusable: %s"
-                % (run_dir, a5[:80]))
+                "%s A5 NOT_EVALUATED: verdict lacks the structured "
+                "sub-check detail required to verify completeness — "
+                "no single-problem guessing" % run_dir)
             continue
+        local_pairs, globals_bad = [], []
+        for name, check in sorted(subchecks.items()):
+            state = str((check or {}).get("state", ""))
+            if state == "PASS":
+                continue
+            if name not in _LOCAL_SUBCHECKS:
+                globals_bad.append("%s=%s" % (name, state[:70]))
+                continue
+            for issue in (check or {}).get("issues", []):
+                group, case_id = issue.get("group"), issue.get("case")
+                if group and case_id:
+                    local_pairs.append((group, case_id, str(
+                        issue.get("detail", ""))[:60]))
+                else:
+                    # a "local" rule that names no group/case is unknown
+                    globals_bad.append(
+                        "%s issue without group/case: %s"
+                        % (name, str(issue)[:70]))
         unresolved = []
-        for group, case_id in named:
+        for group, case_id, detail in local_pairs:
             entry = (reuse.get("groups", {}).get(group, {})
                      .get(case_id))
             source = (entry or {}).get("source")
             if source == run_dir:
-                unresolved.append("%s/%s (still authoritative here)"
-                                  % (group, case_id))
+                unresolved.append("%s/%s still authoritative here (%s)"
+                                  % (group, case_id, detail))
                 continue
             superseder = verdicts_by_run.get(source)
             if superseder is None:
-                unresolved.append("%s/%s (source %s has no provided "
-                                  "verdict)" % (group, case_id, source))
+                unresolved.append("%s/%s source %s has no provided "
+                                  "verdict" % (group, case_id, source))
                 continue
-            gates_ok = all(
-                superseder["gates"].get(g) == "PASS"
-                for g in ("A0", "A1", "A5"))
-            if not gates_ok:
-                unresolved.append(
-                    "%s/%s (superseder %s lacks A0/A1/A5 PASS)"
-                    % (group, case_id, source))
+            if not all(superseder["gates"].get(g) == "PASS"
+                       for g in ("A0", "A1", "A5")):
+                unresolved.append("%s/%s superseder %s lacks A0/A1/A5 "
+                                  "PASS" % (group, case_id, source))
+        if globals_bad:
+            problems.append("%s A5 global sub-check failure(s) not "
+                            "excusable: %s" % (run_dir, globals_bad[:3]))
         if unresolved:
-            problems.append("%s A5 %s — not excusable: %s"
-                            % (run_dir, a5[:60], unresolved[:3]))
-        else:
+            problems.append("%s A5 local issue(s) not excusable: %s"
+                            % (run_dir, unresolved[:3]))
+        if not globals_bad and not unresolved and local_pairs:
             excuses.append({
                 "run": run_dir,
-                "a5_defect": a5[:120],
-                "superseded_ids": ["%s/%s" % pair for pair in named],
+                "superseded_ids": sorted("%s/%s" % (g, c)
+                                         for g, c, _ in local_pairs),
                 "carried_by": sorted({
-                    (reuse["groups"][g][c]["source"])
-                    for g, c in named}),
+                    reuse["groups"][g][c]["source"]
+                    for g, c, _ in local_pairs}),
             })
     if problems:
         return "FAIL: %s" % problems[:2], excuses
@@ -276,42 +303,84 @@ def _selftest():
             "K03/E4": {"source": "g2/run03"},
             "K05": {"source": "g2/run02"}},
         "V2-G-cuboid": {"R03": {"source": "g2/run03"}}}}
-    def _verdict(run, a5, a0="PASS", a1="PASS"):
-        return {"archive": "/evidence/%s" % run,
-                "gates": {"A0": a0, "A1": a1, "A5": a5}}
-    strong = _verdict("g2/run03", "PASS")
+    def _verdict(run, a5, a0="PASS", a1="PASS", subchecks=None):
+        doc = {"archive": "/evidence/%s" % run,
+               "gates": {"A0": a0, "A1": a1, "A5": a5}}
+        if subchecks is not None:
+            doc["gates_detail"] = {"A5": subchecks}
+        return doc
 
-    # (a) global regression failure names no case id — must FAIL
+    def _subs(fail_ids=(), regression="PASS", ledger="PASS",
+              replay="PASS"):
+        return {
+            "fail_evidence": {
+                "scope": "case-local" if fail_ids else "clean",
+                "state": ("INCOMPLETE_EVIDENCE" if fail_ids else "PASS"),
+                "issues": [{"scope": "case-local", "rule": "fail_evidence",
+                            "group": g, "case": c,
+                            "detail": "lacks consumer-path events"}
+                           for g, c in fail_ids]},
+            "ledger": {"scope": "global", "state": ledger, "issues": []},
+            "regression": {"scope": "global", "state": regression,
+                           "issues": []},
+            "replay": {"scope": "global", "state": replay, "issues": []},
+        }
+    strong = _verdict("g2/run03", "PASS", subchecks=_subs())
+
+    k03e4 = (("V1-O-cuboid", "K03/E4"),)
+
+    # (a) global regression failure — must FAIL
     gate, _ = _a5_gate(base_map, [
         _verdict("g2/run02",
-                 "FAIL: G-BRIDGE-LIVE: 3 failure/error/skipped"), strong])
+                 "regression=FAIL: G-BRIDGE-LIVE: 3 failure/error/skipped",
+                 subchecks=_subs(regression="FAIL: G-BRIDGE-LIVE")), strong])
     control_a = gate.startswith("FAIL")
-    # (b) still-authoritative gap — must FAIL
+    # (b) still-authoritative local gap — must FAIL
     gate, _ = _a5_gate(base_map, [
         _verdict("g2/run02",
-                 "INCOMPLETE_EVIDENCE: V1-O-cuboid/K05 FAIL lacks "
-                 "consumer-path events"), strong])
+                 "fail_evidence=INCOMPLETE_EVIDENCE",
+                 subchecks=_subs(fail_ids=(("V1-O-cuboid", "K05"),))),
+        strong])
     control_b = gate.startswith("FAIL")
-    # (c1) superseded gap with a valid superseder — must PASS + excuse
+    # (c1) superseded local gap with a valid superseder — must PASS
     gate, excuses = _a5_gate(base_map, [
-        _verdict("g2/run02",
-                 "INCOMPLETE_EVIDENCE: V1-O-cuboid/K03/E4 FAIL lacks "
-                 "consumer-path events"), strong])
+        _verdict("g2/run02", "fail_evidence=INCOMPLETE_EVIDENCE",
+                 subchecks=_subs(fail_ids=k03e4)), strong])
     control_c = gate == "PASS" and excuses and \
         excuses[0]["superseded_ids"] == ["V1-O-cuboid/K03/E4"]
     # (c2) same gap but the superseder's A0 is not PASS — must FAIL
     gate, _ = _a5_gate(base_map, [
+        _verdict("g2/run02", "fail_evidence=INCOMPLETE_EVIDENCE",
+                 subchecks=_subs(fail_ids=k03e4)),
+        _verdict("g2/run03", "PASS", a0="NOT_EVALUATED",
+                 subchecks=_subs())])
+    control_d = gate.startswith("FAIL")
+    # (e) THE 2332 COUNTEREXAMPLE: local superseded gap AND a global
+    # regression failure in the SAME run — the merged A5 must REJECT
+    # (the old single-string path excused the local one and the global
+    # hid behind the truncated first-defect output)
+    gate, _ = _a5_gate(base_map, [
+        _verdict("g2/run02",
+                 "fail_evidence=INCOMPLETE_EVIDENCE; regression=FAIL",
+                 subchecks=_subs(fail_ids=k03e4,
+                                 regression="FAIL: missing TEST_SELECTION")),
+        strong])
+    control_e = gate.startswith("FAIL")
+    # (f) a verdict WITHOUT structured detail binds as NOT_EVALUATED
+    gate, _ = _a5_gate(base_map, [
         _verdict("g2/run02",
                  "INCOMPLETE_EVIDENCE: V1-O-cuboid/K03/E4 FAIL lacks "
-                 "consumer-path events"),
-        _verdict("g2/run03", "PASS", a0="NOT_EVALUATED")])
-    control_d = gate.startswith("FAIL")
+                 "consumer-path events"), strong])
+    control_f = "NOT_EVALUATED" in gate
     # binding: a map source with no provided verdict must hard-fail
-    binding = _check_run_binding(base_map, [strong]) is not None
+    strong_detail = _verdict("g2/run03", "PASS", subchecks=_subs())
+    binding = _check_run_binding(base_map, [strong_detail]) is not None
     results = {"a_global_not_excused": control_a,
                "b_still_ours_not_excused": control_b,
                "c_superseded_excused": control_c,
                "c2_invalid_superseder_binds": control_d,
+               "e_local_plus_global_rejected": control_e,
+               "f_missing_detail_binds_ne": control_f,
                "binding_missing_verdict": binding}
     ok = all(results.values())
     print("merge_verdict selftest: %s" % json.dumps(results))
