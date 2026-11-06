@@ -162,17 +162,28 @@ class E4Harness:
         # ticks would age the sample or sit 'in the future').
         client.stop_robot_streams()
         from sensor_msgs.msg import JointState as _JointState
-        node_now = self.node.get_clock().now().nanoseconds
+        # The robot freshness window is 500 ms and the sample must still
+        # be inside it when plan() reads it: publish, deliver, and verify
+        # the age headroom; re-stamp and retry if the window was eaten by
+        # delivery jitter (run02 V1-O K03/E4 lost exactly this race).
         fresh = _JointState()
-        fresh.header.stamp.sec = int((node_now - 30_000_000) // 10**9)
-        fresh.header.stamp.nanosec = int(
-            (node_now - 30_000_000) % 10**9)
         fresh.name = ["elfin_joint%d" % i for i in range(1, 7)]
         fresh.position = [0.0] * 6
-        client._joint_pub.publish(fresh)
-        for _ in range(6):
-            rclpy.spin_once(client, timeout_sec=0.01)
-            rclpy.spin_once(self.node, timeout_sec=0.01)
+        for _attempt in range(4):
+            node_now = self.node.get_clock().now().nanoseconds
+            fresh.header.stamp.sec = int(
+                (node_now - 30_000_000) // 10**9)
+            fresh.header.stamp.nanosec = int(
+                (node_now - 30_000_000) % 10**9)
+            client._joint_pub.publish(fresh)
+            for _ in range(6):
+                rclpy.spin_once(client, timeout_sec=0.01)
+                rclpy.spin_once(self.node, timeout_sec=0.01)
+            age = self.node.get_clock().now().nanoseconds - (
+                fresh.header.stamp.sec * 10**9
+                + fresh.header.stamp.nanosec)
+            if age < 200_000_000:  # >=300 ms headroom at plan entry
+                break
         attachment = MeasuredAttachment(
             box_id="t1-e4-box", generation=1,
             scene_revision=scene_revision, stamp_ns=now,

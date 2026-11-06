@@ -28,10 +28,14 @@ DEPS = {
            "group_main.py"],
 }
 
-# G2 re-runs these under a new freeze; everything else is planned reuse
-# from run03 subject to the P5 dependency diff.
-G2_TARGETS = {"V2-G-cuboid/R03", "V2-O-cuboid/R03", "V2-O-cuboid/R12",
-              "V2-O-cuboid/R05"}
+# G2 re-collection mapping (reviews 2026-11-06: old-run reuse cannot
+# carry acceptance — every required ID must come from a freeze-v2 run
+# with its own payload-closed A0). run02 = full matrix; run03 =
+# targeted re-collection of the two driver-defect legs (R03 both
+# backends: unreleased hook park; V1-O-cuboid: E4 joint-sample aging).
+G2_TARGETS = {"V2-G-cuboid/R03": "g2/run03", "V2-O-cuboid/R03": "g2/run03"}
+G2_GROUPS = {"V1-O-cuboid": "g2/run03"}
+G2_DEFAULT = "g2/run02"
 
 PINS = {
     "product_grid": "3b614c270ae4b727562c499360911c0b8564622e",
@@ -131,22 +135,15 @@ def build(evidence_root):
             key = "%s/%s" % (group, case_id)
             state03 = _lookup(run03, case_id)
             state02 = _lookup(run02, case_id)
-            if key in G2_TARGETS:
-                source = "g2_run"
-                reason = ("G2 target: driver rebuilt under FREEZE_G2 with "
-                          "in-case healthy controls; run03 state kept as "
-                          "history")
+            source = G2_TARGETS.get(key) or G2_GROUPS.get(group) \
+                or G2_DEFAULT
+            if source != G2_DEFAULT:
+                reason = ("targeted re-collection after the driver-defect "
+                          "fixes (hook-park release / E4 joint re-stamp); "
+                          "run02's own attempt retained as history")
             else:
-                source = "run03"
-                reason = ("PASS under run03 (formal, FREEZE_V7 collection, "
-                          "V10 judge); product and %s collection deps "
-                          "planned unchanged - verified at FREEZE_G2"
-                          % family)
-                if state03 != "PASS":
-                    source = "g2_run"
-                    reason = ("run03 state %s requires G2 re-collection or "
-                              "stays not-evaluated; never rewritten"
-                              % state03)
+                reason = ("collected under FREEZE_G2B (freeze-v2, payload-"
+                          "closed A0) in the full-matrix re-verification")
             entries[case_id] = {
                 "state_run03": state03,
                 "state_run02": state02,
@@ -154,7 +151,7 @@ def build(evidence_root):
                 "reason": reason,
                 "collection_deps": list(DEPS[family]),
                 "dependency_diff": DEPENDENCY_DIFF,
-                "reuse_verified": source != "run03",
+                "reuse_verified": str(source).startswith("g2/"),
             }
         out["groups"][group] = entries
     return out

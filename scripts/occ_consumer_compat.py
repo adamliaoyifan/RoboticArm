@@ -54,6 +54,11 @@ def main(argv=None):
                 "--cases", default="",
                 help="comma-separated case ids for the targeted G2 "
                      "supplement; empty runs the full matrix")
+            subparser.add_argument(
+                "--groups", default="",
+                help="comma-separated group names (e.g. "
+                     "V1-O-cuboid,V2-G-cuboid) for the targeted G2 "
+                     "supplement; empty runs every group")
         if name == "preflight":
             subparser.add_argument("--backend", default="G",
                                    choices=["G", "O"])

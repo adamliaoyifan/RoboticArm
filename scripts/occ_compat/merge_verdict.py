@@ -54,13 +54,16 @@ def _scope(reuse, evidence_root, groups, required):
                 not_hit.append("%s/%s(no-map-entry)" % (group, case_id))
                 continue
             source = entry["source"]
-            run = "g2/run01" if source.startswith("g2") else "formal_run03"
-            state = _per_id_state(evidence_root, run, group, case_id)
-            recorded = entry.get("state_run03") if source == "run03" \
-                else None
-            if recorded is not None and recorded != state:
-                not_hit.append("%s/%s(map-vs-ledger %s!=%s)"
-                               % (group, case_id, recorded, state))
+            if not str(source).startswith("g2/"):
+                not_hit.append("%s/%s(non-g2 source %s — old-run reuse "
+                               "cannot carry acceptance)"
+                               % (group, case_id, source))
+                continue
+            state = _per_id_state(evidence_root, source, group, case_id)
+            recorded = entry.get("state_run03")
+            if recorded == "PASS" and state != "PASS":
+                not_hit.append("%s/%s(history PASS but %s@%s)"
+                               % (group, case_id, state, source))
                 continue
             if state == "FAIL":
                 failed.append("%s/%s" % (group, case_id))
@@ -73,23 +76,26 @@ def _scope(reuse, evidence_root, groups, required):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reuse-map", required=True)
-    parser.add_argument("--g2-verdict", required=True,
-                        help="the g2 run01 VERDICT.json")
-    parser.add_argument("--run03-verdict", required=True)
+    parser.add_argument("--g2-verdict", action="append", required=True,
+                        help="VERDICT.json of a contributing g2 run "
+                             "(repeatable; every one must exist)")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
     evidence_root = Path(args.reuse_map).parents[1]
     reuse = json.loads(Path(args.reuse_map).read_text())
-    g2 = json.loads(Path(args.g2_verdict).read_text())
-    run03 = json.loads(Path(args.run03-verdict if False else
-                            args.run03_verdict).read_text())
+    g2_verdicts = [json.loads(Path(v).read_text()) for v in
+                   args.g2_verdict]
 
     gates = {}
-    # A0/A1: the g2 generation's freeze binding + judge wiring (the
-    # reused cases' A1 evidence carries over via the dependency diff in
-    # the reuse map; A0 payload closure is bound to g2's own freeze).
-    gates["A0"] = g2["gates"]["A0"]
-    gates["A1"] = g2["gates"]["A1"]
+    # A0/A1: EVERY contributing run carries its own freeze-v2 payload
+    # closure and the same judge wiring — all must PASS; the worst
+    # string wins (a REJECTED A0 or failing A1 in any run fails all).
+    gates["A0"] = min((v["gates"].get("A0", "") for v in g2_verdicts),
+                      key=lambda g: (g == "PASS", g.startswith("FAIL"),
+                                     g))
+    gates["A1"] = min((v["gates"].get("A1", "") for v in g2_verdicts),
+                      key=lambda g: (g == "PASS", g.startswith("FAIL"),
+                                     g))
 
     for gate, groups, required in (
             ("A2", EXPECTED_V2G_GROUPS, V2_REQUIRED),
@@ -112,24 +118,26 @@ def main():
         else:
             gates[gate] = "PASS"
 
-    # A5: the g2 run's own ledger/regression/replay gates PASS and the
-    # reused slice's A5 stands on unchanged product+inputs (dependency
-    # diff in the reuse map). Any FAIL in either dominates.
-    a5_g2, a5_03 = g2["gates"].get("A5", ""), run03["gates"].get("A5", "")
-    if a5_g2.startswith("FAIL") or a5_03.startswith("FAIL") or \
-            a5_g2.startswith("INCOMPLETE") or a5_03.startswith("INCOMPLETE"):
-        gates["A5"] = "FAIL: g2=%s run03=%s" % (a5_g2, a5_03)
-    elif a5_g2 == "PASS" and a5_03 == "PASS":
-        gates["A5"] = "PASS"
+    # A5: every contributing run's own ledger/regression/replay gates
+    # must PASS; the worst string wins.
+    a5s = [v["gates"].get("A5", "") for v in g2_verdicts]
+    bad = [a for a in a5s if a != "PASS"]
+    if any(a.startswith(("FAIL", "INCOMPLETE")) for a in bad):
+        gates["A5"] = "FAIL: %s" % bad[:2]
+    elif bad:
+        gates["A5"] = "NOT_EVALUATED: %s" % bad[:2]
     else:
-        gates["A5"] = "NOT_EVALUATED: g2=%s run03=%s" % (a5_g2, a5_03)
+        gates["A5"] = "PASS"
 
     verdict = {
-        "schema": "g2-merged-verdict-v1",
-        "policy": ("new-generation combination: g2/run01 for the four "
-                   "targets, run03 for the reused 180 (REUSE_MAP "
-                   "authoritative sources); run02/run03 verdicts "
-                   "unchanged; any real FAIL dominates"),
+        "schema": "g2-merged-verdict-v2",
+        "policy": ("same-generation combination over freeze-v2 runs only: "
+                   "each contributing run carries its own payload-closed "
+                   "A0 and is judged against its own freeze; per-ID states "
+                   "are recomputed from the authoritative run's original "
+                   "ledger (never the map's self-report); any real FAIL "
+                   "dominates; G1 history verdicts unchanged"),
+        "contributing_runs": list(args.g2_verdict),
         "gates": gates,
         "all_pass": all(v == "PASS" for v in gates.values()),
     }

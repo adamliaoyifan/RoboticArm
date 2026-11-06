@@ -77,6 +77,9 @@ def cmd_verify(args):
                                  args.out,
                                  cases=[c for c in getattr(
                                      args, "cases", "").split(",") if c]
+                                 or None,
+                                 groups=[g for g in getattr(
+                                     args, "groups", "").split(",") if g]
                                  or None)
     _write_result(args.out, "VERIFY_RESULT", result)
     print("verify: %s" % result.get("verdict"))

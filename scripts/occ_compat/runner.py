@@ -231,7 +231,8 @@ def _run_group_subprocess(matrix, backend, hull, freeze_path, group_root,
     return json.loads(result_path.read_text()).get("results", {}), note
 
 
-def run_matrices(freeze_path, matrices, out_dir, cases=None):
+def run_matrices(freeze_path, matrices, out_dir, cases=None,
+                 groups=None):
     """verify entry: sequence the requested matrices (V1 first, then V2).
 
     Every group runs as an isolated subprocess (see
@@ -253,6 +254,14 @@ def run_matrices(freeze_path, matrices, out_dir, cases=None):
     if "V2" in matrices:
         for backend in ("G", "O"):
             plan.append(("V2", backend, "cuboid"))
+    if groups:
+        # targeted supplement (G2 §7): the frozen EXPECTED universe is
+        # unchanged — unselected groups simply are not re-collected and
+        # their authoritative source stays the REUSE_MAP, never a
+        # default PASS.
+        selected = set(groups)
+        plan = [entry for entry in plan
+                if "%s-%s-%s" % entry[:3] in selected]
     for matrix, backend, hull in plan:
         key = "%s|%s|%s" % (matrix, backend, hull)
         group_root = out / ("%s-%s-%s" % (matrix, backend, hull))

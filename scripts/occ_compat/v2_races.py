@@ -812,7 +812,21 @@ def run_r03(ctx, case="R03"):
     request.height_measured = True
     request.box_wdh = list(BOX_A)
     request.expected_map_revision = old_revision
-    stale = ctx.client._call("placement_v2", request, 30.0)
+    # Release any parked hook while waiting: with a robot stream left
+    # fresh by an earlier case the request can be ADMITTED and park at
+    # after_admit — an unreleased park reads as a 30s timeout, not a
+    # refusal (run02's R03 failure, same class as the R05 fix).
+    import rclpy as _rclpy
+    _future = ctx.client._chain_clients["placement_v2"].call_async(request)
+    _deadline = time.monotonic() + 30.0
+    while not _future.done() and time.monotonic() < _deadline:
+        _rclpy.spin_once(ctx.client, timeout_sec=0.05)
+        _stage = str(getattr(ctx.client, "_last_stage", ""))
+        if _stage:
+            ctx.client.release_hook(_stage.split(":")[0])
+            ctx.client._last_stage = ""
+    stale = _future.result() if _future.done() else {
+        "error": "TIMEOUT", "deadline_s": 30.0}
     if isinstance(stale, dict):
         return _terminal(ctx, case, "main", "FAIL",
                          "placement_v2 unavailable: %s" % stale)
