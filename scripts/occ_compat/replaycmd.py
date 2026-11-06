@@ -73,6 +73,14 @@ def replay_case(archive, case_id, out_dir):
         results["verdict"] = "FAIL"
         results["reason"] = "input hashes changed during replay"
     results["fixture_hashes"] = {"n": len(before)}
+    # F09 (reviews 2026-11-07_0031): the replay artifact must carry the
+    # ORIGINAL case correspondence and the per-input digests (verified
+    # against the files on disk by the judge) — a bare count cannot
+    # prove byte-level input equality.
+    results["original_case"] = case_id
+    sfree = Path(manifest.get("sfree_dir", "")) / ("sfree_%s" % hull)
+    results["input_digests"] = {
+        str(p): sha256_file(p) for p in sorted(sfree.glob("*.yaml"))}
     (out / "REPLAY_RESULT.json").write_text(json.dumps(results, indent=1))
     return results
 

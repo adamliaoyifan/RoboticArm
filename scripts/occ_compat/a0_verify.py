@@ -42,7 +42,7 @@ def _probe_entries(probe_paths, problems):
         if not path.exists():
             problems.append("probe file missing: %s" % path)
             continue
-        doc = json.loads(path.read_text())
+        doc = _strict_loads(path)
         rows = doc if isinstance(doc, list) else (
             doc.get("probes") or doc.get("modules") or [])
         for row in rows:
@@ -51,8 +51,20 @@ def _probe_entries(probe_paths, problems):
     return probes
 
 
+def _strict_loads(path):
+    def _no_dupes(pairs):
+        out = {}
+        for key, value in pairs:
+            if key in out:
+                raise ValueError("duplicate JSON key %r" % key)
+            out[key] = value
+        return out
+    return json.loads(Path(path).read_text(),
+                      object_pairs_hook=_no_dupes)
+
+
 def verify(freeze_path, probe_paths, ledger_paths=()):
-    freeze = json.loads(Path(freeze_path).read_text())
+    freeze = _strict_loads(freeze_path)
     freeze_path = Path(freeze_path)
     freeze_dir = freeze_path.resolve().parent
     import hashlib
@@ -236,15 +248,16 @@ def verify(freeze_path, probe_paths, ledger_paths=()):
     # against the manifest's OWN recorded per-frame digests (the frame
     # files' current bytes must still match, so the closure is honest
     # about the bytes that exist, never a post-hoc hash).
+    closure_gaps = []
     if ledger_paths:
         known = {}
-        for manifest_json in sorted(Path(fm.get("sfree_dir", ".")).glob(
-                "*/MANIFEST.json")):
+        frames_root = Path(fm.get("sfree_dir", "."))
+        for manifest_json in sorted(frames_root.glob("*/MANIFEST.json")):
             for frame in json.loads(
                     manifest_json.read_text()).get("frames", []):
                 stem = Path(str(frame.get("path", ""))).stem
-                known[stem] = frame.get("sha256")
-        unknown_ids = []
+                known[stem] = frame
+        unknown_ids, bad_bytes = [], []
         for ledger_path in ledger_paths:
             for line in Path(ledger_path).read_text().splitlines():
                 if not line.strip():
@@ -258,15 +271,58 @@ def verify(freeze_path, probe_paths, ledger_paths=()):
                     # known_ids check carries the same exemption.
                     continue
                 stem = str(row.get("request_id", "")).split("#")[0]
-                if stem not in known:
+                frame = known.get(stem)
+                if frame is None:
                     unknown_ids.append(stem)
+                    continue
+                # F04 deep closure: the frame FILE must exist and its
+                # CURRENT bytes must match the historically recorded
+                # digest — a matched id with a missing file or a
+                # deliberately-invalid digest is rejected.
+                frame_path = Path(str(frame.get("path", "")))
+                if not frame_path.is_file():
+                    bad_bytes.append("%s (frame file missing)" % stem)
+                    continue
+                digest = sha256_file(frame_path)
+                if digest != frame.get("sha256"):
+                    bad_bytes.append("%s (bytes != recorded digest)"
+                                     % stem)
         result["checks"]["ledger_inputs_unmatched"] = len(unknown_ids)
+        result["checks"]["ledger_inputs_bad_bytes"] = len(bad_bytes)
         if unknown_ids:
             result["problems"].append(
                 "%d integrated observation id(s) outside the frozen "
                 "fixture set (first: %s)"
                 % (len(unknown_ids), unknown_ids[0]))
+        if bad_bytes:
+            result["problems"].append(
+                "%d integrated input(s) fail byte verification (first: "
+                "%s)" % (len(bad_bytes), bad_bytes[0]))
 
+    # TF / external config closure (F04): these inputs were never
+    # digested at freeze time, so no historical expectation exists to
+    # verify against. Named as closure gaps — never silently accepted,
+    # never "verified" by hashing today's bytes.
+    for role, key in (("scene_tf", "scene_tf"), ("o_config", "o_config"),
+                      ("o_geometry", "o_geometry"),
+                      ("prep_inputs", "prep_inputs_json")):
+        path = fm.get(key)
+        if not path:
+            continue
+        if not Path(path).exists():
+            result["problems"].append(
+                "%s input path absent: %s" % (role, str(path)[:80]))
+        else:
+            closure_gaps.append(
+                "%s: no historical digest recorded at freeze time" % role)
+
+    result["closure_gaps"] = closure_gaps
+    if closure_gaps:
+        # The proven aspects stand; the unprovable ones keep the verdict
+        # from claiming full input closure.
+        result["verdict"] = "NOT_EVALUATED"
+        result["problems"] = result["problems"]  # unchanged
+        return result
     result["verdict"] = "REJECTED" if result["problems"] else "PASS"
     return result
 

@@ -296,7 +296,7 @@ def _a5_gate(reuse, verdicts):
     validated structured detail; global/unknown bind; local issues need
     proven supersession."""
     verdicts_by_run = _as_map(verdicts)
-    problems, excuses = [], []
+    problems, ne_globals, excuses = [], [], []
     for run_dir, verdict in sorted(verdicts_by_run.items()):
         detail = ((verdict.get("gates_detail") or {}).get("A5"))
         if detail is None:
@@ -319,14 +319,21 @@ def _a5_gate(reuse, verdicts):
             and str((detail[n] or {}).get("state")) != "PASS")
         headline_bad = sorted(
             n for n in _A5_REQUIRED_SUBCHECKS if n in headline)
+        # F01 (0031): a FAIL headline in ANY form (including unknown
+        # wording that names no sub-check) demands a failing detail;
+        # clean detail under a failing headline binds.
         if headline == "PASS" and detail_bad:
             problems.append("%s A5 headline PASS but detail fails %s"
                             % (run_dir, detail_bad[:3]))
+        elif headline != "PASS" and not detail_bad:
+            problems.append(
+                "%s A5 headline %r fails but detail is clean"
+                % (run_dir, headline[:60]))
         elif headline != "PASS" and headline_bad != detail_bad:
             problems.append(
                 "%s A5 headline/detail mismatch: headline %s vs detail %s"
-                % (run_dir, headline_bad or "clean", detail_bad or
-                   "clean"))
+                % (run_dir, headline_bad or "unnamed-form",
+                   detail_bad or "clean"))
         unresolved = []
         for group, case_id in local_pairs:
             entry = (reuse.get("groups", {}).get(group, {})
@@ -346,8 +353,17 @@ def _a5_gate(reuse, verdicts):
                 unresolved.append("%s/%s superseder %s not A0/A1/A5 PASS"
                                   % (group, case_id, source))
         if globals_bad:
-            problems.append("%s A5 global failure(s) bind: %s"
-                            % (run_dir, globals_bad[:3]))
+            hard = [g for g in globals_bad
+                    if "NOT_EVALUATED" not in g]
+            soft = [g for g in globals_bad if "NOT_EVALUATED" in g]
+            if hard:
+                problems.append("%s A5 global failure(s) bind: %s"
+                                % (run_dir, hard[:3]))
+            if soft:
+                # A global sub-check whose evidence is legitimately
+                # absent (e.g. the replay predates digest recording)
+                # keeps the whole gate NOT_EVALUATED — never a note.
+                ne_globals.append("%s: %s" % (run_dir, soft[:2]))
         if unresolved:
             problems.append("%s A5 local issue(s) not excusable: %s"
                             % (run_dir, unresolved[:3]))
@@ -360,6 +376,8 @@ def _a5_gate(reuse, verdicts):
             })
     if problems:
         return "FAIL: %s" % problems[:2], excuses
+    if ne_globals:
+        return ("NOT_EVALUATED: %s" % ne_globals[:2]), excuses
     return "PASS", excuses
 
 

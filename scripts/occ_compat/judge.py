@@ -17,6 +17,20 @@ from pathlib import Path
 
 from .ledger import load_events
 
+
+def _strict_loads(path):
+    """Duplicate-key-rejecting JSON load for every judge input (F10)."""
+    def _no_dupes(pairs):
+        out = {}
+        for key, value in pairs:
+            if key in out:
+                raise ValueError("duplicate JSON key %r in %s"
+                                 % (key, path))
+            out[key] = value
+        return out
+    return json.loads(Path(path).read_text(),
+                      object_pairs_hook=_no_dupes)
+
 #: Mutation families (contract V3): each is (name, apply(events) ->
 # mutated_events, rule) — the rule is what the judge must fire.
 MUTATIONS = (
@@ -147,14 +161,22 @@ def recompute_case(events, case_id, subprobe=""):
     key = (case_id, subprobe)
     if declared["state"] == "PASS":
         if key in NEGATIVE_LEGS:
-            allowed = ALLOWED_REFUSALS.get(base_case, REFUSAL_TOKENS)
+            allowed = ALLOWED_REFUSALS.get(base_case)
             rows = placements + [e for e in events
                                  if e.get("case_id") == case_id
                                  and e["event_kind"] == "e4_plan_entry"]
-            if not any(any(tok in str(p.get("message", "") or "")
-                           for tok in allowed)
-                       or str(p.get("state", "")).startswith("REFUSED")
-                       for p in rows):
+            if allowed is not None:
+                # F07: a restricted-vocabulary case must show its OWN
+                # reason class in the message — the generic REFUSED
+                # state form cannot substitute for it.
+                if not any(any(tok in str(p.get("message", "") or "")
+                               for tok in allowed)
+                           for p in rows):
+                    return None, "terminal_event_disagreement"
+            elif not any(any(tok in str(p.get("message", "") or "")
+                             for tok in REFUSAL_TOKENS)
+                         or str(p.get("state", "")).startswith("REFUSED")
+                         for p in rows):
                 return None, "terminal_event_disagreement"
         elif key in POSITIVE_LEGS:
             rows = placements + [e for e in events
@@ -181,6 +203,17 @@ def recompute_case(events, case_id, subprobe=""):
                             "e4_republish")]
             if not placements and not evidence:
                 return None, "evidence_missing"
+            # F07 fact-scope: a NON-main leg's PASS must be backed by
+            # rows scoped to that leg (probe rows the drivers emit per
+            # leg) — a case-scoped row from another leg cannot
+            # substantiate it.
+            if subprobe:
+                leg_rows = [
+                    e for e in evidence
+                    if e.get("subprobe", "") == subprobe
+                    or e.get("event_kind") == "placement_request"]
+                if not leg_rows:
+                    return None, "evidence_missing"
         for event in placements:
             deadline = event.get("deadline_ns")
             if deadline and event.get("mono_ns", 0) > int(deadline):
@@ -217,6 +250,9 @@ def recompute_case(events, case_id, subprobe=""):
                 return None, "oracle_violation"
             sample = oracle_rows[-1].get("candidate_sample") or {}
             if not all(f in sample for f in K01_SAMPLE_FIELDS):
+                return None, "payload_stripped"
+            if not all(sample.get(f) not in (None, [], {})
+                       for f in K01_SAMPLE_FIELDS):
                 return None, "payload_stripped"
             claim = float((oracle_rows[-1].get("candidate_sample")
                            or {}).get("confidence_ratio", 0.0) or 0.0)
@@ -723,7 +759,8 @@ def _dirty_scripts():
         return ["status-failed"]
 
 
-def _freeze_gate(freeze, a0_verify=None, freeze_sha256=None):
+def _freeze_gate(freeze, a0_verify=None, freeze_sha256=None,
+                 archive_binding=None):
     """A0 版本/输入/构建: structural payload verification of the freeze
     document, upgraded by the INDEPENDENT a0_verify result (G2 §3.1).
     Missing keys FAIL (an absent field must never default to an
@@ -785,6 +822,33 @@ def _freeze_gate(freeze, a0_verify=None, freeze_sha256=None):
                     "(freeze_sha256 absent)")
         if reported != freeze_sha256:
             return "FAIL: a0 report bound to a different freeze"
+        # Run/probe binding (reviews 0031 F05): the report must name
+        # THIS archive's groups with per-group ledger digests and probe
+        # file digests — a report about another run under the same
+        # freeze cannot be reused.
+        if not archive_binding:
+            return ("FAIL: a0 report cannot be bound to this archive "
+                    "(no archive binding available)")
+        per_group = a0_verify.get("per_group") or {}
+        reported_groups = {entry.get("group") for entry in per_group
+                           if isinstance(entry, dict)}
+        if reported_groups != set(archive_binding):
+            return ("FAIL: a0 report groups %s != judged archive %s"
+                    % (sorted(reported_groups)[:3],
+                       sorted(archive_binding)[:3]))
+        for entry in per_group:
+            if not isinstance(entry, dict):
+                continue
+            want = archive_binding.get(entry.get("group"), {})
+            if entry.get("ledger_sha256") != want.get("ledger_sha256") \
+                    or entry.get("probes_sha256") != want.get(
+                        "probes_sha256"):
+                return ("FAIL: a0 report %s binding does not match the "
+                        "judged ledger/probes" % entry.get("group"))
+        gaps = a0_verify.get("closure_gaps") or []
+        if gaps:
+            return ("NOT_EVALUATED: payload store/probes closed; "
+                    "named gaps: %s (see supplement matrix)" % gaps[:2])
         return "PASS"
     if verdict == "REJECTED":
         return "FAIL: %s" % (a0_verify.get("problems") or
@@ -972,22 +1036,11 @@ def _scope_gate(groups, required, expected_groups):
 #: mutated selection (dropped suite, changed scope, wrong count, wrong
 #: digest) cannot pass.
 REQUIRED_REGRESSION = {
-    "G-CORE": (151, None), "C1-PACKING": (102, None),
-    "C1-PLANNING": (52, None), "O-BRIDGE-LIVE": (5, None),
+    "G-CORE": (151, "72be73926b0f043ad6f87d69a5724627f56ec4ba8dcc10810567f29fa77bc4f7"),
+    "C1-PACKING": (102, "a05fb002577e7ffb1465ed0016f33722cdaa8894263adeaf939ef0940740e26c"),
+    "C1-PLANNING": (52, "8cd2f0407ab4eac95e1a94114c6fabb68389799c719b766c92cd5ea64fa14917"),
+    "O-BRIDGE-LIVE": (5, "27a564e437f5c30fe94d22fb862c75ecf79a29b80225e8ddcfdd6424d051f3f9"),
 }
-
-
-def _frozen_regression_digests(evidence_root):
-    """Bind the frozen junit digests lazily from the campaign's frozen
-    TEST_SELECTION doc (its own integrity is separately recorded in the
-    G1 freeze chain); returns {suite: sha256}."""
-    try:
-        doc = json.loads((Path(evidence_root) /
-                          "regression/TEST_SELECTION.json").read_text())
-        return {name: (suite.get("evidence") or {}).get("junit_sha256")
-                for name, suite in (doc.get("suites") or {}).items()}
-    except (OSError, ValueError):
-        return {}
 
 
 def _regression_gate(evidence_root):
@@ -1001,11 +1054,10 @@ def _regression_gate(evidence_root):
     selection = root / "regression/TEST_SELECTION.json"
     if not selection.is_file():
         return "FAIL: missing TEST_SELECTION.json"
-    doc = json.loads(selection.read_text())
+    doc = _strict_loads(selection)
     problems, checked = [], 0
-    digests = _frozen_regression_digests(evidence_root)
     import hashlib as _hl
-    for name, (want_count, _) in REQUIRED_REGRESSION.items():
+    for name, (want_count, frozen_sha) in REQUIRED_REGRESSION.items():
         suite = (doc.get("suites") or {}).get(name)
         if suite is None:
             problems.append("%s: required suite absent" % name)
@@ -1018,13 +1070,18 @@ def _regression_gate(evidence_root):
         if not junit.is_file():
             problems.append("%s: junit missing" % name)
             continue
+        # F08: the expectation is the INDEPENDENTLY frozen digest in
+        # this file — never a digest read from the selection document
+        # under test (a mutated selection that rewrites its own digest
+        # must still fail).
         actual_sha = _hl.sha256(junit.read_bytes()).hexdigest()
         recorded = suite["evidence"].get("junit_sha256")
-        frozen = digests.get(name)
-        if recorded != frozen:
-            problems.append("%s: junit digest != frozen selection" % name)
-        if actual_sha != recorded:
-            problems.append("%s: junit bytes != recorded digest" % name)
+        if recorded != frozen_sha:
+            problems.append("%s: selection digest != independently "
+                            "frozen digest" % name)
+        if actual_sha != frozen_sha:
+            problems.append("%s: junit bytes != independently frozen "
+                            "digest" % name)
         cases = list(ET.parse(junit).getroot().iter("testcase"))
         if len(cases) != want_count:
             problems.append("%s: %d cases != frozen %d"
@@ -1053,39 +1110,60 @@ def _replay_gate(evidence_root):
     d = Path(evidence_root) / "replay/k04main"
     if not (d / "REPLAY_RESULT.json").is_file():
         return "FAIL: missing failure-replay evidence (replay/k04main)"
-    result = json.loads((d / "REPLAY_RESULT.json").read_text())
+    result = _strict_loads(d / "REPLAY_RESULT.json")
     if (result.get("verdict") != "PASS"
             or result.get("inputs_unchanged") is not True
             or result.get("same_category") is not True):
         return "FAIL: replay verdict/inputs/category %s/%s/%s" % (
             result.get("verdict"), result.get("inputs_unchanged"),
             result.get("same_category"))
-    if not isinstance(result.get("fixture_hashes"), dict) \
-            or not result["fixture_hashes"]:
-        return "FAIL: replay records no fixture identity at all"
-    # The replay must be CASE-JOINED in its own ledger (reviews F09):
-    # one case carrying terminal + replay_outcome + the actual refusal
-    # category in a consumer-path row — not a floating reason string.
+    # The replay must be CASE-JOINED with LEGAL terminal states (F09):
+    # one case whose terminal AND outcome are PASS, tied to a refusal
+    # in a consumer-path row; an unrelated or FAIL-terminal replay is a
+    # failure, not evidence.
     events = load_events(d)
     by_case = {}
     for e in events:
         by_case.setdefault(e.get("case_id", ""), []).append(e)
     joined = [
         c for c, rows in by_case.items()
-        if c and any(r["event_kind"] == "case_terminal" for r in rows)
-        and any(r["event_kind"] == "replay_outcome" for r in rows)
+        if c
+        and any(r["event_kind"] == "case_terminal"
+                and r.get("state") == "PASS" for r in rows)
+        and any(r["event_kind"] == "replay_outcome"
+                and r.get("state") == "PASS"
+                and str(r.get("reason", "")) == "PASS" for r in rows)
         and any(r["event_kind"] == "placement_request"
                 and "VALIDITY_GATE_CLOSED" in str(r.get("reason", ""))
                 for r in rows)
     ]
     if not joined:
         return ("FAIL: replay ledger lacks a case-joined "
-                "terminal+outcome+refusal payload")
-    # LIMITATION (named, not silent): the frozen replay artifact records
-    # a fixture COUNT, not per-input digests, so byte-level input
-    # equality is carried by inputs_unchanged's own capture path and is
-    # listed in the minimal-supplement matrix for re-capture WITH
-    # digests.
+                "PASS terminal+outcome+refusal payload")
+    original = result.get("original_case")
+    if original and joined and original not in joined:
+        return "FAIL: replay original_case %s not the joined case %s" % (
+            original, joined[:2])
+    if not original:
+        return "FAIL: replay records no original-case correspondence"
+    # Byte-level input equality: per-input digests must be RECORDED and
+    # match the files on disk (F09). Missing digests is NOT_EVALUATED —
+    # a named limitation comment can never substitute the evidence.
+    digests = result.get("input_digests") or {}
+    if not digests:
+        return ("NOT_EVALUATED: replay artifact predates per-input "
+                "digest recording — see supplement matrix")
+    import hashlib as _hl
+    for path_text, want in sorted(digests.items()):
+        path = Path(path_text)
+        if not path.is_absolute():
+            path = d / path
+        if not path.is_file():
+            return ("NOT_EVALUATED: replay input file absent: %s"
+                    % path_text[:80])
+        if _hl.sha256(path.read_bytes()).hexdigest() != want:
+            return "FAIL: replay input bytes != recorded digest (%s)" \
+                % path_text[:60]
     return "PASS"
 
 
@@ -1151,20 +1229,27 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
     known_ids = set()
     freeze_doc = json.loads(Path(freeze_path).read_text()) if freeze_path \
         else None
+    fixture_manifest_found = False
     if freeze_doc:
         # Parity with the selftest input (reviews F06): the formal path
         # must flag unknown observation ids exactly like the selftest
-        # does, using the freeze's own fixture manifest.
+        # does, using the freeze's own fixture manifest. An EMPTY or
+        # absent manifest never disables the check (known_ids or None
+        # was a fail-open hole) — it becomes a named group problem.
         for manifest_json in Path(freeze_doc.get("manifest", {})
                                   .get("sfree_dir", ".")).glob(
                                       "*/MANIFEST.json"):
+            fixture_manifest_found = True
             for frame in json.loads(
                     manifest_json.read_text()).get("frames", []):
                 known_ids.add(Path(frame.get("path", "")).stem)
     for ledger in sorted(archive.glob("**/events.jsonl")):
         group_events = load_events(ledger)
-        group_problems = judge_events(group_events,
-                                      known_ids=known_ids or None)
+        group_problems = judge_events(group_events, known_ids=known_ids)
+        if freeze_doc and not fixture_manifest_found:
+            group_problems.append(
+                "fixture manifest absent under the freeze's sfree_dir — "
+                "input identity cannot be verified")
         groups.append((ledger.parent.name, group_events, group_problems))
     if not groups:
         gates["A5"] = "FAIL: no group ledgers in the archive"
@@ -1193,10 +1278,13 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
     else:
         gates["A4"] = "PASS"
 
-    freeze = json.loads(Path(freeze_path).read_text()) if freeze_path \
-        else None
-    selftest = json.loads(Path(selftest_path).read_text()) \
-        if selftest_path else None
+    try:
+        freeze = _strict_loads(freeze_path) if freeze_path else None
+        selftest = _strict_loads(selftest_path) \
+            if selftest_path else None
+    except (OSError, ValueError) as error:
+        print("judge: invalid input document: %s (exit 2)" % error)
+        raise SystemExit(2)
     # Content binding (reviews F02): the verdict records the DIGEST of
     # every input it actually read — a merger can then prove the
     # ledgers it evaluates are the ones this verdict judged.
@@ -1227,7 +1315,13 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
         packages = {
             side: (freeze_doc.get("source_map", {}).get(side, {})
                    .get("packages", {}))
-            for side in ("G", "C1", "O_CONTROL")}
+            for side in ("G", "C1")}
+        # O has no source packages in the freeze (read-only control);
+        # its frozen IDENTITY is the install closure (F02 0031: the
+        # digest previously read a nonexistent O_CONTROL.packages and
+        # contributed nothing).
+        packages["O_CONTROL"] = freeze_doc.get(
+            "install_manifest", {}).get("O_CONTROL", {})
         inputs_binding["product_source_sha256"] = _hashlib.sha256(
             json.dumps(packages, sort_keys=True).encode()).hexdigest()
     judge_identity = {
@@ -1242,11 +1336,22 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
                  and t["state"] == "NOT_EVALUATED")
     v2f = [t["case_id"] + "/" + t.get("backend", "") for t in terminals
            if t["case_id"].startswith("R") and t["state"] == "FAIL"]
-    a0v = json.loads(Path(a0_verify_path).read_text()) \
-        if a0_verify_path else None
+    a0v = _strict_loads(a0_verify_path) if a0_verify_path else None
+    import hashlib as _h2
+    archive_dir_for_binding = Path(inputs_binding["archive"])
+    archive_binding = {
+        group: {
+            "ledger_sha256": meta["ledger_sha256"],
+            "probes_sha256": _h2.sha256(
+                (archive_dir_for_binding / group /
+                 "MODULE_PROBES.json").read_bytes()).hexdigest()
+            if (archive_dir_for_binding / group /
+                "MODULE_PROBES.json").is_file() else None}
+        for group, meta in inputs_binding["groups"].items()}
     gates["A0"] = _freeze_gate(
         freeze, a0v,
-        freeze_sha256=inputs_binding.get("freeze_sha256"))
+        freeze_sha256=inputs_binding.get("freeze_sha256"),
+        archive_binding=archive_binding)
     if a0v is not None:
         gates["A0_verify_detail"] = "%s: probes=%s problems=%s" % (
             a0v.get("verdict"), (a0v.get("checks") or {}).get("probes"),
@@ -1276,9 +1381,13 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
                 "issues": [{"scope": "global", "rule": "ledger",
                             "detail": p} for p in all_problems]},
             "regression": {
-                "scope": "global", "state": reg, "issues": []},
+                "scope": "global",
+                "state": str(reg).split(":", 1)[0].strip(),
+                "detail": str(reg)[:200], "issues": []},
             "replay": {
-                "scope": "global", "state": rep, "issues": []},
+                "scope": "global",
+                "state": str(rep).split(":", 1)[0].strip(),
+                "detail": str(rep)[:200], "issues": []},
         }
         failing = [(name, sc) for name, sc in subchecks.items()
                    if sc["state"] != "PASS"]
