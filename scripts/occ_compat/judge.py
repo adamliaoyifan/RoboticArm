@@ -670,17 +670,48 @@ def _a1_gate(selftest, freeze):
     wiring = selftest.get("gate_wiring") or {}
     if not wiring:
         missing.append("no gate-wiring families")
-    bad_wiring = [k for k, v in wiring.items() if v != "REJECTED"]
+    # w09_base_control_passes is the A0 healthy CONTROL: it must be PASS,
+    # every other wiring family must be REJECTED.
+    bad_wiring = [k for k, v in wiring.items()
+                  if k != "w09_base_control_passes" and v != "REJECTED"]
     if bad_wiring:
         missing.append("gate wiring not rejected: %s" % bad_wiring[:3])
-    expect = (freeze or {}).get("source_map", {}).get("C1", {}).get("commit")
+    if wiring.get("w09_base_control_passes") != "PASS":
+        missing.append("A0 wiring control not PASS: %s"
+                       % wiring.get("w09_base_control_passes"))
     got_commit = selftest.get("tree_commit")
     if not got_commit:
         missing.append("selftest lacks tree_commit binding")
-    elif expect and got_commit != expect:
-        missing.append("tree binding %s != freeze %s"
-                       % (got_commit[:8], expect[:8]))
+    else:
+        # The selftest must have run in the tree that is JUDGING (the
+        # G2 generation splits historical collection T from the judge T,
+        # so an old archive re-judged by a newer tool binds to the judge
+        # tree, not the collection freeze). A freeze-v2 run additionally
+        # requires judge tree == freeze C1 commit (one generation).
+        if got_commit != _JUDGE_TREE:
+            missing.append("tree binding %s != judge tree %s"
+                           % (got_commit[:8], _JUDGE_TREE[:8]))
+        expect = (freeze or {}).get("source_map", {}).get(
+            "C1", {}).get("commit")
+        if expect and (freeze or {}).get("schema") == "freeze-v2" \
+                and expect != _JUDGE_TREE:
+            missing.append("freeze-v2 collection %s != judge tree %s"
+                           % (expect[:8], _JUDGE_TREE[:8]))
     return "PASS" if not missing else "FAIL: %s" % missing[:4]
+
+
+def _judge_tree():
+    import subprocess
+    try:
+        root = Path(__file__).resolve().parents[2]
+        return subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=30).stdout.strip()
+    except Exception:  # noqa: BLE001 - binding is required
+        return ""
+
+
+_JUDGE_TREE = _judge_tree()
 
 
 #: The frozen expected group sets: gates are checked against THIS
