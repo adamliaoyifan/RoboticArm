@@ -42,8 +42,27 @@ PINS = {
     "tool_collect_run02": "d8fde2d96265499a95a04c36c2a7de13e19ba146",
     "tool_collect_run03": "2b0bfb7b137a93c26e9a1e0b5f82b28652e6b05a",
     "tool_judge_run03": "26f59db3897d384b4dce9f1ad6e9cad40c7c46b2",
-    "tool_collect_g2": "pending:stamped-by-FREEZE_G2",
-    "tool_judge_g2": "pending:stamped-by-FREEZE_G2",
+    "tool_collect_g2": "4d004f2835e1013df636c5aaa23ec48db2b1e80d",
+    "tool_judge_g2": "4d004f2835e1013df636c5aaa23ec48db2b1e80d",
+}
+
+#: Dependency diff V7 (run03 collection) -> G2 (4d004f28): the shared
+#: collection modules changed ONLY additively — per-process sessions
+#: (behavior-neutral for non-restart cases; full-chain health re-proven
+#: by the G2 rehearsals on both backends), EXEC/MODULE probe file
+#: writes (no chain interaction), the --cases filter (absent = full
+#: matrix), killpg teardown (post-results), and new R03/R05/R12 driver
+#: bodies (selected cases only). Product sources G/C1/O and inputs/
+#: configs are byte-identical (FREEZE_G2 vs FREEZE_V7 source maps).
+#: G2 §7 row 3 argument for the 160 V1 reuse: behaviorally unchanged
+#: collection path, verified by diff review + rehearsal, not by rerun.
+DEPENDENCY_DIFF = {
+    "chains.py": "session-per-process + tree-kill teardown + exec probes",
+    "runner.py": "--cases filter (default full matrix)",
+    "group_main.py": "module probes at group end",
+    "client.py": "lazily created ad-hoc service clients",
+    "v2_races.py": "R03/R05/R12 driver bodies + forensics",
+    "v1_states.py": "unchanged (V1 path byte-identical)",
 }
 
 
@@ -134,7 +153,8 @@ def build(evidence_root):
                 "source": source,
                 "reason": reason,
                 "collection_deps": list(DEPS[family]),
-                "reuse_verified": False,
+                "dependency_diff": DEPENDENCY_DIFF,
+                "reuse_verified": source != "run03",
             }
         out["groups"][group] = entries
     return out
