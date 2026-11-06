@@ -9,6 +9,8 @@ run02/run03 verdicts are inputs, never modified.
 """
 import argparse
 import json
+import re
+import subprocess
 import sys
 import os
 from pathlib import Path
@@ -73,18 +75,107 @@ def _scope(reuse, evidence_root, groups, required):
     return failed, not_hit
 
 
+#: A5 problem strings name their case as GROUP/CASE — nothing else in
+#: the verdict is scanned (reviews 2026-11-06_2307 point 3: A2/A4 text
+#: must never be laundered into A5 defects).
+_CASE_IN_A5 = re.compile(
+    r"(V[12]-[GO]-(?:cuboid|chamfer))/(K\d+(?:/E\d)?|R\d+)")
+
+
+def _run_of(verdict):
+    """The g2/<run> directory a verdict judged, or None."""
+    archive = str(verdict.get("archive", ""))
+    match = re.search(r"g2/run\d+", archive)
+    return match.group(0) if match else None
+
+
+def _a5_gate(reuse, g2_verdicts):
+    """A5 over the contributing runs, fail-closed.
+
+    A non-PASS A5 may only be excused when EVERY case it names is (a)
+    still authoritatively supplied by THIS run's ledger — no — by
+    ANOTHER provided run whose own verdict carries A0/A1/A5 all PASS
+    (the superseding evidence must be valid on its own). A defect that
+    names no case ID (regression missing, replay missing, ledger
+    problems…) is GLOBAL and can never be excused; an unrecognized run
+    binding likewise binds. Only the A5 string itself is read."""
+    verdicts_by_run = {}
+    for verdict in g2_verdicts:
+        run_dir = _run_of(verdict)
+        if run_dir is None or run_dir in verdicts_by_run:
+            return ("FAIL: verdict archive not a unique g2/<run> "
+                    "directory: %s" % str(verdict.get("archive"))[:60]), []
+        verdicts_by_run[run_dir] = verdict
+
+    problems, excuses = [], []
+    for run_dir, verdict in sorted(verdicts_by_run.items()):
+        a5 = str(verdict["gates"].get("A5", ""))
+        if a5 == "PASS":
+            continue
+        named = sorted(set(_CASE_IN_A5.findall(a5)))
+        if not named:
+            problems.append(
+                "%s A5 global/unnamed defect not excusable: %s"
+                % (run_dir, a5[:80]))
+            continue
+        unresolved = []
+        for group, case_id in named:
+            entry = (reuse.get("groups", {}).get(group, {})
+                     .get(case_id))
+            source = (entry or {}).get("source")
+            if source == run_dir:
+                unresolved.append("%s/%s (still authoritative here)"
+                                  % (group, case_id))
+                continue
+            superseder = verdicts_by_run.get(source)
+            if superseder is None:
+                unresolved.append("%s/%s (source %s has no provided "
+                                  "verdict)" % (group, case_id, source))
+                continue
+            gates_ok = all(
+                superseder["gates"].get(g) == "PASS"
+                for g in ("A0", "A1", "A5"))
+            if not gates_ok:
+                unresolved.append(
+                    "%s/%s (superseder %s lacks A0/A1/A5 PASS)"
+                    % (group, case_id, source))
+        if unresolved:
+            problems.append("%s A5 %s — not excusable: %s"
+                            % (run_dir, a5[:60], unresolved[:3]))
+        else:
+            excuses.append({
+                "run": run_dir,
+                "a5_defect": a5[:120],
+                "superseded_ids": ["%s/%s" % pair for pair in named],
+                "carried_by": sorted({
+                    (reuse["groups"][g][c]["source"])
+                    for g, c in named}),
+            })
+    if problems:
+        return "FAIL: %s" % problems[:2], excuses
+    return "PASS", excuses
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--reuse-map", required=True)
-    parser.add_argument("--g2-verdict", action="append", required=True,
+    parser.add_argument("--reuse-map", required=False)
+    parser.add_argument("--g2-verdict", action="append", default=[],
                         help="VERDICT.json of a contributing g2 run "
                              "(repeatable; every one must exist)")
-    parser.add_argument("--out", required=True)
+    parser.add_argument("--out", required=False)
+    parser.add_argument("--selftest", action="store_true",
+                        help="run the summary-entry controls offline")
     args = parser.parse_args()
+    if args.selftest:
+        return _selftest()
     evidence_root = Path(args.reuse_map).parents[1]
     reuse = json.loads(Path(args.reuse_map).read_text())
     g2_verdicts = [json.loads(Path(v).read_text()) for v in
                    args.g2_verdict]
+    binding = _check_run_binding(reuse, g2_verdicts)
+    if binding:
+        print(binding)
+        return 2
 
     gates = {}
     # A0/A1: EVERY contributing run carries its own freeze-v2 payload
@@ -118,51 +209,21 @@ def main():
         else:
             gates[gate] = "PASS"
 
-    # A5: every contributing run's own ledger/regression/replay gates
-    # must PASS — EXCEPT defects that name only case IDs the run no
-    # longer authoritatively supplies (superseded by a later targeted
-    # re-collection): a run's evidence gap for a case it lost authority
-    # over cannot fail the generation verdict; the superseding run's
-    # A5 carries that case.
-    import re as _re
-    a5_out, excused = [], []
-    for verdict in g2_verdicts:
-        a5 = verdict["gates"].get("A5", "")
-        if a5 == "PASS":
-            continue
-        archive = verdict.get("archive", "")
-        run_dir = None
-        for candidate in ("g2/run01", "g2/run02", "g2/run03"):
-            if candidate in archive:
-                run_dir = candidate
-        pattern = r"(V[12]-[GO]-(?:cuboid|chamfer))/(K\d+(?:/E\d)?|R\d+)"
-        named = set(_re.findall(pattern, a5)) | set(
-            _re.findall(pattern, json.dumps(verdict)))
-        still_ours = []
-        for group, case_id in named:
-            entry = reuse["groups"].get(group, {}).get(case_id)
-            if entry is not None and entry["source"] == run_dir:
-                still_ours.append("%s/%s" % (group, case_id))
-        if still_ours:
-            a5_out.append("run %s A5 %s (authoritative failures: %s)"
-                          % (run_dir, a5[:60], still_ours[:3]))
-        else:
-            excused.append("run %s A5 defect confined to superseded "
-                           "IDs: %s" % (run_dir, sorted(named)[:3]))
-    if a5_out:
-        gates["A5"] = "FAIL: %s" % a5_out[:2]
-    else:
-        gates["A5"] = "PASS"
+    gates["A5"], excused = _a5_gate(reuse, g2_verdicts)
 
     verdict = {
-        "schema": "g2-merged-verdict-v2",
+        "schema": "g2-merged-verdict-v3",
         "policy": ("same-generation combination over freeze-v2 runs only: "
                    "each contributing run carries its own payload-closed "
                    "A0 and is judged against its own freeze; per-ID states "
                    "are recomputed from the authoritative run's original "
-                   "ledger (never the map's self-report); any real FAIL "
-                   "dominates; G1 history verdicts unchanged"),
+                   "ledger (never the map's self-report); A5 defects are "
+                   "excusable only when every case they name is "
+                   "superseded by a provided run whose own A0/A1/A5 all "
+                   "PASS — global or unnamed defects always bind; G1 "
+                   "history verdicts unchanged"),
         "contributing_runs": list(args.g2_verdict),
+        "tool_commit": _tree_commit(),
         "a5_superseded_excuses": excused,
         "gates": gates,
         "all_pass": all(v == "PASS" for v in gates.values()),
@@ -174,6 +235,87 @@ def main():
                                 for k, v in sorted(gates.items())))
     print("ALL_PASS" if verdict["all_pass"] else "NOT-ALL-PASS")
     return 0 if verdict["all_pass"] else 1
+
+
+def _tree_commit():
+    try:
+        root = Path(__file__).resolve().parents[2]
+        return subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=30).stdout.strip()
+    except Exception:  # noqa: BLE001 - stamping is required
+        return ""
+
+
+def _check_run_binding(reuse, g2_verdicts):
+    """Every map source must have exactly one provided verdict and vice
+    versa (reviews 2026-11-06_2307: reuse validity never follows from a
+    label — only from the bound verdict)."""
+    sources = {entry["source"]
+               for group in reuse.get("groups", {}).values()
+               for entry in group.values()}
+    provided = {_run_of(v) for v in g2_verdicts}
+    missing = sorted(sources - provided)
+    extra = sorted(provided - sources)
+    if missing or extra or None in provided:
+        return ("FAIL: run binding mismatch — map sources without "
+                "verdicts: %s; verdicts without map sources: %s"
+                % (missing, extra))
+    return None
+
+
+def _selftest():
+    """The three summary-entry controls (reviews 2026-11-06_2307
+    Acceptance): (a) an ID-less global A5 failure must NOT become PASS;
+    (b) an A5 gap for a case still authoritatively sourced by that run
+    must NOT be excused; (c) the explicitly superseded K03/E4 gap passes
+    only when the superseding run's A0/A1/A5 are all PASS."""
+    base_map = {"groups": {
+        "V1-O-cuboid": {
+            "K03": {"source": "g2/run03"},
+            "K03/E4": {"source": "g2/run03"},
+            "K05": {"source": "g2/run02"}},
+        "V2-G-cuboid": {"R03": {"source": "g2/run03"}}}}
+    def _verdict(run, a5, a0="PASS", a1="PASS"):
+        return {"archive": "/evidence/%s" % run,
+                "gates": {"A0": a0, "A1": a1, "A5": a5}}
+    strong = _verdict("g2/run03", "PASS")
+
+    # (a) global regression failure names no case id — must FAIL
+    gate, _ = _a5_gate(base_map, [
+        _verdict("g2/run02",
+                 "FAIL: G-BRIDGE-LIVE: 3 failure/error/skipped"), strong])
+    control_a = gate.startswith("FAIL")
+    # (b) still-authoritative gap — must FAIL
+    gate, _ = _a5_gate(base_map, [
+        _verdict("g2/run02",
+                 "INCOMPLETE_EVIDENCE: V1-O-cuboid/K05 FAIL lacks "
+                 "consumer-path events"), strong])
+    control_b = gate.startswith("FAIL")
+    # (c1) superseded gap with a valid superseder — must PASS + excuse
+    gate, excuses = _a5_gate(base_map, [
+        _verdict("g2/run02",
+                 "INCOMPLETE_EVIDENCE: V1-O-cuboid/K03/E4 FAIL lacks "
+                 "consumer-path events"), strong])
+    control_c = gate == "PASS" and excuses and \
+        excuses[0]["superseded_ids"] == ["V1-O-cuboid/K03/E4"]
+    # (c2) same gap but the superseder's A0 is not PASS — must FAIL
+    gate, _ = _a5_gate(base_map, [
+        _verdict("g2/run02",
+                 "INCOMPLETE_EVIDENCE: V1-O-cuboid/K03/E4 FAIL lacks "
+                 "consumer-path events"),
+        _verdict("g2/run03", "PASS", a0="NOT_EVALUATED")])
+    control_d = gate.startswith("FAIL")
+    # binding: a map source with no provided verdict must hard-fail
+    binding = _check_run_binding(base_map, [strong]) is not None
+    results = {"a_global_not_excused": control_a,
+               "b_still_ours_not_excused": control_b,
+               "c_superseded_excused": control_c,
+               "c2_invalid_superseder_binds": control_d,
+               "binding_missing_verdict": binding}
+    ok = all(results.values())
+    print("merge_verdict selftest: %s" % json.dumps(results))
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
