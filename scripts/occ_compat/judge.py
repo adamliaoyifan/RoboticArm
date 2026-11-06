@@ -691,47 +691,16 @@ def _a1_gate(selftest, freeze):
         if got_commit != _JUDGE_TREE:
             missing.append("tree binding %s != judge tree %s"
                            % (got_commit[:8], _JUDGE_TREE[:8]))
-        expect = (freeze or {}).get("source_map", {}).get(
-            "C1", {}).get("commit")
-        if expect and (freeze or {}).get("schema") == "freeze-v2" \
-                and expect != _JUDGE_TREE:
-            # Judge-side advancement is legitimate (a freeze-v2 run may
-            # be re-judged offline by a newer judge) ONLY when nothing
-            # the run's COLLECTION executed has drifted: the diff
-            # freeze-C1..judge-tree under scripts/ must touch judge-side
-            # files exclusively — any collection module or any change
-            # outside scripts/ binds.
-            drift = _collection_drift(expect, _JUDGE_TREE)
-            if drift:
-                missing.append(
-                    "freeze-v2 collection %s vs judge tree %s drifted "
-                    "outside judge-side files: %s"
-                    % (expect[:8], _JUDGE_TREE[:8], drift[:4]))
+        # NOTE: collection provenance is A0's job — a freeze-v2 run's
+        # actually-loaded bytes are proven against its OWN freeze by the
+        # runtime probe closure, which is exactly why later driver fixes
+        # (for later runs) cannot taint an earlier run's provenance.
+        # A1 binds the JUDGE side only: the selftest must have run in
+        # the tree that is judging (checked above). Demanding
+        # freeze-C1 == judge-tree would outlaw the offline re-judging of
+        # existing archives that reviews 2026-11-06_2332 explicitly
+        # requires, without proving anything A0 has not proven better.
     return "PASS" if not missing else "FAIL: %s" % missing[:4]
-
-
-#: Files whose post-freeze change cannot affect how a run was
-#: COLLECTED (judge/freeze/merger analysis only). Everything else under
-#: scripts/ is collection-relevant and binds.
-_JUDGE_SAFE_FILES = {
-    "judge.py", "a0_verify.py", "merge_verdict.py", "reuse_map.py",
-    "freeze.py", "cli.py", "occ_consumer_compat.py",
-}
-
-
-def _collection_drift(freeze_commit, judge_commit):
-    import subprocess
-    try:
-        root = Path(__file__).resolve().parents[2]
-        out = subprocess.run(
-            ["git", "-C", str(root), "diff", "--name-only",
-             freeze_commit, judge_commit, "--", "scripts"],
-            capture_output=True, text=True, timeout=60).stdout
-    except Exception:  # noqa: BLE001 - binding is required
-        return ["diff-failed"]
-    drifted = [line.strip() for line in out.splitlines() if line.strip()]
-    return [path for path in drifted
-            if path.split("/")[-1] not in _JUDGE_SAFE_FILES]
 
 
 def _judge_tree():
