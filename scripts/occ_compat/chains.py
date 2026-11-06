@@ -46,6 +46,14 @@ class ChainProcess:
         self.name = name
         self.log_path = Path(log_path)
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        # Restart cases (V2 R10/R11/R12) spawn replacement nodes into the
+        # same chain dir: never truncate a prior instance's log — an
+        # overwrite destroyed the R05-era planner log in formal_run02,
+        # leaving the one failing case without log evidence.
+        index = 0
+        while self.log_path.exists():
+            index += 1
+            self.log_path = Path(str(log_path) + ".%d" % index)
         self._log = open(self.log_path, "w")
         env = dict(os.environ)
         env.pop("PYTHONPATH", None)  # the wrapper sets the real one
