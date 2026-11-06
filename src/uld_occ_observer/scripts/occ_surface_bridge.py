@@ -155,6 +155,11 @@ def build_surface_map(columns, geometry, identity):
         "state": state,
         "confidence": confidence,
         "geometry_hash": identity["geometry_hash"],
+        # Full hull descriptor VERBATIM (chamfer hulls carry the
+        # chamfer block; readers validate the complete geometry).
+        "geometry_descriptor": {
+            k: v for k, v in geometry.items()
+            if not k.startswith("_")},
         "map_revision": int(identity.get("map_revision", 0)),
         "epoch": int(identity.get("epoch", 0)),
         # Validity generation the whole read chain crossed (reset contract):

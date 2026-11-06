@@ -250,6 +250,58 @@ class ChainClient(Node):
         message.data = name
         self._release_pub.publish(message)
 
+    def republish_surface_v2(self):
+        """Forward the current REAL typed surface once (live delivery).
+
+        Large latched typed messages are unreliable on this rmw for NEW
+        subscribers; republishing the identical message gives the E4
+        planner's fresh subscription a live copy without mutating any
+        producer state.
+        """
+        import rclpy
+        from rclpy.qos import DurabilityPolicy, QoSProfile, \
+            ReliabilityPolicy
+        from luggage_msgs.msg import SurfaceContractV2
+        latched = QoSProfile(
+            depth=1, reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        latest = {}
+
+        def _capture(msg):
+            latest["msg"] = msg
+
+        sub = self.create_subscription(
+            SurfaceContractV2, "/luggage/cargo_map/surface_v2", _capture,
+            latched)
+        pub = self.create_publisher(
+            SurfaceContractV2, "/luggage/cargo_map/surface_v2", latched)
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline and "msg" not in latest:
+            rclpy.spin_once(self, timeout_sec=0.05)
+        for attempt in range(3):
+            if "msg" in latest:
+                break
+            # large latched delivery is flaky per-subscriber on this
+            # rmw — recreate the subscription and try again
+            self.destroy_subscription(sub)
+            sub = self.create_subscription(
+                SurfaceContractV2, "/luggage/cargo_map/surface_v2",
+                _capture, latched)
+            deadline2 = time.monotonic() + 2.0
+            while time.monotonic() < deadline2 and "msg" not in latest:
+                rclpy.spin_once(self, timeout_sec=0.05)
+        if "msg" in latest:
+            # Let the fresh FORWARD publisher complete discovery before
+            # publishing (a publish before the match is silently lost).
+            time.sleep(0.6)
+            rclpy.spin_once(self, timeout_sec=0.05)
+            pub.publish(latest["msg"])
+            time.sleep(0.15)
+            rclpy.spin_once(self, timeout_sec=0.05)
+        self.destroy_subscription(sub)
+        self.destroy_publisher(pub)
+        return "msg" in latest
+
     def clock_now_ns(self):
         state = getattr(self, "_clock_state", None)
         if state is None:

@@ -121,7 +121,12 @@ def verify_candidate(candidate, *, surface, box_size, hull,
     for ix, iy in cells:
         height, state = _column_height(surface, ix, iy)
         top = floor_rel + height
-        if state == "occupied" and top > z0_rel + 1e-6:
+        # Product contact tolerance (support_contact_tol_m = 0.05):
+        # an occupied top within the tolerance of the box bottom is a
+        # SUPPORT CONTACT (aabb_overlap: touching faces allowed), not a
+        # positive-volume conflict.
+        contact_tol = 0.05
+        if state == "occupied" and top > z0_rel + contact_tol + 1e-9:
             occupied_conflict += 1
         elif state == "unknown":
             unknown_interior += 1

@@ -116,10 +116,43 @@ def run_v1_group(backend, hull, manifest, run_root, run_id):
             backend, hull, manifest, Path(run_root) / "chain")
         ctx = v1_states.CaseContext(
             backend, hull, stack, client, ledger, fixtures, stop)
+        # Static TFs for the E4 plan() lookups (stamped at the base).
+        base = int(fixtures["S-free"][0]["stamp_ns"])
+        identity_matrix = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+        for static_tf in (
+                {"child_frame_id": "suction_contact_frame",
+                 "translation": [0.0, 0.0, 0.1],
+                 "rotation": identity_matrix},
+                {"child_frame_id": "container_link",
+                 "translation": [0.0, 0.0, 0.0],
+                 "rotation": identity_matrix}):
+            client.broadcast_transform(
+                static_tf, base, static=True, frame_id="container_link"
+                if static_tf["child_frame_id"] == "suction_contact_frame"
+                else "world")
         for case in CASE_ORDER:
             started = mono_ns()
+            # Every case starts with the sim robot stream running (an
+            # earlier sweep's E4 window may have stopped it mid-error).
+            ctx.fresh_robot()
             outcomes = v1_states.run_case(ctx, case)
             results[case] = outcomes
+            # Per-consumer sweep: E2/E3/E4 terminals for this scenario
+            # (contract V1 coverage — 4 consumers x 40 scenarios).
+            try:
+                sweep = v1_states.consumer_sweep(ctx, case, None)
+                outcomes.update({"E2": sweep["E2"], "E3": sweep["E3"],
+                                 "E4": sweep["E4"]})
+            except Exception as error:  # noqa: BLE001 - named failure
+                import traceback
+                outcomes["sweep"] = "ERROR: %s" % str(error)[:80]
+                ledger.emit(
+                    backend=backend, consumer="-", hull=hull,
+                    case_id=case, subprobe="",
+                    event_kind="sweep_error", stage="case",
+                    state="ERROR",
+                    reason=repr(error)[:120],
+                    trace=traceback.format_exc()[-400:])
             ledger.emit(
                 backend=backend, consumer="-", hull=hull, case_id=case,
                 subprobe="", event_kind="case_complete", stage="case",
