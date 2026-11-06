@@ -349,9 +349,14 @@ def _a5_gate(reuse, verdicts):
                                   % (group, case_id, source))
                 continue
             if not all(superseder["gates"].get(g) == "PASS"
-                       for g in ("A0", "A1", "A5")):
-                unresolved.append("%s/%s superseder %s not A0/A1/A5 PASS"
+                       for g in ("A1", "A5")):
+                unresolved.append("%s/%s superseder %s not A1/A5 PASS"
                                   % (group, case_id, source))
+            elif str(superseder["gates"].get("A0", "")).startswith(
+                    "FAIL"):
+                unresolved.append(
+                    "%s/%s superseder %s has a REJECTED payload report"
+                    % (group, case_id, source))
         if globals_bad:
             hard = [g for g in globals_bad
                     if "NOT_EVALUATED" not in g]
@@ -373,6 +378,14 @@ def _a5_gate(reuse, verdicts):
                 "superseded_ids": sorted("%s/%s" % p for p in local_pairs),
                 "carried_by": sorted({reuse["groups"][g][c]["source"]
                                       for g, c in local_pairs}),
+                # The superseder's A0 state is recorded, never hidden: a
+                # named global input-closure gap already holds the MERGED
+                # A0 gate at its own value and does not double as case-
+                # scoped doubt; a REJECTED report would.
+                "superseder_a0": {
+                    src: str(verdicts_by_run[src]["gates"].get("A0"))
+                    for src in sorted({reuse["groups"][g][c]["source"]
+                                       for g, c in local_pairs})},
             })
     if problems:
         return "FAIL: %s" % problems[:2], excuses
@@ -465,7 +478,13 @@ def _selftest():
             _subs(fail_ids=(("V1-O-cuboid", "K05"),)))[0] != "PASS",
         "c_superseded_passes": _gate(_subs(fail_ids=k03e4))[0] == "PASS",
         "c2_invalid_superseder_binds": _gate(
-            _subs(fail_ids=k03e4), run03_a0="NOT_EVALUATED")[0] != "PASS",
+            _subs(fail_ids=k03e4),
+            run03_a0="FAIL: a0 report REJECTED")[0] != "PASS",
+        "c3_ne_a0_superseder_excused_with_record": (
+            lambda g: (g[0] == "PASS" and g[1] and
+                       g[1][0].get("superseder_a0")))(_gate(
+                _subs(fail_ids=k03e4),
+                run03_a0="NOT_EVALUATED: named gaps")),
         "e_local_plus_global_rejected": _gate(
             _subs(fail_ids=k03e4,
                   regression="FAIL: missing TEST_SELECTION"))[0] != "PASS",

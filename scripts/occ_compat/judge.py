@@ -701,12 +701,30 @@ def selftest(manifest_path, out_dir):
     base = _mini_a0_fixture(out / "w_a0_base")
     control = _a0v(base / "FREEZE.json", [base / "PROBES.json"])
     import hashlib as _hl
+    # The healthy control must ALSO carry the F05 run/probe binding:
+    # one bound group whose ledger/probes digests the report names.
+    ctrl_group = base / "ctrl_group"
+    ctrl_group.mkdir(parents=True, exist_ok=True)
+    (ctrl_group / "events.jsonl").write_text(
+        json.dumps({"event_kind": "case_terminal", "case_id": "R03",
+                    "subprobe": "main", "state": "PASS"}) + "\n")
+    ctrl_binding = {
+        "ctrl_group": {
+            "ledger_sha256": _hl.sha256(
+                (ctrl_group / "events.jsonl").read_bytes()).hexdigest(),
+            "probes_sha256": _hl.sha256(
+                (base / "PROBES.json").read_bytes()).hexdigest()}}
+    control["per_group"] = [
+        {"group": "ctrl_group",
+         "ledger_sha256": ctrl_binding["ctrl_group"]["ledger_sha256"],
+         "probes_sha256": ctrl_binding["ctrl_group"]["probes_sha256"]}]
     wiring["w09_base_control_passes"] = (
         "PASS" if control.get("verdict") == "PASS"
         and _freeze_gate(
             json.loads((base / "FREEZE.json").read_text()), control,
             freeze_sha256=_hl.sha256(
-                (base / "FREEZE.json").read_bytes()).hexdigest()
+                (base / "FREEZE.json").read_bytes()).hexdigest(),
+            archive_binding=ctrl_binding,
         ) == "PASS" else "FALSE_PASS")
     mutations_a0 = {
         "w09_single_byte_corruption": _mutate_store_byte,
