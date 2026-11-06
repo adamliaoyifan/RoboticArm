@@ -203,17 +203,24 @@ def recompute_case(events, case_id, subprobe=""):
                             "e4_republish")]
             if not placements and not evidence:
                 return None, "evidence_missing"
-            # F07 fact-scope: a NON-main leg's PASS must be backed by
-            # rows scoped to that leg (probe rows the drivers emit per
-            # leg) — a case-scoped row from another leg cannot
-            # substantiate it.
-            if subprobe:
-                leg_rows = [
-                    e for e in evidence
-                    if e.get("subprobe", "") == subprobe
-                    or e.get("event_kind") == "placement_request"]
-                if not leg_rows:
-                    return None, "evidence_missing"
+            # F07 fact-scope: a PASS leg must be backed by REAL rows —
+            # either a row scoped to this leg, or a case-scoped FACT
+            # row (integrate/placement/snapshot/e4/datum probe). A lone
+            # non-fact probe row (e.g. state BROKEN) cannot substantiate
+            # any leg (0031 counterexample: bare leg labels + one
+            # broken probe).
+            fact_kinds = ("integrate", "placement_request",
+                          "e3_snapshot_read", "e4_plan_entry",
+                          "e4_republish", "datum_probe",
+                          "e3_window_stats")
+            bad_states = ("BROKEN", "FAIL")
+            backing = [
+                e for e in evidence
+                if (e.get("subprobe", "") == subprobe
+                    or e["event_kind"] in fact_kinds)
+                and str(e.get("state", "OK")) not in bad_states]
+            if not backing:
+                return None, "evidence_missing"
         for event in placements:
             deadline = event.get("deadline_ns")
             if deadline and event.get("mono_ns", 0) > int(deadline):
@@ -588,6 +595,24 @@ def selftest(manifest_path, out_dir):
     primary = Path(ledger_path)
     archives.append(primary)
     sibling = primary.parent.parent / "v2-g-cuboid" / "events.jsonl"
+    if not sibling.exists() or "R05" not in sibling.read_text():
+        # the sibling must be a FULL V2 group (a targeted --cases smoke
+        # cannot exercise the R-case mutation families); fall back to
+        # the newest full V2 corpus under the evidence root.
+        root = Path(manifest.get(
+            "evidence_root",
+            "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/"
+            "occ_grid_consumer_compat_20261105"))
+        cands = []
+        for path in root.glob("**/V2-G-cuboid/events.jsonl"):
+            try:
+                text = path.read_text()
+            except OSError:
+                continue
+            if '"case_id": "R05"' in text and '"case_id": "R12"' in text:
+                cands.append(path)
+        cands.sort(key=lambda p_: p_.stat().st_mtime)
+        sibling = cands[-1] if cands else sibling
     if sibling.exists():
         archives.append(sibling)
     result = {"archives": [str(a) for a in archives],
