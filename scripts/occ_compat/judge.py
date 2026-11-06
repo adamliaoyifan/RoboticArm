@@ -388,12 +388,20 @@ def selftest(manifest_path, out_dir):
         partial, None).startswith("FAIL") else "FALSE_PASS"
     terminals = [dict(case_id=i, state="NOT_EVALUATED")
                  for i in V2_REQUIRED]
-    terminals.append(dict(case_id="R03", state="NOT_EVALUATED"))
-    named = _scope_gate([("V2-G-synth", terminals, [])],
-                        V2_REQUIRED, "V2-G")
+    named = _scope_gate([("V2-G-cuboid", terminals, [])],
+                        V2_REQUIRED, EXPECTED_V2G_GROUPS)
     wiring["w04_named_required_blocks"] = (
         "REJECTED" if named.startswith("NOT_EVALUATED")
         or named.startswith("FAIL") else "FALSE_PASS")
+    # reviews 2026-11-06_1620: an empty scope and an unknown terminal
+    # state must never pass — both reproduced by the reviewer offline.
+    wiring["w07_missing_required_group"] = "REJECTED" if _scope_gate(
+        [], V2_REQUIRED, EXPECTED_V2G_GROUPS).startswith(
+            "NOT_EVALUATED") else "FALSE_PASS"
+    weird = [dict(case_id=i, state="WEIRD_STATE") for i in V2_REQUIRED]
+    wiring["w08_unknown_terminal_state"] = "REJECTED" if _scope_gate(
+        [("V2-G-cuboid", weird, [])], V2_REQUIRED,
+        EXPECTED_V2G_GROUPS).startswith("NOT_EVALUATED") else "FALSE_PASS"
     wiring["w05_missing_failure_payload"] = "REJECTED" if _replay_gate(
         out / "w_missing_replay").startswith("FAIL") else "FALSE_PASS"
     wiring["w06_missing_regression"] = "REJECTED" if _regression_gate(
@@ -458,7 +466,16 @@ def _freeze_gate(freeze):
         missing.append("C1/T1 commit divergence")
     if not (freeze.get("manifest") or {}).get("sfree_dir"):
         missing.append("manifest.sfree_dir")
-    return "PASS" if not missing else "FAIL: %s" % missing[:4]
+    if missing:
+        return "FAIL: %s" % missing[:4]
+    # Structural checks pass, but the contract's A0 also demands the
+    # referenced source/install/input BYTES be hash-verified against the
+    # manifest expectations — an independent judge cannot take the freeze
+    # generator's own declarations for that. Until a verified re-hash
+    # path feeds this gate, structural-only stays NOT_EVALUATED.
+    return ("NOT_EVALUATED: structural checks pass; payload hash "
+            "re-verification pending (tool gap — contract A0 not yet "
+            "fully evidenced)")
 
 
 def _a1_gate(selftest, freeze):
@@ -496,12 +513,30 @@ def _a1_gate(selftest, freeze):
     return "PASS" if not missing else "FAIL: %s" % missing[:4]
 
 
-def _scope_gate(groups, required, label):
+#: The frozen expected group sets: gates are checked against THIS
+#: universe, not against whatever directories happen to be present —
+#: a missing required group or an unknown terminal state can never
+#: silently pass (reviews 2026-11-06_1620 counterexamples 2).
+EXPECTED_V1_GROUPS = ("V1-G-cuboid", "V1-G-chamfer",
+                      "V1-O-cuboid", "V1-O-chamfer")
+EXPECTED_V1_O_GROUPS = ("V1-O-cuboid", "V1-O-chamfer")
+EXPECTED_V2G_GROUPS = ("V2-G-cuboid",)
+EXPECTED_V2O_GROUPS = ("V2-O-cuboid",)
+
+
+def _scope_gate(groups, required, expected_groups):
     """Contract per-ID rule for one gate scope. ``groups`` is a list of
-    (group_name, terminals, problems). A real FAIL fails the gate; a
-    missing or NOT_EVALUATED required ID keeps it NOT_EVALUATED with the
-    named IDs — never a quantity floor."""
-    failed, not_hit = [], []
+    (group_name, terminals, problems); ``expected_groups`` is the FROZEN
+    group universe for the scope. A real FAIL fails the gate; a missing
+    expected group, a missing required ID, or any terminal state other
+    than PASS keeps it NOT_EVALUATED with the named IDs — an empty
+    scope or an unknown state can never pass (only exact PASS counts as
+    a hit)."""
+    failed, not_hit, missing_groups = [], [], []
+    present = {name for name, _, _ in groups}
+    for expected in expected_groups:
+        if expected not in present:
+            missing_groups.append(expected)
     for name, terminals, problems in groups:
         by_id = {}
         for t in terminals:
@@ -510,13 +545,15 @@ def _scope_gate(groups, required, label):
             rows = by_id.get(i) or []
             if any(t["state"] == "FAIL" for t in rows):
                 failed.append("%s/%s" % (name, i))
-            elif not rows or all(t["state"] == "NOT_EVALUATED"
-                                 for t in rows):
-                not_hit.append("%s/%s" % (name, i))
+            elif not any(t["state"] == "PASS" for t in rows):
+                state = rows[0]["state"] if rows else "absent"
+                not_hit.append("%s/%s(%s)" % (name, i, state))
         if problems:
             failed.append("%s: %s" % (name, problems[0]))
     if failed:
         return "FAIL: %s" % failed[:4]
+    if missing_groups:
+        return "NOT_EVALUATED: missing groups %s" % missing_groups
     if not_hit:
         return "NOT_EVALUATED: %s" % not_hit[:6]
     return "PASS"
@@ -633,18 +670,20 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
     v2_groups = [(n, _terminals(e), p) for n, e, p in groups
                  if n.startswith("V2-")]
     gates["A2"] = _scope_gate(
-        [g for g in v2_groups if "-G-" in g[0]], V2_REQUIRED, "V2-G")
-    gates["A3"] = _scope_gate(v1_groups, V1_REQUIRED, "V1")
+        [g for g in v2_groups if "-G-" in g[0]], V2_REQUIRED,
+        EXPECTED_V2G_GROUPS)
+    gates["A3"] = _scope_gate(v1_groups, V1_REQUIRED, EXPECTED_V1_GROUPS)
     # A4 固定O回归: the O half of V1 (both hulls, the 40-case set each)
-    # plus V2-O's twelve — both scopes per-ID, FAIL dominating.
+    # plus V2-O's twelve — both scopes per-ID against the frozen group
+    # universe, FAIL dominating, anything not exactly PASS stays NE.
     o_v1 = [g for g in v1_groups if "-O-" in g[0]]
     o_v2 = [g for g in v2_groups if "-O-" in g[0]]
-    a4_v1 = _scope_gate(o_v1, V1_REQUIRED, "V1-O")
-    a4_v2 = _scope_gate(o_v2, V2_REQUIRED, "V2-O")
+    a4_v1 = _scope_gate(o_v1, V1_REQUIRED, EXPECTED_V1_O_GROUPS)
+    a4_v2 = _scope_gate(o_v2, V2_REQUIRED, EXPECTED_V2O_GROUPS)
     if a4_v1.startswith("FAIL") or a4_v2.startswith("FAIL"):
         gates["A4"] = "FAIL: %s" % "; ".join(
             g for g in (a4_v1, a4_v2) if g.startswith("FAIL"))
-    elif "NOT_EVALUATED" in (a4_v1, a4_v2):
+    elif a4_v1 != "PASS" or a4_v2 != "PASS":
         gates["A4"] = "NOT_EVALUATED: %s" % "; ".join(
             g for g in (a4_v1, a4_v2) if g != "PASS")
     else:
