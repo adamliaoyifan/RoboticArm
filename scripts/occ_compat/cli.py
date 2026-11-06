@@ -74,7 +74,11 @@ def cmd_verify(args):
 
 def cmd_judge(args):
     from . import judge as judge_mod
-    result = judge_mod.judge_archive(args.archive, args.out)
+    result = judge_mod.judge_archive(args.archive, args.out,
+                                     selftest_path=getattr(
+                                         args, "selftest", None),
+                                     freeze_path=getattr(
+                                         args, "freeze", None))
     _write_result(args.out, "VERDICT", result)
     gates = result.get("gates", {})
     print("judge: " + " ".join("%s=%s" % (k, v)

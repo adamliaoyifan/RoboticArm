@@ -52,6 +52,13 @@ def main(argv=None):
         if name == "preflight":
             subparser.add_argument("--backend", default="G",
                                    choices=["G", "O"])
+        if name == "judge":
+            subparser.add_argument(
+                "--selftest", default=None,
+                help="SELFTEST_RESULT.json from this tree (gate A1)")
+            subparser.add_argument(
+                "--freeze", default=None,
+                help="FREEZE.json the run was produced under (gate A0)")
         subparser.set_defaults(func=getattr(cli, "cmd_" + name))
     args = parser.parse_args(argv)
     return args.func(args)

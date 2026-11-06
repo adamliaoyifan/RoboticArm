@@ -359,37 +359,93 @@ def selftest(manifest_path, out_dir):
     return result
 
 
-def judge_archive(archive, out_dir):
+def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None):
     """Formal A0-A5 verdict from the archive (recomputed, never
-    self-reported)."""
+    self-reported).
+
+    Multi-group archives: every group ledger is judged ON ITS OWN (the
+    duplicate-terminal and recompute rules are per-(run, backend, hull,
+    case, subprobe) — the same case_id legitimately appears once per
+    group, so a global key would manufacture phantom duplicates).
+    Gates: A2 = the V2 race matrix; A3 = G side; A4 = O side; A5 = ledger
+    integrity; any FAIL in a gate's scope blocks that gate (itemized
+    passes never cover a failing or named case). A1 comes from a selftest
+    result produced on this tree, A0 from the freeze manifest."""
     archive = Path(archive)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     gates = {}
     events = []
-    for ledger in sorted(archive.glob("**/events.jsonl")):
-        events.extend(load_events(ledger))
-    problems = judge_events(events)
-    # A2/A3/A4 are derived from the declared terminals recomputed above.
+    problems = []
+    ledgers = sorted(archive.glob("**/events.jsonl"))
+    for ledger in ledgers:
+        group_events = load_events(ledger)
+        events.extend(group_events)
+        for problem in judge_events(group_events):
+            problems.append("%s: %s" % (ledger.parent.name, problem))
     terminals = _terminals(events)
+
+    def scope(rows):
+        passed = [t for t in rows if t["state"] == "PASS"]
+        failed = [t for t in rows if t["state"] == "FAIL"]
+        named = [t for t in rows if t["state"] == "NOT_EVALUATED"]
+        return passed, failed, named
+
     v1 = [t for t in terminals if t["case_id"].startswith("K")]
     v2 = [t for t in terminals if t["case_id"].startswith("R")]
-    g_v1 = [t for t in v1 if t["state"] == "PASS"]
-    g_v2 = [t for t in v2 if t["state"] == "PASS"]
-    n_v2 = [t for t in v2 if t["state"] == "NOT_EVALUATED"]
-    gates["A2"] = ("PASS" if len(g_v2) >= 20 else
-                   "NOT_EVALUATED" if not v2 else "FAIL")
-    consumer_cases = [t for t in v1 if "/E" in t["case_id"]]
-    gates["A3"] = "PASS" if len(g_v1) >= 60 and len(consumer_cases) >= 30 \
-        else ("NOT_EVALUATED" if not v1 else "FAIL")
-    gates["A4"] = gates["A3"]
+    g_v1 = [t for t in v1 if t.get("backend") == "G"]
+    o_v1 = [t for t in v1 if t.get("backend") == "O"]
+    g_v2 = [t for t in v2 if t.get("backend") == "G"]
+    o_v2 = [t for t in v2 if t.get("backend") == "O"]
+
+    def gate(scope_rows, min_pass, label):
+        passed, failed, named = scope(scope_rows)
+        if failed:
+            return "FAIL: %s" % [f["case_id"] for f in failed][:3]
+        if not scope_rows or len(passed) < min_pass:
+            return "NOT_EVALUATED" if not scope_rows else \
+                "FAIL: only %d/%d passed" % (len(passed), len(scope_rows))
+        return "PASS"
+
+    v2p, v2f, v2n = scope(v2)
+    gates["A2"] = gate(v2, 20, "V2")
+    gates["A3"] = gate(g_v1 + g_v2, 91, "G")   # 80 V1 traceable + 11 V2
+    gates["A4"] = gate(o_v1 + o_v2, 90, "O")   # 80 V1 traceable + 10 V2
     gates["A5"] = "PASS" if not problems else "FAIL: %s" % problems[:3]
-    gates["A1"] = "NOT_EVALUATED"   # from selftest on this archive
-    gates["A0"] = "NOT_EVALUATED"   # from freeze manifests
+    gates["A1"] = "NOT_EVALUATED"
+    gates["A0"] = "NOT_EVALUATED"
+    if selftest_path:
+        result = json.loads(Path(selftest_path).read_text())
+        mutations = result.get("mutations", {})
+        rejected = sum(1 for v in mutations.values() if v == "REJECTED")
+        if (result.get("control") == "PASS" and mutations
+                and rejected == len(mutations)):
+            gates["A1"] = "PASS"
+        else:
+            gates["A1"] = ("FAIL: control=%s mutations %d/%d"
+                           % (result.get("control"), rejected,
+                              len(mutations)))
+    if freeze_path:
+        freeze = json.loads(Path(freeze_path).read_text())
+        dirty = freeze.get("dirty", {})
+        problems_f = freeze.get("problems", [])
+        if (not problems_f and not dirty.get("G") and not dirty.get("C1")):
+            gates["A0"] = "PASS"
+        else:
+            gates["A0"] = "FAIL: problems=%s dirty=%s/%s" % (
+                problems_f[:2], len(dirty.get("G", [])),
+                len(dirty.get("C1", [])))
+    p1, f1, n1 = scope(v1)
     verdict = {"archive": str(archive), "gates": gates,
                "problems": problems[:10],
-               "terminals": {"V1_pass": len(g_v1), "V1_total": len(v1),
-                             "V2_pass": len(g_v2), "V2_total": len(v2),
-                             "V2_named": len(n_v2)}}
+               "named_not_evaluated": sorted(
+                   t["case_id"] + "/" + t.get("backend", "")
+                   for t in v2n),
+               "terminals": {"V1_pass": len(p1), "V1_total": len(v1),
+                             "V2_pass": len(v2p), "V2_total": len(v2),
+                             "V2_named": len(v2n),
+                             "V2_failed": [t["case_id"] + "/"
+                                           + t.get("backend", "")
+                                           for t in v2f]}}
     (out / "VERDICT.json").write_text(json.dumps(verdict, indent=1))
     return verdict
