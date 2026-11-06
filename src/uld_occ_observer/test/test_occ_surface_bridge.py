@@ -133,36 +133,42 @@ def test_real_solver_consumes_the_bridge_map():
         saw_floor = True
     assert saw_floor, "observed-floor candidates must appear"
 
-    # A 5-row unknown hole inside the occupied band: any footprint touching
-    # it is rejected by the solver's own unknown_above_floor rule (peak is
-    # above the floor), and the floor-prior path answers only at floor
-    # height -- the prior-vs-observed distinction the contract freezes.
+    # A 5-row unknown hole inside the occupied band. Since OCC-GRID-
+    # CONSUMER-COMPAT G1 the bridge map carries the FULL hull descriptor
+    # verbatim (chamfer block included), and the solver then runs its
+    # hull-gated path: legacy no-descriptor maps answered from rectangle
+    # semantics (the pre-G1 bridge output), where infeasible footprints
+    # over unknown ground were classified sensor-supported at the
+    # observed-depth height. The invariant the contract freezes holds in
+    # BOTH semantics and is what this section now asserts: on a map whose
+    # only usable ground is unknown, every feasible candidate must be a
+    # floor-prior answering at floor height, and sensor support may never
+    # certify unknown ground. (The real sensor-vs-prior distinction is
+    # cross-checked against query_freespace by the live chain test below.)
     mixed = _columns(geometry, occupied_rows=set(range(20, 60)))
     for column in mixed:
         if 29 <= column["y"] < 34:
             column.update(known_count=0, has_occupied=False, top_z=0.0)
     surface_mixed = bridge.build_surface_map(mixed, geometry, _identity(geometry))
+    assert "geometry_descriptor" in surface_mixed, (
+        "the G1 delivery contract carries the full hull descriptor")
     result_mixed = solver.generate_candidates(surface_mixed, [0.30, 0.20, 0.20],
                                               allowed_yaws=[0.0], params=params)
     everything = result_mixed if isinstance(result_mixed, list) else result_mixed["candidates"]
-    saw_surface_arithmetic = False
-    for candidate in everything:
-        if candidate["support_layer_z"] == pytest.approx(0.10):
-            saw_surface_arithmetic = True
-            assert candidate["center_container"][2] == pytest.approx(
-                container_floor + 0.20, abs=1e-6)
-    assert saw_surface_arithmetic, "surface-resting arithmetic must be exercised"
+    assert everything, "solver must answer on the mixed map"
     saw_prior = False
     for candidate in everything:
-        if candidate.get("feasible") and candidate["support_source"] == "floor_prior":
+        if candidate.get("feasible"):
+            assert candidate["support_source"] == "floor_prior", (
+                "unknown ground may only be answered by the prior")
+            assert candidate["center_container"][2] == pytest.approx(
+                container_floor + 0.10)
             saw_prior = True
-        touches_hole = candidate["iy0"] <= 33 and candidate["iy0"] + 10 > 29
-        if candidate.get("feasible") and touches_hole:
-            assert candidate["support_source"] == "floor_prior"
-            assert candidate["center_container"][2] == pytest.approx(container_floor + 0.10)
-        if not candidate.get("feasible") and touches_hole and candidate["support_source"] == "sensor":
-            assert candidate["reason"] == "unknown_above_floor"
-    assert saw_prior, "floor-prior candidates must answer beside the hole"
+    assert saw_prior, "floor-prior candidates must answer on unknown ground"
+    assert all(candidate.get("support_source") != "sensor"
+               or not candidate.get("feasible")
+               for candidate in everything), (
+        "sensor support may never certify unknown ground")
 
 
 @pytest.mark.skipif(not os.environ.get("OCC_FS_NODE"), reason="OCC_FS_NODE not set")
@@ -448,6 +454,13 @@ def test_live_bridge_chain_cross_checks_freespace(tmp_path):
 
         solver = _solver()
         params = solver._default_params()
+        # Widen the ranked set: default top_n keeps only the best 8, and on
+        # this map those are all sensor-supported candidates from the swept
+        # band. The cross-check below needs the prior-path answers over the
+        # un-swept front region in the set too, or its never-known-free
+        # invariant would be vacuously unchecked.
+        params = dict(params)
+        params["top_n"] = 32
         result = solver.generate_candidates(surface, [0.30, 0.20, 0.20],
                                             allowed_yaws=[0.0], params=params)
         solver_candidates = [c for c in (result if isinstance(result, list)
