@@ -96,16 +96,27 @@ def recompute_case(events, case_id, subprobe=""):
     key = (case_id, subprobe)
     if declared["state"] == "PASS":
         if key in NEGATIVE_LEGS:
+            rows = placements + [e for e in events
+                                 if e.get("case_id") == case_id
+                                 and e["event_kind"] == "e4_plan_entry"]
             if not any(any(tok in str(p.get("message", "") or "")
                            for tok in REFUSAL_TOKENS)
-                       for p in placements):
+                       or str(p.get("state", "")).startswith("REFUSED")
+                       for p in rows):
                 return None, "terminal_event_disagreement"
         elif key in POSITIVE_LEGS:
             rows = placements + [e for e in events
                                  if e.get("case_id") == case_id
-                                 and e["event_kind"] == "probe_detail"]
-            if not any(SUCCESS_TOKEN in str(p.get("message", "") or "")
-                       for p in rows):
+                                 and e["event_kind"] in (
+                                     "probe_detail", "e4_plan_entry",
+                                     "e3_snapshot_read")]
+            # E4 positive: BOUNDARY_REACHED is the success vocabulary.
+            if not any(
+                    SUCCESS_TOKEN in str(r.get("message", "") or "")
+                    or str(r.get("state", "")) == "BOUNDARY_REACHED"
+                    or str(r.get("reason", "")).startswith(
+                        "identity matched")
+                    for r in rows):
                 return None, "evidence_missing"
         else:
             evidence = [e for e in events
@@ -113,7 +124,9 @@ def recompute_case(events, case_id, subprobe=""):
                         and e["event_kind"] in (
                             "placement_request", "integrate",
                             "e3_window_stats", "datum_probe",
-                            "clock_probe", "probe_detail")]
+                            "clock_probe", "probe_detail",
+                            "e3_snapshot_read", "e4_plan_entry",
+                            "e4_republish")]
             if not placements and not evidence:
                 return None, "evidence_missing"
         for event in placements:
@@ -366,8 +379,9 @@ def judge_archive(archive, out_dir):
     n_v2 = [t for t in v2 if t["state"] == "NOT_EVALUATED"]
     gates["A2"] = ("PASS" if len(g_v2) >= 20 else
                    "NOT_EVALUATED" if not v2 else "FAIL")
-    gates["A3"] = "PASS" if len(g_v1) >= 60 else (
-        "NOT_EVALUATED" if not v1 else "FAIL")
+    consumer_cases = [t for t in v1 if "/E" in t["case_id"]]
+    gates["A3"] = "PASS" if len(g_v1) >= 60 and len(consumer_cases) >= 30 \
+        else ("NOT_EVALUATED" if not v1 else "FAIL")
     gates["A4"] = gates["A3"]
     gates["A5"] = "PASS" if not problems else "FAIL: %s" % problems[:3]
     gates["A1"] = "NOT_EVALUATED"   # from selftest on this archive

@@ -864,7 +864,7 @@ def consumer_sweep(ctx, case_id, e4_harness):
         e2_ok = success or "BIN_FULL" in message
     ctx.ledger.emit(
         backend=ctx.backend, consumer="E2", hull=ctx.hull,
-        case_id=case_id, subprobe="main",
+        case_id=case_id + "/E2", subprobe="main",
         event_kind="placement_request", stage="consumer", state="REPLIED",
         reason=str(getattr(response, "reason_code", "")),
         message=message[:120])
@@ -905,7 +905,7 @@ def consumer_sweep(ctx, case_id, e4_harness):
                                     str(error)[:60])
     ctx.ledger.emit(
         backend=ctx.backend, consumer="E3", hull=ctx.hull,
-        case_id=case_id, subprobe="main",
+        case_id=case_id + "/E3", subprobe="main",
         event_kind="e3_snapshot_read", stage="consumer",
         state="OK" if e3_ok else "REFUSED", reason=e3_detail[:80])
     _terminal(ctx, case_id + "/E3", "main",
@@ -953,20 +953,6 @@ def consumer_sweep(ctx, case_id, e4_harness):
         reason="typed surface forwarded" if republished else (
             "no map admitted (expected for refusal scenarios)"
             if not admitted else "latch miss after retries"))
-    # A fresh sample stamped safely behind the scenario clock: the
-    # stream stamps on the client's extrapolated clock which can sit
-    # slightly AHEAD of the consumer's last tick (negative age reads as
-    # 'different clock').
-    # Live typed delivery via a REAL transaction: one more fixture
-    # frame through the real intake makes the mapper publish surface_v2
-    # live (DDS-forwarding of large latched messages is not reliable on
-    # this rmw; a real map update is the honest live path). The probe
-    # pins the NEW revision.
-    if admitted:
-        ctx.integrate_scene("S-free", 1, suffix=case_id + "e4")
-        ctx.client.wait_validity("VALID", 8.0)
-        ctx.wait_map_admitted()
-        surface = ctx.client.surface_map or surface
     outcome = e4_harness.run(
         BOX_A, "scene-g1", str(surface.get("geometry_hash", "")),
         int(surface.get("map_revision", 0) or 0))
@@ -977,7 +963,7 @@ def consumer_sweep(ctx, case_id, e4_harness):
         e4_ok = outcome["outcome"] == "BOUNDARY_REACHED"
     ctx.ledger.emit(
         backend=ctx.backend, consumer="E4", hull=ctx.hull,
-        case_id=case_id, subprobe="main",
+        case_id=case_id + "/E4", subprobe="main",
         event_kind="e4_plan_entry", stage="consumer",
         state=outcome["outcome"], reason=outcome["detail"][:260])
     _terminal(ctx, case_id + "/E4", "main",
