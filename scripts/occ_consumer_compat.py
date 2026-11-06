@@ -62,6 +62,9 @@ def main(argv=None):
             subparser.add_argument(
                 "--evidence-root", default=None,
                 help="campaign evidence root (A5 regression + replay)")
+            subparser.add_argument(
+                "--a0-verify", default=None,
+                help="A0_VERIFY.json from occ_compat.a0_verify (gate A0)")
         subparser.set_defaults(func=getattr(cli, "cmd_" + name))
     args = parser.parse_args(argv)
     return args.func(args)

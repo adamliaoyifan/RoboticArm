@@ -47,10 +47,47 @@ def main(argv=None):
         from . import v2_races
         results = v2_races.run_v2_group(
             args.backend, args.hull, manifest, out, args.run_id)
+    _write_probes(out)
     json.dump({"group": "%s-%s-%s" % (args.matrix, args.backend, args.hull),
                "results": results, "domain": args.domain},
               open(out / "GROUP_RESULT.json", "w"), indent=1, default=str)
     return 0
+
+
+def _write_probes(out):
+    """Runtime identity record (G2 §3.1), written at group END so lazily
+    imported case modules are covered: hash every campaign-relevant
+    module THIS interpreter actually imported, plus every executable the
+    chain spawned (recorded by ChainProcess at spawn time). a0_verify
+    binds these probes against the freeze manifest — undeclared loaded
+    paths and post-freeze byte drift both fail A0."""
+    import hashlib
+    probes = []
+    for name, module in sorted(sys.modules.items()):
+        if module is None:
+            continue
+        if not module.__dict__.get("__name__", "").startswith(
+                ("luggage_", "uld_occ", "occ_compat")):
+            continue
+        origin = getattr(module, "__file__", None)
+        if not origin:
+            continue
+        path = Path(origin)
+        if not path.is_file() or path.suffix != ".py":
+            continue
+        probes.append({
+            "kind": "module",
+            "module": name,
+            "path": str(path.resolve()),
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        })
+    exe_paths = sorted(out.glob("**/EXEC_PROBES.jsonl"))
+    for exe_path in exe_paths:
+        for line in exe_path.read_text().splitlines():
+            if line.strip():
+                probes.append(json.loads(line))
+    (out / "MODULE_PROBES.json").write_text(json.dumps(
+        {"schema": "module-probes-v1", "probes": probes}, indent=1))
 
 
 if __name__ == "__main__":

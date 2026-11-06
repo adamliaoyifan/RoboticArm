@@ -55,6 +55,7 @@ class ChainProcess:
             index += 1
             self.log_path = Path(str(log_path) + ".%d" % index)
         self._log = open(self.log_path, "w")
+        self._probe_executable(command)
         env = dict(os.environ)
         env.pop("PYTHONPATH", None)  # the wrapper sets the real one
         if ChainProcess.domain:
@@ -62,6 +63,42 @@ class ChainProcess:
         self.process = subprocess.Popen(
             ["bash", "-c", command], cwd=str(cwd), env=env,
             stdout=self._log, stderr=subprocess.STDOUT)
+
+    def _probe_executable(self, command):
+        """Runtime identity (G2 §3.1): hash the actual entry file this
+        command will execute — resolved from the command's own source
+        prefix (`ros2 run pkg entry` → <install>/lib/pkg/entry, or a
+        direct `python3 <path>`). Appended to EXEC_PROBES.jsonl next to
+        the log; group_main folds it into MODULE_PROBES.json for
+        a0_verify's closure check."""
+        import re
+        match = re.search(r"ros2 run (\S+) (\S+)", command)
+        path = None
+        if match:
+            sources = re.findall(r"source (\S+)/setup\.bash", command)
+            pkg, entry = match.group(1), match.group(2)
+            for install in reversed(sources):
+                candidate = Path(install) / pkg / "lib" / pkg / entry
+                if candidate.is_file():
+                    path = candidate
+                    break
+        else:
+            match = re.search(r"exec python3 (\S+)", command)
+            if match and Path(match.group(1)).is_file():
+                path = Path(match.group(1))
+        if path is None:
+            return
+        try:
+            digest = sha256_file(path)
+        except OSError:
+            return
+        with open(self.log_path.parent / "EXEC_PROBES.jsonl", "a") as probes:
+            probes.write(json.dumps({
+                "kind": "executable",
+                "name": self.name,
+                "path": str(path.resolve()),
+                "sha256": digest,
+            }) + "\n")
 
     def alive(self):
         return self.process.poll() is None

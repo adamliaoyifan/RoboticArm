@@ -303,6 +303,135 @@ def _mutate(events, name):
     return mutated
 
 
+def _mini_a0_fixture(base):
+    """Build a REAL miniature freeze-v2 (store, manifests, probes) that
+    passes structural _freeze_gate and independent a0_verify, so the
+    w09–w12 mutations exercise the actual payload-verification path
+    rather than a mock."""
+    import hashlib as _hashlib
+
+    def _sha(data):
+        return _hashlib.sha256(data).hexdigest()
+
+    base = Path(base)
+    base.mkdir(parents=True, exist_ok=True)
+    payloads = {
+        # side-annotated absolute artifact path -> bytes
+        "install/g/luggage_perception/lib/luggage_perception/mod.py":
+            b"# g module\n",
+        "install/g/luggage_perception/share/luggage_perception/cfg.yaml":
+            b"resolution: 0.02\n",
+        "install/g/luggage_perception/lib/luggage_perception/"
+        "cargo_volume_mapper_node.py": b"#!/usr/bin/env python3\n",
+        "install/c1/luggage_packing/lib/luggage_packing/"
+        "placement_planner_node.py": b"#!/usr/bin/env python3\n",
+        "install/o/uld_occ_observer/lib/uld_occ_observer/observer_node":
+            b"\x7fELF-fake\n",
+    }
+    entries = {"G": {}, "C1": {}, "O_CONTROL": {}}
+    store = base / "store"
+    for rel, data in payloads.items():
+        path = base / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        digest = _sha(data)
+        shard = store / digest[:2] / digest
+        shard.parent.mkdir(parents=True, exist_ok=True)
+        shard.write_bytes(data)
+        side, pkg_rest = rel.split("/", 2)[1], rel.split("/", 2)[2]
+        side = {"g": "G", "c1": "C1", "o": "O_CONTROL"}[side]
+        entries[side][pkg_rest] = {"sha256": digest,
+                                   "size": len(data), "role": "module"}
+    doc = {
+        "schema": "freeze-v2",
+        "source_map": {
+            "G": {"commit": "mini", "packages": {
+                "luggage_perception": {"mod.py": _sha(b"# g module\n")}}},
+            "C1": {"commit": "mini", "packages": {
+                "luggage_packing": {"scripts/planner.py":
+                                    _sha(b"# c1\n")}}},
+            "T1": {"commit": "mini", "scripts": {
+                "occ_compat/judge.py": _sha(b"# t1\n")}},
+            "O_CONTROL": {"commit": "mini"},
+        },
+        "install_manifest": entries,
+        "store": {"kind": "content-addressed-sha256", "shards": 0},
+        "dirty": {"G": [], "C1": [], "O": []},
+        "problems": [],
+        "manifest": {
+            "g_install": str(base / "install/g"),
+            "c1_install": str(base / "install/c1"),
+            "o_install": str(base / "install/o"),
+            "g_root": str(base / "rootg"),
+            "c1_root": str(base / "rootc1"),
+            "sfree_dir": "mini",
+        },
+    }
+    # mirror the source/T1 hashes into the store so declared==stored
+    for data in (b"# g module\n", b"# c1\n", b"# t1\n"):
+        digest = _sha(data)
+        shard = store / digest[:2] / digest
+        shard.parent.mkdir(parents=True, exist_ok=True)
+        shard.write_bytes(data)
+    (base / "FREEZE.json").write_text(json.dumps(doc))
+    probes = {"schema": "module-probes-v1", "probes": [
+        {"kind": "module", "module": "luggage_perception.mod",
+         "path": str(base / "install/g/luggage_perception/lib/"
+                    "luggage_perception/mod.py"),
+         "sha256": _sha(b"# g module\n")},
+        {"kind": "executable", "name": "observer",
+         "path": str(base / "install/o/uld_occ_observer/lib/"
+                    "uld_occ_observer/observer_node"),
+         "sha256": _sha(b"\x7fELF-fake\n")},
+    ]}
+    # probes must reference real on-disk paths: materialize the first
+    # probe's path exactly as declared
+    (base / "PROBES.json").write_text(json.dumps(probes))
+    return base
+
+
+def _mutate_store_byte(fixture):
+    shard = next(iter(sorted((fixture / "store").glob("*/*"))))
+    data = bytearray(shard.read_bytes())
+    data[0] ^= 0xFF
+    shard.write_bytes(bytes(data))
+
+
+def _mutate_store_delete(fixture):
+    shard = next(iter(sorted((fixture / "store").glob("*/*"))))
+    shard.unlink()
+
+
+def _mutate_manifest_crosswire(fixture):
+    """Same-name package replacement: point one manifest entry at
+    ANOTHER payload's hash — the store stays consistent, the runtime
+    probe exposes the cross-wiring."""
+    doc = json.loads((fixture / "FREEZE.json").read_text())
+    sides = doc["install_manifest"]
+    # swap the PROBE-BOUND module's hash so runtime identity exposes the
+    # cross-wiring (store itself stays name==hash consistent)
+    target = next(k for k in sorted(sides["G"]) if k.endswith("mod.py"))
+    donor = sorted(sides["C1"])[0]
+    sides["G"][target]["sha256"] = sides["C1"][donor]["sha256"]
+    (fixture / "FREEZE.json").write_text(json.dumps(doc))
+
+
+def _mutate_probe_undeclared(fixture):
+    """A module the run loaded that no manifest entry declares."""
+    rogue = fixture / "rogue_installer.py"
+    rogue.write_bytes(b"# never frozen\n")
+    probes = json.loads((fixture / "PROBES.json").read_text())
+    probes["probes"].append({
+        "kind": "module", "module": "rogue_installer",
+        "path": str(rogue), "sha256": _sha256_str(b"# never frozen\n")})
+    (fixture / "PROBES.json").write_text(json.dumps(probes))
+
+
+def _sha256_str(data):
+    import hashlib
+    return hashlib.sha256(data).hexdigest()
+
+
 def selftest(manifest_path, out_dir):
     """A1: mutations on a REAL rehearsal archive through the SAME judge
     entry as the formal verdict. Expects the latest V1 rehearsal ledger
@@ -406,6 +535,33 @@ def selftest(manifest_path, out_dir):
         out / "w_missing_replay").startswith("FAIL") else "FALSE_PASS"
     wiring["w06_missing_regression"] = "REJECTED" if _regression_gate(
         out / "w_missing_regression").startswith("FAIL") else "FALSE_PASS"
+    # G2 §3.1 A0 payload wiring: a REAL miniature freeze (built with the
+    # same content-addressed layout) feeds the independent verifier; each
+    # mutation must reject, the healthy control must reach A0 PASS.
+    import shutil
+    from .a0_verify import verify as _a0v
+    base = _mini_a0_fixture(out / "w_a0_base")
+    control = _a0v(base / "FREEZE.json", [base / "PROBES.json"])
+    wiring["w09_base_control_passes"] = (
+        "PASS" if control.get("verdict") == "PASS"
+        and _freeze_gate(json.loads((base / "FREEZE.json").read_text()),
+                         control) == "PASS" else "FALSE_PASS")
+    mutations_a0 = {
+        "w09_single_byte_corruption": _mutate_store_byte,
+        "w10_missing_artifact": _mutate_store_delete,
+        "w11_same_name_package_replacement": _mutate_manifest_crosswire,
+        "w12_undeclared_loaded_path": _mutate_probe_undeclared,
+    }
+    for name, mutate in mutations_a0.items():
+        target = out / name
+        shutil.copytree(base, target)
+        mutate(target)
+        result_a0 = _a0v(target / "FREEZE.json", [target / "PROBES.json"])
+        wiring[name] = "REJECTED" if (
+            result_a0.get("verdict") == "REJECTED"
+            and _freeze_gate(json.loads(
+                (target / "FREEZE.json").read_text()),
+                result_a0).startswith("FAIL")) else "FALSE_PASS"
     result["gate_wiring"] = wiring
     (out / "SELFTEST.json").write_text(json.dumps(result, indent=1))
     return result
@@ -430,11 +586,15 @@ MUTATION_IDS = (
     "m12_replay_payload_missing")
 
 
-def _freeze_gate(freeze):
+def _freeze_gate(freeze, a0_verify=None):
     """A0 版本/输入/构建: structural payload verification of the freeze
-    document. Missing keys FAIL (an absent field must never default to
-    an empty-and-therefore-clean reading); the two C1 sides must share
-    one commit and every side ships non-empty source and install maps."""
+    document, upgraded by the INDEPENDENT a0_verify result (G2 §3.1).
+    Missing keys FAIL (an absent field must never default to an
+    empty-and-therefore-clean reading); the two C1 sides must share one
+    commit and every side ships non-empty source and install maps.
+    Structural pass alone is NOT_EVALUATED — payload bytes must be
+    verified by a0_verify (store recomputation + runtime probe closure),
+    whose verdict maps: PASS→PASS, REJECTED→FAIL, absent/v1→NE."""
     if freeze is None:
         return "FAIL: no freeze document provided"
     missing = []
@@ -468,14 +628,24 @@ def _freeze_gate(freeze):
         missing.append("manifest.sfree_dir")
     if missing:
         return "FAIL: %s" % missing[:4]
-    # Structural checks pass, but the contract's A0 also demands the
+    # Structural checks pass. The contract's A0 also demands the
     # referenced source/install/input BYTES be hash-verified against the
     # manifest expectations — an independent judge cannot take the freeze
-    # generator's own declarations for that. Until a verified re-hash
-    # path feeds this gate, structural-only stays NOT_EVALUATED.
-    return ("NOT_EVALUATED: structural checks pass; payload hash "
-            "re-verification pending (tool gap — contract A0 not yet "
-            "fully evidenced)")
+    # generator's own declarations for that, so the verdict comes from
+    # the separate a0_verify module (store recomputation + runtime probe
+    # closure), never from this structural pass alone.
+    if a0_verify is None:
+        return ("NOT_EVALUATED: structural checks pass; no independent "
+                "A0_VERIFY payload result provided")
+    verdict = a0_verify.get("verdict")
+    if verdict == "PASS":
+        return "PASS"
+    if verdict == "REJECTED":
+        return "FAIL: %s" % (a0_verify.get("problems") or
+                             ["payload verification rejected"])[:3]
+    return "NOT_EVALUATED: %s" % (a0_verify.get("problems")
+                                  or ["payload verification not "
+                                      "evaluated"])[:3]
 
 
 def _a1_gate(selftest, freeze):
@@ -640,7 +810,7 @@ def _fail_evidence_gate(groups):
 
 
 def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
-                  evidence_root=None):
+                  evidence_root=None, a0_verify_path=None):
     """Formal A0-A5 verdict per contract c7039905 §5 (recomputed, never
     self-reported).
 
@@ -693,7 +863,13 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
         else None
     selftest = json.loads(Path(selftest_path).read_text()) \
         if selftest_path else None
-    gates["A0"] = _freeze_gate(freeze)
+    a0v = json.loads(Path(a0_verify_path).read_text()) \
+        if a0_verify_path else None
+    gates["A0"] = _freeze_gate(freeze, a0v)
+    if a0v is not None:
+        gates["A0_verify_detail"] = "%s: probes=%s problems=%s" % (
+            a0v.get("verdict"), (a0v.get("checks") or {}).get("probes"),
+            (a0v.get("problems") or [])[:2])
     gates["A1"] = _a1_gate(selftest, freeze)
 
     if "A5" not in gates:
