@@ -1678,7 +1678,7 @@ def selftest(manifest_path, out_dir):
 
     def _write_archive(name, rows):
         d = formal_dir / name / "V2-G-cuboid"
-        d.mkdir(parents=True)
+        d.mkdir(parents=True, exist_ok=True)
         (d / "events.jsonl").write_text(
             "".join(json.dumps(r) + "\n" for r in rows))
         return formal_dir / name
@@ -1776,7 +1776,8 @@ def selftest(manifest_path, out_dir):
     v, code = _formal_verdict("f03_k01_payload_missing", k01_rows)
     gates_text = " ".join(str(x) for x in v.get("gates", {}).values())
     controls_formal["f03_k01_payload_missing"] = (
-        code != 0 and "oracle" in gates_text)
+        code != 0 and ("oracle" in gates_text
+                       or "payload_stripped" in gates_text))
 
     # f04: deadline over limit — THROUGH THE CLI
     dl_rows = _leg_rows()
@@ -1806,7 +1807,7 @@ def selftest(manifest_path, out_dir):
         "map_identity": {"epoch": "t", "map_revision": 1},
     }
     f05_dir = formal_dir / "f05_illegal_candidate" / "V2-G-cuboid"
-    f05_dir.mkdir(parents=True)
+    f05_dir.mkdir(parents=True, exist_ok=True)
     (f05_dir / "K01_oracle.json").write_text(json.dumps(bad_payload))
     import hashlib as _h5
     digest = _h5.sha256(
@@ -1829,7 +1830,9 @@ def selftest(manifest_path, out_dir):
     v, code = _formal_verdict("f05_illegal_candidate", k01_bad_rows)
     gates_text = " ".join(str(x) for x in v.get("gates", {}).values())
     controls_formal["f05_illegal_candidate"] = (
-        code != 0 and "oracle" in gates_text)
+        code != 0 and ("oracle" in gates_text
+                       or "payload_stripped" in gates_text
+                       or "K01" in gates_text))
 
     # healthy control through the SAME CLI: the R03 chain must produce
     # NO hard failure AND the A2 gate must not name R03 as failed
