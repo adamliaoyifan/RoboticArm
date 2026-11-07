@@ -30,18 +30,31 @@ def _oriented_footprint(size, yaw):
     return (w * c + d * s, w * s + d * c)
 
 
-def _cells_under(footprint, center_xy, resolution, origin_xy, nx, ny):
-    """Grid cells whose centers lie inside the oriented footprint."""
+def _cells_under(footprint, center_xy, resolution, origin_xy, nx, ny,
+                 unclipped=False):
+    """Grid cells whose centers lie inside the oriented footprint. With
+    ``unclipped`` the scan range is not bounded by the grid so an
+    out-of-grid footprint is visible to the caller."""
     fw, fd = footprint
     x0, x1 = center_xy[0] - fw / 2.0, center_xy[0] + fw / 2.0
     y0, y1 = center_xy[1] - fd / 2.0, center_xy[1] + fd / 2.0
+    if unclipped:
+        ix_lo = int((x0 - origin_xy[0]) / resolution - 1)
+        ix_hi = int((x1 - origin_xy[0]) / resolution + 1)
+        iy_lo = int((y0 - origin_xy[1]) / resolution - 1)
+        iy_hi = int((y1 - origin_xy[1]) / resolution + 1)
+        ix_range = range(ix_lo, ix_hi + 1)
+        iy_range = range(iy_lo, iy_hi + 1)
+    else:
+        ix_range = range(nx)
+        iy_range = range(ny)
     cells = []
-    for ix in range(nx):
+    for ix in ix_range:
         cx = origin_xy[0] + (ix + 0.5) * resolution
         if cx < x0 - POLICY["float_tolerance_m"] or \
                 cx > x1 + POLICY["float_tolerance_m"]:
             continue
-        for iy in range(ny):
+        for iy in iy_range:
             cy = origin_xy[1] + (iy + 0.5) * resolution
             if y0 - POLICY["float_tolerance_m"] <= cy <= \
                     y1 + POLICY["float_tolerance_m"]:
@@ -75,6 +88,44 @@ def verify_candidate(candidate, *, surface, box_size, hull,
 
     fw, fd = _oriented_footprint(size, yaw)
     inner = hull["inner_size"]
+    # Chamfer hull (reviews 1355): when the payload carries the chamfer
+    # cut geometry, containment is the RECTANGULAR bound MINUS the
+    # corner cut triangles — a candidate center inside the rectangle but
+    # inside a cut triangle fails the hull leg.
+    chamfer = hull.get("chamfer") or (
+        hull.get("chamfer_cut_m") and {
+            "floor_y": 1.0 - float(hull["chamfer_cut_m"]),
+            "wall_y": 1.0, "wall_z": 1.0, "side": "positive_y"})
+    if chamfer:
+        # The frozen descriptor semantics (luggage_description): above
+        # wall_z the free width shrinks from wall_y to floor_y on the
+        # named side — a ramp. The candidate's TOP corner on that side
+        # must stay inside the ramp (reviews 1355: real chamfer
+        # geometry, not a rectangle).
+        side = str(chamfer.get("side", "positive_y"))
+        sign = 1.0 if side.endswith("positive_y") else -1.0
+        wall_y = float(chamfer["wall_y"])
+        floor_y = float(chamfer["floor_y"])
+        wall_z = float(chamfer["wall_z"])
+        z0 = center[2] - size[2] / 2.0
+        z1 = center[2] + size[2] / 2.0
+        fd_signed = fd if sign > 0 else fd
+        for z in (z0, z1):
+            t = min(max((z - 0.0) / wall_z, 0.0), 1.0) \
+                if wall_z > 0 else 0.0
+            limit = floor_y + (wall_y - floor_y) * (1.0 - t)
+            # container y ranges -half_w..+half_w; the ramp eats from
+            # the side edge inward
+            edge = sign * (center[1] + (fd / 2.0 if sign > 0
+                                        else -fd / 2.0))
+            if sign > 0 and (center[1] + fd / 2.0) > limit + \
+                    POLICY["float_tolerance_m"]:
+                result["legs"]["hull"] = "FAIL_chamfer_ramp"
+                return result
+            if sign < 0 and (center[1] - fd / 2.0) < -limit - \
+                    POLICY["float_tolerance_m"]:
+                result["legs"]["hull"] = "FAIL_chamfer_ramp"
+                return result
     # The solver's own grid placement is authoritative for the footprint
     # when present (ix0/iy0 + cells_x/cells_y in the map's indexing).
     solver_cells = None
@@ -100,10 +151,27 @@ def verify_candidate(candidate, *, surface, box_size, hull,
     # v1 maps are container-centered: cell (ix, iy) center in container
     # frame is (-(nx/2)+ (ix+0.5)) * res, same for y.
     origin_xy = (-(nx / 2.0) * resolution, -(ny / 2.0) * resolution)
-    cells = solver_cells or _cells_under(
+    # GEOMETRY is authoritative (reviews 1355): the footprint comes from
+    # center/yaw/size; the candidate's self-reported indices are a claim
+    # that must MATCH the computed set — mismatch (shifted indices,
+    # shrunk coverage) fails the claim leg, never silently replaces the
+    # computed cells. No out-of-bounds clipping without the conflict
+    # being recorded.
+    cells = _cells_under(
         (fw, fd), (center[0], center[1]), resolution, origin_xy, nx, ny)
-    cells = [(ix, iy) for ix, iy in cells
-             if 0 <= ix < nx and 0 <= iy < ny]
+    if any(not (0 <= ix < nx and 0 <= iy < ny)
+           for ix, iy in _cells_under(
+               (fw, fd), (center[0], center[1]), resolution,
+               origin_xy, nx, ny, unclipped=True)):
+        result["legs"]["coverage"] = "FAIL_footprint_outside_grid"
+        return result
+    if solver_cells is not None and \
+            sorted(set(solver_cells)) != sorted(set(cells)):
+        result["legs"]["claim"] = "FAIL_reported_cells_mismatch"
+        return result
+    if not cells:
+        result["legs"]["coverage"] = "FAIL_no_cells"
+        return result
     if not cells:
         result["legs"]["coverage"] = "FAIL_no_cells"
         return result

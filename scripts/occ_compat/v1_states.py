@@ -226,15 +226,29 @@ def _k01(ctx, run_e3=None, run_e4=None):
     # the collection-time verdicts — written beside the ledger and
     # referenced by digest.
     import hashlib as _hl
+    _hull = {"inner_size": [1.49, 1.97, 1.48],
+             "floor_z_container": 0.53}
+    _descriptor = surface.get("geometry_descriptor") or {}
+    if _descriptor.get("chamfer"):
+        # the hull comes from the MAP'S OWN descriptor (reviews 1355:
+        # actual chamfer geometry, never a hardcoded rectangle)
+        _hull = {
+            "inner_size": [float(_descriptor.get("length", 1.49)),
+                           float(_descriptor.get("width", 1.97)),
+                           float(_descriptor.get("ceiling_z", 1.48))],
+            "floor_z_container": float(_descriptor.get("floor_z", 0.53)),
+            "chamfer": _descriptor["chamfer"],
+            "geometry_hash": _descriptor.get("geometry_hash", ""),
+        }
     oracle_payload = {
-        "schema": "k01-oracle-payload-v1",
+        "schema": "k01-oracle-payload-v2",
         "surface": surface, "box_size": list(BOX_A),
-        "hull": {"inner_size": [1.49, 1.97, 1.48],
-                 "floor_z_container": 0.53},
+        "hull": _hull,
         "candidates": dump, "verdicts": verdict["verdicts"],
         "map_identity": {
             "epoch": str(surface.get("epoch", "")),
             "map_revision": surface.get("map_revision", 0)},
+        "backend": ctx.backend, "hull_tag": str(ctx.hull),
     }
     payload_name = "K01_oracle.json"
     payload_path = ctx.ledger.path.parent / payload_name

@@ -192,28 +192,40 @@ ORDER_ASSERTIONS = {
 }
 
 
+def _chain_identity(event):
+    """(backend, epoch) of an event, for identity-joined order checks.
+    Rows without identity fields carry None — the join demands the
+    fields EXIST on probe rows (the drivers emit them)."""
+    return (event.get("backend", None), event.get("epoch", None))
+
+
 def _order_problems(events):
-    """Each asserted row must exist and the sequence must be strictly
-    increasing in mono_ns (reviews 1210: inverted key order rejects)."""
+    """Identity-joined order verification (reviews 1355 F07-2).
+
+    Beyond mono_ns increasing, every segment row must carry identity
+    (backend/epoch), all rows share ONE backend, epochs only advance
+    THROUGH the reset segment (old->new is legal, arbitrary epoch
+    hops between unrelated requests are not), and ambiguous segments
+    (multiple rows satisfying a segment with DIFFERENT identities) are
+    rejected — a chain stitched from different requests/backends can
+    never pass even with correct vocabulary and timing."""
     problems = []
     present = {str(e.get("case_id", "")).split("/")[0]
                for e in _terminals(events)}
     for case_id, chain in ORDER_ASSERTIONS.items():
         if case_id not in present:
             continue  # assertions apply only to cases this ledger ran
-        stamps = []
+        segments = []
+        broken = False
         for kind, field, token in chain:
             if kind == "reset":
-                # reset rows are case-linked via reset_case: the CHAIN's
-                # token names the exact mid-case reset (setup resets
-                # with a shorter label must not satisfy it).
                 rows = [e for e in events
                         if e["event_kind"] == "reset"
                         and e.get("case_id", "") == "-"
-                        and token in str(e.get("reset_case", ""))]
+                        and token in str(e.get("reset_case", ""))
+                        and e.get("reset_id")
+                        and e.get("state") == "OK"]
             elif kind == "producer_restart":
-                # restart forensics rows are case-unlinked (only the
-                # restart case emits them in a group).
                 rows = [e for e in events
                         if e["event_kind"] == kind
                         and token in str(e.get(field, ""))]
@@ -226,11 +238,56 @@ def _order_problems(events):
             if not rows:
                 problems.append("%s: order-segment missing (%s/%s=%s)"
                                 % (case_id, kind, field, token))
-                stamps = []
+                broken = True
                 break
-            stamps.append(min(e["mono_ns"] for e in rows))
-        if stamps and any(later <= earlier
-                          for earlier, later in zip(stamps, stamps[1:])):
+            segments.append((kind, rows))
+        if broken:
+            continue
+        # identity join: choose per-segment candidate rows and require a
+        # coherent chain; any segment whose rows disagree on identity is
+        # ambiguous.
+        def ident_options(rows):
+            return {_chain_identity(r) for r in rows}
+        if any(len(ident_options(rows)) > 1 for _, rows in segments):
+            problems.append(
+                "%s: order segments ambiguous (mixed identities)" % case_id)
+            continue
+        idents = [next(iter(ident_options(rows))) for _, rows in segments]
+        backends = {i[0] for i in idents}
+        if None in backends:
+            problems.append(
+                "%s: order rows lack backend identity" % case_id)
+            continue
+        if len(backends) != 1:
+            problems.append(
+                "%s: order chain stitched across backends %s"
+                % (case_id, sorted(str(b) for b in backends)))
+            continue
+        epochs = [i[1] for i in idents]
+        if None in epochs:
+            # The chain is backend-coherent but the rows predate epoch
+            # tagging: the epoch-join aspect stays named NE (reviews
+            # 1355) — never silently passed, never a failure.
+            problems.append("%s: order_identity_epoch_not_recorded"
+                            % case_id)
+            continue
+        # epochs may only change across a reset segment, and only
+        # forward within the chain
+        legal = True
+        for idx in range(1, len(epochs)):
+            if epochs[idx] != epochs[idx - 1]:
+                if segments[idx - 1][0] != "reset" and \
+                        segments[idx][0] != "reset":
+                    legal = False
+        if not legal:
+            problems.append("%s: epoch changed outside a reset segment "
+                            "(%s)" % (case_id, epochs))
+            continue
+        stamps = [min(r["mono_ns"] for _, rows in segments
+                      for r in rows if r in segments[i][1])
+                  for i in range(len(segments))]
+        if any(later <= earlier
+               for earlier, later in zip(stamps, stamps[1:])):
             problems.append("%s: order violated %s" % (
                 case_id, ["%d" % st for st in stamps]))
     return problems
@@ -258,16 +315,35 @@ def _k01_independent_oracle(events, ledger_dir):
     except (OSError, ValueError) as error:
         return ["K01: oracle payload unreadable (%s)" % str(error)[:60]]
     from .oracle import verify_response as _vr
+    surface = payload.get("surface") or {}
+    hull = payload.get("hull") or {}
+    desc = surface.get("geometry_descriptor") or {}
+    if desc.get("chamfer") and not hull.get("chamfer"):
+        # the hull comes from the MAP'S OWN descriptor (reviews 1355)
+        hull = {"inner_size": [float(desc.get("length", 1.49)),
+                               float(desc.get("width", 1.97)),
+                               float(desc.get("ceiling_z", 1.48))],
+                "floor_z_container": float(desc.get("floor_z", 0.53)),
+                "chamfer": desc["chamfer"]}
     verdict = _vr(
         type("R", (), {"candidates": payload.get("candidates", []),
                        "reason_code": ""})(),
-        surface=payload.get("surface") or {},
+        surface=surface,
         box_size=payload.get("box_size") or (0.3, 0.2, 0.2),
-        hull=payload.get("hull") or {})
+        hull=hull)
     if not verdict["verdicts"]:
         return ["K01: no candidates in the archived oracle payload"]
     if not verdict["all_pass"]:
         return ["K01: independent oracle rejects a candidate"]
+    # map-identity binding (reviews 1355): the payload's own surface
+    # identity must equal its declared map_identity block — an oracle
+    # run against a different map than it claims is a mismatch.
+    surface = payload.get("surface") or {}
+    identity = payload.get("map_identity") or {}
+    if (str(surface.get("epoch", "")) != str(identity.get("epoch", ""))
+            or int(surface.get("map_revision", 0) or 0) != int(
+                identity.get("map_revision", 0) or 0)):
+        return ["K01: oracle payload map identity inconsistent"]
     claimed = [e for e in events
                if e.get("case_id", "").startswith("K01")
                and "oracle_legs" in e]
@@ -1028,7 +1104,7 @@ def selftest(manifest_path, out_dir):
                                    "handle-acquired", mono_ns=stamps[0],
                                    reason="status=OK token=True"),
             "reset": _ev("reset", "-", mono_ns=stamps[1],
-                         reset_case="R03-reset"),
+                         reset_case="R03-reset", reset_id="r3-1"),
             "old-handle-refused": _ev(
                 "probe_detail", "R03", "old-handle-refused",
                 mono_ns=stamps[2],
@@ -1104,6 +1180,41 @@ def selftest(manifest_path, out_dir):
     _state, rule = recompute_case(over_events, "R03", "main")
     wiring["w19_deadline_over_limit"] = (
         "REJECTED" if rule == "deadline_violation" else "FALSE_PASS")
+
+    # 1355 controls
+    def _ident_rows():
+        rows = _healthy_r03_events()
+        for r in rows:
+            r["backend"] = "G"
+            r["epoch"] = "1"
+        return rows
+    stitched = _ident_rows()
+    for r in stitched:
+        if r.get("subprobe") in ("old-handle-refused",
+                                 "old-identity-refused",
+                                 "old-payload-unauthorized",
+                                 "old-revision-request-refused",
+                                 "new-epoch-healthy") or \
+                r["event_kind"] == "placement_request":
+            r["backend"], r["epoch"] = "O", "9"
+    wiring["w21_stitched_order_chain"] = "REJECTED" if \
+        any("stitched" in p or "epoch changed" in p
+            for p in _order_problems(stitched)) else "FALSE_PASS"
+    # oracle shrunk coverage: candidate claiming 1 free cell while its
+    # geometry covers occupied cells (the 1355 counterexample verbatim)
+    surf4 = {"resolution": 1.0, "nx": 4, "ny": 4,
+             "height": [[0, 2.0, 2.0, 2.0]] + [[2.0] * 4] * 3,
+             "state": [["free", "occupied", "occupied", "occupied"]]
+                       + [["occupied"] * 4] * 3}
+    from .oracle import verify_candidate as _vc
+    shrunk = _vc({"center_container": [0.0, 0.0, 1.03], "yaw": 0.0,
+                  "ix0": 0, "iy0": 0, "cells_x": 1, "cells_y": 1,
+                  "confidence_ratio": 1.0},
+                 surface=surf4, box_size=(1.0, 1.0, 1.0),
+                 hull={"inner_size": [8.0, 8.0, 2.0],
+                       "floor_z_container": 0.0})
+    wiring["w22_oracle_shrunk_coverage"] = (
+        "REJECTED" if not shrunk["pass"] else "FALSE_PASS")
     result["gate_wiring"] = wiring
     (out / "SELFTEST.json").write_text(json.dumps(result, indent=1))
     return result
@@ -1255,6 +1366,8 @@ REQUIRED_WIRING = (
     "w16_order_inverted", "w17_oracle_payload_missing",
     "w18_illegal_candidate", "w19_deadline_over_limit",
     "w20_wrong_identity_linkage",
+    "w21_stitched_order_chain", "w22_oracle_shrunk_coverage",
+    "w23_a0_input_probe_coverage",
 )
 
 

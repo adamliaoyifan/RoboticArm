@@ -174,9 +174,11 @@ def verify(freeze_path, probe_paths, ledger_paths=()):
     declared_inputs = freeze.get("input_files") or {}
     by_path = {str(entry.get("path")): entry.get("sha256")
                for entry in declared_inputs.values()}
+    probed_inputs = set()
     for probe in probes:
         if probe.get("kind") != "input":
             continue
+        probed_inputs.add(str(probe.get("path")))
         want = by_path.get(probe.get("path"))
         if want is None:
             result["problems"].append(
@@ -186,6 +188,14 @@ def verify(freeze_path, probe_paths, ledger_paths=()):
             result["problems"].append(
                 "runtime input bytes != freeze digest: %s"
                 % str(probe.get("path"))[:70])
+    # COVERAGE (reviews 1355 F04): when the freeze declares runtime
+    # inputs, every declared input must be probed at least once —
+    # deleting the input probes from a real archive can never pass.
+    missing_inputs = sorted(set(by_path) - probed_inputs)
+    if declared_inputs and missing_inputs:
+        result["problems"].append(
+            "%d freeze-declared runtime input(s) never probed (first: %s)"
+            % (len(missing_inputs), missing_inputs[0][:70]))
     if "module" not in kinds:
         result["problems"].append(
             "no module probes — runtime import identity unproven")
