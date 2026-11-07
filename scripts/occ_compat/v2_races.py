@@ -13,7 +13,7 @@ import json
 import time
 
 from .ledger import mono_ns
-from .v1_states import BOX_A, CaseContext, _terminal
+from .v1_states import BOX_A, CaseContext, _terminal, budget_fields
 
 #: Hook release helper: wait for the planner's stage marker, run the
 #: injection, then release.
@@ -142,6 +142,7 @@ def _placement_probe(ctx, case):
     time.sleep(0.4)
     ok = False
     for _attempt in range(3):
+        _probe_start = mono_ns()
         future = ctx.client._chain_clients["placement"].call_async(
             _v1_request())
         deadline = time.monotonic() + 35.0
@@ -160,6 +161,7 @@ def _placement_probe(ctx, case):
             backend=ctx.backend, consumer="E1", hull=ctx.hull,
             case_id=case, subprobe="healthy", event_kind="probe_detail",
             stage="consumer", state="OK" if ok else "REFUSED",
+            **budget_fields(_probe_start),
             reason=str(getattr(response, "reason_code", "")),
             message=str(getattr(response, "message", ""))[:120])
         if ok:
@@ -236,6 +238,7 @@ def run_r04(ctx):
         backend=ctx.backend, consumer="E1", hull=ctx.hull,
         case_id="R04", subprobe="main",
         event_kind="placement_request", stage="consumer", state="REPLIED",
+        **budget_fields(_r04_start),
         reason=str(getattr(response, "reason_code", "")),
         message=message[:120])
     healthy = _placement_probe(ctx, "R04")
@@ -282,6 +285,7 @@ def run_r05(ctx, service="v1", case="R05"):
             (ctx.client.surface_map or {}).get("map_revision", 0))
         client_name = "placement_v2"
     submitted_ns = mono_ns()
+    _r05_start = mono_ns()
     future = ctx.client._chain_clients[client_name].call_async(request)
 
     def _checkpoint(stage, **extra):
@@ -368,6 +372,7 @@ def run_r05(ctx, service="v1", case="R05"):
         backend=ctx.backend, consumer="E1" if service == "v1" else "E2",
         hull=ctx.hull, case_id=case, subprobe="main",
         event_kind="placement_request", stage="consumer", state="REPLIED",
+        **budget_fields(_r05_start),
         reason=str(getattr(response, "reason_code", "")),
         message=message[:120])
     # Healthy control: a fresh request in the recovered state succeeds.
@@ -817,6 +822,7 @@ def run_r03(ctx, case="R03"):
     # after_admit — an unreleased park reads as a 30s timeout, not a
     # refusal (run02's R03 failure, same class as the R05 fix).
     import rclpy as _rclpy
+    _r03_stale_start = mono_ns()
     _future = ctx.client._chain_clients["placement_v2"].call_async(request)
     _deadline = time.monotonic() + 30.0
     while not _future.done() and time.monotonic() < _deadline:
@@ -834,6 +840,7 @@ def run_r03(ctx, case="R03"):
         backend=ctx.backend, consumer="E2", hull=ctx.hull, case_id=case,
         subprobe="old-revision-request",
         event_kind="placement_request", stage="consumer", state="REPLIED",
+        **budget_fields(_r03_stale_start),
         reason=str(getattr(stale, "reason_code", "")),
         message=str(getattr(stale, "message", "") or "")[:120])
     _leg("old-revision-request-refused",

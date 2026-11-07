@@ -138,6 +138,35 @@ K01_ORACLE_LEGS = frozenset(
     ("clearance", "hull", "occupied_overlap", "support",
      "unknown_interior"))
 K01_SAMPLE_FIELDS = ("cells_x", "cells_y", "center_container")
+#: K01 sample sanity (0915 F07): non-negative cells, finite container-
+#: scale coordinates — a -1 cell or a 1e99 center is a payload
+#: fabrication, not a candidate.
+K01_COORD_BOUNDS = {"x": (-2.0, 2.0), "y": (-2.0, 2.0),
+                    "z": (0.0, 2.0)}
+
+#: Typed per-leg FACT tokens (0915 F07): a leg's PASS must be backed by
+#: its OWN probe rows carrying the driver's fact vocabulary — a generic
+#: case-scoped integrate row can never substantiate a typed leg. Refusal
+#: legs additionally require the row NOT to claim plain success.
+REQUIRED_LEG_FACTS = {
+    # tokens are ALTERNATIVES across the two backends' native
+    # vocabularies (G: token=True / SNAPSHOT_*; O: handle=True /
+    # INVALID_OR_EXPIRED_HANDLE / EPOCH_MISMATCH) — frozen from the
+    # real driver outputs of both g2 runs.
+    ("R03", "handle-acquired"):
+        (("status=OK", ("token=True", "handle=True")), False),
+    ("R03", "old-handle-refused"):
+        (("native status=", "authorized_payload=0"), True),
+    ("R03", "old-identity-refused"):
+        (("status=", "MISMATCH"), True),
+    ("R03", "old-payload-unauthorized"):
+        (("admitted_epoch=", "new_epoch="), True),
+    ("R03", "old-revision-request-refused"):
+        (("VALIDITY_GATE",), True),
+    ("R03", "new-epoch-healthy"): ((), False),  # successful placement row
+}
+#: A typed leg needs a successful placement row for the case.
+LEG_FACT_PLACEMENT = {("R03", "new-epoch-healthy")}
 
 
 def _rows(events, kind, case_id, subprobe):
@@ -203,24 +232,59 @@ def recompute_case(events, case_id, subprobe=""):
                             "e4_republish")]
             if not placements and not evidence:
                 return None, "evidence_missing"
-            # F07 fact-scope: a PASS leg must be backed by REAL rows —
-            # either a row scoped to this leg, or a case-scoped FACT
-            # row (integrate/placement/snapshot/e4/datum probe). A lone
-            # non-fact probe row (e.g. state BROKEN) cannot substantiate
-            # any leg (0031 counterexample: bare leg labels + one
-            # broken probe).
-            fact_kinds = ("integrate", "placement_request",
-                          "e3_snapshot_read", "e4_plan_entry",
-                          "e4_republish", "datum_probe",
-                          "e3_window_stats")
-            bad_states = ("BROKEN", "FAIL")
-            backing = [
-                e for e in evidence
-                if (e.get("subprobe", "") == subprobe
-                    or e["event_kind"] in fact_kinds)
-                and str(e.get("state", "OK")) not in bad_states]
-            if not backing:
-                return None, "evidence_missing"
+            # F07 fact-scope (0915): typed legs carry their OWN fact
+            # vocabulary; a generic case-scoped row (any integrate)
+            # cannot substitute. Untyped legs still need a leg-scoped
+            # row or a case-scoped FACT row in a non-broken state.
+            typed = REQUIRED_LEG_FACTS.get((base_case, subprobe))
+            if typed is not None:
+                tokens, must_refuse = typed
+                leg_rows = [
+                    e for e in evidence
+                    if e.get("subprobe", "") == subprobe]
+                text = " ".join(str(e.get("reason", "")) for e in leg_rows)
+                for token in tokens:
+                    if isinstance(token, tuple):
+                        if not any(alt in text for alt in token):
+                            return None, "evidence_missing"
+                    elif token not in text:
+                        return None, "evidence_missing"
+                if must_refuse and "status=OK" in text:
+                    return None, "terminal_event_disagreement"
+                if (base_case, subprobe) in LEG_FACT_PLACEMENT:
+                    # the healthy-control rows the drivers emit (probe
+                    # detail carrying the service reply)
+                    case_rows = [
+                        e for e in events
+                        if e.get("case_id", "").split("/")[0] == base_case
+                        and e["event_kind"] in ("placement_request",
+                                                "probe_detail")]
+                    if not any(SUCCESS_TOKEN in str(
+                            p.get("message", "") or "")
+                            for p in case_rows):
+                        return None, "evidence_missing"
+            else:
+                fact_kinds = ("integrate", "placement_request",
+                              "e3_snapshot_read", "e4_plan_entry",
+                              "e4_republish", "datum_probe",
+                              "e3_window_stats")
+                bad_states = ("BROKEN", "FAIL")
+                backing = [
+                    e for e in evidence
+                    if (e.get("subprobe", "") == subprobe
+                        or e["event_kind"] in fact_kinds)
+                    and str(e.get("state", "OK")) not in bad_states]
+                if not backing:
+                    return None, "evidence_missing"
+            # Deadline discipline (0915 F07): a placement-backed PASS
+            # must record the absolute budget; missing fields keep the
+            # item not-evaluated for legacy data (the supplement matrix
+            # carries the re-capture).
+            if placements and key in POSITIVE_LEGS:
+                if not all(
+                        p.get("deadline_ns") and p.get("request_start_ns")
+                        for p in placements):
+                    return None, "deadline_not_recorded"
         for event in placements:
             deadline = event.get("deadline_ns")
             if deadline and event.get("mono_ns", 0) > int(deadline):
@@ -260,6 +324,24 @@ def recompute_case(events, case_id, subprobe=""):
                 return None, "payload_stripped"
             if not all(sample.get(f) not in (None, [], {})
                        for f in K01_SAMPLE_FIELDS):
+                return None, "payload_stripped"
+            import math as _math
+            if not (isinstance(sample.get("cells_x"), int)
+                    and isinstance(sample.get("cells_y"), int)
+                    and sample["cells_x"] >= 0 and sample["cells_y"] >= 0
+                    and isinstance(sample.get("ix0"), int)
+                    and isinstance(sample.get("iy0"), int)
+                    and sample["ix0"] >= 0 and sample["iy0"] >= 0):
+                return None, "payload_stripped"
+            center = sample.get("center_container")
+            if (not isinstance(center, (list, tuple)) or len(center) != 3
+                    or not all(_math.isfinite(v) for v in center)
+                    or not (K01_COORD_BOUNDS["x"][0] <= center[0]
+                            <= K01_COORD_BOUNDS["x"][1])
+                    or not (K01_COORD_BOUNDS["y"][0] <= center[1]
+                            <= K01_COORD_BOUNDS["y"][1])
+                    or not (K01_COORD_BOUNDS["z"][0] <= center[2]
+                            <= K01_COORD_BOUNDS["z"][1])):
                 return None, "payload_stripped"
             claim = float((oracle_rows[-1].get("candidate_sample")
                            or {}).get("confidence_ratio", 0.0) or 0.0)

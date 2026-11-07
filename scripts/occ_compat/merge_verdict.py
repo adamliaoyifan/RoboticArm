@@ -296,7 +296,7 @@ def _a5_gate(reuse, verdicts):
     validated structured detail; global/unknown bind; local issues need
     proven supersession."""
     verdicts_by_run = _as_map(verdicts)
-    problems, ne_globals, excuses = [], [], []
+    problems, ne_globals, condition_unmet, excuses = [], [], [], []
     for run_dir, verdict in sorted(verdicts_by_run.items()):
         detail = ((verdict.get("gates_detail") or {}).get("A5"))
         if detail is None:
@@ -348,15 +348,19 @@ def _a5_gate(reuse, verdicts):
                 unresolved.append("%s/%s source %s not provided"
                                   % (group, case_id, source))
                 continue
-            if not all(superseder["gates"].get(g) == "PASS"
-                       for g in ("A1", "A5")):
-                unresolved.append("%s/%s superseder %s not A1/A5 PASS"
-                                  % (group, case_id, source))
-            elif str(superseder["gates"].get("A0", "")).startswith(
-                    "FAIL"):
-                unresolved.append(
-                    "%s/%s superseder %s has a REJECTED payload report"
-                    % (group, case_id, source))
+            gates_ok = all(superseder["gates"].get(g) == "PASS"
+                           for g in ("A0", "A1", "A5"))
+            if not gates_ok:
+                # 0915 F-A5: the ORIGINAL threshold (A0/A1/A5 all PASS)
+                # stands. An unmet condition keeps the gate
+                # NOT_EVALUATED — the superseder states are recorded for
+                # diagnosis, never signed off as a PASS.
+                condition_unmet.append(
+                    "%s/%s superseder %s gates %s"
+                    % (group, case_id, source,
+                       {g: str(superseder["gates"].get(g))[:40]
+                        for g in ("A0", "A1", "A5")}))
+                continue
         if globals_bad:
             hard = [g for g in globals_bad
                     if "NOT_EVALUATED" not in g]
@@ -389,6 +393,9 @@ def _a5_gate(reuse, verdicts):
             })
     if problems:
         return "FAIL: %s" % problems[:2], excuses
+    if condition_unmet:
+        return ("NOT_EVALUATED: supersession condition unmet: %s"
+                % condition_unmet[:2]), excuses
     if ne_globals:
         return ("NOT_EVALUATED: %s" % ne_globals[:2]), excuses
     return "PASS", excuses
@@ -480,11 +487,10 @@ def _selftest():
         "c2_invalid_superseder_binds": _gate(
             _subs(fail_ids=k03e4),
             run03_a0="FAIL: a0 report REJECTED")[0] != "PASS",
-        "c3_ne_a0_superseder_excused_with_record": (
-            lambda g: (g[0] == "PASS" and g[1] and
-                       g[1][0].get("superseder_a0")))(_gate(
-                _subs(fail_ids=k03e4),
-                run03_a0="NOT_EVALUATED: named gaps")),
+        "c3_ne_a0_superseder_binds_ne": _gate(
+            _subs(fail_ids=k03e4),
+            run03_a0="NOT_EVALUATED: named gaps")[0].startswith(
+                "NOT_EVALUATED"),
         "e_local_plus_global_rejected": _gate(
             _subs(fail_ids=k03e4,
                   regression="FAIL: missing TEST_SELECTION"))[0] != "PASS",

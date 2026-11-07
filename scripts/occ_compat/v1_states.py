@@ -162,14 +162,27 @@ def _terminal(ctx, case, subprobe, state, reason="", **payload):
     return state
 
 
+def budget_fields(start_ns, timeout_s=REQUEST_DEADLINE_S):
+    """Deadline budget fields for placement rows (reviews 0915):
+    request start + ORIGINAL absolute deadline + reply stamp, all in
+    the ledger's monotonic domain. Retries never reset the original
+    budget."""
+    return {
+        "request_start_ns": int(start_ns),
+        "deadline_ns": int(start_ns + timeout_s * 1e9),
+        "terminal_ns": mono_ns(),
+    }
+
+
 def _placement(ctx, case, subprobe, box, **kwargs):
     """One real ComputePlacement call through the chain (30s deadline)."""
-    deadline = mono_ns() + int(REQUEST_DEADLINE_S * 1e9)
+    start = mono_ns()
     response = ctx.client.place_v1(box, **kwargs)
     ctx.ledger.emit(
         backend=ctx.backend, consumer="E1", hull=ctx.hull, case_id=case,
         subprobe=subprobe, event_kind="placement_request",
-        stage="consumer", state="REPLIED", deadline_ns=deadline,
+        stage="consumer", state="REPLIED",
+        **budget_fields(start),
         reason=str(getattr(response, "reason_code", "") or ""),
         message=str(getattr(response, "message", "") or "")[:120])
     return response
@@ -492,12 +505,14 @@ def _k05(ctx, run_e3=None, run_e4=None):
     request.height_measured = True
     request.box_wdh = list(BOX_A)
     request.expected_map_revision = 1   # deliberately old
+    _start = mono_ns()
     response = ctx.client._call("placement_v2", request, 30.0)
     reason = str(getattr(response, "reason_code", "") or "")
     ctx.ledger.emit(
         backend=ctx.backend, consumer="E2", hull=ctx.hull, case_id="K05",
         subprobe="revision-mismatch", event_kind="placement_request",
         stage="consumer", state="REPLIED",
+        **budget_fields(_start),
         reason=reason,
         message=str(getattr(response, "message", "") or "")[:120])
     results["revision-mismatch"] = (
@@ -710,11 +725,13 @@ def _k09(ctx, run_e3=None, run_e4=None):
     request.height_measured = True
     request.box_wdh = list(BOX_A)
     request.expected_map_revision = old_revision
+    _start = mono_ns()
     response = ctx.client._call("placement_v2", request, 30.0)
     ctx.ledger.emit(
         backend=ctx.backend, consumer="E2", hull=ctx.hull, case_id="K09",
         subprobe="old-revision-request",
         event_kind="placement_request", stage="consumer", state="REPLIED",
+        **budget_fields(_start),
         reason=str(getattr(response, "reason_code", "")),
         message=str(getattr(response, "message", "") or "")[:120])
     stale_ok = (str(getattr(response, "reason_code", "")) ==
@@ -841,6 +858,7 @@ def consumer_sweep(ctx, case_id, e4_harness):
     request.box_wdh = list(BOX_A)
     request.expected_map_revision = int(surface.get("map_revision", 0)
                                         or 0)
+    _e2_start = mono_ns()
     response = ctx.client._call("placement_v2", request, 30.0)
     message = str(getattr(response, "message", "") or "")
     if (not expect_refusal and "STALE_MAP_REVISION" in message):
@@ -866,6 +884,7 @@ def consumer_sweep(ctx, case_id, e4_harness):
         backend=ctx.backend, consumer="E2", hull=ctx.hull,
         case_id=case_id + "/E2", subprobe="main",
         event_kind="placement_request", stage="consumer", state="REPLIED",
+        **budget_fields(_e2_start),
         reason=str(getattr(response, "reason_code", "")),
         message=message[:120])
     _terminal(ctx, case_id + "/E2", "main",
