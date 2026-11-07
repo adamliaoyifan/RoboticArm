@@ -55,14 +55,14 @@ def main(argv=None):
         results = v2_races.run_v2_group(
             args.backend, args.hull, manifest, out, args.run_id,
             cases=selected or None)
-    _write_probes(out)
+    _write_probes(out, manifest)
     json.dump({"group": "%s-%s-%s" % (args.matrix, args.backend, args.hull),
                "results": results, "domain": args.domain},
               open(out / "GROUP_RESULT.json", "w"), indent=1, default=str)
     return 0
 
 
-def _write_probes(out):
+def _write_probes(out, manifest_doc=None):
     """Runtime identity record (G2 §3.1), written at group END so lazily
     imported case modules are covered: hash every campaign-relevant
     module THIS interpreter actually imported, plus every executable the
@@ -96,7 +96,6 @@ def _write_probes(out):
     # T1-side runtime inputs (reviews 1620): the freeze manifest's
     # prep-inputs file is read by the DRIVER itself — probe it like the
     # chain probes its config files.
-    manifest_doc = manifest
     for key in ("prep_inputs_json", "scene_tf", "scene_tf_cuboid",
                 "scene_tf_chamfer"):
         target = manifest_doc.get(key)
