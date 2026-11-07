@@ -950,6 +950,7 @@ def recompute_case(events, case_id, subprobe=""):
                    for p in case_placements_any):
             return None, "deadline_not_recorded"
         budgets_by_request = {}
+        unlinked = False
         for placement in case_placements_any:
             start = int(placement["request_start_ns"])
             deadline = int(placement["deadline_ns"])
@@ -960,11 +961,15 @@ def recompute_case(events, case_id, subprobe=""):
                 return None, "deadline_budget_wrong"
             link = str(placement.get("request_link")
                        or placement.get("request_id") or "")
+            if not link:
+                unlinked = True  # legacy rows: retry grouping impossible
             budgets_by_request.setdefault(link, set()).add(deadline)
+        if unlinked and len(budgets_by_request.get("", ())) > 1:
+            # rows predate request tagging — the retry-vs-distinct-request
+            # distinction cannot be made: NE, never a verdict
+            return None, "deadline_not_recorded"
         for link, budgets in budgets_by_request.items():
-            # RETRIES (same request) must keep the ORIGINAL absolute
-            # budget; distinct requests legitimately carry their own
-            if len(budgets) > 1:
+            if link and len(budgets) > 1:
                 return None, "deadline_retry_reset"
     return declared["state"], None
 
@@ -2202,6 +2207,43 @@ def _scope_gate(groups, required, expected_groups):
     return "PASS"
 
 
+def _scope_detail(groups, required, expected_groups):
+    """FULL per-ID evaluation for the verdict's gates_detail — the
+    authoritative inventory source (reviews 2026-11-08: truncated gate
+    strings must not be the inventory basis). Group-level problems that
+    NAME a case (K01 oracle rejections etc.) are attributed to that
+    case so the per-ID table can never disagree with the gate."""
+    out = {}
+    present = {entry[0] for entry in groups}
+    for group_entry in groups:
+        name = group_entry[0]
+        terminals = group_entry[1]
+        problems = group_entry[2]
+        events = group_entry[3] if len(group_entry) > 3 else None
+        by_id = {}
+        for t in terminals:
+            by_id.setdefault(t["case_id"], []).append(t)
+        # attribute group problems to named cases
+        case_problems = {}
+        for problem in problems:
+            match = _CASE_NAME.search(str(problem))
+            if match:
+                case_problems.setdefault(match.group(1), []).append(
+                    str(problem)[:80])
+        for i in required:
+            ok, detail = _evaluate_case(i, by_id.get(i) or [],
+                                        events=events)
+            value = "PASS" if ok and detail == "PASS" else detail
+            if i in case_problems:
+                value = "FAIL: %s" % case_problems[i][0]
+            out["%s/%s" % (name, i)] = value
+    for expected in expected_groups:
+        if expected not in present:
+            for i in required:
+                out["%s/%s" % (expected, i)] = "missing-group"
+    return out
+
+
 #: Frozen required regression slice (reviews F08): suite name ->
 #: (collected, junit sha256) from the G1-frozen TEST_SELECTION v2. A
 #: mutated selection (dropped suite, changed scope, wrong count, wrong
@@ -2432,7 +2474,8 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
         # gates as hard problems.
         ne_classes = ("order_identity_epoch_not_recorded",
                       "order_identity_request_not_recorded",
-                      "fact_missing_ne")
+                      "fact_missing_ne",
+                      "deadline_not_recorded")
         for problem in group_problems:
             if any(cls in problem for cls in ne_classes):
                 order_ne_notes.append("%s: %s"
@@ -2451,9 +2494,9 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
     if not groups:
         gates["A5"] = "FAIL: no group ledgers in the archive"
 
-    v1_groups = [(n, _terminals(e), p) for n, e, p in groups
+    v1_groups = [(n, _terminals(e), p, e) for n, e, p in groups
                  if n.startswith("V1-")]
-    v2_groups = [(n, _terminals(e), p) for n, e, p in groups
+    v2_groups = [(n, _terminals(e), p, e) for n, e, p in groups
                  if n.startswith("V2-")]
     gates["A2"] = _scope_gate(
         [g for g in v2_groups if "-G-" in g[0]], V2_REQUIRED,
@@ -2620,6 +2663,14 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
     except NameError:
         a5_subchecks = None
     detail = ({"A5": a5_subchecks} if a5_subchecks else {})
+    detail["per_id"] = {
+        "A2": _scope_detail(
+            [g for g in v2_groups if "-G-" in g[0]], V2_REQUIRED,
+            EXPECTED_V2G_GROUPS),
+        "A3": _scope_detail(v1_groups, V1_REQUIRED, EXPECTED_V1_GROUPS),
+        "A4_v1": _scope_detail(o_v1, V1_REQUIRED, EXPECTED_V1_O_GROUPS),
+        "A4_v2": _scope_detail(o_v2, V2_REQUIRED, EXPECTED_V2O_GROUPS),
+    }
     verdict = {"archive": str(archive), "gates": gates,
                "gates_detail": detail,
                "inputs": inputs_binding,
