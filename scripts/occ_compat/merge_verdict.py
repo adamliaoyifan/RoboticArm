@@ -267,7 +267,8 @@ def _validate_a5_detail(detail):
         issues = check.get("issues", [])
         if state == "PASS" and issues:
             errors.append("%s PASS with non-empty issues" % name)
-        if state != "PASS" and kind == "global":
+        if state != "PASS" and kind == "global" \
+                and name != "ledger":
             globals_bad.append("%s=%s" % (name, state[:70]))
         if state != "PASS" and kind == "local":
             if not issues:
@@ -335,8 +336,11 @@ def _a5_gate(reuse, verdicts):
                 globals_bad.append("ledger %s/%s still authoritative (%s)"
                                    % (group or "?", case,
                                       str(entry.get("detail"))[:40]))
-        for entry in ((detail.get("ledger") or {})
-                      .get("not_evaluated_issues", [])):
+        ledger_ne = detail.get("ledger") or {}
+        if ledger_ne.get("state") == "NOT_EVALUATED" and \
+                not ledger_ne.get("not_evaluated_issues"):
+            globals_bad.append("ledger=NOT_EVALUATED with unnamed gaps")
+        for entry in ledger_ne.get("not_evaluated_issues", []):
             if not isinstance(entry, dict):
                 continue
             case = entry.get("case")
