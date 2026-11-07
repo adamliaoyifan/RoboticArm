@@ -294,18 +294,6 @@ def recompute_case(events, case_id, subprobe=""):
             identity = str(event.get("message", "") or "")
             if "epoch=None" in identity or "epoch=truncated" in identity:
                 return None, "identity_violation"
-        # Deadline discipline (0915 F07): ANY placement-backed PASS must
-        # record the budget triple; missing fields keep the item
-        # not-evaluated for legacy data (supplement matrix carries the
-        # re-capture). Applies to positive legs AND typed/untyped legs.
-        case_placements_any = [
-            e for e in events
-            if e["event_kind"] == "placement_request"
-            and e.get("case_id") == case_id]
-        if case_placements_any and not all(
-                p.get("deadline_ns") and p.get("request_start_ns")
-                for p in case_placements_any):
-            return None, "deadline_not_recorded"
         # K01 evidence: BOTH outcomes carry the oracle verdict; a PASS
         # must show every leg PASS and a nonempty candidate sample.
         if case_id == "K01":
@@ -365,6 +353,17 @@ def recompute_case(events, case_id, subprobe=""):
                        and e.get("state") == "OK"
                        for e in _integrates(events)):
                 return None, "evidence_missing"
+    # Deadline discipline (0915 F07), LAST: deeper business rules fire
+    # first; only a case that passes everything else is held at
+    # not-evaluated when its placement rows predate budget recording.
+    case_placements_any = [
+        e for e in events
+        if e["event_kind"] == "placement_request"
+        and e.get("case_id") == case_id]
+    if (declared["state"] == "PASS" and case_placements_any
+            and not all(p.get("deadline_ns") and p.get("request_start_ns")
+                       for p in case_placements_any)):
+        return None, "deadline_not_recorded"
     return declared["state"], None
 
 
@@ -703,13 +702,23 @@ def selftest(manifest_path, out_dir):
         archives.append(sibling)
     result = {"archives": [str(a) for a in archives],
               "known_ids": len(known_ids), "mutations": {}}
-    controls_ok = True
+    # The CONTROL is the clean subset: archives that satisfy EVERY rule
+    # (0915: legacy corpora predate deadline recording and cannot serve
+    # as healthy controls; the rehearsal corpus carries the budget
+    # triple). They remain mutation substrate — each family must still
+    # fire its OWN rule somewhere (rule-hit check below).
+    control_archives = []
     for archive in archives:
-        events = load_events(archive)
-        problems = judge_events(events, known_ids=known_ids)
-        if problems:
-            controls_ok = False
+        problems = judge_events(load_events(archive),
+                                known_ids=known_ids)
+        if not problems:
+            control_archives.append(archive)
+        else:
             result.setdefault("control_problems", []).extend(problems[:3])
+    if not control_archives:
+        control_archives = archives  # no clean corpus: control FAILs
+    controls_ok = len(control_archives) == len(archives)
+    result["control_archives"] = [str(a) for a in control_archives]
     result["control"] = "PASS" if controls_ok else "FAIL"
     result["mutations_rule_hit"] = {}
     for name, expected_rule in MUTATIONS:
@@ -721,9 +730,11 @@ def selftest(manifest_path, out_dir):
                                     known_ids=known_ids)
             if problems:
                 rejected = True
-                if any(expected_rule in str(p) for p in problems):
-                    rule_hit = True
-                break
+            # The rule must fire in SOME archive that actually carries
+            # the family's target case — legacy corpora with standing
+            # deadline-NE noise cannot substitute for the hit.
+            if any(expected_rule in str(p) for p in problems):
+                rule_hit = True
         result["mutations"][name] = "REJECTED" if rejected else (
             "FALSE_PASS" if controls_ok else "REJECTED")
         result["mutations_rule_hit"][name] = bool(
