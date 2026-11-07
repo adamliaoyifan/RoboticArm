@@ -263,6 +263,15 @@ def _k01(ctx, run_e3=None, run_e4=None):
         "oracle_payload": payload_name,
         "oracle_payload_sha256": _hl.sha256(
             payload_path.read_bytes()).hexdigest()}
+    # EXTERNAL binding fields (reviews 1620): the ref names the request,
+    # the ADMITTED map identity at call time, and the returned candidate
+    # count — the judge binds them to the payload and the placement row.
+    oracle_ref.update({
+        "request_link": str(_k01_request_link),
+        "map_epoch": str(surface.get("epoch", "")),
+        "map_revision": int(surface.get("map_revision", 0) or 0),
+        "n_candidates": int(verdict["n_candidates"]),
+    })
     if getattr(response, "success", False) and verdict["n_candidates"] \
             >= 1 and verdict["all_pass"]:
         # K01 positive (contract K01 row): a real legal candidate set,

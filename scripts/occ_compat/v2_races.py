@@ -622,6 +622,8 @@ def run_r03(ctx, case="R03"):
     (get_snapshot handle + read_surface cursor) — no invented common
     interface."""
     subprobes = {}
+    token = ""
+    handle = ""
 
     def _chain_epoch():
         return str((ctx.client.validity_record() or {}).get("epoch", ""))
@@ -961,6 +963,8 @@ def run_v2_group(backend, hull, manifest, run_root, run_id, cases=None):
             proc = next(p for p in stack.processes
                         if p.name == producer_name)
             old_pid = proc.process.pid
+            pre_restart_epoch = str((client.validity_record() or {})
+                                    .get("epoch", ""))
             old_starttime = _proc_starttime(old_pid)
             proc.kill_tree()
             stack.processes.remove(proc)
@@ -968,7 +972,8 @@ def run_v2_group(backend, hull, manifest, run_root, run_id, cases=None):
                 backend=backend, consumer="-", hull=hull, case_id="-",
                 subprobe="", event_kind="producer_restart",
                 stage="restart", state="KILLED_VERIFIED_EMPTY",
-                old_pid=old_pid, old_starttime_ns=old_starttime)
+                old_pid=old_pid, old_starttime_ns=old_starttime,
+                epoch=str(pre_restart_epoch))
             if backend == "G":
                 proc2 = stack.spawn(producer_name, chains.g_mapper_command(
                     manifest, scene_revision="scene-g1"))
