@@ -196,14 +196,20 @@ ORDER_ASSERTIONS = {
 "''"
 
 def _chain_identity(event):
-    """(backend, epoch) of an event for the basic join; richer linkage
-    is verified separately per segment type below. Reset receipts carry
-    pre/post epochs instead of a live epoch — the post epoch is the
-    producer identity they establish."""
+    """(backend, epoch, request_link) for the join (reviews 1622 B4):
+    same backend + same epoch + DIFFERENT request is still a stitch.
+    Reset receipts carry pre/post epochs instead of a live epoch — the
+    post epoch is the producer identity they establish; their request
+    linkage is the reset_id."""
     epoch = event.get("epoch", None)
     if epoch is None and event.get("post_epoch") is not None:
         epoch = event.get("post_epoch")
-    return (event.get("backend", None), epoch)
+    link = (event.get("request_link")
+            or event.get("request_id")
+            or event.get("reset_id")
+            or event.get("producer_pid")
+            or None)
+    return (event.get("backend", None), epoch, link)
 
 
 _CASE_NAME = re.compile(r"\b([KR]\d{2}(?:/E\d)?)\b")
@@ -405,12 +411,14 @@ def _order_problems(events):
             problems.append("%s: order_identity_epoch_not_recorded"
                             % case_id)
             continue
-        # epochs may only change across a reset segment, a reset
-        # receipt sitting temporally between the two segments (R05's
-        # chain does not include the reset), or a producer-restart
-        # segment (R12's lifecycle transition)
+        # Epoch transitions (reviews 1622 B4): legal across (a) a reset
+        # segment, (b) a reset receipt between the segments, (c) a
+        # producer-restart segment OR receipt (O's native 2->1 restart
+        # renumbering is legal — never judged by numeric direction).
         legal = True
-        reset_rows = [e for e in events if e["event_kind"] == "reset"]
+        transition_rows = [
+            e for e in events
+            if e["event_kind"] in ("reset", "producer_restart")]
         for idx in range(1, len(epochs)):
             if epochs[idx] != epochs[idx - 1]:
                 if segments[idx - 1][0] in ("reset", "producer_restart") \
@@ -418,12 +426,30 @@ def _order_problems(events):
                     continue
                 lo = min(r["mono_ns"] for r in segments[idx - 1][1])
                 hi = min(r["mono_ns"] for r in segments[idx][1])
-                if not any(lo < r["mono_ns"] < hi for r in reset_rows):
+                if not any(lo < r["mono_ns"] < hi
+                           for r in transition_rows):
                     legal = False
         if not legal:
-            problems.append("%s: epoch changed outside a reset segment "
+            problems.append("%s: epoch changed outside a transition "
                             "(%s)" % (case_id, epochs))
             continue
+        # REQUEST linkage (B4): segments sharing the same epoch must
+        # share the same request/handle linkage — cross-request stitch
+        # with matching backend+epoch is still a stitch. Segments
+        # separated by a transition legitimately change linkage.
+        for idx in range(1, len(idents)):
+            if epochs[idx] == epochs[idx - 1]:
+                span = (segments[idx - 1], segments[idx])
+                if any(seg[0] in ("reset", "producer_restart")
+                       for seg in span):
+                    continue
+                if idents[idx][2] != idents[idx - 1][2]:
+                    problems.append(
+                        "%s: same-epoch segments from different requests "
+                        "(%s vs %s)" % (case_id,
+                                        str(idents[idx - 1][2])[:16],
+                                        str(idents[idx][2])[:16]))
+                    break
         stamps = [min(r["mono_ns"] for _, rows in segments
                       for r in rows if r in segments[i][1])
                   for i in range(len(segments))]
@@ -706,22 +732,35 @@ def recompute_case(events, case_id, subprobe=""):
                        and e.get("state") == "OK"
                        for e in _integrates(events)):
                 return None, "evidence_missing"
-    # Deadline discipline (0915 F07), LAST: deeper business rules fire
-    # first; only a case that passes everything else is held at
-    # not-evaluated when its placement rows predate budget recording.
+    # Deadline discipline (reviews 1622 B5), LAST: deeper business
+    # rules fire first; only a case passing everything else is held
+    # when its rows predate budget recording. WITH the fields present,
+    # the triple is fully verified: start <= terminal <= deadline,
+    # deadline == start + 30s (same monotonic clock domain), retries
+    # keep the ORIGINAL budget.
     case_placements_any = [
         e for e in events
         if e["event_kind"] == "placement_request"
         and e.get("case_id") == case_id]
     if declared["state"] == "PASS" and case_placements_any:
         if not all(p.get("deadline_ns") and p.get("request_start_ns")
+                   and p.get("terminal_ns")
                    for p in case_placements_any):
             return None, "deadline_not_recorded"
-        over = [p for p in case_placements_any
-                if p.get("terminal_ns") and p.get("deadline_ns")
-                and int(p["terminal_ns"]) > int(p["deadline_ns"])]
-        if over:
-            return None, "deadline_violation"
+        budgets = set()
+        for placement in case_placements_any:
+            start = int(placement["request_start_ns"])
+            deadline = int(placement["deadline_ns"])
+            terminal = int(placement["terminal_ns"])
+            if not (start <= terminal <= deadline):
+                return None, "deadline_violation"
+            if deadline - start != 30_000_000_000:
+                return None, "deadline_budget_wrong"
+            budgets.add(deadline)
+        if len(budgets) > 1:
+            # retries must keep the ORIGINAL absolute budget — never
+            # reset (reviews 1622 B5)
+            return None, "deadline_retry_reset"
     return declared["state"], None
 
 
