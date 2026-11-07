@@ -366,13 +366,20 @@ def _order_problems(events):
             problems.append("%s: order_identity_epoch_not_recorded"
                             % case_id)
             continue
-        # epochs may only change across a reset segment, and only
-        # forward within the chain
+        # epochs may only change across a reset segment, a reset
+        # receipt sitting temporally between the two segments (R05's
+        # chain does not include the reset), or a producer-restart
+        # segment (R12's lifecycle transition)
         legal = True
+        reset_rows = [e for e in events if e["event_kind"] == "reset"]
         for idx in range(1, len(epochs)):
             if epochs[idx] != epochs[idx - 1]:
-                if segments[idx - 1][0] != "reset" and \
-                        segments[idx][0] != "reset":
+                if segments[idx - 1][0] in ("reset", "producer_restart") \
+                        or segments[idx][0] in ("reset", "producer_restart"):
+                    continue
+                lo = min(r["mono_ns"] for r in segments[idx - 1][1])
+                hi = min(r["mono_ns"] for r in segments[idx][1])
+                if not any(lo < r["mono_ns"] < hi for r in reset_rows):
                     legal = False
         if not legal:
             problems.append("%s: epoch changed outside a reset segment "

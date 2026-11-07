@@ -681,6 +681,10 @@ def run_r03(ctx, case="R03"):
                              "page1 no response: %s" % page1)
         meta1 = page1.meta
         old_page_count = int(meta1.returned_count or 0)
+        token = meta1.snapshot_token
+        cursor = meta1.next_cursor
+        identity = meta1.identity
+        handle_epoch = _chain_epoch()
         _leg("handle-acquired",
              meta1.status == "OK" and old_page_count > 0
              and bool(meta1.snapshot_token),
@@ -692,10 +696,6 @@ def run_r03(ctx, case="R03"):
             return _terminal(ctx, case, "main", "FAIL",
                              "typed acquire failed: %s/%s"
                              % (meta1.status, meta1.reason))
-        token = meta1.snapshot_token
-        cursor = meta1.next_cursor
-        identity = meta1.identity
-        handle_epoch = _chain_epoch()
 
         def resume_request():
             return ctx.client.call_service(
