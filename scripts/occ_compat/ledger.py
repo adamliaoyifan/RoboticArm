@@ -88,16 +88,35 @@ class EventLedger:
 
 def load_events(archive):
     """Read every events.jsonl under an archive/run dir — or the ledger
-    file itself (the judge's selftest points at one directly)."""
+    file itself (the judge's selftest points at one directly).
+
+    Loading is STRICT (contract §2 / reviews 1622 B7): duplicate JSON
+    keys, non-finite numbers and bool-as-integer reject the line with a
+    named problem attached to the event stream; legacy schema-1 rows
+    remain readable and are tagged so downstream checks can keep the
+    affected units NOT_EVALUATED."""
+    from .event_schema import load_ledger, SchemaError
     events = []
     path = Path(archive)
     paths = [path] if path.is_file() else sorted(
         path.glob("**/events.jsonl"))
+    problems = []
     for ledger in paths:
-        with open(ledger, encoding="utf-8") as stream:
-            for line in stream:
-                if line.strip():
-                    events.append(json.loads(line))
+        try:
+            rows, ledger_problems = load_ledger(ledger)
+        except SchemaError as error:
+            problems.append("%s: %s" % (ledger, error))
+            continue
+        events.extend(rows)
+        problems.extend("%s: %s" % (ledger.name, p_)
+                        for p_ in ledger_problems)
+    if problems:
+        # surfaced via the load; business gates treat these as named
+        # evidence problems, never silently dropped rows
+        events = list(events)
+        events.append({"event_kind": "_ledger_problems",
+                       "problems": problems[:20],
+                       "n_problems": len(problems)})
     return events
 
 
