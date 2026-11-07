@@ -847,6 +847,31 @@ def selftest(manifest_path, out_dir):
             v != "PASS" for v in w13_verdict.get("gates", {}).values())
         or w13_verdict.get("gates", {}).get("A5", "").startswith("FAIL")
         else "FALSE_PASS")
+    # 0915 F07 controls: typed leg facts and K01 payload sanity.
+    def _term(case, sub="", state="PASS"):
+        return {"event_kind": "case_terminal", "case_id": case,
+                "subprobe": sub, "state": state}
+    r03_labels = [_term("R03", leg) for leg in REQUIRED_SUBPROBES["R03"]]
+    r03_labels += [
+        {"event_kind": "integrate", "case_id": "R03",
+         "request_id": "x#1", "result_repr": "OK"},
+        {"event_kind": "probe_detail", "case_id": "R03",
+         "reason": "identity matched", "state": "OK"}]
+    wiring["w14_leg_facts_missing"] = "REJECTED" if judge_events(
+        r03_labels) else "FALSE_PASS"
+    k01_bad = [
+        _term("K01"),
+        {"event_kind": "placement_request", "case_id": "K01",
+         "subprobe": "main", "message": "slot id=1",
+         "deadline_ns": 1, "request_start_ns": 0},
+        {"event_kind": "probe_detail", "case_id": "K01",
+         "oracle_legs": dict.fromkeys(K01_ORACLE_LEGS, "PASS"),
+         "candidate_sample": {"cells_x": -1, "cells_y": 15,
+                              "center_container": [1e99, 0, 0],
+                              "confidence_ratio": 0.9,
+                              "ix0": 0, "iy0": 0}}]
+    wiring["w15_k1_sanity"] = "REJECTED" if judge_events(
+        k01_bad) else "FALSE_PASS"
     result["gate_wiring"] = wiring
     (out / "SELFTEST.json").write_text(json.dumps(result, indent=1))
     return result
@@ -994,6 +1019,7 @@ REQUIRED_WIRING = (
     "w09_single_byte_corruption", "w10_missing_artifact",
     "w11_same_name_package_replacement", "w12_undeclared_loaded_path",
     "w13_unknown_observation_id_formal",
+    "w14_leg_facts_missing", "w15_k1_sanity",
 )
 
 
