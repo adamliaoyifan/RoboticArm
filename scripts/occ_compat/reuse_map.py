@@ -33,7 +33,17 @@ DEPS = {
 # with its own payload-closed A0). run02 = full matrix; run03 =
 # targeted re-collection of the two driver-defect legs (R03 both
 # backends: unreleased hook park; V1-O-cuboid: E4 joint-sample aging).
-G2_TARGETS = {"V2-G-cuboid/R04": "g2/run05", "V2-O-cuboid/R04": "g2/run05"}
+G2_TARGETS = {
+    "V2-G-cuboid/R04": "g2/run05", "V2-O-cuboid/R04": "g2/run05",
+    "V2-G-cuboid/R03": "g2/run06/v2", "V2-O-cuboid/R03": "g2/run06/v2",
+    "V2-G-cuboid/R05": "g2/run06/v2", "V2-O-cuboid/R05": "g2/run06/v2",
+    "V2-G-cuboid/R12": "g2/run06/v2", "V2-O-cuboid/R12": "g2/run06/v2",
+}
+# K01 (all four composites) in every V1 group re-collected with the
+# externally-bound oracle payload under G3C
+for _g in ("V1-G-cuboid", "V1-G-chamfer", "V1-O-cuboid", "V1-O-chamfer"):
+    for _cid in ("K01", "K01/E2", "K01/E3", "K01/E4"):
+        G2_TARGETS["%s/%s" % (_g, _cid)] = "g2/run06/v1"
 G2_GROUPS = {}
 G2_DEFAULT = "g2/run04"
 
