@@ -192,6 +192,7 @@ def run_r04(ctx):
     ctx.fresh_robot()
     time.sleep(0.4)
     request = _v1_request()
+    _r04_start = mono_ns()
     future = ctx.client._chain_clients["placement"].call_async(request)
 
     def _release_fast():
