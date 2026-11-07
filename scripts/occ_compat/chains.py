@@ -107,10 +107,22 @@ class ChainProcess:
                 "process tree of %r still alive after SIGKILL" % self.name)
         self._log.close()
 
+    @staticmethod
+    def _instance_id(pid):
+        """Stable instance identity (reviews 1622 B8): pid + /proc
+        starttime — a restart is a NEW instance even when pid recycles."""
+        try:
+            with open("/proc/%d/stat" % int(pid)) as stat:
+                starttime = int(stat.read().rsplit(")", 1)[1].split()[19])
+            return "%d@%d" % (int(pid), starttime)
+        except (OSError, ValueError, IndexError):
+            return str(pid)
+
     def _probe_inputs(self, command):
-        """Runtime INPUT identity (reviews 1210 #1): hash every config/
-        TF file path the command references, so A0 can bind the bytes
-        the process actually loaded at spawn time."""
+        """Runtime INPUT identity (reviews 1622 B8): hash every config/
+        TF file path the command references WITH the spawning instance
+        identity, so A0 can bind per-instance input obligations — a
+        restarted process is a new instance with its own obligations."""
         import re
         paths = set(re.findall(
             r"(?:config_file:=|geometry_file:=|scene_tf_config:=)(\S+)",
@@ -131,6 +143,9 @@ class ChainProcess:
                     continue
                 probes.write(json.dumps({
                     "kind": "input", "name": self.name,
+                    "instance_id": self._instance_id(
+                        self.process.pid) if getattr(
+                            self, "process", None) else "pre-spawn",
                     "path": str(path.resolve()), "sha256": digest,
                 }) + "\n")
 

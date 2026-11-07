@@ -175,10 +175,15 @@ def verify(freeze_path, probe_paths, ledger_paths=()):
     by_path = {str(entry.get("path")): entry.get("sha256")
                for entry in declared_inputs.values()}
     probed_inputs = set()
+    instance_roles = {}   # instance -> set of input paths it loaded
     for probe in probes:
         if probe.get("kind") != "input":
             continue
-        probed_inputs.add(str(probe.get("path")))
+        path_str = str(probe.get("path"))
+        probed_inputs.add(path_str)
+        instance_roles.setdefault(
+            str(probe.get("instance_id", "unknown")),
+            set()).add(path_str)
         want = by_path.get(probe.get("path"))
         if want is None:
             result["problems"].append(
