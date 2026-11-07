@@ -33,9 +33,9 @@ DEPS = {
 # with its own payload-closed A0). run02 = full matrix; run03 =
 # targeted re-collection of the two driver-defect legs (R03 both
 # backends: unreleased hook park; V1-O-cuboid: E4 joint-sample aging).
-G2_TARGETS = {"V2-G-cuboid/R03": "g2/run03", "V2-O-cuboid/R03": "g2/run03"}
-G2_GROUPS = {"V1-O-cuboid": "g2/run03"}
-G2_DEFAULT = "g2/run02"
+G2_TARGETS = {"V2-G-cuboid/R04": "g2/run05", "V2-O-cuboid/R04": "g2/run05"}
+G2_GROUPS = {}
+G2_DEFAULT = "g2/run04"
 
 PINS = {
     "product_grid": "3b614c270ae4b727562c499360911c0b8564622e",
@@ -138,12 +138,13 @@ def build(evidence_root):
             source = G2_TARGETS.get(key) or G2_GROUPS.get(group) \
                 or G2_DEFAULT
             if source != G2_DEFAULT:
-                reason = ("targeted re-collection after the driver-defect "
-                          "fixes (hook-park release / E4 joint re-stamp); "
-                          "run02's own attempt retained as history")
+                reason = ("targeted re-collection after the R04 budget-"
+                          "field fix; run04's own FAIL retained as "
+                          "history")
             else:
-                reason = ("collected under FREEZE_G2B (freeze-v2, payload-"
-                          "closed A0) in the full-matrix re-verification")
+                reason = ("collected under FREEZE_G3 (freeze-v3: input "
+                          "classes + runtime probes + deadline triple + "
+                          "K01 oracle payload) in the full-matrix run")
             entries[case_id] = {
                 "state_run03": state03,
                 "state_run02": state02,
