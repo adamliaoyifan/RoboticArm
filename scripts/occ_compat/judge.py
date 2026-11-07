@@ -162,7 +162,7 @@ REQUIRED_LEG_FACTS = {
     ("R03", "old-payload-unauthorized"):
         (("admitted_epoch=", "new_epoch="), True),
     ("R03", "old-revision-request-refused"):
-        (("VALIDITY_GATE",), True),
+        ((("VALIDITY_GATE", "STALE_MAP_REVISION"),), True),
     ("R03", "new-epoch-healthy"): ((), False),  # successful placement row
 }
 #: A typed leg needs a successful placement row for the case.
