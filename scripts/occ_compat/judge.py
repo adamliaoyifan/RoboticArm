@@ -1757,6 +1757,7 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
     out.mkdir(parents=True, exist_ok=True)
     gates = {}
     groups = []          # (name, events, problems)
+    order_ne_notes = []  # named NE: identity payloads predate epoch tags
     known_ids = set()
     freeze_doc = json.loads(Path(freeze_path).read_text()) if freeze_path \
         else None
@@ -1779,6 +1780,10 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
         group_problems = judge_events(group_events, known_ids=known_ids)
         # Identity-join NE (legacy rows predate epoch tagging) must not
         # fail the scope gates: it moves to the A5 ledger NE bucket.
+        for problem in group_problems:
+            if "order_identity_epoch_not_recorded" in problem:
+                order_ne_notes.append("%s: %s"
+                                      % (ledger.parent.name, problem))
         group_problems = [p for p in group_problems
                           if "order_identity_epoch_not_recorded"
                           not in p]
@@ -1926,7 +1931,8 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
                           else "PASS"),
                 "issues": [{"scope": "global", "rule": "ledger",
                             "detail": p} for p in hard_problems],
-                "not_evaluated_detail": deadline_problems[:8]},
+                "not_evaluated_detail": (
+                    deadline_problems[:8] + order_ne_notes[:8])},
             "regression": {
                 "scope": "global",
                 "state": str(reg).split(":", 1)[0].strip(),
