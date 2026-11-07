@@ -1215,6 +1215,38 @@ def selftest(manifest_path, out_dir):
                        "floor_z_container": 0.0})
     wiring["w22_oracle_shrunk_coverage"] = (
         "REJECTED" if not shrunk["pass"] else "FALSE_PASS")
+
+    # 1355 F04: input-probe coverage is required — strip the input
+    # probes from a REAL archive's probe file; a0 must reject.
+    root_ev = Path(manifest.get(
+        "evidence_root",
+        "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/"
+        "occ_grid_consumer_compat_20261105"))
+    strip_dir = out / "w23_strip"
+    strip_dir.mkdir(parents=True, exist_ok=True)
+    base_probe = None
+    for cand in sorted(root_ev.glob("**/MODULE_PROBES.json")):
+        try:
+            doc = json.loads(cand.read_text())
+        except (OSError, ValueError):
+            continue
+        if any(p.get("kind") == "input" for p in doc.get("probes", [])):
+            base_probe = cand
+            break
+    if base_probe is None:
+        wiring["w23_a0_input_probe_coverage"] = "FALSE_PASS"
+    else:
+        doc = json.loads(base_probe.read_text())
+        stripped = [p for p in doc["probes"]
+                    if p.get("kind") != "input"]
+        strip_path = strip_dir / "MODULE_PROBES.json"
+        strip_path.write_text(json.dumps(
+            {"schema": doc.get("schema"), "probes": stripped}))
+        from .a0_verify import verify as _a0v2
+        report = _a0v2(str(base / "FREEZE.json"), [str(strip_path)])
+        wiring["w23_a0_input_probe_coverage"] = (
+            "REJECTED" if report["verdict"] != "PASS"
+            else "FALSE_PASS")
     result["gate_wiring"] = wiring
     (out / "SELFTEST.json").write_text(json.dumps(result, indent=1))
     return result
@@ -1745,6 +1777,11 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
     for ledger in sorted(archive.glob("**/events.jsonl")):
         group_events = load_events(ledger)
         group_problems = judge_events(group_events, known_ids=known_ids)
+        # Identity-join NE (legacy rows predate epoch tagging) must not
+        # fail the scope gates: it moves to the A5 ledger NE bucket.
+        group_problems = [p for p in group_problems
+                          if "order_identity_epoch_not_recorded"
+                          not in p]
         if any(str(e.get("case_id", "")).startswith("K01")
                for e in group_events):
             group_problems.extend(
