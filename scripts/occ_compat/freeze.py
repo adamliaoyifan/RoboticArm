@@ -225,13 +225,21 @@ def run_freeze(manifest_path, out_dir):
     # content-addressed store + declared digests, so A0 can close the
     # input identity of runs collected under this freeze.
     input_files = {}
-    for role, key in (("scene_tf", "scene_tf"),
-                      ("o_config", "o_config"),
-                      ("o_geometry", "o_geometry"),
-                      ("prep_inputs", "prep_inputs_json")):
+    # every ACTUALLY-USED variant: the base key plus each hull's
+    # override (reviews 1210 #1 — "所有实际变体")
+    input_keys = [("scene_tf", "scene_tf"),
+                  ("o_config", "o_config"),
+                  ("o_geometry", "o_geometry"),
+                  ("prep_inputs", "prep_inputs_json")]
+    for role, key in list(input_keys):
+        for hull in ("cuboid", "chamfer"):
+            input_keys.append((role, "%s_%s" % (key, hull)))
+    seen_targets = set()
+    for role, key in input_keys:
         target = manifest.get(key)
-        if not target:
+        if not target or target in seen_targets:
             continue
+        seen_targets.add(target)
         path = Path(target)
         candidates = [path] if path.is_file() else sorted(
             path.rglob("*")) if path.is_dir() else []
