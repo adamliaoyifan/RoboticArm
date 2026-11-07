@@ -276,15 +276,7 @@ def recompute_case(events, case_id, subprobe=""):
                     and str(e.get("state", "OK")) not in bad_states]
                 if not backing:
                     return None, "evidence_missing"
-            # Deadline discipline (0915 F07): a placement-backed PASS
-            # must record the absolute budget; missing fields keep the
-            # item not-evaluated for legacy data (the supplement matrix
-            # carries the re-capture).
-            if placements and key in POSITIVE_LEGS:
-                if not all(
-                        p.get("deadline_ns") and p.get("request_start_ns")
-                        for p in placements):
-                    return None, "deadline_not_recorded"
+
         for event in placements:
             deadline = event.get("deadline_ns")
             if deadline and event.get("mono_ns", 0) > int(deadline):
@@ -302,6 +294,18 @@ def recompute_case(events, case_id, subprobe=""):
             identity = str(event.get("message", "") or "")
             if "epoch=None" in identity or "epoch=truncated" in identity:
                 return None, "identity_violation"
+        # Deadline discipline (0915 F07): ANY placement-backed PASS must
+        # record the budget triple; missing fields keep the item
+        # not-evaluated for legacy data (supplement matrix carries the
+        # re-capture). Applies to positive legs AND typed/untyped legs.
+        case_placements_any = [
+            e for e in events
+            if e["event_kind"] == "placement_request"
+            and e.get("case_id") == case_id]
+        if case_placements_any and not all(
+                p.get("deadline_ns") and p.get("request_start_ns")
+                for p in case_placements_any):
+            return None, "deadline_not_recorded"
         # K01 evidence: BOTH outcomes carry the oracle verdict; a PASS
         # must show every leg PASS and a nonempty candidate sample.
         if case_id == "K01":
@@ -1517,6 +1521,10 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
         # it). The headline string lists ALL failing sub-checks; the
         # structured detail carries scope/rule/group/case per issue.
         all_problems = [p for _, _, probs in groups for p in probs]
+        deadline_problems = [p for p in all_problems
+                             if "deadline_not_recorded" in p]
+        hard_problems = [p for p in all_problems
+                         if "deadline_not_recorded" not in p]
         fail_issues = _fail_evidence_issues(groups)
         reg = _regression_gate(evidence_root)
         rep = _replay_gate(evidence_root)
@@ -1527,10 +1535,13 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
                           else "PASS"),
                 "issues": fail_issues},
             "ledger": {
-                "scope": "global", "state": ("FAIL" if all_problems
-                                             else "PASS"),
+                "scope": "global",
+                "state": ("FAIL" if hard_problems
+                          else "NOT_EVALUATED" if deadline_problems
+                          else "PASS"),
                 "issues": [{"scope": "global", "rule": "ledger",
-                            "detail": p} for p in all_problems]},
+                            "detail": p} for p in hard_problems],
+                "not_evaluated_detail": deadline_problems[:8]},
             "regression": {
                 "scope": "global",
                 "state": str(reg).split(":", 1)[0].strip(),
