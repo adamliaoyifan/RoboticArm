@@ -166,6 +166,94 @@ REQUIRED_LEG_FACTS = {
     ("R03", "new-epoch-healthy"): ((), False),  # successful placement row
 }
 #: A typed leg needs a successful placement row for the case.
+
+#: ORDER ASSERTIONS (reviews 1210 #2): per case, an increasing
+#: mono_ns sequence over rows matched by (event_kind, field, token).
+#: The verifier is FROZEN before any full collection runs.
+ORDER_ASSERTIONS = {
+    "R03": [
+        ("probe_detail", "subprobe", "handle-acquired"),
+        ("reset", "reset_case", "R03-reset"),
+        ("probe_detail", "subprobe", "old-handle-refused"),
+        ("probe_detail", "subprobe", "new-epoch-healthy"),
+    ],
+    "R05": [
+        ("r05_checkpoint", "stage", "request_submitted"),
+        ("r05_checkpoint", "stage", "injection_begin"),
+        ("r05_checkpoint", "stage", "recovery"),
+        ("r05_checkpoint", "stage", "response_collected"),
+    ],
+    "R12": [
+        ("producer_restart", "state", "KILLED_VERIFIED_EMPTY"),
+        ("producer_restart", "state", "RESPAWNED"),
+        ("probe_detail", "subprobe", "restart-status"),
+        ("probe_detail", "subprobe", "healthy"),
+    ],
+}
+
+
+def _order_problems(events):
+    """Each asserted row must exist and the sequence must be strictly
+    increasing in mono_ns (reviews 1210: inverted key order rejects)."""
+    problems = []
+    for case_id, chain in ORDER_ASSERTIONS.items():
+        stamps = []
+        for kind, field, token in chain:
+            rows = [e for e in events
+                    if e["event_kind"] == kind
+                    and token in str(e.get(field, ""))]
+            if not rows:
+                problems.append("%s: order-segment missing (%s/%s=%s)"
+                                % (case_id, kind, field, token))
+                stamps = []
+                break
+            stamps.append(min(e["mono_ns"] for e in rows))
+        if stamps and any(later <= earlier
+                          for earlier, later in zip(stamps, stamps[1:])):
+            problems.append("%s: order violated %s" % (
+                case_id, ["%d" % st for st in stamps]))
+    return problems
+
+
+def _k01_independent_oracle(events, ledger_dir):
+    """Judge-side recompute of EVERY candidate against the archived
+    surface (reviews 1210 #2): loads the digest-bound oracle payload and
+    re-runs the frozen oracle — the collection-time verdicts are claims,
+    never proof."""
+    refs = [e for e in events
+            if e["event_kind"] == "oracle_payload_ref"]
+    if not refs:
+        return ["K01: oracle payload reference missing"]
+    ref = refs[-1]
+    path = Path(ledger_dir) / str(ref.get("oracle_payload", ""))
+    if not path.is_file():
+        return ["K01: oracle payload file missing"]
+    import hashlib as _hl
+    if _hl.sha256(path.read_bytes()).hexdigest() != str(
+            ref.get("oracle_payload_sha256", "")):
+        return ["K01: oracle payload digest mismatch"]
+    try:
+        payload = _strict_loads(path)
+    except (OSError, ValueError) as error:
+        return ["K01: oracle payload unreadable (%s)" % str(error)[:60]]
+    from .oracle import verify_response as _vr
+    verdict = _vr(
+        type("R", (), {"candidates": payload.get("candidates", []),
+                       "reason_code": ""})(),
+        surface=payload.get("surface") or {},
+        box_size=payload.get("box_size") or (0.3, 0.2, 0.2),
+        hull=payload.get("hull") or {})
+    if not verdict["verdicts"]:
+        return ["K01: no candidates in the archived oracle payload"]
+    if not verdict["all_pass"]:
+        return ["K01: independent oracle rejects a candidate"]
+    claimed = [e for e in events
+               if e.get("case_id", "").startswith("K01")
+               and "oracle_legs" in e]
+    if claimed and claimed[-1].get("n_candidates") not in (
+            None, verdict["n_candidates"]):
+        return ["K01: claimed candidate count != archived payload"]
+    return []
 LEG_FACT_PLACEMENT = {("R03", "new-epoch-healthy")}
 
 
@@ -360,10 +448,15 @@ def recompute_case(events, case_id, subprobe=""):
         e for e in events
         if e["event_kind"] == "placement_request"
         and e.get("case_id") == case_id]
-    if (declared["state"] == "PASS" and case_placements_any
-            and not all(p.get("deadline_ns") and p.get("request_start_ns")
-                       for p in case_placements_any)):
-        return None, "deadline_not_recorded"
+    if declared["state"] == "PASS" and case_placements_any:
+        if not all(p.get("deadline_ns") and p.get("request_start_ns")
+                   for p in case_placements_any):
+            return None, "deadline_not_recorded"
+        over = [p for p in case_placements_any
+                if p.get("terminal_ns") and p.get("deadline_ns")
+                and int(p["terminal_ns"]) > int(p["deadline_ns"])]
+        if over:
+            return None, "deadline_violation"
     return declared["state"], None
 
 
@@ -420,6 +513,7 @@ def judge_events(events, known_ids=None):
     if len(integrate_ids) != len(set(integrate_ids)):
         problems.append("expected_id_violation: duplicate integrate id")
     problems.extend(_leg_completeness_problems(events))
+    problems.extend(_order_problems(events))
     return problems
 
 
@@ -887,6 +981,108 @@ def selftest(manifest_path, out_dir):
                               "ix0": 0, "iy0": 0}}]
     wiring["w15_k1_sanity"] = "REJECTED" if judge_events(
         k01_bad) else "FALSE_PASS"
+
+    # 1210 #3 controls: order inversion, missing oracle payload,
+    # illegal candidate, over-limit deadline, wrong identity linkage.
+    def _ev(kind, case, sub="", **extra):
+        row = {"event_kind": kind, "case_id": case, "subprobe": sub,
+               "mono_ns": extra.pop("mono_ns", 1), "state": "OK"}
+        row.update(extra)
+        return row
+
+    def _healthy_r03_events(invert=False, mono=None):
+        legs = REQUIRED_SUBPROBES["R03"]
+        rows = []
+        order = list(zip(legs, ["status=OK token=True",
+                                "native status=EXPIRED authorized_payload=0",
+                                "pinned status=MISMATCH",
+                                "admitted_epoch=a new_epoch=b",
+                                "reason=VALIDITY_GATE_CLOSED", "", ""]))
+        stamps = mono or [10, 11, 12, 13, 14, 15, 16]
+        keys = ["handle-acquired", "reset", "old-handle-refused",
+                "old-identity-refused", "old-payload-unauthorized",
+                "old-revision-request-refused", "new-epoch-healthy"]
+        facts = {
+            "handle-acquired": _ev("probe_detail", "R03",
+                                   "handle-acquired", mono_ns=stamps[0],
+                                   reason="status=OK token=True"),
+            "reset": _ev("reset", "-", mono_ns=stamps[1],
+                         reset_case="R03-reset"),
+            "old-handle-refused": _ev(
+                "probe_detail", "R03", "old-handle-refused",
+                mono_ns=stamps[2],
+                reason="native status=EXPIRED authorized_payload=0"),
+            "old-identity-refused": _ev(
+                "probe_detail", "R03", "old-identity-refused",
+                mono_ns=stamps[3], reason="pinned status=MISMATCH"),
+            "old-payload-unauthorized": _ev(
+                "probe_detail", "R03", "old-payload-unauthorized",
+                mono_ns=stamps[4],
+                reason="admitted_epoch=a new_epoch=b"),
+            "old-revision-request-refused": _ev(
+                "probe_detail", "R03", "old-revision-request-refused",
+                mono_ns=stamps[5], reason="reason=VALIDITY_GATE_CLOSED"),
+            "new-epoch-healthy": _ev(
+                "probe_detail", "R03", "new-epoch-healthy",
+                mono_ns=stamps[6], message="slot id=x"),
+            "placement": _ev("placement_request", "R03", "",
+                             mono_ns=stamps[6],
+                             message="slot id=x",
+                             request_start_ns=1, deadline_ns=10 ** 12,
+                             terminal_ns=2),
+        }
+        rows = [keys[0] and facts["handle-acquired"],
+                facts["reset"], facts["old-handle-refused"],
+                facts["old-identity-refused"],
+                facts["old-payload-unauthorized"],
+                facts["old-revision-request-refused"],
+                facts["new-epoch-healthy"], facts["placement"]]
+        rows += [_ev("case_terminal", "R03", leg, state="PASS",
+                     mono_ns=stamps[i])
+                 for i, leg in enumerate(legs)]
+        if invert:
+            rows[0]["mono_ns"], rows[2]["mono_ns"] = \
+                rows[2]["mono_ns"], rows[0]["mono_ns"]
+        return rows
+
+    ok_events = _healthy_r03_events()
+    wiring["w20_wrong_identity_linkage"] = "REJECTED" if \
+        _order_problems([dict(r, **{"reset_case": "OTHER-reset"})
+                         if r["event_kind"] == "reset" else r
+                         for r in ok_events]) else "FALSE_PASS"
+    wiring["w16_order_inverted"] = "REJECTED" if \
+        _order_problems(_healthy_r03_events(invert=True)) \
+        else "FALSE_PASS"
+    wiring["w17_oracle_payload_missing"] = "REJECTED" if \
+        _k01_independent_oracle(ok_events, out) else "FALSE_PASS"
+    # illegal candidate: a candidate failing the frozen oracle
+    nx = ny = 64
+    illegal_surface = {
+        "resolution": 0.02, "nx": nx, "ny": ny,
+        "height": [[0.0] * ny for _ in range(nx)],
+        "state": [["unknown"] * ny for _ in range(nx)],
+        "epoch": "t", "map_revision": 1,
+    }
+    from .oracle import verify_response as _vr_bad
+    bad_verdict = _vr_bad(
+        type("R", (), {"candidates": [{
+            "ix0": 0, "iy0": 0, "cells_x": 2, "cells_y": 2,
+            "yaw": 0.0,
+            "center_container": [99.0, 99.0, 99.0],
+            "confidence_ratio": 0.9}], "reason_code": ""})(),
+        surface=illegal_surface, box_size=(0.3, 0.2, 0.2),
+        hull={"inner_size": [1.49, 1.97, 1.48],
+              "floor_z_container": 0.53})
+    wiring["w18_illegal_candidate"] = (
+        "REJECTED" if not bad_verdict["all_pass"] else "FALSE_PASS")
+    over_events = _healthy_r03_events()
+    for row in over_events:
+        if row["event_kind"] == "placement_request":
+            row["request_start_ns"], row["deadline_ns"] = 1, 10
+            row["terminal_ns"] = 50  # past the absolute budget
+    _state, rule = recompute_case(over_events, "R03", "main")
+    wiring["w19_deadline_over_limit"] = (
+        "REJECTED" if rule == "deadline_violation" else "FALSE_PASS")
     result["gate_wiring"] = wiring
     (out / "SELFTEST.json").write_text(json.dumps(result, indent=1))
     return result
@@ -1035,6 +1231,9 @@ REQUIRED_WIRING = (
     "w11_same_name_package_replacement", "w12_undeclared_loaded_path",
     "w13_unknown_observation_id_formal",
     "w14_leg_facts_missing", "w15_k1_sanity",
+    "w16_order_inverted", "w17_oracle_payload_missing",
+    "w18_illegal_candidate", "w19_deadline_over_limit",
+    "w20_wrong_identity_linkage",
 )
 
 
@@ -1412,6 +1611,10 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
     for ledger in sorted(archive.glob("**/events.jsonl")):
         group_events = load_events(ledger)
         group_problems = judge_events(group_events, known_ids=known_ids)
+        if any(str(e.get("case_id", "")).startswith("K01")
+               for e in group_events):
+            group_problems.extend(
+                _k01_independent_oracle(group_events, ledger.parent))
         if freeze_doc and not fixture_manifest_found:
             group_problems.append(
                 "fixture manifest absent under the freeze's sfree_dir — "

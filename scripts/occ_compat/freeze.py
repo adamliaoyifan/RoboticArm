@@ -221,8 +221,32 @@ def run_freeze(manifest_path, out_dir):
     }
 
     store_shards = sorted(out.glob("store/*/*"))
+    # Four runtime input classes (reviews 1210 #1): bytes into the
+    # content-addressed store + declared digests, so A0 can close the
+    # input identity of runs collected under this freeze.
+    input_files = {}
+    for role, key in (("scene_tf", "scene_tf"),
+                      ("o_config", "o_config"),
+                      ("o_geometry", "o_geometry"),
+                      ("prep_inputs", "prep_inputs_json")):
+        target = manifest.get(key)
+        if not target:
+            continue
+        path = Path(target)
+        candidates = [path] if path.is_file() else sorted(
+            path.rglob("*")) if path.is_dir() else []
+        for item in candidates:
+            if item.is_file():
+                digest = sha256_file(item)
+                _store_copy(out, item, problems, digest)
+                rel = (item.relative_to(path).as_posix()
+                       if path.is_dir() else item.name)
+                input_files["%s/%s" % (role, rel)] = {
+                    "path": str(item), "sha256": digest}
+
     freeze_doc = {
-        "schema": "freeze-v2",
+        "schema": "freeze-v3",
+        "input_files": input_files,
         "source_map": source_map,
         "install_manifest": install_manifest,
         "store": {

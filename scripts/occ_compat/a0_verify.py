@@ -79,7 +79,7 @@ def verify(freeze_path, probe_paths, ledger_paths=()):
         "checks": {},
     }
 
-    if freeze.get("schema") != "freeze-v2":
+    if freeze.get("schema") not in ("freeze-v2", "freeze-v3"):
         result["verdict"] = "NOT_EVALUATED"
         result["problems"].append(
             "freeze schema %r lacks the content-addressed store and "
@@ -164,6 +164,23 @@ def verify(freeze_path, probe_paths, ledger_paths=()):
     if not probe_paths:
         result["problems"].append("no probe files provided at all")
     kinds = {p.get("kind") for p in probes}
+    # Runtime input binding (1210 #1): every spawned process's config
+    # inputs must match the freeze-declared digests.
+    declared_inputs = freeze.get("input_files") or {}
+    by_path = {str(entry.get("path")): entry.get("sha256")
+               for entry in declared_inputs.values()}
+    for probe in probes:
+        if probe.get("kind") != "input":
+            continue
+        want = by_path.get(probe.get("path"))
+        if want is None:
+            result["problems"].append(
+                "runtime input not declared in freeze: %s"
+                % str(probe.get("path"))[:70])
+        elif want != probe.get("sha256"):
+            result["problems"].append(
+                "runtime input bytes != freeze digest: %s"
+                % str(probe.get("path"))[:70])
     if "module" not in kinds:
         result["problems"].append(
             "no module probes — runtime import identity unproven")
@@ -299,22 +316,41 @@ def verify(freeze_path, probe_paths, ledger_paths=()):
                 "%d integrated input(s) fail byte verification (first: "
                 "%s)" % (len(bad_bytes), bad_bytes[0]))
 
-    # TF / external config closure (F04): these inputs were never
-    # digested at freeze time, so no historical expectation exists to
-    # verify against. Named as closure gaps — never silently accepted,
-    # never "verified" by hashing today's bytes.
+    # TF / external config closure (F04/1210 #1): freeze-v3 declares the
+    # input digests; verify the FILES on disk against them (and against
+    # the store bytes). Legacy freeze-v2 has no digests — named closure
+    # gaps, never silently accepted.
+    declared_inputs = freeze.get("input_files") or {}
+    covered_roles = set()
+    for key, entry in sorted(declared_inputs.items()):
+        role = key.split("/")[0]
+        covered_roles.add(role)
+        path = Path(str(entry.get("path", "")))
+        if not path.is_file():
+            result["problems"].append(
+                "declared input file absent: %s" % str(path)[:80])
+            continue
+        digest = sha256_file(path)
+        if digest != entry.get("sha256"):
+            result["problems"].append(
+                "declared input bytes drifted: %s" % key[:60])
+        if digest not in shard_hashes:
+            result["problems"].append(
+                "declared input missing from store: %s" % key[:60])
     for role, key in (("scene_tf", "scene_tf"), ("o_config", "o_config"),
                       ("o_geometry", "o_geometry"),
                       ("prep_inputs", "prep_inputs_json")):
         path = fm.get(key)
         if not path:
             continue
-        if not Path(path).exists():
-            result["problems"].append(
-                "%s input path absent: %s" % (role, str(path)[:80]))
-        else:
-            closure_gaps.append(
-                "%s: no historical digest recorded at freeze time" % role)
+        if role not in covered_roles:
+            if not Path(path).exists():
+                result["problems"].append(
+                    "%s input path absent: %s" % (role, str(path)[:80]))
+            else:
+                closure_gaps.append(
+                    "%s: no historical digest recorded at freeze time"
+                    % role)
 
     result["closure_gaps"] = closure_gaps
     if closure_gaps:

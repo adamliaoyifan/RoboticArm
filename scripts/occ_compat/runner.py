@@ -104,7 +104,7 @@ def _bring_up(backend, hull, manifest, root):
     return stack, client, stop, fixtures
 
 
-def run_v1_group(backend, hull, manifest, run_root, run_id):
+def run_v1_group(backend, hull, manifest, run_root, run_id, cases=None):
     """One (backend, hull) group of the V1 matrix (E1 first; E2/E3/E4
     land with their drivers — the dispatch already reserves them)."""
     import rclpy
@@ -131,7 +131,9 @@ def run_v1_group(backend, hull, manifest, run_root, run_id):
                 static_tf, base, static=True, frame_id="container_link"
                 if static_tf["child_frame_id"] == "suction_contact_frame"
                 else "world")
-        for case in CASE_ORDER:
+        selected = tuple(CASE_ORDER) if not cases else tuple(
+            c for c in CASE_ORDER if c in set(cases))
+        for case in selected:
             started = mono_ns()
             # Every case starts with the sim robot stream running (an
             # earlier sweep's E4 window may have stopped it mid-error).

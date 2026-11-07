@@ -52,7 +52,8 @@ class CaseContext:
             backend=self.backend, consumer="-", hull=self.hull,
             case_id="-", subprobe="", event_kind="reset", stage="reset",
             state="OK" if status in ("OK", "accepted") else status,
-            reason=str(status), reset_id=reset_id)
+            reason=str(status), reset_id=reset_id,
+            reset_case=str(reason))
         return status
 
     def integrate_scene(self, scene, count=3, suffix=""):
@@ -219,6 +220,29 @@ def _k01(ctx, run_e3=None, run_e4=None):
                        "floor_z_container": 0.53})
     classes = [v.get("candidate_class") for v in verdict["verdicts"]]
     sample = (ctx.client.last_result.get("candidates") or [{}])[0]
+    # Independent-oracle payload (reviews 1210 #2): everything the JUDGE
+    # needs to re-verify every candidate against the archived map —
+    # surface snapshot, frozen policy inputs, full candidate dump and
+    # the collection-time verdicts — written beside the ledger and
+    # referenced by digest.
+    import hashlib as _hl
+    oracle_payload = {
+        "schema": "k01-oracle-payload-v1",
+        "surface": surface, "box_size": list(BOX_A),
+        "hull": {"inner_size": [1.49, 1.97, 1.48],
+                 "floor_z_container": 0.53},
+        "candidates": dump, "verdicts": verdict["verdicts"],
+        "map_identity": {
+            "epoch": str(surface.get("epoch", "")),
+            "map_revision": surface.get("map_revision", 0)},
+    }
+    payload_name = "K01_oracle.json"
+    payload_path = ctx.ledger.path.parent / payload_name
+    payload_path.write_text(json.dumps(oracle_payload, sort_keys=True))
+    oracle_ref = {
+        "oracle_payload": payload_name,
+        "oracle_payload_sha256": _hl.sha256(
+            payload_path.read_bytes()).hexdigest()}
     if getattr(response, "success", False) and verdict["n_candidates"] \
             >= 1 and verdict["all_pass"]:
         # K01 positive (contract K01 row): a real legal candidate set,
@@ -227,6 +251,11 @@ def _k01(ctx, run_e3=None, run_e4=None):
         # is legal; CLAIMING known-free there is K03's failure class),
         # plus the real admission+commit which produced it. Claim classes
         # ride into the terminal as evidence.
+        ctx.ledger.emit(
+            backend=ctx.backend, consumer="-", hull=ctx.hull,
+            case_id="K01", subprobe="main",
+            event_kind="oracle_payload_ref", stage="oracle",
+            state="OK", **oracle_ref)
         return {"main": _terminal(
             ctx, "K01", "main", "PASS",
             n_candidates=verdict["n_candidates"],

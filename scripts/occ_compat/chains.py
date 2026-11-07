@@ -57,6 +57,7 @@ class ChainProcess:
             self.log_path = Path(str(log_path) + ".%d" % index)
         self._log = open(self.log_path, "w")
         self._probe_executable(command)
+        self._probe_inputs(command)
         env = dict(os.environ)
         env.pop("PYTHONPATH", None)  # the wrapper sets the real one
         if ChainProcess.domain:
@@ -105,6 +106,33 @@ class ChainProcess:
             raise RuntimeError(
                 "process tree of %r still alive after SIGKILL" % self.name)
         self._log.close()
+
+    def _probe_inputs(self, command):
+        """Runtime INPUT identity (reviews 1210 #1): hash every config/
+        TF file path the command references, so A0 can bind the bytes
+        the process actually loaded at spawn time."""
+        import re
+        paths = set(re.findall(
+            r"(?:config_file:=|geometry_file:=|scene_tf_config:=)(\S+)",
+            command))
+        files = []
+        for path_text in sorted(paths):
+            path = Path(path_text)
+            if path.is_dir():  # config/geometry directories: every file
+                files.extend(sorted(p for p in path.rglob("*")
+                                    if p.is_file()))
+            elif path.is_file():
+                files.append(path)
+        with open(self.log_path.parent / "INPUT_PROBES.jsonl", "a") as probes:
+            for path in files:
+                try:
+                    digest = sha256_file(path)
+                except OSError:
+                    continue
+                probes.write(json.dumps({
+                    "kind": "input", "name": self.name,
+                    "path": str(path.resolve()), "sha256": digest,
+                }) + "\n")
 
     def _probe_executable(self, command):
         """Runtime identity (G2 §3.1): hash the actual entry file this

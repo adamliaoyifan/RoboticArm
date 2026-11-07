@@ -44,8 +44,10 @@ def main(argv=None):
     out.mkdir(parents=True, exist_ok=True)
 
     if args.matrix == "V1":
+        selected = [c for c in args.cases.split(",") if c.strip()]
         results = runner.run_v1_group(
-            args.backend, args.hull, manifest, out, args.run_id)
+            args.backend, args.hull, manifest, out, args.run_id,
+            cases=selected or None)
     else:
         from . import v2_races
         selected = [c for c in args.cases.split(",") if c.strip()]
@@ -86,6 +88,10 @@ def _write_probes(out):
             "path": str(path.resolve()),
             "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         })
+    for probe_path in sorted(out.glob("**/INPUT_PROBES.jsonl")):
+        for line in probe_path.read_text().splitlines():
+            if line.strip():
+                probes.append(json.loads(line))
     exe_paths = sorted(out.glob("**/EXEC_PROBES.jsonl"))
     for exe_path in exe_paths:
         for line in exe_path.read_text().splitlines():
