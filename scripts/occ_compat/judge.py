@@ -443,6 +443,13 @@ def _order_problems(events):
                 if any(seg[0] in ("reset", "producer_restart")
                        for seg in span):
                     continue
+                if idents[idx][2] is None or idents[idx - 1][2] is None:
+                    # rows predate request tagging: named NE, never a
+                    # stitch verdict (reviews 1622 B4/B7)
+                    problems.append(
+                        "%s: order_identity_request_not_recorded"
+                        % case_id)
+                    break
                 if idents[idx][2] != idents[idx - 1][2]:
                     problems.append(
                         "%s: same-epoch segments from different requests "
@@ -963,7 +970,7 @@ def _leg_completeness_problems(events):
             continue  # unknown ids are the known_ids check's business
         if not any(t["state"] == "PASS" for t in rows):
             continue  # nothing claimed: a named NE archive stays legal
-        ok, detail = _evaluate_case(case_id, rows)
+        ok, detail = _evaluate_case(case_id, rows, events=events)
         if not ok and detail != "FAIL":
             problems.append("%s: evidence_missing (%s)"
                             % (case_id, detail))
@@ -1897,14 +1904,28 @@ def _case_leg_states(rows):
     return by_leg
 
 
-def _evaluate_case(case_id, rows):
-    """(ok, detail) for one required ID against its FROZEN leg set."""
+def _evaluate_case(case_id, rows, events=None):
+    """(ok, detail) for one required ID against its FROZEN leg set.
+    Named-NE facts (deadline/order/identity fields predating G3C) keep
+    the CASE not-evaluated — they propagate to the scope gates, never
+    hide in ledger detail (reviews 1622 B7)."""
     legs = REQUIRED_SUBPROBES.get(case_id, ("main",))
     optional = OPTIONAL_SUBPROBES.get(case_id, ())
     by_leg = _case_leg_states(rows)
     if any(state == "FAIL" for states in by_leg.values()
            for state in states):
         return False, "FAIL"
+    if events is not None:
+        ne_rules = ("deadline_not_recorded",
+                    "order_identity_epoch_not_recorded",
+                    "order_identity_request_not_recorded",
+                    "fact_missing_ne")
+        for terminal in rows:
+            state, rule = recompute_case(
+                events, terminal["case_id"],
+                terminal.get("subprobe", ""))
+            if rule in ne_rules:
+                return False, "ne:%s" % rule
     for leg in legs:
         states = by_leg.get(leg) or []
         if not states:
@@ -1932,16 +1953,22 @@ def _scope_gate(groups, required, expected_groups):
     FAIL dominates; unknown/missing legs and unknown states are named —
     an empty scope can never pass."""
     failed, not_hit, missing_groups = [], [], []
-    present = {name for name, _, _ in groups}
+    present = {entry[0] for entry in groups}
     for expected in expected_groups:
         if expected not in present:
             missing_groups.append(expected)
-    for name, terminals, problems in groups:
+    for group_entry in groups:
+        name = group_entry[0]
+        terminals = group_entry[1]
+        problems = group_entry[2]
+        events = group_entry[3] if len(group_entry) > 3 else None
         by_id = {}
         for t in terminals:
             by_id.setdefault(t["case_id"], []).append(t)
         for i in required:
-            ok, detail = _evaluate_case(i, by_id.get(i) or [])
+            ok, detail = _evaluate_case(i, by_id.get(i) or [],
+                                        events=events if events is None
+                                        else events)
             if detail == "FAIL":
                 failed.append("%s/%s" % (name, i))
             elif not ok:
@@ -2173,14 +2200,18 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
     for ledger in sorted(archive.glob("**/events.jsonl")):
         group_events = load_events(ledger)
         group_problems = judge_events(group_events, known_ids=known_ids)
-        # Identity-join NE (legacy rows predate epoch tagging) must not
-        # fail the scope gates: it moves to the A5 ledger NE bucket.
+        # Identity-join NE (legacy rows predate epoch/request tagging)
+        # must not fail the scope gates: it moves to the A5 ledger NE
+        # bucket AND propagates to the scope gates via _evaluate_case.
         for problem in group_problems:
-            if "order_identity_epoch_not_recorded" in problem:
+            if ("order_identity_epoch_not_recorded" in problem
+                    or "order_identity_request_not_recorded" in problem):
                 order_ne_notes.append("%s: %s"
                                       % (ledger.parent.name, problem))
         group_problems = [p for p in group_problems
                           if "order_identity_epoch_not_recorded"
+                          not in p
+                          and "order_identity_request_not_recorded"
                           not in p]
         if any(str(e.get("case_id", "")).startswith("K01")
                for e in group_events):
