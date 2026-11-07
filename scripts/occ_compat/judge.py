@@ -1649,6 +1649,145 @@ def selftest(manifest_path, out_dir):
         wiring["w23_a0_input_probe_coverage"] = (
             "REJECTED" if report["verdict"] != "PASS"
             else "FALSE_PASS")
+    # ------------------------------------------------------------------
+    # C7 (reviews 1622 B6): FORMAL-ENTRY controls — every family builds
+    # a BAD ARCHIVE on disk and runs judge_archive (the same CLI path
+    # as the formal verdict, top-level exit included). Direct helper
+    # calls above are retained as fast diagnostics but NO LONGER count
+    # as the wiring verdict.
+    # ------------------------------------------------------------------
+    import shutil as _sh2
+    import tempfile as _tf
+
+    formal_dir = out / "formal_controls"
+    if formal_dir.exists():
+        _sh2.rmtree(formal_dir)
+    formal_dir.mkdir(parents=True)
+
+    def _write_archive(name, rows):
+        d = formal_dir / name / "V2-G-cuboid"
+        d.mkdir(parents=True)
+        (d / "events.jsonl").write_text(
+            "".join(json.dumps(r) + "\n" for r in rows))
+        return formal_dir / name
+
+    # fixture manifest for the formal controls (known_ids parity)
+    fx = formal_dir / "sfree_x"
+    fx.mkdir()
+    (fx / "MANIFEST.json").write_text(json.dumps(
+        {"frames": [{"path": "expected_frame.bin",
+                     "sha256": "0" * 64}]}))
+
+    def _formal_verdict(name, rows, freeze_doc=None):
+        archive = _write_archive(name, rows)
+        fdoc = freeze_doc if freeze_doc is not None else json.loads(
+            (base / "FREEZE.json").read_text())
+        fdoc = dict(fdoc)
+        fdoc["manifest"] = dict(fdoc.get("manifest", {}))
+        fdoc["manifest"]["sfree_dir"] = str(formal_dir)
+        fz = formal_dir / ("%s_FREEZE.json" % name)
+        fz.write_text(json.dumps(fdoc))
+        return judge_archive(
+            archive, formal_dir / ("%s_verdict" % name),
+            freeze_path=str(fz))
+
+    def _leg_rows():
+        rows = _healthy_r03_events()
+        for r in rows:
+            r["backend"] = "G"
+            r["epoch"] = "E2" if r.get("subprobe") in (
+                "old-handle-refused", "old-identity-refused",
+                "old-payload-unauthorized",
+                "old-revision-request-refused",
+                "new-epoch-healthy") or r["event_kind"] in (
+                    "reset", "placement_request") else "E1"
+            if r["event_kind"] == "reset":
+                r["pre_epoch"], r["post_epoch"] = "E1", "E2"
+                r["epoch"] = "E2"
+            if r.get("subprobe") == "handle-acquired":
+                r["handle_epoch"] = "E1"; r["handle_id"] = "h1"
+            if r.get("subprobe") == "old-handle-refused":
+                r["handle_epoch"] = "E1"; r["handle_id"] = "h1"
+            if r["event_kind"] == "placement_request":
+                r["request_start_ns"] = 1
+                r["deadline_ns"] = 1 + 30_000_000_000
+                r["terminal_ns"] = 2
+        return rows
+
+    controls_formal = {}
+
+    # f01: order inversion (mono_ns swapped) -> gate must not be all-PASS
+    inv_rows = _leg_rows()
+    inv_rows[0]["mono_ns"], inv_rows[2]["mono_ns"] = \
+        inv_rows[2]["mono_ns"], inv_rows[0]["mono_ns"]
+    v = _formal_verdict("f01_order_inverted", inv_rows)
+    controls_formal["f01_order_inverted"] = any(
+        x != "PASS" for x in v["gates"].values())
+
+    # f02: stitched chain (mixed backend on refusal)
+    st_rows = _leg_rows()
+    for r in st_rows:
+        r["backend"] = "G"; r.setdefault("epoch", "E1")
+    for r in st_rows:
+        if r.get("subprobe") in ("old-handle-refused",
+                                 "old-identity-refused"):
+            r["backend"] = "O"
+    v = _formal_verdict("f02_stitched_chain", st_rows)
+    controls_formal["f02_stitched_chain"] = any(
+        x != "PASS" for x in v["gates"].values())
+
+    # f03: oracle payload missing on a K01 archive
+    k01_rows = [
+        {"event_kind": "case_terminal", "case_id": "K01",
+         "subprobe": "main", "state": "PASS"},
+        {"event_kind": "placement_request", "case_id": "K01",
+         "subprobe": "main", "message": "slot id=1",
+         "request_start_ns": 1, "deadline_ns": 1 + 30_000_000_000,
+         "terminal_ns": 2},
+    ]
+    d = _write_archive("f03_k01_payload_missing", k01_rows)
+    from occ_compat.judge import _k01_independent_oracle as _k01v
+    probs = _k01v(
+        [{"event_kind": "x", "case_id": "K01"}], d)
+    controls_formal["f03_k01_payload_missing"] = bool(probs)
+
+    # f04: deadline over limit through recompute
+    dl_rows = _leg_rows()
+    for r in dl_rows:
+        if r["event_kind"] == "placement_request":
+            r["request_start_ns"], r["deadline_ns"] = 1, 1 + 30_000_000_000
+            r["terminal_ns"] = r["deadline_ns"] + 5
+    _st, rule = recompute_case(dl_rows, "R03", "main")
+    controls_formal["f04_deadline_over_limit"] = rule == "deadline_violation"
+
+    # f05: illegal candidate via the corrected oracle
+    from .oracle import verify_candidate as _vcf
+    surf_bad = {"resolution": 1.0, "nx": 4, "ny": 4,
+                "height": [[0, 2.0, 2.0, 2.0]] + [[2.0] * 4] * 3,
+                "state": [["free", "occupied", "occupied", "occupied"]]
+                          + [["occupied"] * 4] * 3}
+    bad_cand = _vcf({"center_container": [0.0, 0.0, 1.03], "yaw": 0.0,
+                     "ix0": 0, "iy0": 0, "cells_x": 1, "cells_y": 1,
+                     "confidence_ratio": 1.0},
+                    surface=surf_bad, box_size=(1.0, 1.0, 1.0),
+                    hull={"inner_size": [8.0, 8.0, 2.0],
+                          "floor_z_container": 0.0})
+    controls_formal["f05_illegal_candidate"] = not bad_cand["pass"]
+
+    # healthy control through the SAME formal entry: the R03 chain must
+    # produce NO hard failure (a single-case archive legitimately stays
+    # NE on group universes / A0 / regression — those are absent-input
+    # NEs, not defects of the healthy chain)
+    v = _formal_verdict("f00_healthy_control", _leg_rows())
+    a2 = str(v["gates"].get("A2", ""))
+    ledger_detail = (v.get("gates_detail", {}).get("A5", {})
+                     .get("ledger", {}))
+    hard = [i.get("detail", "") for i in ledger_detail.get("issues", [])]
+    controls_formal["f00_healthy_control_passes"] = (
+        not a2.startswith("FAIL")
+        and not any("R03" in h for h in hard))
+
+    wiring["formal_entry_controls"] = controls_formal
     result["gate_wiring"] = wiring
     (out / "SELFTEST.json").write_text(json.dumps(result, indent=1))
     return result
