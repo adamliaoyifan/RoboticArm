@@ -11,6 +11,7 @@ exit code reflects driver completion, not the verdict.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -92,6 +93,19 @@ def _write_probes(out):
         for line in probe_path.read_text().splitlines():
             if line.strip():
                 probes.append(json.loads(line))
+    # T1-side runtime inputs (reviews 1620): the freeze manifest's
+    # prep-inputs file is read by the DRIVER itself — probe it like the
+    # chain probes its config files.
+    manifest_doc = manifest
+    for key in ("prep_inputs_json", "scene_tf", "scene_tf_cuboid",
+                "scene_tf_chamfer"):
+        target = manifest_doc.get(key)
+        if target and Path(target).is_file():
+            probes.append({
+                "kind": "input", "name": "t1-driver",
+                "path": str(Path(target).resolve()),
+                "sha256": hashlib.sha256(
+                    Path(target).read_bytes()).hexdigest()})
     exe_paths = sorted(out.glob("**/EXEC_PROBES.jsonl"))
     for exe_path in exe_paths:
         for line in exe_path.read_text().splitlines():
