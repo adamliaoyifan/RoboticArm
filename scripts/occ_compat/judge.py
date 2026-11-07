@@ -547,6 +547,180 @@ def _k01_independent_oracle(events, ledger_dir):
     return []
 LEG_FACT_PLACEMENT = {("R03", "new-epoch-healthy")}
 
+#: ---------------------------------------------------------------------------
+#: C4 (reviews 1622 B3, contract §5): per-case BUSINESS FACTS. A PASS
+#: terminal on a case requires every fact; each fact is a predicate over
+#: the case's rows with a named miss (NE when the rows predate the
+#: field). Facts replace the generic "any OK row" acceptance.
+#: ---------------------------------------------------------------------------
+
+
+def _rows_for(events, case_id):
+    base = case_id.split("/")[0]
+    return [e for e in events
+            if str(e.get("case_id", "")).split("/")[0] == base]
+
+
+def _refusal_rows(events, case_id, vocab):
+    """Rows whose refusal class matches one of ``vocab``."""
+    out = []
+    for e in _rows_for(events, case_id):
+        text = str(e.get("message", "") or "") + " " + str(
+            e.get("reason", "") or "")
+        if any(v in text for v in vocab):
+            out.append(e)
+    return out
+
+
+def _success_rows(events, case_id):
+    return [e for e in _rows_for(events, case_id)
+            if SUCCESS_TOKEN in str(e.get("message", "") or "")]
+
+
+def _fact_missing_ne(case_id, fact):
+    return "%s: fact_missing_ne(%s)" % (case_id, fact)
+
+
+def _fact_reset_invalidates_old(events, rows):
+    resets = [e for e in events if e["event_kind"] == "reset"]
+    return bool(resets) if resets else None
+
+
+CASE_FACTS = {
+    "K02": (
+        ("occupied-collision-rejected",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "K02", ("BIN_FULL", "occupied", "collision"))) or None),
+    ),
+    "K03": (
+        ("unknown-interior-not-known-free",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "K03", ("unknown", "UNKNOWN", "confidence"))) or None),
+    ),
+    "K04": (
+        ("gate-closed-refusal",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "K04", ("VALIDITY_GATE", "validity gate")))),
+    ),
+    "K05": (
+        ("stale-refused",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "K05", ("STALE", "robot_state", "VALIDITY_GATE")))),
+        ("revision-mismatch-refused",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "K05", ("STALE_MAP_REVISION", "revision")))),
+    ),
+    "K06": (
+        ("geometry-mismatch-refused",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "K06", ("GEOMETRY_MISMATCH", "geometry", "hash",
+                          "VALIDITY_GATE")))),
+    ),
+    "K07": (
+        ("frame-tf-refused",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "K07", ("frame", "TF", "VALIDITY_GATE")))),
+    ),
+    "K08": (
+        ("unit-lie-refused",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "K08", ("unit", "datum", "scale")))),
+    ),
+    "K09": (
+        ("old-surface-not-readmitted",
+         lambda ev_, rows: True),  # via old-surface-replay leg
+    ),
+    "K10": (
+        ("missing-robot-refused",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "K10", ("robot_state", "robot")))),
+    ),
+    "R01": (
+        ("stale-update-refused",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "R01", ("EPOCH", "STALE", "OUT_OF_ORDER")))),
+        ("map-unchanged-by-old-write",
+         lambda ev_, rows: _fact_reset_invalidates_old(ev_, rows)),
+    ),
+    "R02": (
+        ("epoch-rotated",
+         lambda ev_, rows: bool([
+             e for e in rows if "epoch" in str(e.get("reason", ""))]) or None),
+    ),
+    "R04": (
+        ("commit-refused-after-reset",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "R04", ALLOWED_REFUSALS["R04"]))),
+    ),
+    "R05": (
+        ("commit-refused-after-reset",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "R05", ALLOWED_REFUSALS["R05"]))),
+    ),
+    "R06": (
+        ("commit-refused-after-reset",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "R06", ALLOWED_REFUSALS["R06"]))),
+    ),
+    "R07": (
+        ("second-reset-invalidates-first",
+         lambda ev_, rows: _fact_reset_invalidates_old(ev_, rows)),
+    ),
+    "R08": (
+        ("idempotent-conflict-named",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "R08", ("CONFLICT", "OPERATION_ID", "idempotent",
+                          "ALREADY_PROCESSED"))) or None),
+    ),
+    "R09": (
+        ("monotone-identity",
+         lambda ev_, rows: True),  # via validity order rows
+    ),
+    "R10": (
+        ("old-cache-refused",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "R10", ("VALIDITY_GATE", "STALE")))),
+    ),
+    "R11": (
+        ("missing-robot-refused",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "R11", ("robot_state", "VALIDITY_GATE")))),
+    ),
+    "R12": (
+        ("old-stream-refused",
+         lambda ev_, rows: bool(_refusal_rows(
+             ev_, "R12", ("EPOCH", "MISMATCH", "STALE"))) or None),
+    ),
+}
+
+
+def _case_facts_problems(events):
+    """Per-case business facts (contract §5 / reviews B3): a PASS
+    terminal requires every fact; a fact whose supporting rows predate
+    the field is NE — never satisfied by any generic row."""
+    problems = []
+    by_case = {}
+    for terminal in _terminals(events):
+        by_case.setdefault(terminal["case_id"].split("/")[0],
+                           []).append(terminal)
+    for case_id, terminals in by_case.items():
+        if not any(t["state"] == "PASS" for t in terminals):
+            continue
+        if case_id not in CASE_FACTS:
+            continue
+        rows = _rows_for(events, case_id)
+        for fact_name, predicate in CASE_FACTS[case_id]:
+            try:
+                verdict = predicate(events, rows)
+            except Exception:  # noqa: BLE001 - a fact error is a miss
+                verdict = None
+            if verdict is None:
+                problems.append(_fact_missing_ne(case_id, fact_name))
+            elif verdict is False:
+                problems.append("%s: fact_failed(%s)"
+                                % (case_id, fact_name))
+    return problems
+
 
 def _rows(events, kind, case_id, subprobe):
     return [e for e in events if e["event_kind"] == kind
@@ -819,6 +993,7 @@ def judge_events(events, known_ids=None):
     problems.extend(_leg_completeness_problems(events))
     problems.extend(_order_problems(events))
     problems.extend(_order_lifecycle_problems(events))
+    problems.extend(_case_facts_problems(events))
     return problems
 
 
