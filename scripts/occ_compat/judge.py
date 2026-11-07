@@ -196,12 +196,33 @@ def _order_problems(events):
     """Each asserted row must exist and the sequence must be strictly
     increasing in mono_ns (reviews 1210: inverted key order rejects)."""
     problems = []
+    present = {str(e.get("case_id", "")).split("/")[0]
+               for e in _terminals(events)}
     for case_id, chain in ORDER_ASSERTIONS.items():
+        if case_id not in present:
+            continue  # assertions apply only to cases this ledger ran
         stamps = []
         for kind, field, token in chain:
-            rows = [e for e in events
-                    if e["event_kind"] == kind
-                    and token in str(e.get(field, ""))]
+            if kind == "reset":
+                # reset rows are case-linked via reset_case: the CHAIN's
+                # token names the exact mid-case reset (setup resets
+                # with a shorter label must not satisfy it).
+                rows = [e for e in events
+                        if e["event_kind"] == "reset"
+                        and e.get("case_id", "") == "-"
+                        and token in str(e.get("reset_case", ""))]
+            elif kind == "producer_restart":
+                # restart forensics rows are case-unlinked (only the
+                # restart case emits them in a group).
+                rows = [e for e in events
+                        if e["event_kind"] == kind
+                        and token in str(e.get(field, ""))]
+            else:
+                rows = [e for e in events
+                        if e["event_kind"] == kind
+                        and str(e.get("case_id", "")).split("/")[0]
+                        == case_id
+                        and token in str(e.get(field, ""))]
             if not rows:
                 problems.append("%s: order-segment missing (%s/%s=%s)"
                                 % (case_id, kind, field, token))
