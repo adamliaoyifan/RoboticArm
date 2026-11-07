@@ -266,11 +266,16 @@ def _k01(ctx, run_e3=None, run_e4=None):
     # EXTERNAL binding fields (reviews 1620): the ref names the request,
     # the ADMITTED map identity at call time, and the returned candidate
     # count — the judge binds them to the payload and the placement row.
+    import hashlib as _hl2
+    candidate_ids = sorted(str(c.get("candidate_id", c.get("id", i)))
+                           for i, c in enumerate(dump))
     oracle_ref.update({
         "request_link": str(_k01_request_link),
         "map_epoch": str(surface.get("epoch", "")),
         "map_revision": int(surface.get("map_revision", 0) or 0),
         "n_candidates": int(verdict["n_candidates"]),
+        "candidate_ids_sha256": _hl2.sha256(
+            json.dumps(candidate_ids).encode()).hexdigest(),
     })
     if getattr(response, "success", False) and verdict["n_candidates"] \
             >= 1 and verdict["all_pass"]:

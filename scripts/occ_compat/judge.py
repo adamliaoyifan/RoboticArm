@@ -522,6 +522,17 @@ def _k01_independent_oracle(events, ledger_dir):
         if int(ref.get("n_candidates", -1)) != len(
                 payload.get("candidates", [])):
             return ["K01: oracle ref candidate count != payload"]
+        # FULL candidate-set binding (reviews 1622 B2): the payload's
+        # candidate ID set must equal the response's — a different
+        # request's legal candidates cannot substitute.
+        import hashlib as _hl3
+        payload_ids = sorted(
+            str(c.get("candidate_id", c.get("id", i)))
+            for i, c in enumerate(payload.get("candidates", [])))
+        digest = _hl3.sha256(
+            json.dumps(payload_ids).encode()).hexdigest()
+        if ref.get("candidate_ids_sha256") not in (None, digest):
+            return ["K01: oracle payload candidate IDs != response set"]
         placement_rows = [e for e in events
                           if e["event_kind"] == "placement_request"
                           and str(e.get("case_id", "")).startswith("K01")]
