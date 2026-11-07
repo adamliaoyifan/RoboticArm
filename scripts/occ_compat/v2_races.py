@@ -729,7 +729,8 @@ def run_r03(ctx, case="R03"):
         _leg("handle-acquired",
              getattr(response, "status", "") == "OK" and bool(handle),
              "status=%s handle=%s" % (getattr(response, "status", ""),
-                                      bool(handle)))
+                                      bool(handle)),
+             handle_id=str(handle)[:24], handle_epoch=str(old_epoch))
         if not handle:
             return _terminal(ctx, case, "main", "FAIL",
                              "lease acquire failed: %s" % response)

@@ -196,8 +196,13 @@ ORDER_ASSERTIONS = {
 
 def _chain_identity(event):
     """(backend, epoch) of an event for the basic join; richer linkage
-    is verified separately per segment type below."""
-    return (event.get("backend", None), event.get("epoch", None))
+    is verified separately per segment type below. Reset receipts carry
+    pre/post epochs instead of a live epoch — the post epoch is the
+    producer identity they establish."""
+    epoch = event.get("epoch", None)
+    if epoch is None and event.get("post_epoch") is not None:
+        epoch = event.get("post_epoch")
+    return (event.get("backend", None), epoch)
 
 
 def _order_lifecycle_problems(events):
@@ -221,17 +226,20 @@ def _order_lifecycle_problems(events):
     if "R03" in present:
         rows = {"acq": [e for e in events
                         if e.get("case_id") == "R03"
-                        and e.get("subprobe") == "handle-acquired"],
+                        and e.get("subprobe") == "handle-acquired"
+                        and e["event_kind"] == "probe_detail"],
                 "ref": [e for e in events
                         if e.get("case_id") == "R03"
-                        and e.get("subprobe") == "old-handle-refused"],
+                        and e.get("subprobe") == "old-handle-refused"
+                        and e["event_kind"] == "probe_detail"],
                 "reset": [e for e in events
                           if e["event_kind"] == "reset"
                           and "R03-reset" in str(
                               e.get("reset_case", ""))],
                 "healthy": [e for e in events
                             if e.get("case_id") == "R03"
-                            and e.get("subprobe") == "new-epoch-healthy"]}
+                            and e.get("subprobe") == "new-epoch-healthy"
+                            and e["event_kind"] == "probe_detail"]}
         if all(rows[k] for k in ("acq", "ref", "reset", "healthy")):
             acq, ref = rows["acq"][-1], rows["ref"][-1]
             rst, healthy = rows["reset"][-1], rows["healthy"][-1]
