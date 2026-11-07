@@ -3,9 +3,26 @@
 Contract I4: the oracle is INDEPENDENT of the solver's success flag. For
 every returned candidate it recomputes, on the admitted surface map and
 the frozen hull descriptor, the full-orientation volume check: hull
-containment (with the frozen margin), occupied overlap at every cell the
-oriented box covers, unknown-interior classification, support ratio and
-clearance. Policy values are frozen from the C1 code, not negotiated.
+containment (with the frozen margin, chamfer per the CANONICAL
+descriptor ramp), occupied overlap at every cell the oriented box
+overlaps with POSITIVE AREA, unknown-interior classification, support
+ratio and clearance. Policy values are frozen from the C1 code, not
+negotiated.
+
+Geometry rules (reviews 1622 B1):
+- Coverage is VOLUME-level: a cell counts when its square intersects
+  the oriented footprint with positive area — center-inside alone
+  misses edge overlaps.
+- Contact tolerance (support) NEVER swallows a positive-volume occupied
+  overlap: support contact requires the occupied top within the
+  tolerance band of the box bottom; anything strictly above the band is
+  a collision.
+- Numeric validity is checked FIRST: finite values, positive size,
+  bottom at/above the floor, top at/below the ceiling, yaw within the
+  frozen legal set.
+- Chamfer follows the canonical container_geometry.y_max_at_z: slope
+  (wall_y - floor_y) / (wall_z - floor_z) with floor_z as origin — at
+  floor_z the limit is floor_y, at wall_z it is wall_y.
 """
 from __future__ import annotations
 
@@ -18,6 +35,7 @@ POLICY = {
     "same_layer_clearance_m": 0.02,
     "min_support_ratio": 0.55,
     "hull_margin_default_m": 0.0,
+    "support_contact_tol_m": 0.05,
 }
 
 _ORIENTATIONS = (0.0, math.pi / 2)   # box_axis_pi yaw semantics
@@ -30,35 +48,37 @@ def _oriented_footprint(size, yaw):
     return (w * c + d * s, w * s + d * c)
 
 
-def _cells_under(footprint, center_xy, resolution, origin_xy, nx, ny,
-                 unclipped=False):
-    """Grid cells whose centers lie inside the oriented footprint. With
-    ``unclipped`` the scan range is not bounded by the grid so an
-    out-of-grid footprint is visible to the caller."""
+def _yaw_is_legal(yaw):
+    """The frozen orientation set (0/90°); other angles are illegal —
+    an AABB approximation may not masquerade as legality proof."""
+    norm = yaw % math.pi
+    return any(abs(norm - o) <= 1e-6 for o in _ORIENTATIONS)
+
+
+def _cells_overlapping(footprint, center_xy, resolution, origin_xy,
+                       nx, ny):
+    """Cells whose SQUARE intersects the footprint with POSITIVE AREA
+    (half-open), regardless of whether the cell center is inside."""
     fw, fd = footprint
     x0, x1 = center_xy[0] - fw / 2.0, center_xy[0] + fw / 2.0
     y0, y1 = center_xy[1] - fd / 2.0, center_xy[1] + fd / 2.0
-    if unclipped:
-        ix_lo = int((x0 - origin_xy[0]) / resolution - 1)
-        ix_hi = int((x1 - origin_xy[0]) / resolution + 1)
-        iy_lo = int((y0 - origin_xy[1]) / resolution - 1)
-        iy_hi = int((y1 - origin_xy[1]) / resolution + 1)
-        ix_range = range(ix_lo, ix_hi + 1)
-        iy_range = range(iy_lo, iy_hi + 1)
-    else:
-        ix_range = range(nx)
-        iy_range = range(ny)
+    tol = POLICY["float_tolerance_m"]
     cells = []
-    for ix in ix_range:
-        cx = origin_xy[0] + (ix + 0.5) * resolution
-        if cx < x0 - POLICY["float_tolerance_m"] or \
-                cx > x1 + POLICY["float_tolerance_m"]:
-            continue
-        for iy in iy_range:
-            cy = origin_xy[1] + (iy + 0.5) * resolution
-            if y0 - POLICY["float_tolerance_m"] <= cy <= \
-                    y1 + POLICY["float_tolerance_m"]:
-                cells.append((ix, iy))
+    ix_lo = max(0, int((x0 - origin_xy[0]) / resolution))
+    ix_hi = min(nx - 1, int((x1 - origin_xy[0]) / resolution))
+    iy_lo = max(0, int((y0 - origin_xy[1]) / resolution))
+    iy_hi = min(ny - 1, int((y1 - origin_xy[1]) / resolution))
+    for ix in range(ix_lo, ix_hi + 1):
+        cx0 = origin_xy[0] + ix * resolution
+        cx1 = cx0 + resolution
+        if cx1 <= x0 + tol or cx0 >= x1 - tol:
+            continue  # no positive-area overlap in x
+        for iy in range(iy_lo, iy_hi + 1):
+            cy0 = origin_xy[1] + iy * resolution
+            cy1 = cy0 + resolution
+            if cy1 <= y0 + tol or cy0 >= y1 - tol:
+                continue
+            cells.append((ix, iy))
     return cells
 
 
@@ -75,59 +95,94 @@ def verify_candidate(candidate, *, surface, box_size, hull,
 
     ``candidate`` carries at least the center (container frame), yaw and
     the source's own claim. Returns a verdict dict — never an exception:
-    every malformed field is a failed leg, not a crash.
-    """
+    every malformed field is a failed leg, not a crash."""
     result = {"legs": {}, "pass": False}
     try:
         center = [float(v) for v in candidate["center_container"]]
-        yaw = float(candidate.get("yaw", 0.0) % math.pi)
+        yaw = float(candidate.get("yaw", 0.0))
         size = [float(v) for v in box_size]
     except (KeyError, TypeError, ValueError) as error:
         result["legs"]["decode"] = "malformed candidate: %s" % error
         return result
 
+    # ---- numeric validity FIRST (B1)
+    tol = POLICY["float_tolerance_m"]
+    if (not all(math.isfinite(v) for v in center)
+            or not all(math.isfinite(v) for v in size)
+            or not math.isfinite(yaw)):
+        result["legs"]["decode"] = "non-finite candidate values"
+        return result
+    if any(v <= 0 for v in size):
+        result["legs"]["decode"] = "non-positive box size"
+        return result
+    floor_container = float(hull.get("floor_z_container", 0.53))
+    ceiling_z = float(hull.get("inner_size", (0, 0, 1.48))[2])
+    z0 = center[2] - size[2] / 2.0
+    z1 = center[2] + size[2] / 2.0
+    if z0 < floor_container - tol:
+        result["legs"]["support"] = "FAIL_below_floor"
+        return result
+    if z1 > ceiling_z + tol:
+        result["legs"]["clearance"] = "FAIL_above_ceiling"
+        return result
+    if not _yaw_is_legal(yaw):
+        result["legs"]["hull"] = "FAIL_illegal_yaw"
+        return result
+
     fw, fd = _oriented_footprint(size, yaw)
     inner = hull["inner_size"]
-    # Chamfer hull (reviews 1355): when the payload carries the chamfer
-    # cut geometry, containment is the RECTANGULAR bound MINUS the
-    # corner cut triangles — a candidate center inside the rectangle but
-    # inside a cut triangle fails the hull leg.
-    chamfer = hull.get("chamfer") or (
-        hull.get("chamfer_cut_m") and {
-            "floor_y": 1.0 - float(hull["chamfer_cut_m"]),
-            "wall_y": 1.0, "wall_z": 1.0, "side": "positive_y"})
+
+    # ---- hull containment + CANONICAL chamfer ramp (B1)
+    half_l, half_w = inner[0] / 2.0, inner[1] / 2.0
+    chamfer = hull.get("chamfer")
     if chamfer:
-        # The frozen descriptor semantics (luggage_description): above
-        # wall_z the free width shrinks from wall_y to floor_y on the
-        # named side — a ramp. The candidate's TOP corner on that side
-        # must stay inside the ramp (reviews 1355: real chamfer
-        # geometry, not a rectangle).
-        side = str(chamfer.get("side", "positive_y"))
-        sign = 1.0 if side.endswith("positive_y") else -1.0
+        floor_z = float(chamfer.get("floor_z", floor_container))
+        wall_z = float(chamfer["wall_z"])
         wall_y = float(chamfer["wall_y"])
         floor_y = float(chamfer["floor_y"])
-        wall_z = float(chamfer["wall_z"])
-        z0 = center[2] - size[2] / 2.0
-        z1 = center[2] + size[2] / 2.0
-        fd_signed = fd if sign > 0 else fd
-        for z in (z0, z1):
-            t = min(max((z - 0.0) / wall_z, 0.0), 1.0) \
-                if wall_z > 0 else 0.0
-            limit = floor_y + (wall_y - floor_y) * (1.0 - t)
-            # container y ranges -half_w..+half_w; the ramp eats from
-            # the side edge inward
-            edge = sign * (center[1] + (fd / 2.0 if sign > 0
-                                        else -fd / 2.0))
-            if sign > 0 and (center[1] + fd / 2.0) > limit + \
-                    POLICY["float_tolerance_m"]:
-                result["legs"]["hull"] = "FAIL_chamfer_ramp"
-                return result
-            if sign < 0 and (center[1] - fd / 2.0) < -limit - \
-                    POLICY["float_tolerance_m"]:
-                result["legs"]["hull"] = "FAIL_chamfer_ramp"
-                return result
-    # The solver's own grid placement is authoritative for the footprint
-    # when present (ix0/iy0 + cells_x/cells_y in the map's indexing).
+        # the limit at the box TOP corner (worst case), floored at the
+        # canonical ramp: slope*(z - floor_z) + floor_y up to wall_z
+        z_check = min(z1, wall_z)
+        if wall_z > floor_z:
+            slope = (wall_y - floor_y) / (wall_z - floor_z)
+            y_limit = slope * (z_check - floor_z) + floor_y
+        else:
+            y_limit = wall_y
+        y_limit = min(half_w, max(y_limit, 0.0))
+        side = str(chamfer.get("side", "positive_y"))
+        if side.endswith("positive_y"):
+            worst = center[1] + fd / 2.0
+        else:
+            worst = -(center[1] - fd / 2.0)
+        if worst > y_limit + tol + margin:
+            result["legs"]["hull"] = "FAIL_chamfer_ramp"
+            return result
+    result["legs"]["hull"] = "PASS" if (
+        abs(center[0]) + fw / 2.0 <= half_l - margin + tol and
+        abs(center[1]) + fd / 2.0 <= half_w - margin + tol
+    ) else "FAIL_outside_hull"
+    if result["legs"]["hull"] != "PASS":
+        return result
+
+    resolution = float(surface["resolution"])
+    nx, ny = int(surface["nx"]), int(surface["ny"])
+    origin_xy = (-(nx / 2.0) * resolution, -(ny / 2.0) * resolution)
+
+    # ---- VOLUME-LEVEL coverage (B1): positive-area intersection; an
+    # out-of-grid footprint is a named failure, never clipped.
+    grid_x0, grid_x1 = origin_xy[0], origin_xy[0] + nx * resolution
+    grid_y0, grid_y1 = origin_xy[1], origin_xy[1] + ny * resolution
+    if (center[0] - fw / 2 < grid_x0 - tol
+            or center[0] + fw / 2 > grid_x1 + tol
+            or center[1] - fd / 2 < grid_y0 - tol
+            or center[1] + fd / 2 > grid_y1 + tol):
+        result["legs"]["coverage"] = "FAIL_footprint_outside_grid"
+        return result
+    cells = _cells_overlapping(
+        (fw, fd), (center[0], center[1]), resolution, origin_xy, nx, ny)
+    if not cells:
+        result["legs"]["coverage"] = "FAIL_no_cells"
+        return result
     solver_cells = None
     if all(k in candidate for k in ("ix0", "iy0", "cells_x", "cells_y")):
         try:
@@ -137,119 +192,95 @@ def verify_candidate(candidate, *, surface, box_size, hull,
                 for dy in range(int(candidate["cells_y"]))]
         except (TypeError, ValueError):
             solver_cells = None
-    # Hull containment (with the frozen margin), container frame:
-    # origin at the hull center per the planner's center_base convention.
-    half_l, half_w, _ = inner[0] / 2.0, inner[1] / 2.0, inner[2]
-    result["legs"]["hull"] = "PASS" if (
-        abs(center[0]) + fw / 2.0 <= half_l - margin +
-        POLICY["float_tolerance_m"] and
-        abs(center[1]) + fd / 2.0 <= half_w - margin +
-        POLICY["float_tolerance_m"]) else "FAIL_outside_hull"
-
-    resolution = float(surface["resolution"])
-    nx, ny = int(surface["nx"]), int(surface["ny"])
-    # v1 maps are container-centered: cell (ix, iy) center in container
-    # frame is (-(nx/2)+ (ix+0.5)) * res, same for y.
-    origin_xy = (-(nx / 2.0) * resolution, -(ny / 2.0) * resolution)
-    # GEOMETRY is authoritative (reviews 1355): the footprint comes from
-    # center/yaw/size; the candidate's self-reported indices are a claim
-    # that must MATCH the computed set — mismatch (shifted indices,
-    # shrunk coverage) fails the claim leg, never silently replaces the
-    # computed cells. No out-of-bounds clipping without the conflict
-    # being recorded.
-    cells = _cells_under(
-        (fw, fd), (center[0], center[1]), resolution, origin_xy, nx, ny)
-    if any(not (0 <= ix < nx and 0 <= iy < ny)
-           for ix, iy in _cells_under(
-               (fw, fd), (center[0], center[1]), resolution,
-               origin_xy, nx, ny, unclipped=True)):
-        result["legs"]["coverage"] = "FAIL_footprint_outside_grid"
-        return result
-    if solver_cells is not None and \
-            sorted(set(solver_cells)) != sorted(set(cells)):
+    if (solver_cells is not None
+            and sorted(set(solver_cells)) != sorted(set(cells))):
         result["legs"]["claim"] = "FAIL_reported_cells_mismatch"
-        return result
-    if not cells:
-        result["legs"]["coverage"] = "FAIL_no_cells"
-        return result
-    if not cells:
-        result["legs"]["coverage"] = "FAIL_no_cells"
         return result
     result["n_cells"] = len(cells)
 
-    # Frame discipline: surface heights are FLOOR-RELATIVE (the map's
-    # floor_z is the solver convention 0.0); candidate centers are
-    # container-frame. Convert the candidate bottom into the map's
-    # floor-relative frame via the hull's container floor height.
+    # ---- frame discipline: surface heights are FLOOR-RELATIVE
     floor_rel = float(surface.get("floor_z", 0.0) or 0.0)
-    floor_container = float(hull.get("floor_z_container", 0.53))
-    z0 = center[2] - size[2] / 2.0
     z0_rel = z0 - floor_container
     occupied_conflict = unknown_interior = supported = 0
+    contact_tol = POLICY["support_contact_tol_m"]
     for ix, iy in cells:
         height, state = _column_height(surface, ix, iy)
         top = floor_rel + height
-        # Product contact tolerance (support_contact_tol_m = 0.05):
-        # an occupied top within the tolerance of the box bottom is a
-        # SUPPORT CONTACT (aabb_overlap: touching faces allowed), not a
-        # positive-volume conflict.
-        contact_tol = 0.05
-        if state == "occupied" and top > z0_rel + contact_tol + 1e-9:
-            occupied_conflict += 1
+        if state == "occupied":
+            if top > z0_rel + contact_tol + tol:
+                # strictly above the contact band: a positive-volume
+                # penetration — tolerance does not apply (B1)
+                occupied_conflict += 1
+            elif top >= z0_rel - tol:
+                # within the band: support contact
+                supported += 1
+            # occupied top strictly below the bottom: no interaction
         elif state == "unknown":
             unknown_interior += 1
-        elif abs(top - z0_rel) <= 1e-6:
-            supported += 1
+        else:  # free column
+            if abs(z0_rel - (floor_rel + height)) <= tol:
+                supported += 1
     result["legs"]["occupied_overlap"] = (
         "PASS" if occupied_conflict == 0 else
         "FAIL_%d_cells" % occupied_conflict)
     support_ratio = supported / float(len(cells))
     result["support_ratio"] = round(support_ratio, 4)
-    # Claim verification (K01/K03 boundary): the candidate's own
-    # confidence_ratio claim must match the map. An unknown-ground
-    # candidate claiming confidence ~1 is a forged KNOWN_FREE (K03's
-    # failure class); the same candidate claiming ~0 is the legal
-    # floor-prior/hypothetical class — its unknown-interior is then not
-    # a violation, and its support leg is judged against the claim.
     claim = float(candidate.get("confidence_ratio", 0.0) or 0.0)
-    observed_known_ratio = 1.0 - unknown_interior / float(len(cells))
-    claim_error = abs(claim - (support_ratio if claim > 0.5
-                               else observed_known_ratio * 0.0))
     result["claim_confidence"] = claim
     if claim >= 0.5:
         result["legs"]["unknown_interior"] = (
             "PASS" if unknown_interior == 0 else
             "FAIL_%d_cells" % unknown_interior)
         result["legs"]["support"] = (
-            "PASS" if support_ratio >= POLICY["min_support_ratio"] -
-            POLICY["float_tolerance_m"] else
-            "FAIL_ratio_%.3f" % support_ratio)
+            "PASS" if support_ratio >= POLICY["min_support_ratio"] - tol
+            else "FAIL_ratio_%.3f" % support_ratio)
         result["candidate_class"] = "known_free"
     else:
         result["legs"]["unknown_interior"] = (
-            "PASS" if claim < 0.5 and claim_error <= 0.5 else
-            "FAIL_claim_mismatch")
+            "PASS" if abs(claim) <= 0.5 else "FAIL_claim_mismatch")
         result["legs"]["support"] = (
-            "PASS" if claim < 0.5 else "FAIL_claim_mismatch")
+            "PASS" if abs(claim) <= 0.5 else "FAIL_claim_mismatch")
         result["candidate_class"] = "floor_prior"
-    # Clearance: the box top must stay under the ceiling (relative).
-    result["legs"]["clearance"] = "PASS" if \
-        (z0_rel + size[2]) <= inner[2] + POLICY["float_tolerance_m"] \
-        else "FAIL_above_ceiling"
+    # ---- clearance: box top under the ceiling (floor-relative)
+    result["legs"]["clearance"] = (
+        "PASS" if (z0_rel + size[2]) <= ceiling_z - floor_container + tol
+        else "FAIL_above_ceiling")
     result["pass"] = all(v == "PASS" for v in result["legs"].values())
     return result
 
 
 def verify_response(response, *, surface, box_size, hull):
     """Verify EVERY candidate a placement response returned (I4: full
-    payloads, not counts), plus the no-solution taxonomy."""
+    payloads, not counts), the frozen same-layer clearance between
+    candidates, and the no-solution taxonomy."""
     candidates = list(getattr(response, "candidates", None) or [])
     verdicts = [verify_candidate(c, surface=surface, box_size=box_size,
                                  hull=hull) for c in candidates]
+    clearance_ok = True
+    for i in range(len(candidates)):
+        for j in range(i + 1, len(candidates)):
+            a = candidates[i].get("center_container")
+            b = candidates[j].get("center_container")
+            if not (isinstance(a, (list, tuple))
+                    and isinstance(b, (list, tuple))):
+                continue
+            ya = float(candidates[i].get("yaw", 0.0) % math.pi)
+            yb = float(candidates[j].get("yaw", 0.0) % math.pi)
+            fa = _oriented_footprint(box_size, ya)
+            fb = _oriented_footprint(box_size, yb)
+            dx = abs(float(a[0]) - float(b[0]))
+            dy = abs(float(a[1]) - float(b[1]))
+            if (dx < (fa[0] + fb[0]) / 2.0 -
+                    POLICY["same_layer_clearance_m"]
+                    and dy < (fa[1] + fb[1]) / 2.0 -
+                    POLICY["same_layer_clearance_m"]):
+                clearance_ok = False
     return {
         "n_candidates": len(candidates),
         "verdicts": verdicts,
-        "all_pass": bool(verdicts) and all(v["pass"] for v in verdicts),
+        "all_pass": bool(verdicts) and all(v["pass"] for v in verdicts)
+        and clearance_ok,
+        "clearance_ok": clearance_ok,
         "reason_code": getattr(response, "reason_code", ""),
     }
 
