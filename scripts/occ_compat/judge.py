@@ -2065,6 +2065,16 @@ def _evaluate_case(case_id, rows, events=None):
                 terminal.get("subprobe", ""))
             if rule in ne_rules:
                 return False, "ne:%s" % rule
+        # order/lifecycle NE classes surface at the group level — scan
+        # them for THIS case so the scope gate names the ID
+        base = case_id.split("/")[0]
+        for problem in (_order_problems(events)
+                        + _order_lifecycle_problems(events)):
+            head = problem.split(":")[0]
+            if head == base and any(cls in problem for cls in (
+                    "not_recorded", "lifecycle rows incomplete")):
+                return False, "ne:%s" % problem.split("(")[0][
+                    len(base) + 2:][:40]
     for leg in legs:
         states = by_leg.get(leg) or []
         if not states:
