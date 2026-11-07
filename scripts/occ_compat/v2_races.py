@@ -873,7 +873,7 @@ def run_r03(ctx, case="R03"):
     ctx.fresh_robot()
     time.sleep(0.5)
     healthy = _placement_probe(ctx, case)
-    _leg("new-epoch-healthy", healthy, epoch=_chain_epoch(),
+    _leg("new-epoch-healthy", healthy,
          producer_epoch=_chain_epoch())
     overall = "PASS" if all(subprobes.values()) else "FAIL"
     return _terminal(ctx, case, "main", overall,
