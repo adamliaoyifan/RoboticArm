@@ -619,7 +619,8 @@ CASE_FACTS = {
     "K07": (
         ("frame-tf-refused",
          lambda ev_, rows: bool(_refusal_rows(
-             ev_, "K07", ("frame", "TF", "VALIDITY_GATE")))),
+             ev_, "K07", ("FRAME_MISMATCH", "frame", "TF",
+                          "VALIDITY_GATE")))),
     ),
     "K08": (
         ("unit-lie-refused",
