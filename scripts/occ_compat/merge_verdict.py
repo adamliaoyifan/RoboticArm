@@ -308,6 +308,50 @@ def _a5_gate(reuse, verdicts):
         if errors:
             problems.append("%s A5 detail invalid: %s"
                             % (run_dir, errors[:3]))
+        # Case-NAMED ledger problems (K01/R03/... in the issue text) are
+        # case-local evidence gaps: excusable when that exact case is
+        # superseded by a run whose gates pass (reviews 1620: the
+        # superseding run07 carries the fields run04 predates). Unnamed
+        # globals always bind.
+        for entry in ((detail.get("ledger") or {}).get("issues", [])):
+            if not isinstance(entry, dict):
+                continue
+            case = entry.get("case")
+            if not case:
+                if entry.get("scope") == "case-local":
+                    # named in text but unparseable — binds
+                    globals_bad.append("ledger:%s" %
+                                       str(entry.get("detail"))[:50])
+                continue
+            group = entry.get("group")
+            candidates = ([group] if group else [
+                g for g, entries in reuse.get("groups", {}).items()
+                if case in entries])
+            superseded = any(
+                (reuse.get("groups", {}).get(g, {}).get(case, {})
+                 .get("source") not in (None, run_dir))
+                for g in candidates)
+            if not superseded:
+                globals_bad.append("ledger %s/%s still authoritative (%s)"
+                                   % (group or "?", case,
+                                      str(entry.get("detail"))[:40]))
+        for entry in ((detail.get("ledger") or {})
+                      .get("not_evaluated_issues", [])):
+            if not isinstance(entry, dict):
+                continue
+            case = entry.get("case")
+            if not case:
+                continue
+            group = entry.get("group")
+            candidates = ([group] if group else [
+                g for g, entries in reuse.get("groups", {}).items()
+                if case in entries])
+            if not any(
+                    (reuse.get("groups", {}).get(g, {}).get(case, {})
+                     .get("source") not in (None, run_dir))
+                    for g in candidates):
+                ne_globals.append("ledger-NE %s/%s still authoritative"
+                                  % (group or "?", case))
         # headline<->detail consistency (F01): the gate string and the
         # structured detail must name the SAME failing sub-checks in
         # both directions — a headline claiming a global failure the

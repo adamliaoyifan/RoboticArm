@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from pathlib import Path
 
 from .ledger import load_events
@@ -203,6 +204,36 @@ def _chain_identity(event):
     if epoch is None and event.get("post_epoch") is not None:
         epoch = event.get("post_epoch")
     return (event.get("backend", None), epoch)
+
+
+_CASE_NAME = re.compile(r"\b([KR]\d{2}(?:/E\d)?)\b")
+
+
+def _problem_scope(text):
+    return "case-local" if _CASE_NAME.search(text) else "global"
+
+
+def _problem_case(text):
+    match = _CASE_NAME.search(text)
+    return match.group(1) if match else None
+
+
+def _problem_group(text):
+    match = re.search(r"(V[12]-[GO]-(?:cuboid|chamfer))", text)
+    return match.group(1) if match else None
+
+
+def _named_ne_entries(problems):
+    """(group, case, detail) for NE problems naming a case; group comes
+    from the text when present (order notes carry it)."""
+    out = []
+    for p in problems:
+        case = _problem_case(p)
+        if not case:
+            continue
+        group = _problem_group(p)
+        out.append((group, case, p))
+    return out
 
 
 def _order_lifecycle_problems(events):
@@ -2070,10 +2101,18 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
                           else "NOT_EVALUATED"
                           if deadline_problems or order_ne_notes
                           else "PASS"),
-                "issues": [{"scope": "global", "rule": "ledger",
-                            "detail": p} for p in hard_problems],
+                "issues": [
+                    {"scope": _problem_scope(p), "rule": "ledger",
+                     "group": _problem_group(p), "case": _problem_case(p),
+                     "detail": p}
+                    for p in hard_problems],
                 "not_evaluated_detail": (
-                    deadline_problems[:8] + order_ne_notes[:8])},
+                    deadline_problems[:8] + order_ne_notes[:8]),
+                "not_evaluated_issues": [
+                    {"scope": "case-local", "rule": "ledger",
+                     "group": g, "case": c, "detail": n}
+                    for g, c, n in _named_ne_entries(
+                        deadline_problems + order_ne_notes)]},
             "regression": {
                 "scope": "global",
                 "state": str(reg).split(":", 1)[0].strip(),
