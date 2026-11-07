@@ -305,6 +305,7 @@ def _a5_gate(reuse, verdicts):
                             "structured sub-check detail required to "
                             "verify completeness" % run_dir)
             continue
+        ledger_excuses = {}
         local_pairs, globals_bad, errors = _validate_a5_detail(detail)
         if errors:
             problems.append("%s A5 detail invalid: %s"
@@ -336,6 +337,8 @@ def _a5_gate(reuse, verdicts):
                 globals_bad.append("ledger %s/%s still authoritative (%s)"
                                    % (group or "?", case,
                                       str(entry.get("detail"))[:40]))
+            else:
+                ledger_excuses.setdefault(case, set()).update(candidates)
         ledger_ne = detail.get("ledger") or {}
         if ledger_ne.get("state") == "NOT_EVALUATED" and \
                 not ledger_ne.get("not_evaluated_issues"):
@@ -356,6 +359,8 @@ def _a5_gate(reuse, verdicts):
                     for g in candidates):
                 ne_globals.append("ledger-NE %s/%s still authoritative"
                                   % (group or "?", case))
+            else:
+                ledger_excuses.setdefault(case, set()).update(candidates)
         # headline<->detail consistency (F01): the gate string and the
         # structured detail must name the SAME failing sub-checks in
         # both directions — a headline claiming a global failure the
@@ -424,6 +429,24 @@ def _a5_gate(reuse, verdicts):
         if unresolved:
             problems.append("%s A5 local issue(s) not excusable: %s"
                             % (run_dir, unresolved[:3]))
+        if ledger_excuses:
+            excuses.append({
+                "run": run_dir,
+                "superseded_ids": sorted(ledger_excuses),
+                "carried_by": sorted({
+                    reuse["groups"][g][c]["source"]
+                    for c, gs in ledger_excuses.items()
+                    for g in gs if g in reuse.get("groups", {})
+                    and c in reuse["groups"][g]}),
+                "kind": "ledger-case-named",
+                "superseder_a0": {
+                    src: str(verdicts_by_run[src]["gates"].get("A0"))
+                    for src in sorted({
+                        reuse["groups"][g][c]["source"]
+                        for c, gs in ledger_excuses.items()
+                        for g in gs if g in reuse.get("groups", {})
+                        and c in reuse["groups"][g]})
+                    if src in verdicts_by_run}})
         if not globals_bad and not unresolved and local_pairs:
             excuses.append({
                 "run": run_dir,
