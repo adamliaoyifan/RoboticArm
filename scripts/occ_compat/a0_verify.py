@@ -137,6 +137,11 @@ def verify(freeze_path, probe_paths, ledger_paths=()):
         referenced.add(digest)
         if digest not in shard_hashes:
             missing.append("T1/%s" % name)
+    for key, entry in (freeze.get("input_files") or {}).items():
+        digest = (entry or {}).get("sha256")
+        referenced.add(digest)
+        if digest not in shard_hashes:
+            missing.append("input/%s" % key)
     result["checks"]["declared_missing"] = len(missing)
     if missing:
         result["problems"].append(
@@ -218,6 +223,11 @@ def verify(freeze_path, probe_paths, ledger_paths=()):
                 if isinstance(files, dict) and rest in files:
                     return files[rest], "%s/src/%s/%s" % (
                         side, package_dir, rest)
+        # Runtime INPUT files (freeze-v3): bound against the freeze's
+        # declared input digests.
+        for entry in (freeze.get("input_files") or {}).values():
+            if path == str(Path(str(entry.get("path", ""))).resolve()):
+                return entry.get("sha256"), "input/%s" % path
         # T1's own scripts tree: the client interpreter loads occ_compat
         # modules straight from <c1_root>/scripts — bound against the
         # T1 section of the source map.
