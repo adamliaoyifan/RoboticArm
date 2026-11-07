@@ -309,11 +309,15 @@ def _order_lifecycle_problems(events):
             stages = {str(e.get("stage")): e for e in cps}
             inj = stages.get("injection_begin")
             rec = stages.get("recovery")
-            if inj and rec and str(inj.get("epoch", "")) == str(
-                    rec.get("epoch", "")):
-                problems.append(
-                    "R05: recovery on the pre-injection epoch — reset "
-                    "lifecycle unproven")
+            if inj and rec:
+                inj_ep, rec_ep = inj.get("epoch"), rec.get("epoch")
+                if inj_ep is None or rec_ep is None:
+                    problems.append(
+                        "R05: order_identity_epoch_not_recorded")
+                elif str(inj_ep) == str(rec_ep):
+                    problems.append(
+                        "R05: recovery on the pre-injection epoch — "
+                        "reset lifecycle unproven")
         else:
             problems.append("R05: no checkpoint rows")
     if "R12" in present:
@@ -534,11 +538,16 @@ def _k01_independent_oracle(events, ledger_dir):
         # request's legal candidates cannot substitute.
         import hashlib as _hl3
         payload_ids = sorted(
-            str(c.get("candidate_id", c.get("id", i)))
-            for i, c in enumerate(payload.get("candidates", [])))
+            str(c.get("candidate_id") or c.get("id") or "")
+            for c in payload.get("candidates", []))
+        if any(not cid for cid in payload_ids):
+            return ["K01: payload candidate lacks an ID — binding "
+                    "impossible"]
         digest = _hl3.sha256(
             json.dumps(payload_ids).encode()).hexdigest()
-        if ref.get("candidate_ids_sha256") not in (None, digest):
+        if ref.get("candidate_ids_sha256") is None:
+            return ["K01: oracle ref lacks the candidate-set digest"]
+        if ref["candidate_ids_sha256"] != digest:
             return ["K01: oracle payload candidate IDs != response set"]
         placement_rows = [e for e in events
                           if e["event_kind"] == "placement_request"
@@ -940,7 +949,7 @@ def recompute_case(events, case_id, subprobe=""):
                    and p.get("terminal_ns")
                    for p in case_placements_any):
             return None, "deadline_not_recorded"
-        budgets = set()
+        budgets_by_request = {}
         for placement in case_placements_any:
             start = int(placement["request_start_ns"])
             deadline = int(placement["deadline_ns"])
@@ -949,11 +958,14 @@ def recompute_case(events, case_id, subprobe=""):
                 return None, "deadline_violation"
             if deadline - start != 30_000_000_000:
                 return None, "deadline_budget_wrong"
-            budgets.add(deadline)
-        if len(budgets) > 1:
-            # retries must keep the ORIGINAL absolute budget — never
-            # reset (reviews 1622 B5)
-            return None, "deadline_retry_reset"
+            link = str(placement.get("request_link")
+                       or placement.get("request_id") or "")
+            budgets_by_request.setdefault(link, set()).add(deadline)
+        for link, budgets in budgets_by_request.items():
+            # RETRIES (same request) must keep the ORIGINAL absolute
+            # budget; distinct requests legitimately carry their own
+            if len(budgets) > 1:
+                return None, "deadline_retry_reset"
     return declared["state"], None
 
 
@@ -1679,6 +1691,8 @@ def selftest(manifest_path, out_dir):
                      "sha256": "0" * 64}]}))
 
     def _formal_verdict(name, rows, freeze_doc=None):
+        """Formal entry VIA THE CLI (reviews 2026-11-08: internal calls
+        don't count) — returns (verdict, exit_code)."""
         archive = _write_archive(name, rows)
         fdoc = freeze_doc if freeze_doc is not None else json.loads(
             (base / "FREEZE.json").read_text())
@@ -1687,9 +1701,21 @@ def selftest(manifest_path, out_dir):
         fdoc["manifest"]["sfree_dir"] = str(formal_dir)
         fz = formal_dir / ("%s_FREEZE.json" % name)
         fz.write_text(json.dumps(fdoc))
-        return judge_archive(
-            archive, formal_dir / ("%s_verdict" % name),
-            freeze_path=str(fz))
+        out_dir = formal_dir / ("%s_verdict" % name)
+        import subprocess as _sp
+        import sys as _sys
+        proc = _sp.run(
+            [_sys.executable,
+             str(Path(__file__).resolve().parents[2]
+                 / "scripts/occ_consumer_compat.py"),
+             "judge", "--archive", str(archive),
+             "--freeze", str(fz), "--out", str(out_dir)],
+            capture_output=True, text=True, timeout=120)
+        verdict = {}
+        vpath = out_dir / "VERDICT.json"
+        if vpath.is_file():
+            verdict = json.loads(vpath.read_text())
+        return verdict, proc.returncode
 
     def _leg_rows():
         rows = _healthy_r03_events()
@@ -1720,9 +1746,9 @@ def selftest(manifest_path, out_dir):
     inv_rows = _leg_rows()
     inv_rows[0]["mono_ns"], inv_rows[2]["mono_ns"] = \
         inv_rows[2]["mono_ns"], inv_rows[0]["mono_ns"]
-    v = _formal_verdict("f01_order_inverted", inv_rows)
-    controls_formal["f01_order_inverted"] = any(
-        x != "PASS" for x in v["gates"].values())
+    v, code = _formal_verdict("f01_order_inverted", inv_rows)
+    controls_formal["f01_order_inverted"] = (
+        code != 0 and any(x != "PASS" for x in v.get("gates", {}).values()))
 
     # f02: stitched chain (mixed backend on refusal)
     st_rows = _leg_rows()
@@ -1732,11 +1758,11 @@ def selftest(manifest_path, out_dir):
         if r.get("subprobe") in ("old-handle-refused",
                                  "old-identity-refused"):
             r["backend"] = "O"
-    v = _formal_verdict("f02_stitched_chain", st_rows)
-    controls_formal["f02_stitched_chain"] = any(
-        x != "PASS" for x in v["gates"].values())
+    v, code = _formal_verdict("f02_stitched_chain", st_rows)
+    controls_formal["f02_stitched_chain"] = (
+        code != 0 and any(x != "PASS" for x in v.get("gates", {}).values()))
 
-    # f03: oracle payload missing on a K01 archive
+    # f03: oracle payload missing on a K01 archive — THROUGH THE CLI
     k01_rows = [
         {"event_kind": "case_terminal", "case_id": "K01",
          "subprobe": "main", "state": "PASS"},
@@ -1744,48 +1770,78 @@ def selftest(manifest_path, out_dir):
          "subprobe": "main", "message": "slot id=1",
          "request_start_ns": 1, "deadline_ns": 1 + 30_000_000_000,
          "terminal_ns": 2},
+        {"event_kind": "oracle_payload_ref", "case_id": "K01",
+         "payload_ref": "absent.json"},
     ]
-    d = _write_archive("f03_k01_payload_missing", k01_rows)
-    from occ_compat.judge import _k01_independent_oracle as _k01v
-    probs = _k01v(
-        [{"event_kind": "x", "case_id": "K01"}], d)
-    controls_formal["f03_k01_payload_missing"] = bool(probs)
+    v, code = _formal_verdict("f03_k01_payload_missing", k01_rows)
+    gates_text = " ".join(str(x) for x in v.get("gates", {}).values())
+    controls_formal["f03_k01_payload_missing"] = (
+        code != 0 and "oracle" in gates_text)
 
-    # f04: deadline over limit through recompute
+    # f04: deadline over limit — THROUGH THE CLI
     dl_rows = _leg_rows()
     for r in dl_rows:
         if r["event_kind"] == "placement_request":
-            r["request_start_ns"], r["deadline_ns"] = 1, 1 + 30_000_000_000
             r["terminal_ns"] = r["deadline_ns"] + 5
-    _st, rule = recompute_case(dl_rows, "R03", "main")
-    controls_formal["f04_deadline_over_limit"] = rule == "deadline_violation"
+    v, code = _formal_verdict("f04_deadline_over_limit", dl_rows)
+    gates_text = " ".join(str(x) for x in v.get("gates", {}).values())
+    controls_formal["f04_deadline_over_limit"] = (
+        code != 0 and "deadline_violation" in gates_text)
 
-    # f05: illegal candidate via the corrected oracle
-    from .oracle import verify_candidate as _vcf
+    # f05: illegal candidate — the corrected oracle rejects; archived
+    # as a K01 payload so the rejection flows through the CLI judge
     surf_bad = {"resolution": 1.0, "nx": 4, "ny": 4,
                 "height": [[0, 2.0, 2.0, 2.0]] + [[2.0] * 4] * 3,
                 "state": [["free", "occupied", "occupied", "occupied"]]
                           + [["occupied"] * 4] * 3}
-    bad_cand = _vcf({"center_container": [0.0, 0.0, 1.03], "yaw": 0.0,
-                     "ix0": 0, "iy0": 0, "cells_x": 1, "cells_y": 1,
-                     "confidence_ratio": 1.0},
-                    surface=surf_bad, box_size=(1.0, 1.0, 1.0),
-                    hull={"inner_size": [8.0, 8.0, 2.0],
-                          "floor_z_container": 0.0})
-    controls_formal["f05_illegal_candidate"] = not bad_cand["pass"]
+    from .oracle import verify_response as _vrf
+    bad_payload = {
+        "surface": surf_bad, "box_size": [1.0, 1.0, 1.0],
+        "hull": {"inner_size": [8.0, 8.0, 2.0],
+                 "floor_z_container": 0.0},
+        "candidates": [{"center_container": [0.0, 0.0, 1.03],
+                        "yaw": 0.0, "ix0": 0, "iy0": 0,
+                        "cells_x": 1, "cells_y": 1,
+                        "confidence_ratio": 1.0}],
+        "map_identity": {"epoch": "t", "map_revision": 1},
+    }
+    f05_dir = formal_dir / "f05_illegal_candidate" / "V2-G-cuboid"
+    f05_dir.mkdir(parents=True)
+    (f05_dir / "K01_oracle.json").write_text(json.dumps(bad_payload))
+    import hashlib as _h5
+    digest = _h5.sha256(
+        (f05_dir / "K01_oracle.json").read_bytes()).hexdigest()
+    k01_bad_rows = [
+        {"event_kind": "case_terminal", "case_id": "K01",
+         "subprobe": "main", "state": "PASS"},
+        {"event_kind": "placement_request", "case_id": "K01",
+         "subprobe": "main", "message": "slot id=1",
+         "request_start_ns": 1, "deadline_ns": 1 + 30_000_000_000,
+         "terminal_ns": 2},
+        {"event_kind": "oracle_payload_ref", "case_id": "K01",
+         "payload_ref": "K01_oracle.json",
+         "map_epoch": "t", "map_revision": 1, "n_candidates": 1,
+         "candidate_ids_sha256": digest,
+         "request_link": "r1"},
+        {"event_kind": "probe_detail", "case_id": "K01",
+         "n_candidates": 1},
+    ]
+    v, code = _formal_verdict("f05_illegal_candidate", k01_bad_rows)
+    gates_text = " ".join(str(x) for x in v.get("gates", {}).values())
+    controls_formal["f05_illegal_candidate"] = (
+        code != 0 and "oracle" in gates_text)
 
-    # healthy control through the SAME formal entry: the R03 chain must
-    # produce NO hard failure (a single-case archive legitimately stays
-    # NE on group universes / A0 / regression — those are absent-input
-    # NEs, not defects of the healthy chain)
-    v = _formal_verdict("f00_healthy_control", _leg_rows())
-    a2 = str(v["gates"].get("A2", ""))
+    # healthy control through the SAME CLI: the R03 chain must produce
+    # NO hard failure AND the A2 gate must not name R03 as failed
+    v, code = _formal_verdict("f00_healthy_control", _leg_rows())
+    a2 = str(v.get("gates", {}).get("A2", ""))
     ledger_detail = (v.get("gates_detail", {}).get("A5", {})
                      .get("ledger", {}))
     hard = [i.get("detail", "") for i in ledger_detail.get("issues", [])]
     controls_formal["f00_healthy_control_passes"] = (
-        not a2.startswith("FAIL")
-        and not any("R03" in h for h in hard))
+        "R03" not in a2
+        and not any("R03" in h for h in hard)
+        and code in (0, 1))
 
     wiring["formal_entry_controls"] = controls_formal
     result["gate_wiring"] = wiring
@@ -1969,8 +2025,18 @@ def _a1_gate(selftest, freeze):
     absent = [w for w in REQUIRED_WIRING if w not in wiring]
     if absent:
         missing.append("wiring families absent: %s" % absent[:4])
-    bad_wiring = [k for k, v in wiring.items()
-                  if k != "w09_base_control_passes" and v != "REJECTED"]
+    bad_wiring = []
+    for k, v in wiring.items():
+        if k == "w09_base_control_passes":
+            continue
+        if k == "formal_entry_controls":
+            # dict of booleans: every negative True, healthy True
+            if not isinstance(v, dict) or not v or not all(
+                    bool(x) for x in v.values()):
+                bad_wiring.append(k)
+            continue
+        if v != "REJECTED":
+            bad_wiring.append(k)
     if bad_wiring:
         missing.append("gate wiring not rejected: %s" % bad_wiring[:3])
     if wiring.get("w09_base_control_passes") != "PASS":
@@ -2349,19 +2415,27 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
     for ledger in sorted(archive.glob("**/events.jsonl")):
         group_events = load_events(ledger)
         group_problems = judge_events(group_events, known_ids=known_ids)
-        # Identity-join NE (legacy rows predate epoch/request tagging)
-        # must not fail the scope gates: it moves to the A5 ledger NE
-        # bucket AND propagates to the scope gates via _evaluate_case.
+        # _ledger_problems sentinel rows from the STRICT loader are gate
+        # problems (schema violations, seq breaks, dup terminals) —
+        # surfaced, never swallowed
+        for event in group_events:
+            if event.get("event_kind") == "_ledger_problems":
+                group_problems.extend(
+                    "ledger-integrity: %s" % p_
+                    for p_ in event.get("problems", []))
+        # NE-class problems (identity fields predating G3C, facts whose
+        # rows predate the field) move to the A5 ledger NE bucket and
+        # propagate via _evaluate_case — they must NOT fail the scope
+        # gates as hard problems.
+        ne_classes = ("order_identity_epoch_not_recorded",
+                      "order_identity_request_not_recorded",
+                      "fact_missing_ne")
         for problem in group_problems:
-            if ("order_identity_epoch_not_recorded" in problem
-                    or "order_identity_request_not_recorded" in problem):
+            if any(cls in problem for cls in ne_classes):
                 order_ne_notes.append("%s: %s"
                                       % (ledger.parent.name, problem))
         group_problems = [p for p in group_problems
-                          if "order_identity_epoch_not_recorded"
-                          not in p
-                          and "order_identity_request_not_recorded"
-                          not in p]
+                          if not any(cls in p for cls in ne_classes)]
         if any(str(e.get("case_id", "")).startswith("K01")
                for e in group_events):
             group_problems.extend(

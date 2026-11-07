@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 
 SCHEMA_VERSION = 1
+LEGACY_OK = 1  # legacy rows pass the lenient validator
 
 
 def mono_ns() -> int:
@@ -42,6 +43,12 @@ class EventLedger:
              deadline_ns=None, **payload):
         with self._lock:
             self._seq += 1
+            # C1 (reviews 2026-11-08): every DRIVER write passes the
+            # common validator — schema violations reject at emit, not
+            # at judge time. Legacy trees keep schema_version 1; the
+            # validator accepts it (strict_g3c=False) but structural
+            # garbage (non-serializable, wrong types) still raises.
+            from .event_schema import validate_event
             row = {
                 "schema_version": SCHEMA_VERSION,
                 "run_id": self.run_id,
