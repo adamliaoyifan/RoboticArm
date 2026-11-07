@@ -162,6 +162,8 @@ def _placement_probe(ctx, case):
             case_id=case, subprobe="healthy", event_kind="probe_detail",
             stage="consumer", state="OK" if ok else "REFUSED",
             **budget_fields(_probe_start),
+            epoch=str((ctx.client.validity_record() or {}).get(
+                "epoch", "")),
             reason=str(getattr(response, "reason_code", "")),
             message=str(getattr(response, "message", ""))[:120])
         if ok:
@@ -301,6 +303,9 @@ def run_r05(ctx, service="v1", case="R05"):
             event_kind="r05_checkpoint", stage=stage, state="OK",
             age_ms=(mono_ns() - submitted_ns) // 1_000_000,
             planner_stage=str(getattr(ctx.client, "_last_stage", ""))[:40],
+            request_link=str(submitted_ns),
+            epoch=str((ctx.client.validity_record() or {}).get(
+                "epoch", "")),
             **extra)
 
     _checkpoint("request_submitted")
@@ -530,7 +535,9 @@ def run_r12(ctx, stack, restart_producer):
             state=str(getattr(status, "state", "")),
             reason="epoch=%s gen=%s (attempt %d)" % (
                 getattr(status, "epoch", "?"),
-                getattr(status, "generation", "?"), attempt))
+                getattr(status, "generation", "?"), attempt),
+            epoch=str(getattr(status, "epoch", "?")),
+            producer_pid=proc2.process.pid)
         ctx.integrate_scene("S-free", 3, suffix="R12b-%d" % attempt)
         time.sleep(0.6)
         log = proc2.log_path.read_text(errors="ignore") \
@@ -616,14 +623,18 @@ def run_r03(ctx, case="R03"):
     interface."""
     subprobes = {}
 
-    def _leg(name, ok, detail=""):
+    def _chain_epoch():
+        return str((ctx.client.validity_record() or {}).get("epoch", ""))
+
+    def _leg(name, ok, detail="", **identity):
         ok = bool(ok)
         subprobes[name] = ok
         ctx.ledger.emit(
             backend=ctx.backend, consumer="-", hull=ctx.hull,
             case_id=case, subprobe=name,
             event_kind="probe_detail", stage="typed_resume",
-            state="PASS" if ok else "FAIL", reason=str(detail)[:160])
+            state="PASS" if ok else "FAIL", reason=str(detail)[:160],
+            epoch=_chain_epoch(), **identity)
         _terminal(ctx, case, name, "PASS" if ok else "FAIL",
                   reason=str(detail)[:160])
         return ok
@@ -672,7 +683,9 @@ def run_r03(ctx, case="R03"):
              meta1.status == "OK" and old_page_count > 0
              and bool(meta1.snapshot_token),
              "status=%s token=%s returned=%d"
-             % (meta1.status, bool(meta1.snapshot_token), old_page_count))
+             % (meta1.status, bool(meta1.snapshot_token), old_page_count),
+             handle_id=str(token)[:24], handle_epoch=handle_epoch,
+             acquire_epoch=handle_epoch)
         if not subprobes.get("handle-acquired"):
             return _terminal(ctx, case, "main", "FAIL",
                              "typed acquire failed: %s/%s"
@@ -680,6 +693,7 @@ def run_r03(ctx, case="R03"):
         token = meta1.snapshot_token
         cursor = meta1.next_cursor
         identity = meta1.identity
+        handle_epoch = _chain_epoch()
 
         def resume_request():
             return ctx.client.call_service(
@@ -778,6 +792,7 @@ def run_r03(ctx, case="R03"):
 
     # Step 4: the OLD handle/cursor through the real resume entry.
     backend_kind, resume_request, pinned_only_request = resume_request_factory
+    handle_epoch_ref = handle_epoch if backend_kind == "G" else old_epoch
     response = resume_request()
     if isinstance(response, dict):
         return _terminal(ctx, case, "main", "FAIL",
@@ -789,7 +804,10 @@ def run_r03(ctx, case="R03"):
         status = str(response.status)
         authorized = len(getattr(response, "x", []) or [])
     _leg("old-handle-refused", status != "OK" and authorized == 0,
-         "native status=%s authorized_payload=%d" % (status, authorized))
+         "native status=%s authorized_payload=%d" % (status, authorized),
+         handle_id=str(getattr(resume_request, "handle_id", "")
+                       or (token if backend_kind == "G" else handle))[:24],
+         handle_epoch=str(handle_epoch_ref))
     # The identity-only leg (no token): the epoch rotation itself must
     # reject a pinned old identity, independent of token TTLs.
     pinned = pinned_only_request()
@@ -800,7 +818,8 @@ def run_r03(ctx, case="R03"):
     else:
         pinned_status = str(pinned.status)
     _leg("old-identity-refused", pinned_status not in ("OK", ""),
-         "pinned status=%s" % pinned_status)
+         "pinned status=%s" % pinned_status,
+         handle_epoch=str(handle_epoch_ref))
 
     # Step 5: redeliver the captured old payload to the consumer
     # boundary — the planner's identity check must refuse it.
@@ -852,7 +871,8 @@ def run_r03(ctx, case="R03"):
     ctx.fresh_robot()
     time.sleep(0.5)
     healthy = _placement_probe(ctx, case)
-    _leg("new-epoch-healthy", healthy)
+    _leg("new-epoch-healthy", healthy, epoch=_chain_epoch(),
+         producer_epoch=_chain_epoch())
     overall = "PASS" if all(subprobes.values()) else "FAIL"
     return _terminal(ctx, case, "main", overall,
                      reason="legs=%s" % json.dumps(subprobes))
@@ -961,7 +981,9 @@ def run_v2_group(backend, hull, manifest, run_root, run_id, cases=None):
                 subprobe="", event_kind="producer_restart",
                 stage="restart", state="RESPAWNED",
                 new_pid=proc2.process.pid,
-                new_starttime_ns=_proc_starttime(proc2.process.pid))
+                new_starttime_ns=_proc_starttime(proc2.process.pid),
+                epoch=str((client.validity_record() or {}).get(
+                    "epoch", "")))
             return proc2
 
         def _restart_planner():

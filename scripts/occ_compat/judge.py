@@ -192,11 +192,106 @@ ORDER_ASSERTIONS = {
 }
 
 
+"''"
+
 def _chain_identity(event):
-    """(backend, epoch) of an event, for identity-joined order checks.
-    Rows without identity fields carry None — the join demands the
-    fields EXIST on probe rows (the drivers emit them)."""
+    """(backend, epoch) of an event for the basic join; richer linkage
+    is verified separately per segment type below."""
     return (event.get("backend", None), event.get("epoch", None))
+
+
+def _order_lifecycle_problems(events):
+    """Full association (reviews 1620): same-backend-same-epoch CROSS-
+    REQUEST stitching is distinguished by handle/request linkage, and
+    producer-restart identity changes follow the restart lifecycle.
+
+    R03: handle-acquired and old-handle-refused must reference the SAME
+    handle (handle_id + handle_epoch); the reset receipt's pre_epoch
+    must equal the handle's epoch and its post_epoch the producer epoch
+    observed by the post-reset rows; the healthy row's epoch equals the
+    post-reset epoch.
+    R05: request_link is constant across every checkpoint; epochs may
+    change only across the injection (the reset sits between
+    injection_begin and recovery).
+    R12: restart-status and healthy rows must carry the RESPAWNED
+    producer's pid; the kill receipt names the OLD pid."""
+    problems = []
+    present = {str(e.get("case_id", "")).split("/")[0]
+               for e in _terminals(events)}
+    if "R03" in present:
+        rows = {"acq": [e for e in events
+                        if e.get("case_id") == "R03"
+                        and e.get("subprobe") == "handle-acquired"],
+                "ref": [e for e in events
+                        if e.get("case_id") == "R03"
+                        and e.get("subprobe") == "old-handle-refused"],
+                "reset": [e for e in events
+                          if e["event_kind"] == "reset"
+                          and "R03-reset" in str(
+                              e.get("reset_case", ""))],
+                "healthy": [e for e in events
+                            if e.get("case_id") == "R03"
+                            and e.get("subprobe") == "new-epoch-healthy"]}
+        if all(rows[k] for k in ("acq", "ref", "reset", "healthy")):
+            acq, ref = rows["acq"][-1], rows["ref"][-1]
+            rst, healthy = rows["reset"][-1], rows["healthy"][-1]
+            if str(acq.get("handle_id", "")) not in (
+                    "", str(ref.get("handle_id", ""))) and \
+                    str(acq.get("handle_id")) != str(ref.get("handle_id")):
+                problems.append(
+                    "R03: refusal references a different handle than "
+                    "the one acquired")
+            if str(acq.get("handle_epoch")) != str(rst.get("pre_epoch")):
+                problems.append(
+                    "R03: reset receipt pre_epoch != acquired handle "
+                    "epoch")
+            if str(healthy.get("epoch", "")) not in (
+                    "", str(rst.get("post_epoch", ""))):
+                problems.append(
+                    "R03: healthy row not on the reset's post epoch")
+        else:
+            problems.append("R03: lifecycle rows incomplete")
+    if "R05" in present:
+        cps = [e for e in events
+               if e["event_kind"] == "r05_checkpoint"
+               and e.get("case_id") == "R05"]
+        if cps:
+            links = {str(e.get("request_link", "")) for e in cps}
+            if len(links) > 1:
+                problems.append(
+                    "R05: checkpoints span multiple requests (%s)"
+                    % sorted(links)[:3])
+            stages = {str(e.get("stage")): e for e in cps}
+            inj = stages.get("injection_begin")
+            rec = stages.get("recovery")
+            if inj and rec and str(inj.get("epoch", "")) == str(
+                    rec.get("epoch", "")):
+                problems.append(
+                    "R05: recovery on the pre-injection epoch — reset "
+                    "lifecycle unproven")
+        else:
+            problems.append("R05: no checkpoint rows")
+    if "R12" in present:
+        respawn = [e for e in events
+                   if e["event_kind"] == "producer_restart"
+                   and e.get("state") == "RESPAWNED"]
+        statuses = [e for e in events
+                    if e.get("case_id") == "R12"
+                    and e.get("subprobe") == "restart-status"]
+        if respawn and statuses:
+            new_pid = respawn[-1].get("new_pid")
+            strays = [e for e in statuses
+                      if e.get("producer_pid") not in (None, new_pid)]
+            if strays:
+                problems.append(
+                    "R12: %d status row(s) from a producer that is not "
+                    "the respawned instance" % len(strays))
+        elif not statuses:
+            problems.append("R12: no restart-status rows")
+    return problems
+
+
+"''"
 
 
 def _order_problems(events):
@@ -344,6 +439,33 @@ def _k01_independent_oracle(events, ledger_dir):
             or int(surface.get("map_revision", 0) or 0) != int(
                 identity.get("map_revision", 0) or 0)):
         return ["K01: oracle payload map identity inconsistent"]
+    # EXTERNAL binding (reviews 1620): internal consistency cannot
+    # substitute for the binding to the actual request, the admitted
+    # map, and the returned candidate set.
+    if ref.get("map_epoch") is not None:
+        if str(ref.get("map_epoch", "")) != str(identity.get("epoch", "")) \
+                or int(ref.get("map_revision", 0) or 0) != int(
+                    identity.get("map_revision", 0) or 0):
+            return ["K01: oracle ref epoch/revision != payload map"]
+        if int(ref.get("n_candidates", -1)) != len(
+                payload.get("candidates", [])):
+            return ["K01: oracle ref candidate count != payload"]
+        placement_rows = [e for e in events
+                          if e["event_kind"] == "placement_request"
+                          and str(e.get("case_id", "")).startswith("K01")]
+        if not placement_rows:
+            return ["K01: no placement row to bind the oracle ref"]
+        else:
+            # candidate count must equal the service reply's candidates
+            # recorded on the placement row (claimed n_candidates)
+            claimed = [e for e in events
+                       if str(e.get("case_id", "")).startswith("K01")
+                       and "n_candidates" in e]
+            if claimed and int(claimed[-1]["n_candidates"]) != len(
+                    payload.get("candidates", [])):
+                return ["K01: claimed candidate count != payload"]
+    else:
+        return ["K01: oracle ref lacks external binding fields"]
     claimed = [e for e in events
                if e.get("case_id", "").startswith("K01")
                and "oracle_legs" in e]
@@ -611,6 +733,7 @@ def judge_events(events, known_ids=None):
         problems.append("expected_id_violation: duplicate integrate id")
     problems.extend(_leg_completeness_problems(events))
     problems.extend(_order_problems(events))
+    problems.extend(_order_lifecycle_problems(events))
     return problems
 
 
@@ -1926,8 +2049,11 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
                 "issues": fail_issues},
             "ledger": {
                 "scope": "global",
+                # A required aspect staying NE BLOCKS the gate (reviews
+                # 1620): silent pass-through with NE detail is forbidden.
                 "state": ("FAIL" if hard_problems
-                          else "NOT_EVALUATED" if deadline_problems
+                          else "NOT_EVALUATED"
+                          if deadline_problems or order_ne_notes
                           else "PASS"),
                 "issues": [{"scope": "global", "rule": "ledger",
                             "detail": p} for p in hard_problems],

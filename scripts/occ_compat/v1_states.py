@@ -44,7 +44,11 @@ class CaseContext:
         self.reset_seq += 1
         reset_id = "v1-%s-%s-%d" % (self.backend, self.hull,
                                     self.reset_seq)
+        pre_epoch = str((self.client.validity_record() or {}).get(
+            "epoch", ""))
         result = self.client.reset(reset_id=reset_id, reason=reason)
+        post_epoch = str((self.client.validity_record() or {}).get(
+            "epoch", ""))
         receipt = getattr(result, "receipt", None) or result
         status = getattr(receipt, "status", None) or getattr(
             result, "status", "")
@@ -53,7 +57,8 @@ class CaseContext:
             case_id="-", subprobe="", event_kind="reset", stage="reset",
             state="OK" if status in ("OK", "accepted") else status,
             reason=str(status), reset_id=reset_id,
-            reset_case=str(reason))
+            reset_case=str(reason),
+            pre_epoch=pre_epoch, post_epoch=post_epoch)
         return status
 
     def integrate_scene(self, scene, count=3, suffix=""):
@@ -204,6 +209,7 @@ def _k01(ctx, run_e3=None, run_e4=None):
                                   "admitted map never caught up")}
     ctx.fresh_robot()
     time.sleep(0.3)
+    _k01_request_link = str(mono_ns())
     response = _placement(ctx, "K01", "main", BOX_A)
     from .oracle import verify_response
     # The oracle consumes the latched last_result dump (full candidate
