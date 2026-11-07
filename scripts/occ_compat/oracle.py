@@ -50,19 +50,28 @@ def _oriented_footprint(size, yaw):
 
 def _yaw_is_legal(yaw):
     """The frozen orientation set (0/90°); other angles are illegal —
-    an AABB approximation may not masquerade as legality proof."""
+    an AABB approximation may not masquerade as legality proof. The
+    tolerance covers the solver's 4-decimal representation (1.5708 vs
+    pi/2 differs by 3.7e-6) while still rejecting mid angles (0.7)."""
     norm = yaw % math.pi
-    return any(abs(norm - o) <= 1e-6 for o in _ORIENTATIONS)
+    return any(abs(norm - o) <= 1e-4 for o in _ORIENTATIONS)
+
+
+#: Overlap slivers below this width per axis are yaw-REPRESENTATION
+#: artifacts (the solver's 4-decimal 1.5708 vs pi/2 gives a footprint
+#: error of ~size*1e-4 m) — not real positive-area coverage.
+_OVERLAP_MIN_M = 1e-4
 
 
 def _cells_overlapping(footprint, center_xy, resolution, origin_xy,
                        nx, ny):
     """Cells whose SQUARE intersects the footprint with POSITIVE AREA
-    (half-open), regardless of whether the cell center is inside."""
+    (half-open), regardless of whether the cell center is inside;
+    representation slivers below _OVERLAP_MIN_M per axis are excluded."""
     fw, fd = footprint
     x0, x1 = center_xy[0] - fw / 2.0, center_xy[0] + fw / 2.0
     y0, y1 = center_xy[1] - fd / 2.0, center_xy[1] + fd / 2.0
-    tol = POLICY["float_tolerance_m"]
+    tol = _OVERLAP_MIN_M
     cells = []
     ix_lo = max(0, int((x0 - origin_xy[0]) / resolution))
     ix_hi = min(nx - 1, int((x1 - origin_xy[0]) / resolution))
@@ -79,6 +88,27 @@ def _cells_overlapping(footprint, center_xy, resolution, origin_xy,
             if cy1 <= y0 + tol or cy0 >= y1 - tol:
                 continue
             cells.append((ix, iy))
+    return cells
+
+
+def _cells_center_inside(footprint, center_xy, resolution, origin_xy,
+                         nx, ny):
+    """Cells whose CENTER lies inside the footprint — the solver's own
+    placement convention, used ONLY to cross-check the candidate's
+    self-reported indices (the claim), never as collision truth."""
+    fw, fd = footprint
+    x0, x1 = center_xy[0] - fw / 2.0, center_xy[0] + fw / 2.0
+    y0, y1 = center_xy[1] - fd / 2.0, center_xy[1] + fd / 2.0
+    tol = POLICY["float_tolerance_m"]
+    cells = []
+    for ix in range(nx):
+        cx = origin_xy[0] + (ix + 0.5) * resolution
+        if cx < x0 - tol or cx > x1 + tol:
+            continue
+        for iy in range(ny):
+            cy = origin_xy[1] + (iy + 0.5) * resolution
+            if y0 - tol <= cy <= y1 + tol:
+                cells.append((ix, iy))
     return cells
 
 
@@ -192,10 +222,16 @@ def verify_candidate(candidate, *, surface, box_size, hull,
                 for dy in range(int(candidate["cells_y"]))]
         except (TypeError, ValueError):
             solver_cells = None
-    if (solver_cells is not None
-            and sorted(set(solver_cells)) != sorted(set(cells))):
-        result["legs"]["claim"] = "FAIL_reported_cells_mismatch"
-        return result
+    if solver_cells is not None:
+        # the claim is cross-checked against the CENTER-INSIDE set (the
+        # solver's own convention); the positive-area set above remains
+        # the collision/coverage truth
+        center_cells = _cells_center_inside(
+            (fw, fd), (center[0], center[1]), resolution, origin_xy,
+            nx, ny)
+        if sorted(set(solver_cells)) != sorted(set(center_cells)):
+            result["legs"]["claim"] = "FAIL_reported_cells_mismatch"
+            return result
     result["n_cells"] = len(cells)
 
     # ---- frame discipline: surface heights are FLOOR-RELATIVE
