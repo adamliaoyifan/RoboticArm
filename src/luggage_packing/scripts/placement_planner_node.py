@@ -1270,6 +1270,22 @@ class PlacementPlannerNode(Node):
         # Reset-contract admission check BEFORE planning (§3), shared with
         # the v1 handler: gate closed -> no new computations. The admission
         # token travels with this request to its commit check.
+        # Single-lease inputs BEFORE the admission gate (user ruling
+        # 2026-11-08): in observer mode the surface can ONLY come from
+        # the fresh lease (the topic surface cannot carry
+        # validity_generation — ReadSurface's identity has no such
+        # field — so topic maps fail the generation binding). The lease
+        # surface carries the stamp's generation, passes the SAME
+        # admission gate here, and the gate/commit checks below still
+        # bind the solve to the token captured after this point.
+        volume_verifier = None
+        try:
+            surface, volume_verifier = self._compute_inputs()
+        except Exception as error:  # noqa: BLE001 - fail closed
+            response.success = False
+            response.reason_code = "OBSERVER_SNAPSHOT_UNAVAILABLE"
+            response.message = "OBSERVER_SNAPSHOT_UNAVAILABLE: %s" % error
+            return response
         gate, planning_admission = self._validity_admit()
         if gate is not None:
             response.success = False
@@ -1301,14 +1317,6 @@ class PlacementPlannerNode(Node):
         # Single-lease mode (volume_evidence_source=observer): the
         # request's map IS the fresh lease snapshot (surface + volume
         # evidence from one revision, fail-closed, no mixed mode).
-        volume_verifier = None
-        try:
-            surface, volume_verifier = self._compute_inputs()
-        except Exception as error:  # noqa: BLE001 - fail closed
-            response.success = False
-            response.reason_code = "OBSERVER_SNAPSHOT_UNAVAILABLE"
-            response.message = "OBSERVER_SNAPSHOT_UNAVAILABLE: %s" % error
-            return response
         active_revision = int(surface.get("map_revision") or 0)
         requested_revision = int(request.expected_map_revision or 0)
         if requested_revision != active_revision:
@@ -1624,6 +1632,22 @@ class PlacementPlannerNode(Node):
         # closed until a fresh VALID map and a post-transition robot-state
         # sample both exist; a delayed old response never re-opens it. The
         # admission token travels with this request to its commit check.
+        # Single-lease inputs BEFORE the admission gate (user ruling
+        # 2026-11-08): in observer mode the surface can ONLY come from
+        # the fresh lease (the topic surface cannot carry
+        # validity_generation — ReadSurface's identity has no such
+        # field — so topic maps fail the generation binding). The lease
+        # surface carries the stamp's generation, passes the SAME
+        # admission gate here, and the gate/commit checks below still
+        # bind the solve to the token captured after this point.
+        volume_verifier = None
+        try:
+            surface, volume_verifier = self._compute_inputs()
+        except Exception as error:  # noqa: BLE001 - fail closed
+            response.success = False
+            response.reason_code = "OBSERVER_SNAPSHOT_UNAVAILABLE"
+            response.message = "OBSERVER_SNAPSHOT_UNAVAILABLE: %s" % error
+            return response
         gate, planning_admission = self._validity_admit()
         if gate is not None:
             response.success = False
@@ -1666,9 +1690,17 @@ class PlacementPlannerNode(Node):
                 % (CODE_CARGO_MAP_GEOMETRY_MISMATCH, requested_hash,
                    self._geometry_hash))
             return response
-        if self._surface is None and self._rejected_maps:
+        if (self._surface is None and self._rejected_maps
+                and str(self.get_parameter(
+                    "volume_evidence_source").value or "") != "observer"):
             # A live mapper published a hull we refused. Answering from the
             # floor prior here would be the silent fallback GEO-8 forbids.
+            # Single-lease mode (observer): the request's map is the FRESH
+            # LEASE surface (self._surface tracks only topic maps), which
+            # carries its own fail-closed chain — the admission gate above
+            # bound it; a rejected topic map is a representational gap
+            # (ReadSurface identity cannot carry validity_generation),
+            # not a foreign-hull fallback.
             response.success = False
             response.reason_code = CODE_CARGO_MAP_GEOMETRY_MISMATCH
             response.message = (
@@ -1722,14 +1754,6 @@ class PlacementPlannerNode(Node):
                     "diagnostics": atlas_diag,
                 },
             })
-            return response
-        volume_verifier = None
-        try:
-            surface, volume_verifier = self._compute_inputs()
-        except Exception as error:  # noqa: BLE001 - fail closed
-            response.success = False
-            response.reason_code = "OBSERVER_SNAPSHOT_UNAVAILABLE"
-            response.message = "OBSERVER_SNAPSHOT_UNAVAILABLE: %s" % error
             return response
         placed_aabbs = self._placed_aabbs(request.placed)
         atlas, atlas_diag = self._atlas_for(size)
