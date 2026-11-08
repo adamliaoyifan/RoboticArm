@@ -529,8 +529,10 @@ def run_r12(ctx, stack, restart_producer):
     # attempt logs the status-service epoch it pinned from, so a
     # mismatch is attributable from the ledger alone.
     accepted_log = 0
+    _r12_link = "R12-%d" % proc2.process.pid  # one identity: the
+    # respawned producer instance — per-attempt links would read as
+    # mixed identities to the order join
     for attempt in range(4):
-        _r12_link = "R12-%d-%d" % (proc2.process.pid, mono_ns())
         status = ctx.client.get_validity()
         ctx.ledger.emit(
             backend=ctx.backend, consumer="-", hull=ctx.hull,
