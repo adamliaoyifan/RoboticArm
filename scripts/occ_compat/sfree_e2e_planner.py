@@ -329,9 +329,11 @@ def main():
         # ---- latency ------------------------------------------------
         if response.success:
             samples = []
-            for _ in range(int(args.latency_samples)):
-                _, elapsed = compute_request()
-                samples.append(elapsed)
+            while len(samples) < int(args.latency_samples):
+                response_i, elapsed = compute_request()
+                if response_i.success:
+                    samples.append(elapsed)   # failures are fast-fail
+                    # round trips (e.g. snapshot STALE) — not computes
             samples.sort()
             probe = _decomposition_probe(
                 node, get_snapshot, read_surface, read_cells)
