@@ -345,7 +345,15 @@ def preflight(manifest_path, out_dir, backend="G", timeout_s=120.0):
             observer, bridge = o_chain_commands(manifest)
             stack.spawn("observer", observer)
             stack.spawn("bridge", bridge)
-            stack.spawn("planner", planner_command(manifest, backend="O"))
+            # Single-lease volume authorization (user ruling 2026-11-08,
+            # FREEZE_G3F): the O deployment's planner takes BOTH the
+            # surface and the volume evidence from ONE observer lease per
+            # compute. Quiescent fixtures need a wider freshness window
+            # (the K01 chain integrates its frames, then computes).
+            stack.spawn("planner", planner_command(
+                manifest, backend="O",
+                extra_params=("volume_evidence_source:=observer",
+                              "volume_max_age_ms:=30000")))
         grace = min(timeout_s, 120.0) - 15.0
         deadline = time.monotonic() + max(8.0, grace)
         # Grace boot: nodes must still be alive well past startup, with
