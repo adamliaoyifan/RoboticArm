@@ -143,6 +143,7 @@ def _placement_probe(ctx, case):
     ok = False
     for _attempt in range(3):
         _probe_start = mono_ns()
+        _probe_link = "%s-healthy-%d" % (case, _probe_start)
         future = ctx.client._chain_clients["placement"].call_async(
             _v1_request())
         deadline = time.monotonic() + 35.0
@@ -161,7 +162,7 @@ def _placement_probe(ctx, case):
             backend=ctx.backend, consumer="E1", hull=ctx.hull,
             case_id=case, subprobe="healthy", event_kind="probe_detail",
             stage="consumer", state="OK" if ok else "REFUSED",
-            **budget_fields(_probe_start),
+            **budget_fields(_probe_start, request_link=_probe_link),
             epoch=str((ctx.client.validity_record() or {}).get(
                 "epoch", "")),
             reason=str(getattr(response, "reason_code", "")),
@@ -195,6 +196,7 @@ def run_r04(ctx):
     time.sleep(0.4)
     request = _v1_request()
     _r04_start = mono_ns()
+    _r04_link = "R04-%d" % _r04_start
     future = ctx.client._chain_clients["placement"].call_async(request)
 
     def _release_fast():
@@ -241,7 +243,7 @@ def run_r04(ctx):
         backend=ctx.backend, consumer="E1", hull=ctx.hull,
         case_id="R04", subprobe="main",
         event_kind="placement_request", stage="consumer", state="REPLIED",
-        **budget_fields(_r04_start),
+        **budget_fields(_r04_start, request_link=_r04_link),
         reason=str(getattr(response, "reason_code", "")),
         message=message[:120])
     healthy = _placement_probe(ctx, "R04")
@@ -289,6 +291,7 @@ def run_r05(ctx, service="v1", case="R05"):
         client_name = "placement_v2"
     submitted_ns = mono_ns()
     _r05_start = mono_ns()
+    _r05_link = "%s-%d" % (case, _r05_start)
     future = ctx.client._chain_clients[client_name].call_async(request)
 
     def _checkpoint(stage, **extra):
@@ -378,7 +381,7 @@ def run_r05(ctx, service="v1", case="R05"):
         backend=ctx.backend, consumer="E1" if service == "v1" else "E2",
         hull=ctx.hull, case_id=case, subprobe="main",
         event_kind="placement_request", stage="consumer", state="REPLIED",
-        **budget_fields(_r05_start),
+        **budget_fields(_r05_start, request_link=_r05_link),
         reason=str(getattr(response, "reason_code", "")),
         message=message[:120])
     # Healthy control: a fresh request in the recovered state succeeds.
@@ -527,6 +530,7 @@ def run_r12(ctx, stack, restart_producer):
     # mismatch is attributable from the ledger alone.
     accepted_log = 0
     for attempt in range(4):
+        _r12_link = "R12-%d-%d" % (proc2.process.pid, mono_ns())
         status = ctx.client.get_validity()
         ctx.ledger.emit(
             backend=ctx.backend, consumer="-", hull=ctx.hull,
@@ -537,7 +541,8 @@ def run_r12(ctx, stack, restart_producer):
                 getattr(status, "epoch", "?"),
                 getattr(status, "generation", "?"), attempt),
             epoch=str(getattr(status, "epoch", "?")),
-            producer_pid=proc2.process.pid)
+            producer_pid=proc2.process.pid,
+            request_link=str(_r12_link))
         ctx.integrate_scene("S-free", 3, suffix="R12b-%d" % attempt)
         time.sleep(0.6)
         log = proc2.log_path.read_text(errors="ignore") \
@@ -624,6 +629,7 @@ def run_r03(ctx, case="R03"):
     subprobes = {}
     token = ""
     handle = ""
+    _r03_link = "%s-%d" % (case, mono_ns())
 
     def _chain_epoch():
         return str((ctx.client.validity_record() or {}).get("epoch", ""))
@@ -636,7 +642,8 @@ def run_r03(ctx, case="R03"):
             case_id=case, subprobe=name,
             event_kind="probe_detail", stage="typed_resume",
             state="PASS" if ok else "FAIL", reason=str(detail)[:160],
-            epoch=_chain_epoch(), **identity)
+            epoch=_chain_epoch(),
+            request_link=str(_r03_link), **identity)
         _terminal(ctx, case, name, "PASS" if ok else "FAIL",
                   reason=str(detail)[:160])
         return ok
@@ -846,6 +853,7 @@ def run_r03(ctx, case="R03"):
     # refusal (run02's R03 failure, same class as the R05 fix).
     import rclpy as _rclpy
     _r03_stale_start = mono_ns()
+    _r03_stale_link = "%s-stale-%d" % (case, _r03_stale_start)
     _future = ctx.client._chain_clients["placement_v2"].call_async(request)
     _deadline = time.monotonic() + 30.0
     while not _future.done() and time.monotonic() < _deadline:
@@ -863,7 +871,8 @@ def run_r03(ctx, case="R03"):
         backend=ctx.backend, consumer="E2", hull=ctx.hull, case_id=case,
         subprobe="old-revision-request",
         event_kind="placement_request", stage="consumer", state="REPLIED",
-        **budget_fields(_r03_stale_start),
+        **budget_fields(_r03_stale_start,
+                        request_link=_r03_stale_link),
         reason=str(getattr(stale, "reason_code", "")),
         message=str(getattr(stale, "message", "") or "")[:120])
     _leg("old-revision-request-refused",
