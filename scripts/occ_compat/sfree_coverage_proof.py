@@ -1,12 +1,13 @@
 """sfree_coverage_proof — pre-freeze coverage proof for the S-free
-multi-view fixture (adjudication 2026-11-08 item 3).
+multi-view fixture (adjudication 2026-11-08 item 3; reviews
+2026-11-08_1751 round).
 
 BEFORE the fixture is frozen as the shared K01 input, this proves the
 target placement space is actually observed, by running the generated
 frames through the REAL G-side projection (CargoVolumeMapper.integrate
 + surface_map_2d — the same code the mapper node runs). The O side is
-proven at collection preflight through the live observer (the bridge
-live test already exercises the sweep -> known == active path).
+proven live by sfree_o_rehearsal (observer -> bridge -> product solver
+-> paged ReadCells evidence, both phases).
 
 Checks (all fail-closed, all against the box's OWN volume/footprint):
   A. support positive: the SUPPORT_BOX top columns read occupied with
@@ -14,13 +15,23 @@ Checks (all fail-closed, all against the box's OWN volume/footprint):
   B. the box's own volume above the support top (z in [0.20, 0.40]
      floor-relative over a 0.3x0.2 footprint at the support center) is
      fully OBSERVED and unoccupied (voxel level, not column level);
-  C. floor-level known-free region: at least one 0.3x0.2 placement
-     whose footprint AND edge slivers cover only fully-free columns
-     (state == free, i.e. whole-column observed — G's semantics),
-     with a >=1 column margin to the occupied boundary ring;
-  D. the boundary ring is occupied (the conservative wall
-     representation the solver must avoid — consistency with the
-     footprint-coverage fix).
+  C. per-candidate triple binding, in the PRODUCT call shape: every
+     sensor-supported candidate that generate_candidates authorizes
+     under the same-snapshot volume_verifier must ALSO pass the
+     independent campaign oracle (column semantics) AND read fully
+     observed/unoccupied through placement_solver.volume_state_in_
+     evidence (complete XYZ ranges — the frozen geometry the product
+     itself ships). An observed support face never authorizes unknown
+     space above it;
+  N. negative control (reviews 2026-11-08_1751 finding 2): the
+     single-origin (0.0, 1.20) subset still yields a surface that
+     OFFERS stacking candidates (the counterfactual: the surface-only
+     product path would authorize them), and the product volume gate
+     rejects exactly those whose box volumes hold unobserved voxels —
+     with the external scan agreeing on every flip;
+  T. tolerance unification binding (finding 3): the solver's frozen
+     constants equal the independent oracle's frozen policy values;
+  D. informational: the boundary ring occupancy distribution.
 """
 from __future__ import annotations
 
@@ -30,14 +41,13 @@ import sys
 from pathlib import Path
 
 from . import gen_sfree
+from .oracle import POLICY as ORACLE_POLICY, _OVERLAP_MIN_M, verify_candidate
 
 PROBE = (0.30, 0.20, 0.20)   # BOX_A
 RES = 0.02
-
-
-def _rotation_matrix(rotation):
-    return [[float(rotation[i + 3 * j]) for j in range(3)]  # column-major?
-            for i in range(3)]
+#: The negative-control origin (offline counterpart of the live O
+#: rehearsal's NEGATIVE_ORIGINS).
+NEGATIVE_ORIGINS = [(0.0, 1.20)]
 
 
 def _load_mapper(hull):
@@ -65,16 +75,37 @@ def _world_points(frame):
     return out, t
 
 
-def prove(geometry_path):
-    import yaml
-    document = yaml.safe_load(open(geometry_path).read())
-    hull = json.loads(document["descriptor_json"])
-    frames = gen_sfree.generate_frames(hull)
+def _pipeline(hull, origins):
+    """Real G projection over an origin subset -> (surface, evidence).
+
+    The evidence is the SAME normalized same-snapshot voxel grid the
+    product's volume gate consumes (x-fastest flat states; layer 0 at
+    the hull floor), flattened from the mapper's own arrays."""
+    import numpy as np
+    from luggage_perception.cargo_grid_projection import _arrays
+    frames = gen_sfree.generate_frames(hull, origins_yz=origins)
     mapper = _load_mapper(hull)
     for frame in frames:
         points, origin = _world_points(frame)
         mapper.integrate_points(points, origin=origin)
     surface = mapper.surface_map_2d()
+    vox, active = _arrays(mapper)
+    states = np.where(active, vox, 0).flatten(order="C").astype(int)
+    nx, ny = int(surface["nx"]), int(surface["ny"])
+    evidence = {
+        "resolution": RES, "nx": nx, "ny": ny, "nz": int(vox.shape[0]),
+        "origin_xy": [-nx * RES / 2.0, -ny * RES / 2.0],
+        "floor_z": float(hull["floor_z"]),
+        "states": states.tolist(),
+    }
+    return surface, evidence, len(frames)
+
+
+def prove(geometry_path):
+    import yaml
+    document = yaml.safe_load(open(geometry_path).read())
+    hull = json.loads(document["descriptor_json"])
+    surface, evidence, n_frames = _pipeline(hull, gen_sfree.ORIGINS_YZ)
     nx, ny = surface["nx"], surface["ny"]
     state = surface["state"]
     height = surface["height"]
@@ -91,7 +122,7 @@ def prove(geometry_path):
                 int(math.floor((y1 - oy - 1e-9) / RES)))
 
     report = {"geometry_hash": hull.get("geometry_hash"),
-              "frames": len(frames), "checks": {}}
+              "frames": n_frames, "checks": {}}
 
     # A. support positive
     ix0, ix1, iy0, iy1 = col_range(cx - bw / 2 + 0.02, cx + bw / 2 - 0.02,
@@ -112,6 +143,10 @@ def prove(geometry_path):
     by0, by1 = cy - PROBE[1] / 2, cy + PROBE[1] / 2
     import numpy as np
     from luggage_perception.cargo_grid_projection import _arrays
+    mapper = _load_mapper(hull)
+    for frame in gen_sfree.generate_frames(hull):
+        points, origin = _world_points(frame)
+        mapper.integrate_points(points, origin=origin)
     vox, active = _arrays(mapper)
     z_lo, z_hi = int(0.20 / RES), int(0.40 / RES)  # floor-relative cells
     vix0, vix1, viy0, viy1 = col_range(bx0, bx1, by0, by1)
@@ -125,36 +160,31 @@ def prove(geometry_path):
         "z_cells": z_hi - z_lo,
         "footprint_cells": (vix1 - vix0 + 1) * (viy1 - viy0 + 1)}
 
-    # C. solver-level positive, per-candidate voxel binding (reviews
-    # 2026-11-08): EVERY sensor-supported feasible candidate is verified
-    # TWICE against the SAME snapshot — the campaign oracle (column
-    # semantics) AND the voxel grid (the candidate's OWN box volume must
-    # be fully observed and unoccupied; an observed support face does
-    # not authorize unknown space above it). Floor-level whole-column
-    # free is NOT required (min_z policy; the sanctioned positive is
-    # the observed support top).
+    # C. per-candidate triple binding in the PRODUCT call shape
     from luggage_packing import placement_solver as ps
-    from .oracle import verify_candidate, _cells_overlapping
-    import numpy as np
-    from luggage_perception.cargo_grid_projection import _arrays
-    vox, active = _arrays(mapper)
     solver_surface = dict(surface)
     solver_surface["geometry_descriptor"] = dict(hull)
     params = dict(ps._default_params())
     params["top_n"] = 8000
-    result = ps.generate_candidates(
+    params["keep_rejected"] = 50000
+    verifier = ps.make_volume_verifier(evidence)
+    guarded = ps.generate_candidates(
+        solver_surface, list(PROBE), allowed_yaws=[0.0, math.pi / 2.0],
+        params=params, volume_verifier=verifier)
+    plain = ps.generate_candidates(
         solver_surface, list(PROBE), allowed_yaws=[0.0, math.pi / 2.0],
         params=params)
-    cands = result if isinstance(result, list) else result["candidates"]
-    sensor_ok = oracle_ok = voxel_ok = 0
+
+    def sensor_stack(candidates):
+        return [c for c in candidates
+                if c.get("feasible") and c.get("support_source") == "sensor"]
+
+    inner_h = float(hull["ceiling_z"]) - floor
+    oracle_ok = voxel_ok = 0
     failures = []
     first = None
-    oxg, oyg = -nx * RES / 2.0, -ny * RES / 2.0
-    inner_h = float(hull["ceiling_z"]) - floor
-    for c in cands:
-        if not c.get("feasible") or c.get("support_source") != "sensor":
-            continue
-        sensor_ok += 1
+    authorized = sensor_stack(guarded)
+    for c in authorized:
         center = [float(v) for v in c["center_container"]]
         verdict = verify_candidate(
             {"center_container": center,
@@ -167,43 +197,87 @@ def prove(geometry_path):
                   **({"chamfer": hull["chamfer"]}
                      if hull.get("chamfer") else {})})
         oracle_pass = verdict["pass"]
-        # the candidate's OWN volume, voxel level, same snapshot
-        fw, fd = float(c["footprint"][0]), float(c["footprint"][1])
-        cells = _cells_overlapping((fw, fd), (center[0], center[1]),
-                                   RES, (oxg, oyg), nx, ny)
-        z0_rel = center[2] - floor - PROBE[2] / 2.0
-        z_lo = max(0, int(math.floor(z0_rel / RES + 1e-9)))
-        z_hi = min(vox.shape[0] - 1,
-                   int(math.floor((z0_rel + PROBE[2]) / RES - 1e-9)))
-        block_ok = True
-        for ix, iy in cells:
-            column = vox[z_lo:z_hi + 1, iy, ix]
-            column_active = active[z_lo:z_hi + 1, iy, ix]
-            if not column_active.all() or (column == 0).any():
-                block_ok = False       # unobserved voxel inside the box
-                break
-            if (column == 2).any():
-                block_ok = False       # occupied voxel inside the box
-                break
+        volume_pass = ps.volume_state_in_evidence(
+            evidence, center, c["footprint"],
+            center[2] - PROBE[2] * 0.5, center[2] + PROBE[2] * 0.5) is None
         if oracle_pass:
             oracle_ok += 1
-        if block_ok:
+        if volume_pass:
             voxel_ok += 1
-        if oracle_pass and block_ok and first is None:
+        if not c.get("volume_verified"):
+            failures.append({"center": [round(v, 4) for v in center],
+                             "missing_volume_verified": True})
+        if oracle_pass and volume_pass and first is None:
             first = {"center": [round(v, 4) for v in center],
                      "support_source": c["support_source"],
                      "confidence": c["confidence_ratio"],
-                     "volume_cells": len(cells) * (z_hi - z_lo + 1)}
-        if (not oracle_pass or not block_ok) and len(failures) < 3:
+                     "volume_cells": int(PROBE[0] / RES)
+                     * int(PROBE[1] / RES)
+                     * int(PROBE[2] / RES)}
+        if (not oracle_pass or not volume_pass) and len(failures) < 3:
             failures.append({"center": [round(v, 4) for v in center],
                              "oracle_pass": oracle_pass,
-                             "voxel_pass": block_ok})
+                             "voxel_pass": volume_pass})
+    plain_sensor = sensor_stack(plain)
     report["checks"]["C_legal_candidate_on_observed_support"] = {
-        "pass": sensor_ok > 0 and sensor_ok == oracle_ok == voxel_ok,
-        "sensor_supported_feasible": sensor_ok,
+        "pass": (bool(authorized) and len(authorized) == oracle_ok
+                 == voxel_ok and len(authorized) == len(plain_sensor)
+                 and not failures),
+        "surface_offers": len(plain_sensor),
+        "authorized_with_verifier": len(authorized),
         "oracle_verified": oracle_ok,
         "voxel_volume_verified": voxel_ok,
+        "voxels_verified": len(authorized) * int(PROBE[0] / RES)
+        * int(PROBE[1] / RES) * int(PROBE[2] / RES),
         "failures": failures, "example": first}
+
+    # N. negative control: single-origin subset — the surface still
+    # offers stacking candidates; the product gate drops exactly the
+    # ones whose volumes hold unobserved voxels (external agreement).
+    neg_surface, neg_evidence, neg_frames = _pipeline(
+        hull, NEGATIVE_ORIGINS)
+    neg_solver_surface = dict(neg_surface)
+    neg_solver_surface["geometry_descriptor"] = dict(hull)
+    neg_plain = ps.generate_candidates(
+        neg_solver_surface, list(PROBE),
+        allowed_yaws=[0.0, math.pi / 2.0], params=params)
+    neg_guarded = ps.generate_candidates(
+        neg_solver_surface, list(PROBE), allowed_yaws=[0.0, math.pi / 2.0],
+        params=params, volume_verifier=ps.make_volume_verifier(neg_evidence))
+    neg_offers = [c for c in sensor_stack(neg_plain)
+                  if c["center_container"][2] > floor + 0.15]
+    neg_authorized = [c for c in sensor_stack(neg_guarded)
+                      if c["center_container"][2] > floor + 0.15]
+    neg_auth_ids = {c["candidate_id"] for c in neg_authorized}
+    neg_dropped = [c for c in neg_offers
+                   if c["candidate_id"] not in neg_auth_ids]
+
+    def neg_external(c):
+        center = [float(v) for v in c["center_container"]]
+        return ps.volume_state_in_evidence(
+            neg_evidence, center, c["footprint"],
+            center[2] - PROBE[2] * 0.5, center[2] + PROBE[2] * 0.5)
+
+    agree_auth = all(neg_external(c) is None for c in neg_authorized)
+    agree_drop = all(neg_external(c) is not None for c in neg_dropped)
+    report["checks"]["N_unknown_above_support_rejects"] = {
+        "pass": (bool(neg_offers) and bool(neg_authorized)
+                 and bool(neg_dropped) and agree_auth and agree_drop),
+        "frames": neg_frames,
+        "surface_offers": len(neg_offers),
+        "authorized_with_verifier": len(neg_authorized),
+        "rejected_by_gate": len(neg_dropped),
+        "external_agreement_authorized": agree_auth,
+        "external_agreement_dropped": agree_drop}
+
+    # T. tolerance unification binding (reviews 2026-11-08_1751 f.3)
+    report["checks"]["T_frozen_tolerance_unification"] = {
+        "pass": (ps.PENETRATION_EPS_M == ORACLE_POLICY["float_tolerance_m"]
+                 and ps.OVERLAP_MIN_M == _OVERLAP_MIN_M),
+        "solver_penetration_eps": ps.PENETRATION_EPS_M,
+        "oracle_float_tolerance_m": ORACLE_POLICY["float_tolerance_m"],
+        "solver_overlap_min_m": ps.OVERLAP_MIN_M,
+        "oracle_overlap_min_m": _OVERLAP_MIN_M}
 
     # D. informational: ring occupancy distribution (the door side of
     # the ring is an aperture — rays legitimately pass through; the far
