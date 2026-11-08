@@ -728,7 +728,16 @@ class PlacementPlannerNode(Node):
         source = str(
             self.get_parameter("volume_evidence_source").value or "")
         if not source:
-            return self._active_surface(), None
+            surface = self._active_surface()
+            # resolve the auto wall margin ONCE per compute (the active
+            # surface view may be rebuilt on access — doing this inside
+            # _constraint_verdict cost one rebuild PER CANDIDATE and ate
+            # the E4 500 ms robot window; K01/E4 run09 regression)
+            self._constraint_margin = (
+                float(surface.get("resolution") or 0.0)
+                if float(self.get_parameter("hull_margin").value) < 0.0
+                else float(self.get_parameter("hull_margin").value))
+            return surface, None
         if source != "observer":
             raise ValueError(
                 "unknown volume_evidence_source %r" % source)
@@ -1504,13 +1513,10 @@ class PlacementPlannerNode(Node):
         """Return ``(reason, capacity_ok)`` for one candidate."""
         hull_margin = float(self.get_parameter("hull_margin").value)
         if hull_margin < 0.0:
-            # auto: one map cell of the admitted surface (matches the
-            # solver's default; a missing resolution falls back exact)
-            surface = self._active_surface()
-            try:
-                hull_margin = float(surface.get("resolution") or 0.0)
-            except AttributeError:
-                hull_margin = 0.0
+            # auto: one map cell — resolved ONCE per compute in
+            # _compute_inputs (self._constraint_margin); fall back exact
+            hull_margin = float(
+                getattr(self, "_constraint_margin", 0.0) or 0.0)
         hull = self._hull_geometry()
 
         def hull_contains_floor_relative(point):
