@@ -154,7 +154,12 @@ def test_contact_band_is_gap_side_only():
     """Reviews 2026-11-08 penetration control: the support tolerance
     governs the GAP side only. An occupied top 1cm ABOVE the box bottom
     is positive-volume penetration and must reject; a top AT the bottom
-    is face contact; a top 4cm below is the gap band and stays legal."""
+    is face contact; a top 4cm below is the gap band and stays legal.
+    The penetration side is judged at the FROZEN numeric tolerance
+    (PENETRATION_EPS_M == 1e-9, unified with the independent oracle):
+    float-representation dust (1e-12) is not penetration; a 1e-7 step
+    IS — it is real positive volume at the frozen rule (reviews
+    2026-11-08_1751 finding 3)."""
     nx, ny, res = 75, 99, 0.02
     ox = -nx * res / 2.0
 
@@ -182,6 +187,10 @@ def test_contact_band_is_gap_side_only():
         surface, 0.15, 0.08, 0.30, 0.20, box_bottom=0.20)
     assert not overlaps, "gap within the support tolerance stays legal"
     surface = surface_with(0.2000001)
+    overlaps, _ = ps._footprint_edge_state(
+        surface, 0.15, 0.08, 0.30, 0.20, box_bottom=0.20)
+    assert overlaps, "a 1e-7 step is positive volume at the frozen 1e-9 rule"
+    surface = surface_with(0.2 + 1e-12)
     overlaps, _ = ps._footprint_edge_state(
         surface, 0.15, 0.08, 0.30, 0.20, box_bottom=0.20)
     assert not overlaps, "numeric-representation dust is not penetration"

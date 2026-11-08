@@ -41,6 +41,15 @@ REASON_EDGE_OCCUPIED = "edge_occupied_overlap"
 # footprint (gentle slope within ``support_tol`` per cell, so support_ratio
 # alone cannot see it) does not hold a placed box flat.
 REASON_SUPPORT_TILT_UNSUPPORTED = "support_tilt_unsupported"
+# Reviews 2026-11-08_1751 (same-snapshot volume authorization): a
+# sensor-supported candidate may only be authorized when its OWN box
+# volume is observed known-free on the SAME snapshot the surface was
+# built from — an observed support face does not authorize unobserved
+# space above it. The volume_verifier hook in generate_candidates is
+# the product-side gate; these reasons record its verdicts.
+REASON_VOLUME_UNKNOWN = "volume_unknown"
+REASON_VOLUME_OCCUPIED = "volume_occupied"
+REASON_VOLUME_UNVERIFIED = "volume_evidence_unavailable"
 
 # A capacity gate answers "does this box physically fit here, given the
 # container hull and what is already inside?". Everything else (aperture,
@@ -54,7 +63,8 @@ CAPACITY_REASONS = frozenset((
 POLICY_REASONS = frozenset((
     REASON_OUTSIDE_APERTURE, REASON_CORRIDOR_BLOCKED,
     REASON_UNKNOWN_ABOVE_FLOOR, REASON_INSUFFICIENT_SUPPORT,
-    REASON_SUPPORT_TILT_UNSUPPORTED))
+    REASON_SUPPORT_TILT_UNSUPPORTED, REASON_VOLUME_UNKNOWN,
+    REASON_VOLUME_OCCUPIED, REASON_VOLUME_UNVERIFIED))
 
 # Frozen st09_contracts GeometryVerdict values, mirrored as strings so the
 # plain-dict candidate contract stays ROS-free and import-cheap.
@@ -78,7 +88,27 @@ _REASON_TO_VERDICT = {
     REASON_OVERLAP: VERDICT_OVERLAP,
     REASON_SAME_LAYER_CLEARANCE: VERDICT_SAME_LAYER_CLEARANCE,
     REASON_INSUFFICIENT_CLEARANCE: VERDICT_TOP_CLEARANCE,
+    # Volume-verifier verdicts (reviews 2026-11-08_1751): occupied
+    # volume is a collision; unknown/unavailable evidence is the same
+    # "cannot claim this placement" family as unknown_above_floor.
+    REASON_VOLUME_OCCUPIED: VERDICT_OVERLAP,
+    REASON_VOLUME_UNKNOWN: VERDICT_SUPPORT_MISSING,
+    REASON_VOLUME_UNVERIFIED: VERDICT_SUPPORT_MISSING,
 }
+
+#: Frozen geometric tolerances for the adjudication-2026-11-08 checks.
+#: MUST equal the independent oracle (scripts/occ_compat/oracle.py:
+#: ``POLICY["float_tolerance_m"]`` and ``_OVERLAP_MIN_M``) — unification
+#: ruling reviews 2026-11-08_1751 finding 3. ``PENETRATION_EPS_M`` judges
+#: the z-penetration side of the support-contact band (the support
+#: tolerance governs the GAP side only; 1cm positive-volume penetration
+#: rejects at ANY depth). ``OVERLAP_MIN_M`` is the per-axis sliver floor
+#: for footprint cell selection — yaw-REPRESENTATION artifacts (~1e-4 m
+#: from the 4-decimal yaw encoding) are not positive-area coverage; the
+#: discrete-yaw error itself is handled at decode, never by tolerating
+#: real volume.
+PENETRATION_EPS_M = 1e-9
+OVERLAP_MIN_M = 1e-4
 
 # Stable placement failure taxonomy (docs/architecture/container_geometry.md).
 # The solver emits the first four. The node adds cargo-map identity,
@@ -778,28 +808,165 @@ def _footprint_edge_state(surface_map, cx, cy, footprint_l, footprint_w,
     origin_y = -ny * resolution * 0.5
     x0, x1 = cx - footprint_l * 0.5, cx + footprint_l * 0.5
     y0, y1 = cy - footprint_w * 0.5, cy + footprint_w * 0.5
-    eps = 1e-6  # representation slivers are not positive-area overlap
     overlaps_occupied = False
     overlaps_unknown = False
     ix_lo = max(0, int(math.floor((x0 - origin_x) / resolution)))
-    ix_hi = min(nx - 1, int(math.floor((x1 - origin_x - eps) / resolution)))
+    ix_hi = min(nx - 1, int(math.floor(
+        (x1 - origin_x - OVERLAP_MIN_M) / resolution)))
     iy_lo = max(0, int(math.floor((y0 - origin_y) / resolution)))
-    iy_hi = min(ny - 1, int(math.floor((y1 - origin_y - eps) / resolution)))
+    iy_hi = min(ny - 1, int(math.floor(
+        (y1 - origin_y - OVERLAP_MIN_M) / resolution)))
     for ix in range(ix_lo, ix_hi + 1):
         cx0 = origin_x + ix * resolution
-        if min(x1, cx0 + resolution) - max(x0, cx0) <= eps:
+        if min(x1, cx0 + resolution) - max(x0, cx0) <= OVERLAP_MIN_M:
             continue
         for iy in range(iy_lo, iy_hi + 1):
             cy0 = origin_y + iy * resolution
-            if min(y1, cy0 + resolution) - max(y0, cy0) <= eps:
+            if min(y1, cy0 + resolution) - max(y0, cy0) <= OVERLAP_MIN_M:
                 continue
             state = states[ix][iy]
             if state == "occupied":
-                if float(heights[ix][iy]) > box_bottom + eps:
+                if float(heights[ix][iy]) > box_bottom + PENETRATION_EPS_M:
                     overlaps_occupied = True
             elif state == "unknown":
                 overlaps_unknown = True
     return overlaps_occupied, overlaps_unknown
+
+
+def volume_state_in_evidence(evidence, center, footprint, box_bottom,
+                             box_top):
+    """Complete-XYZ known-free check of one candidate's OWN box volume
+    against same-snapshot voxel evidence (reviews 2026-11-08_1751).
+
+    ``evidence`` is the backend-normalized same-snapshot voxel grid::
+
+        {"resolution": r, "nx": nx, "ny": ny, "nz": nz,
+         "origin_xy": [ox, oy],   # container coords of cell (0, 0)
+         "floor_z": fz,           # container z of voxel layer 0
+         "states": flat list, x-fastest: idx = ix + nx*(iy + ny*iz)}
+
+    State 1 = observed free. 0 (unknown) / 2 (occupied) / 3
+    (out-of-domain) / absent are NOT known-free. Every voxel whose cell
+    has POSITIVE intersection with the continuous box is checked —
+    complete ranges, no boundary shrink: a box at floor-relative
+    [0.20, 0.40) on a 2cm grid reads layers 10..19, both boundary
+    layers included (each carries 2cm of real thickness; face contact
+    with the support below is NOT volume overlap and layer 9 stays
+    unchecked). The frozen sliver/penetration floors
+    (``OVERLAP_MIN_M`` / ``PENETRATION_EPS_M``) apply per axis. An
+    empty range, a range outside the evidence, or short evidence
+    rejects fail-closed. Returns None (known-free) or a
+    ``REASON_VOLUME_*`` string.
+    """
+    resolution = float(evidence["resolution"])
+    nx = int(evidence["nx"])
+    ny = int(evidence["ny"])
+    nz = int(evidence["nz"])
+    ox, oy = [float(v) for v in evidence["origin_xy"]]
+    floor_z = float(evidence["floor_z"])
+    states = evidence["states"]
+    fw, fd = float(footprint[0]), float(footprint[1])
+    x0, x1 = float(center[0]) - fw * 0.5, float(center[0]) + fw * 0.5
+    y0, y1 = float(center[1]) - fd * 0.5, float(center[1]) + fd * 0.5
+    z0 = float(box_bottom) - floor_z
+    z1 = float(box_top) - floor_z
+    if (x0 < ox - OVERLAP_MIN_M or x1 > ox + nx * resolution + OVERLAP_MIN_M
+            or y0 < oy - OVERLAP_MIN_M
+            or y1 > oy + ny * resolution + OVERLAP_MIN_M):
+        return REASON_VOLUME_UNVERIFIED   # volume not covered by evidence
+    iz_lo = int(math.floor(z0 / resolution + PENETRATION_EPS_M))
+    iz_hi = int(math.floor(z1 / resolution - PENETRATION_EPS_M))
+    if iz_lo > iz_hi:
+        return REASON_VOLUME_UNVERIFIED   # empty range is not a proof
+    if iz_lo < 0 or iz_hi >= nz:
+        return REASON_VOLUME_UNVERIFIED   # volume not covered by evidence
+    ix_lo = max(0, int(math.floor((x0 - ox) / resolution)))
+    ix_hi = min(nx - 1, int(math.floor(
+        (x1 - ox - OVERLAP_MIN_M) / resolution)))
+    iy_lo = max(0, int(math.floor((y0 - oy) / resolution)))
+    iy_hi = min(ny - 1, int(math.floor(
+        (y1 - oy - OVERLAP_MIN_M) / resolution)))
+    expected = nx * ny * nz
+    if len(states) < expected:
+        return REASON_VOLUME_UNVERIFIED   # short evidence
+    for iz in range(iz_lo, iz_hi + 1):
+        z_base = iz * resolution
+        if min(z1, z_base + resolution) - max(z0, z_base) <= (
+                PENETRATION_EPS_M):
+            continue
+        for ix in range(ix_lo, ix_hi + 1):
+            cx0 = ox + ix * resolution
+            if min(x1, cx0 + resolution) - max(x0, cx0) <= OVERLAP_MIN_M:
+                continue
+            for iy in range(iy_lo, iy_hi + 1):
+                cy0 = oy + iy * resolution
+                if min(y1, cy0 + resolution) - max(y0, cy0) <= OVERLAP_MIN_M:
+                    continue
+                state = int(states[ix + nx * (iy + ny * iz)])
+                if state == 2:
+                    return REASON_VOLUME_OCCUPIED
+                if state != 1:
+                    return REASON_VOLUME_UNKNOWN
+    return None
+
+
+def volume_evidence_from_pages(pages, *, resolution, nx, ny, nz,
+                               origin_xy, floor_z, identity):
+    """Assemble paged same-snapshot cell reads into volume evidence.
+
+    ``pages``: ordered raw page mappings with at least
+    ``{"status", "states", "identity"}`` (a ReadCells response view; the
+    caller owns the transport). ``identity`` is the snapshot identity the
+    surface was built from — every page must carry the SAME identity
+    (same-snapshot binding: geometry_hash, map_revision, epoch, and
+    observed_revision when the backend declares it). Fail-closed: a
+    non-OK status, an identity mismatch, or an assembled length !=
+    ``nx * ny * nz`` returns ``{"error": ...}`` instead of evidence.
+    """
+    assembled = []
+    for page in pages:
+        if str(page.get("status")) != "OK":
+            return {"error": "cells_status_%s" % page.get("status")}
+        page_identity = page.get("identity") or {}
+        for field in ("geometry_hash", "map_revision", "epoch",
+                      "observed_revision"):
+            if field in identity and field in page_identity:
+                if str(page_identity[field]) != str(identity[field]):
+                    return {"error": "cells_identity_mismatch_%s" % field}
+        assembled.extend(int(state) for state in page.get("states") or ())
+    if len(assembled) != nx * ny * nz:
+        return {"error": "cells_short_%d_of_%d" % (
+            len(assembled), nx * ny * nz)}
+    return {
+        "resolution": float(resolution),
+        "nx": int(nx), "ny": int(ny), "nz": int(nz),
+        "origin_xy": [float(origin_xy[0]), float(origin_xy[1])],
+        "floor_z": float(floor_z),
+        "states": assembled,
+    }
+
+
+def make_volume_verifier(evidence):
+    """volume_verifier adapter over volume_state_in_evidence.
+
+    Returns a ``generate_candidates(volume_verifier=...)`` callable; a
+    missing/short evidence dict yields a fail-closed rejector instead
+    (no evidence, no known-free authorization)."""
+    if not evidence or "error" in evidence or "states" not in evidence:
+        reason = (evidence or {}).get("error", "volume_evidence_missing")
+
+        def broken(candidate):
+            return "%s:%s" % (REASON_VOLUME_UNVERIFIED, reason)
+        return broken
+
+    def verifier(candidate):
+        center = candidate["center_container"]
+        height = float(candidate["size"][2])
+        return volume_state_in_evidence(
+            evidence, center, candidate["footprint"],
+            float(center[2]) - height * 0.5,
+            float(center[2]) + height * 0.5)
+    return verifier
 
 
 def _validator_verdict(candidate_validator, candidate):
@@ -821,11 +988,20 @@ def _validator_verdict(candidate_validator, candidate):
 
 
 def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
-                        candidate_validator=None, totals=None):
+                        candidate_validator=None, totals=None,
+                        volume_verifier=None):
     """Return scored placement candidates sorted feasible-first by score.
 
     ``surface_map`` is the ``surface_map_2d`` dict. ``box_size`` is
     ``[length, width, height]`` in meters.
+
+    ``volume_verifier`` (reviews 2026-11-08_1751) is the same-snapshot
+    volume authorization gate: a callable ``(candidate) -> None |
+    reason`` consulted for every sensor-supported candidate that passed
+    all other gates. None (or a falsy return) authorizes — the candidate
+    then carries ``volume_verified: True``; a reason string rejects the
+    candidate with that reason. A raising verifier rejects fail-closed.
+    ``None`` (default) keeps the legacy surface-only path.
 
     Each candidate also carries ``capacity_feasible``: True when no capacity
     gate rejected it, so a caller can tell "the container is full" from
@@ -1043,6 +1219,24 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                         # and the exact hull rejects the pose.
                         candidate["feasible"] = False
                         candidate["reason"] = REASON_OUTSIDE_HULL
+                    if (feasible and candidate["feasible"]
+                            and support_source == "sensor"
+                            and volume_verifier is not None):
+                        # Reviews 2026-11-08_1751: the authorization gate.
+                        # The candidate's OWN box volume must be observed
+                        # known-free on the SAME snapshot the surface was
+                        # built from — an observed support face never
+                        # authorizes unobserved space above it. A verifier
+                        # error is fail-closed: no evidence, no claim.
+                        try:
+                            volume_reason = volume_verifier(candidate)
+                        except Exception:  # noqa: BLE001 - fail closed
+                            volume_reason = REASON_VOLUME_UNVERIFIED
+                        if volume_reason:
+                            candidate["feasible"] = False
+                            candidate["reason"] = str(volume_reason)
+                        else:
+                            candidate["volume_verified"] = True
                     candidate["verdict"] = _REASON_TO_VERDICT.get(
                         candidate["reason"]
                         if candidate["reason"] != "ok" else None,
@@ -1065,7 +1259,8 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
 
 
 def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
-                    candidate_validator=None, atlas_annotate=None):
+                    candidate_validator=None, atlas_annotate=None,
+                    volume_verifier=None):
     """ROS-free ComputePlacement core with a stable failure taxonomy.
 
     On failure ``reason_code`` is one of ``INVALID_BOX_SIZE``,
@@ -1096,7 +1291,8 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
     totals = {}
     candidates = generate_candidates(
         surface_map, size, allowed_yaws=allowed_yaws, params=params,
-        candidate_validator=candidate_validator, totals=totals)
+        candidate_validator=candidate_validator, totals=totals,
+        volume_verifier=volume_verifier)
     atlas_report = None
     if atlas_annotate is not None:
         candidates, atlas_report = atlas_annotate(candidates)
