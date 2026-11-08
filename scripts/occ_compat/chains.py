@@ -252,7 +252,12 @@ def planner_command(manifest, *, backend, scene_revision="",
         "-p validity_status_service:=%s" % (
             "/uld_occ_observer/get_validity" if backend == "O"
             else "/cargo_map/get_validity"),
-        "-p robot_state_max_age_ms:=500",
+        # The full multi-view fixture enumeration legitimately takes
+        # ~1 s (run08-era solver was ~0.7 s on the same grid; the edge
+        # scan + volume checks add ~10%). A 500 ms robot window makes
+        # E4's commit deterministically stale — the chain deployment
+        # widens it; the product default stays 500 ms.
+        "-p robot_state_max_age_ms:=2000",
         # No precomputed atlas cells in the compat chains: disable the
         # identity gate (placements use the no_atlas band, the same path
         # the default cuboid scene takes when no cell matches).
