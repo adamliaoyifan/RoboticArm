@@ -14,9 +14,11 @@ Geometry rules (reviews 1622 B1):
   the oriented footprint with positive area — center-inside alone
   misses edge overlaps.
 - Contact tolerance (support) NEVER swallows a positive-volume occupied
-  overlap: support contact requires the occupied top within the
-  tolerance band of the box bottom; anything strictly above the band is
-  a collision.
+  overlap: the tolerance governs the GAP side only (an occupied top may
+  sit up to support_contact_tol BELOW the box bottom and still count as
+  support). An occupied top above the box bottom by more than the
+  numeric tolerance is a collision at ANY depth (1cm penetration
+  rejects — reviews 2026-11-08 penetration control).
 - Numeric validity is checked FIRST: finite values, positive size,
   bottom at/above the floor, top at/below the ceiling, yaw within the
   frozen legal set.
@@ -264,10 +266,13 @@ def verify_candidate(candidate, *, surface, box_size, hull,
         height, state = _column_height(surface, ix, iy)
         top = floor_rel + height
         if state == "occupied":
-            # Occupied cell = the whole cell (final D1 ruling): the
-            # footprint intersecting any occupied rectangle with
-            # positive area is a collision unless the top sits in the
-            # support-contact band below the box bottom.
+            # Occupied cell = the whole cell (final D1 ruling). Contact
+            # semantics (reviews 2026-11-08 penetration control): the
+            # support tolerance governs the GAP side only — an occupied
+            # top ABOVE the box bottom by more than the numeric
+            # tolerance is a positive-volume penetration no matter how
+            # small (1cm must reject); a top within [bottom - tol_band,
+            # bottom + numeric] is support contact.
             box_rects = _occupied_rectangles(
                 surface, hull, ix, iy, origin_xy, resolution)
             real_overlap = False
@@ -277,11 +282,12 @@ def verify_candidate(candidate, *, surface, box_size, hull,
                 iy_ov = min(y1r, ry1) - max(y0r, ry0)
                 if ix_ov <= tol or iy_ov <= tol:
                     continue
-                if top > z0_rel + contact_tol + tol:
+                if top > z0_rel + tol:
                     real_overlap = True  # positive-volume penetration
-                elif top >= z0_rel - tol:
+                elif top >= z0_rel - contact_tol:
                     contact_overlap = True  # support contact band
-                # occupied top strictly below the bottom: no interaction
+                # occupied top below the bottom beyond the gap band:
+                # no interaction (overhang)
             if real_overlap:
                 occupied_conflict += 1
             elif contact_overlap:

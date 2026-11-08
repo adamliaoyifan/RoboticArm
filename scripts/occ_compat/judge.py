@@ -1689,6 +1689,31 @@ def selftest(manifest_path, out_dir):
     _d1_checks.append(_vc_d1(
         _d1_center, surface=_ring_surface,
         box_size=_d1_box, hull=_d1_hull)["pass"])
+    # (e/f) penetration pair (reviews 2026-11-08 control): the support
+    # tolerance governs the GAP side only. Box bottom at floor+0.20;
+    # an occupied top 1cm ABOVE the bottom is positive-volume
+    # penetration and must reject; a top AT the bottom is face contact
+    # and must pass; a top 4cm BELOW the bottom is the gap band and
+    # still supports.
+    def _support_surface(top_height):
+        nx, ny, res = 75, 99, 0.02
+        center_z = 0.53 + 0.20 + 0.10   # box bottom at floor+0.20
+        box = {"center_container": [0.0, 0.0, center_z],
+               "yaw": 0.0, "confidence_ratio": 0.0}
+        height = [[0.0] * ny for _ in range(nx)]
+        state = [["free"] * ny for _ in range(nx)]
+        for ix in range(30, 46):        # 0.3x0.2 footprint at center
+            for iy in range(40, 50):
+                state[ix][iy] = "occupied"
+                height[ix][iy] = top_height
+        surface = {"resolution": res, "nx": nx, "ny": ny, "floor_z": 0.0,
+                   "epoch": "d1", "map_revision": 1,
+                   "height": height, "state": state}
+        return _vc_d1(box, surface=surface,
+                       box_size=_d1_box, hull=_d1_hull)
+    _d1_checks.append(not _support_surface(0.21)["pass"])
+    _d1_checks.append(_support_surface(0.20)["pass"])
+    _d1_checks.append(_support_surface(0.16)["pass"])
     wiring["w24_wall_clip_evidence"] = (
         "REJECTED" if all(_d1_checks) else "FALSE_PASS")
     over_events = _healthy_r03_events()

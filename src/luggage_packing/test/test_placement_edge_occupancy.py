@@ -148,3 +148,40 @@ def test_unknown_edge_sliver_never_claims_known_free():
              if c.get("feasible") and c["support_source"] == "floor_prior"]
     assert prior, "floor-prior answers over unknown ground must appear"
     assert all(c["confidence_ratio"] == 0.0 for c in prior)
+
+
+def test_contact_band_is_gap_side_only():
+    """Reviews 2026-11-08 penetration control: the support tolerance
+    governs the GAP side only. An occupied top 1cm ABOVE the box bottom
+    is positive-volume penetration and must reject; a top AT the bottom
+    is face contact; a top 4cm below is the gap band and stays legal."""
+    nx, ny, res = 75, 99, 0.02
+    ox = -nx * res / 2.0
+
+    def surface_with(top):
+        height = [[0.0] * ny for _ in range(nx)]
+        state = [["free"] * ny for _ in range(nx)]
+        for ix in range(30, 46):          # under the 0.3x0.2 footprint
+            for iy in range(40, 50):
+                state[ix][iy] = "occupied"
+                height[ix][iy] = top
+        return {"resolution": res, "nx": nx, "ny": ny,
+                "height": height, "state": state}
+
+    # footprint centered at x=0.15, y=0.08 -> cells 30..45 in x
+    surface = surface_with(0.21)
+    overlaps, _ = ps._footprint_edge_state(
+        surface, 0.15, 0.08, 0.30, 0.20, box_bottom=0.20)
+    assert overlaps, "1cm penetration above the box bottom must reject"
+    surface = surface_with(0.20)
+    overlaps, _ = ps._footprint_edge_state(
+        surface, 0.15, 0.08, 0.30, 0.20, box_bottom=0.20)
+    assert not overlaps, "face contact (top == bottom) stays legal"
+    surface = surface_with(0.16)
+    overlaps, _ = ps._footprint_edge_state(
+        surface, 0.15, 0.08, 0.30, 0.20, box_bottom=0.20)
+    assert not overlaps, "gap within the support tolerance stays legal"
+    surface = surface_with(0.2000001)
+    overlaps, _ = ps._footprint_edge_state(
+        surface, 0.15, 0.08, 0.30, 0.20, box_bottom=0.20)
+    assert not overlaps, "numeric-representation dust is not penetration"

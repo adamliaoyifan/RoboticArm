@@ -748,7 +748,7 @@ def _support_ratio(cell_heights, peak, tol):
 
 
 def _footprint_edge_state(surface_map, cx, cy, footprint_l, footprint_w,
-                          box_bottom, support_tol):
+                          box_bottom):
     """Footprint-coverage occupancy/unknown scan (adjudication
     2026-11-08).
 
@@ -759,9 +759,12 @@ def _footprint_edge_state(surface_map, cx, cy, footprint_l, footprint_w,
     This scans every grid cell the CONTINUOUS footprint overlaps with
     positive area:
 
-    - occupied cell whose top stands above the box bottom outside the
-      support-contact band (``top > box_bottom + support_tol``) is a
-      collision -> reject (wall slivers; stacking contact still legal);
+    - occupied cell whose top stands above the box bottom by more than
+      the numeric tolerance is a collision at ANY depth (reviews
+      2026-11-08 penetration control: the support tolerance governs the
+      GAP side only — 1cm positive-volume penetration must reject);
+      an occupied top AT/BELOW the box bottom is support contact and
+      stays legal;
     - unknown cell -> the footprint holds unobserved volume; the caller
       routes it through the same unknown/floor-prior policy as unknown
       window cells (unknown is never free).
@@ -792,7 +795,7 @@ def _footprint_edge_state(surface_map, cx, cy, footprint_l, footprint_w,
                 continue
             state = states[ix][iy]
             if state == "occupied":
-                if float(heights[ix][iy]) > box_bottom + support_tol:
+                if float(heights[ix][iy]) > box_bottom + eps:
                     overlaps_occupied = True
             elif state == "unknown":
                 overlaps_unknown = True
@@ -898,8 +901,7 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                 # cells it actually overlaps — the ceil-sized window can
                 # miss a 5mm sliver over an adjacent occupied column.
                 edge_occupied, edge_unknown = _footprint_edge_state(
-                    surface_map, lx, ly, footprint_l, footprint_w,
-                    peak, float(cfg["support_tol"]))
+                    surface_map, lx, ly, footprint_l, footprint_w, peak)
                 if edge_occupied:
                     feasible = False
                     reason = REASON_EDGE_OCCUPIED
