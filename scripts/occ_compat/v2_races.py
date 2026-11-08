@@ -130,11 +130,13 @@ def run_r02(ctx):
                   healthy))
 
 
-def _placement_probe(ctx, case):
+def _placement_probe(ctx, case, link_override=None):
     """Healthy-recovery control: wait for the CURRENT identity to be
     admitted, stream a fresh robot sample, then a placement must pass.
     On the V2 chain the planner's hooks are ENABLED — the probe drives
-    the release loop itself (park markers must not stall the control)."""
+    the release loop itself (park markers must not stall the control).
+    ``link_override`` ties the probe to an instance identity (R12: the
+    respawned producer — the recovery proves THAT instance)."""
     import rclpy
     ctx.client.wait_validity("VALID", 8.0)
     ctx.wait_map_admitted()
@@ -143,7 +145,8 @@ def _placement_probe(ctx, case):
     ok = False
     for _attempt in range(3):
         _probe_start = mono_ns()
-        _probe_link = "%s-healthy-%d" % (case, _probe_start)
+        _probe_link = link_override or "%s-healthy-%d" % (
+            case, _probe_start)
         future = ctx.client._chain_clients["placement"].call_async(
             _v1_request())
         deadline = time.monotonic() + 35.0
@@ -586,7 +589,8 @@ def run_r12(ctx, stack, restart_producer):
         # probe retries while that cycle catches up.
         for attempt in range(8):
             time.sleep(2.0)
-            if _placement_probe(ctx, "R12"):
+            if _placement_probe(ctx, "R12",
+                                link_override=_r12_link):
                 healthy = True
                 break
     if confirmed and new_identity and healthy:
