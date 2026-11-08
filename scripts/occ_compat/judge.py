@@ -1626,6 +1626,71 @@ def selftest(manifest_path, out_dir):
               "floor_z_container": 0.53})
     wiring["w18_illegal_candidate"] = (
         "REJECTED" if not bad_verdict["all_pass"] else "FALSE_PASS")
+    # D1 disposition controls (reviews 2026-11-08): wall clipping is
+    # EVIDENCE-GATED. An interior-occupied map must reject a centered
+    # box (the a0a000df miss); cargo anywhere forbids boundary
+    # clipping; a ring-only map justifies the wall interpretation and
+    # a near-wall candidate passes; the healthy control passes.
+    from .oracle import verify_candidate as _vc_d1
+    from .oracle import _interior_occupancy_present as _iop
+
+    def _d1_surface(state_fn):
+        nx, ny, res = 75, 99, 0.02
+        return {
+            "resolution": res, "nx": nx, "ny": ny, "floor_z": 0.0,
+            "epoch": "d1", "map_revision": 1,
+            "height": [[(1.48 if state_fn(ix, iy) == "occupied"
+                         else 0.0) for iy in range(ny)]
+                       for ix in range(nx)],
+            "state": [[state_fn(ix, iy) for iy in range(ny)]
+                      for ix in range(nx)],
+        }
+
+    def _d1_interior(ix, iy):
+        hx, hy = 1.49 / 2.0, 1.97 / 2.0
+        gx0 = -(75 / 2.0) * 0.02 + ix * 0.02
+        gy0 = -(99 / 2.0) * 0.02 + iy * 0.02
+        return (-hx <= gx0 and gx0 + 0.02 <= hx
+                and -hy <= gy0 and gy0 + 0.02 <= hy)
+
+    _d1_hull = {"inner_size": [1.49, 1.97, 1.48],
+                "floor_z_container": 0.53}
+    _d1_box = (0.3, 0.2, 0.2)
+    _d1_center = {"center_container": [0.0, 0.0, 0.63], "yaw": 0.0,
+                  "confidence_ratio": 0.0}
+    _d1_near_wall = {"center_container": [0.635, 0.0, 0.63],
+                     "yaw": 1.5708, "confidence_ratio": 0.0}
+    _d1_checks = []
+    # (a) all-interior-occupied + centered box: MUST reject
+    _d1_checks.append(not _vc_d1(
+        _d1_center, surface=_d1_surface(lambda ix, iy: "occupied"),
+        box_size=_d1_box, hull=_d1_hull)["pass"])
+    # (b) cargo present (one interior cell) + near-wall box: MUST
+    # reject — no map-native basis to clip the boundary cell
+    def _d1_mixed(ix, iy):
+        if (ix, iy) == (20, 50):
+            return "occupied"
+        return "occupied" if not _d1_interior(ix, iy) else "free"
+    _d1_checks.append(not _vc_d1(
+        _d1_near_wall, surface=_d1_surface(_d1_mixed),
+        box_size=_d1_box, hull=_d1_hull)["pass"])
+    # (c) ring-only map + near-wall box: the wall interpretation is
+    # justified (no interior occupancy anywhere) and the candidate 1cm
+    # from the true wall passes
+    def _d1_ring(ix, iy):
+        return "occupied" if not _d1_interior(ix, iy) else "free"
+    _ring_surface = _d1_surface(_d1_ring)
+    _d1_checks.append(_vc_d1(
+        _d1_near_wall, surface=_ring_surface,
+        box_size=_d1_box, hull=_d1_hull)["pass"])
+    # (d) healthy centered candidate on the ring-only map passes
+    _d1_checks.append(_vc_d1(
+        _d1_center, surface=_ring_surface,
+        box_size=_d1_box, hull=_d1_hull)["pass"])
+    # the gate itself must agree with the map evidence
+    _d1_checks.append(_iop(_ring_surface, _d1_hull) is False)
+    wiring["w24_wall_clip_evidence"] = (
+        "REJECTED" if all(_d1_checks) else "FALSE_PASS")
     over_events = _healthy_r03_events()
     for row in over_events:
         if row["event_kind"] == "placement_request":
@@ -2039,7 +2104,7 @@ REQUIRED_WIRING = (
     "w18_illegal_candidate", "w19_deadline_over_limit",
     "w20_wrong_identity_linkage",
     "w21_stitched_order_chain", "w22_oracle_shrunk_coverage",
-    "w23_a0_input_probe_coverage",
+    "w23_a0_input_probe_coverage", "w24_wall_clip_evidence",
 )
 
 
