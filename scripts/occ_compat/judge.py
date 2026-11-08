@@ -1626,13 +1626,13 @@ def selftest(manifest_path, out_dir):
               "floor_z_container": 0.53})
     wiring["w18_illegal_candidate"] = (
         "REJECTED" if not bad_verdict["all_pass"] else "FALSE_PASS")
-    # D1 disposition controls (reviews 2026-11-08): wall clipping is
-    # EVIDENCE-GATED. An interior-occupied map must reject a centered
-    # box (the a0a000df miss); cargo anywhere forbids boundary
-    # clipping; a ring-only map justifies the wall interpretation and
-    # a near-wall candidate passes; the healthy control passes.
+    # D1 FINAL-ruling controls (reviews 2026-11-08): occupied cells
+    # are NEVER clipped — a ring-only distribution cannot prove a
+    # boundary cell's interior sliver is cargo-free. Interior obstacle
+    # rejects, cargo-present boundary rejects, ring-only near-wall
+    # ALSO rejects (no automatic wall interpretation), and a healthy
+    # candidate clear of every occupied cell passes.
     from .oracle import verify_candidate as _vc_d1
-    from .oracle import _interior_occupancy_present as _iop
 
     def _d1_surface(state_fn):
         nx, ny, res = 75, 99, 0.02
@@ -1666,7 +1666,7 @@ def selftest(manifest_path, out_dir):
         _d1_center, surface=_d1_surface(lambda ix, iy: "occupied"),
         box_size=_d1_box, hull=_d1_hull)["pass"])
     # (b) cargo present (one interior cell) + near-wall box: MUST
-    # reject — no map-native basis to clip the boundary cell
+    # reject — the boundary cell counts in full
     def _d1_mixed(ix, iy):
         if (ix, iy) == (20, 50):
             return "occupied"
@@ -1674,21 +1674,21 @@ def selftest(manifest_path, out_dir):
     _d1_checks.append(not _vc_d1(
         _d1_near_wall, surface=_d1_surface(_d1_mixed),
         box_size=_d1_box, hull=_d1_hull)["pass"])
-    # (c) ring-only map + near-wall box: the wall interpretation is
-    # justified (no interior occupancy anywhere) and the candidate 1cm
-    # from the true wall passes
+    # (c) ring-only map + near-wall box: STILL rejects — the ring
+    # distribution is not evidence that the boundary cell's interior
+    # sliver is cargo-free (final ruling; the f646df8a gate assumed
+    # exactly this and was overturned)
     def _d1_ring(ix, iy):
         return "occupied" if not _d1_interior(ix, iy) else "free"
     _ring_surface = _d1_surface(_d1_ring)
-    _d1_checks.append(_vc_d1(
+    _d1_checks.append(not _vc_d1(
         _d1_near_wall, surface=_ring_surface,
         box_size=_d1_box, hull=_d1_hull)["pass"])
-    # (d) healthy centered candidate on the ring-only map passes
+    # (d) healthy centered candidate clear of every occupied cell
+    # passes
     _d1_checks.append(_vc_d1(
         _d1_center, surface=_ring_surface,
         box_size=_d1_box, hull=_d1_hull)["pass"])
-    # the gate itself must agree with the map evidence
-    _d1_checks.append(_iop(_ring_surface, _d1_hull) is False)
     wiring["w24_wall_clip_evidence"] = (
         "REJECTED" if all(_d1_checks) else "FALSE_PASS")
     over_events = _healthy_r03_events()

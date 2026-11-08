@@ -119,71 +119,23 @@ def _column_height(surface, ix, iy):
     return float(height or 0.0), str(state)
 
 
-def _interior_occupancy_present(surface, hull):
-    """Map-native evidence gate (reviews 2026-11-08 D1 disposition).
+def _occupied_rectangles(surface, hull, ix, iy, origin_xy, resolution):
+    """The occupied region of one occupied cell = THE WHOLE CELL.
 
-    Attributing a boundary cell's occupied marker to the static wall
-    requires a basis BEYOND the container geometry alone: the geometry
-    proves the wall occupies the beyond-interior part, it cannot prove
-    the interior sliver is obstacle-free. The map itself supplies that
-    basis when it reports occupancy NOWHERE fully inside the container
-    — then every occupied cell lies on the boundary ring where the
-    container places the walls, and the map carries no positive
-    cargo/obstacle evidence anywhere. Any interior occupied cell means
-    cargo-class occupancy exists and the map cannot separate wall from
-    cargo inside a boundary cell: the check fails CLOSED (no clipping
-    anywhere, reviews control: an all-interior-occupied map must reject
-    a centered box)."""
-    inner = hull.get("inner_size") or (1.49, 1.97, 1.48)
-    hx, hy = float(inner[0]) / 2.0, float(inner[1]) / 2.0
-    resolution = float(surface["resolution"])
-    nx, ny = int(surface["nx"]), int(surface["ny"])
-    origin_xy = (-(nx / 2.0) * resolution, -(ny / 2.0) * resolution)
-    for ix in range(nx):
-        gx0 = origin_xy[0] + ix * resolution
-        if gx0 < -hx or gx0 + resolution > hx:
-            continue  # boundary/outside in x — not an interior cell
-        for iy in range(ny):
-            gy0 = origin_xy[1] + iy * resolution
-            if gy0 < -hy or gy0 + resolution > hy:
-                continue
-            if str(surface["state"][ix][iy]) == "occupied":
-                return True
-    return False
-
-
-def _occupied_rectangles(surface, hull, ix, iy, origin_xy, resolution,
-                         wall_evidence):
-    """The TRUE occupied sub-regions of one occupied cell.
-
-    ``wall_evidence`` (from _interior_occupancy_present) gates the
-    wall interpretation: with it, a boundary cell's occupied volume is
-    the part BEYOND the container interior (the static wall) and the
-    interior sliver carries no occupancy evidence; without it the
-    whole cell counts — interior cargo must never be clipped away."""
+    Final ruling (reviews 2026-11-08 D1): a ring-only occupied
+    distribution does NOT prove a boundary cell's interior sliver is
+    cargo-free — cargo could occupy only boundary cells while every
+    full-interior cell reads free. Without a reliable occupancy-source
+    fact in the map, the oracle KEEPS boundary-cell occupancy: the
+    consumer's own map says occupied, so a footprint overlapping it is
+    illegal. Wall clipping requires a native wall declaration that the
+    current maps do not carry; the SOLVER avoids these cells instead
+    (candidates must not overlap conservatively-occupied wall edges)."""
     gx0 = origin_xy[0] + ix * resolution
     gx1 = gx0 + resolution
     gy0 = origin_xy[1] + iy * resolution
     gy1 = gy0 + resolution
-    if not wall_evidence:
-        # No map-native basis to attribute this occupancy to the wall:
-        # cargo-class occupancy exists somewhere in the map, so the
-        # entire cell is conservatively occupied (fail closed).
-        return [(gx0, gx1, gy0, gy1)]
-    inner = hull.get("inner_size") or (1.49, 1.97, 1.48)
-    hx, hy = float(inner[0]) / 2.0, float(inner[1]) / 2.0
-    fx0, fx1 = max(gx0, -hx), min(gx1, hx)
-    fy0, fy1 = max(gy0, -hy), min(gy1, hy)
-    regions = []
-    if gx1 > hx:
-        regions.append((max(gx0, hx), gx1, gy0, gy1))
-    if gx0 < -hx:
-        regions.append((gx0, min(gx1, -hx), gy0, gy1))
-    if gy1 > hy:
-        regions.append((fx0, fx1, max(gy0, hy), gy1))
-    if gy0 < -hy:
-        regions.append((fx0, fx1, gy0, min(gy1, -hy)))
-    return regions
+    return [(gx0, gx1, gy0, gy1)]
 
 
 def verify_candidate(candidate, *, surface, box_size, hull,
@@ -308,22 +260,16 @@ def verify_candidate(candidate, *, surface, box_size, hull,
     z0_rel = z0 - floor_container
     occupied_conflict = unknown_interior = supported = 0
     contact_tol = POLICY["support_contact_tol_m"]
-    # Wall interpretation is EVIDENCE-GATED (reviews 2026-11-08 D1
-    # disposition): the boundary cells' occupancy may be read as the
-    # static wall ONLY when the map reports no interior occupancy
-    # anywhere; otherwise every occupied cell counts in full.
-    wall_evidence = not _interior_occupancy_present(surface, hull)
-    result["wall_evidence"] = wall_evidence
     for ix, iy in cells:
         height, state = _column_height(surface, ix, iy)
         top = floor_rel + height
         if state == "occupied":
-            # TRUE occupied sub-regions: intersect the box footprint
-            # with each occupied rectangle — interior cargo is never
-            # clipped away; wall clipping needs the map-native basis
+            # Occupied cell = the whole cell (final D1 ruling): the
+            # footprint intersecting any occupied rectangle with
+            # positive area is a collision unless the top sits in the
+            # support-contact band below the box bottom.
             box_rects = _occupied_rectangles(
-                surface, hull, ix, iy, origin_xy, resolution,
-                wall_evidence)
+                surface, hull, ix, iy, origin_xy, resolution)
             real_overlap = False
             contact_overlap = False
             for (rx0, rx1, ry0, ry1) in box_rects:
