@@ -31,6 +31,12 @@ REASON_CORRIDOR_BLOCKED = "corridor_blocked"
 REASON_UNKNOWN_ABOVE_FLOOR = "unknown_above_floor"
 REASON_INSUFFICIENT_CLEARANCE = "insufficient_clearance"
 REASON_INSUFFICIENT_SUPPORT = "insufficient_support"
+# Adjudication 2026-11-08 (edge-occupancy miss): the candidate's ACTUAL
+# footprint (continuous extent, grid-anchored) overlaps an occupied cell
+# whose top stands above the support-contact band — e.g. the 5mm sliver
+# of a near-wall box over the conservatively-occupied wall column that
+# the ceil-sized window cells never read.
+REASON_EDGE_OCCUPIED = "edge_occupied_overlap"
 # ST09-A S1: a support surface whose contact heights ramp across the
 # footprint (gentle slope within ``support_tol`` per cell, so support_ratio
 # alone cannot see it) does not hold a placed box flat.
@@ -741,6 +747,58 @@ def _support_ratio(cell_heights, peak, tol):
     return float(contact) / float(len(cell_heights))
 
 
+def _footprint_edge_state(surface_map, cx, cy, footprint_l, footprint_w,
+                          box_bottom, support_tol):
+    """Footprint-coverage occupancy/unknown scan (adjudication
+    2026-11-08).
+
+    The ceil-sized window cells are anchored to the HULL edge while the
+    map grid is anchored at -(nx/2)*resolution — on a grid wider than
+    the hull (75 cells * 0.02 = 1.50 m vs inner 1.49 m) the box's real
+    extent spills past the last window cell into the adjacent column.
+    This scans every grid cell the CONTINUOUS footprint overlaps with
+    positive area:
+
+    - occupied cell whose top stands above the box bottom outside the
+      support-contact band (``top > box_bottom + support_tol``) is a
+      collision -> reject (wall slivers; stacking contact still legal);
+    - unknown cell -> the footprint holds unobserved volume; the caller
+      routes it through the same unknown/floor-prior policy as unknown
+      window cells (unknown is never free).
+    """
+    resolution = float(surface_map["resolution"])
+    nx = int(surface_map["nx"])
+    ny = int(surface_map["ny"])
+    heights = surface_map["height"]
+    states = surface_map["state"]
+    origin_x = -nx * resolution * 0.5
+    origin_y = -ny * resolution * 0.5
+    x0, x1 = cx - footprint_l * 0.5, cx + footprint_l * 0.5
+    y0, y1 = cy - footprint_w * 0.5, cy + footprint_w * 0.5
+    eps = 1e-6  # representation slivers are not positive-area overlap
+    overlaps_occupied = False
+    overlaps_unknown = False
+    ix_lo = max(0, int(math.floor((x0 - origin_x) / resolution)))
+    ix_hi = min(nx - 1, int(math.floor((x1 - origin_x - eps) / resolution)))
+    iy_lo = max(0, int(math.floor((y0 - origin_y) / resolution)))
+    iy_hi = min(ny - 1, int(math.floor((y1 - origin_y - eps) / resolution)))
+    for ix in range(ix_lo, ix_hi + 1):
+        cx0 = origin_x + ix * resolution
+        if min(x1, cx0 + resolution) - max(x0, cx0) <= eps:
+            continue
+        for iy in range(iy_lo, iy_hi + 1):
+            cy0 = origin_y + iy * resolution
+            if min(y1, cy0 + resolution) - max(y0, cy0) <= eps:
+                continue
+            state = states[ix][iy]
+            if state == "occupied":
+                if float(heights[ix][iy]) > box_bottom + support_tol:
+                    overlaps_occupied = True
+            elif state == "unknown":
+                overlaps_unknown = True
+    return overlaps_occupied, overlaps_unknown
+
+
 def _validator_verdict(candidate_validator, candidate):
     """Normalize a validator result to ``(reason, capacity_ok)``.
 
@@ -835,11 +893,31 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                 feasible = True
                 reason = "ok"
                 support_source = "sensor"
+                # Footprint-coverage scan (adjudication 2026-11-08):
+                # the continuous footprint is checked against the grid
+                # cells it actually overlaps — the ceil-sized window can
+                # miss a 5mm sliver over an adjacent occupied column.
+                edge_occupied, edge_unknown = _footprint_edge_state(
+                    surface_map, lx, ly, footprint_l, footprint_w,
+                    peak, float(cfg["support_tol"]))
+                if edge_occupied:
+                    feasible = False
+                    reason = REASON_EDGE_OCCUPIED
+                if edge_unknown:
+                    has_unknown = True
+                if has_unknown:
+                    # The footprint holds unobserved volume (window cell
+                    # or edge sliver): the claim must not present it as
+                    # known — confidence 0 keeps the floor-prior answer
+                    # below observed placements (§4.2.2) and matches the
+                    # oracle's class check (claim >= 0.5 requires zero
+                    # unknown under the footprint).
+                    confidence_ratio = 0.0
                 # Clearance is a capacity gate, so it is evaluated for every
                 # candidate rather than only for the ones that survive the
                 # observation gates above it.
                 clearance_ok = clearance_top >= cfg["clearance_margin"]
-                if has_unknown:
+                if feasible and has_unknown:
                     if abs(peak - floor_z) > cfg["support_tol"]:
                         # Stacking on an unobserved support surface -> reject.
                         # "floor exists" is geometric prior, but "something
