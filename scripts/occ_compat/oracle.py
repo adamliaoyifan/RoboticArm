@@ -119,6 +119,36 @@ def _column_height(surface, ix, iy):
     return float(height or 0.0), str(state)
 
 
+def _occupied_rectangles(surface, hull, ix, iy, origin_xy, resolution):
+    """The TRUE occupied sub-regions of one cell (reviews 2026-11-08 D1).
+
+    A boundary cell straddling the container wall is marked fully
+    occupied by the map (cell-granular classification), but the wall
+    only physically occupies the part BEYOND the container interior.
+    The occupied volume is the cell minus the interior rectangle —
+    never the whole cell. D1's independent cross-check: with correct
+    clipping, all 48 real candidates have ZERO occupied overlap (the
+    phantom 5mm overlaps were wall-cell artifacts)."""
+    gx0 = origin_xy[0] + ix * resolution
+    gx1 = gx0 + resolution
+    gy0 = origin_xy[1] + iy * resolution
+    gy1 = gy0 + resolution
+    inner = hull.get("inner_size") or (1.49, 1.97, 1.48)
+    hx, hy = float(inner[0]) / 2.0, float(inner[1]) / 2.0
+    fx0, fx1 = max(gx0, -hx), min(gx1, hx)
+    fy0, fy1 = max(gy0, -hy), min(gy1, hy)
+    regions = []
+    if gx1 > hx:
+        regions.append((max(gx0, hx), gx1, gy0, gy1))
+    if gx0 < -hx:
+        regions.append((gx0, min(gx1, -hx), gy0, gy1))
+    if gy1 > hy:
+        regions.append((fx0, fx1, max(gy0, hy), gy1))
+    if gy0 < -hy:
+        regions.append((fx0, fx1, gy0, min(gy1, -hy)))
+    return regions
+
+
 def verify_candidate(candidate, *, surface, box_size, hull,
                      margin=POLICY["hull_margin_default_m"]):
     """Full-orientation verification of ONE returned candidate.
@@ -233,6 +263,8 @@ def verify_candidate(candidate, *, surface, box_size, hull,
             result["legs"]["claim"] = "FAIL_reported_cells_mismatch"
             return result
     result["n_cells"] = len(cells)
+    x0r, x1r = center[0] - fw / 2.0, center[0] + fw / 2.0
+    y0r, y1r = center[1] - fd / 2.0, center[1] + fd / 2.0
 
     # ---- frame discipline: surface heights are FLOOR-RELATIVE
     floor_rel = float(surface.get("floor_z", 0.0) or 0.0)
@@ -243,14 +275,27 @@ def verify_candidate(candidate, *, surface, box_size, hull,
         height, state = _column_height(surface, ix, iy)
         top = floor_rel + height
         if state == "occupied":
-            if top > z0_rel + contact_tol + tol:
-                # strictly above the contact band: a positive-volume
-                # penetration — tolerance does not apply (B1)
+            # TRUE occupied sub-regions (wall clipping, reviews D1):
+            # intersect the box footprint with each occupied rectangle
+            # — a wall-cell artifact can never read as a collision
+            box_rects = _occupied_rectangles(
+                surface, hull, ix, iy, origin_xy, resolution)
+            real_overlap = False
+            contact_overlap = False
+            for (rx0, rx1, ry0, ry1) in box_rects:
+                ix_ov = min(x1r, rx1) - max(x0r, rx0)
+                iy_ov = min(y1r, ry1) - max(y0r, ry0)
+                if ix_ov <= tol or iy_ov <= tol:
+                    continue
+                if top > z0_rel + contact_tol + tol:
+                    real_overlap = True  # positive-volume penetration
+                elif top >= z0_rel - tol:
+                    contact_overlap = True  # support contact band
+                # occupied top strictly below the bottom: no interaction
+            if real_overlap:
                 occupied_conflict += 1
-            elif top >= z0_rel - tol:
-                # within the band: support contact
+            elif contact_overlap:
                 supported += 1
-            # occupied top strictly below the bottom: no interaction
         elif state == "unknown":
             unknown_interior += 1
         else:  # free column
@@ -287,36 +332,22 @@ def verify_candidate(candidate, *, surface, box_size, hull,
 
 def verify_response(response, *, surface, box_size, hull):
     """Verify EVERY candidate a placement response returned (I4: full
-    payloads, not counts), the frozen same-layer clearance between
-    candidates, and the no-solution taxonomy."""
+    payloads, not counts), plus the no-solution taxonomy.
+
+    NOTE (reviews 2026-11-08 D1): the response's candidates are
+    ALTERNATIVES for one placement — mutually exclusive options, not
+    co-placed boxes. The same_layer_clearance policy governs a NEW box
+    vs ALREADY-COMMITTED boxes at commit time; applying it pairwise
+    among alternatives would reject every ranked list by construction.
+    Commit-time clearance is checked by the product's placement ledger
+    (placed_aabbs), not by this oracle."""
     candidates = list(getattr(response, "candidates", None) or [])
     verdicts = [verify_candidate(c, surface=surface, box_size=box_size,
                                  hull=hull) for c in candidates]
-    clearance_ok = True
-    for i in range(len(candidates)):
-        for j in range(i + 1, len(candidates)):
-            a = candidates[i].get("center_container")
-            b = candidates[j].get("center_container")
-            if not (isinstance(a, (list, tuple))
-                    and isinstance(b, (list, tuple))):
-                continue
-            ya = float(candidates[i].get("yaw", 0.0) % math.pi)
-            yb = float(candidates[j].get("yaw", 0.0) % math.pi)
-            fa = _oriented_footprint(box_size, ya)
-            fb = _oriented_footprint(box_size, yb)
-            dx = abs(float(a[0]) - float(b[0]))
-            dy = abs(float(a[1]) - float(b[1]))
-            if (dx < (fa[0] + fb[0]) / 2.0 -
-                    POLICY["same_layer_clearance_m"]
-                    and dy < (fa[1] + fb[1]) / 2.0 -
-                    POLICY["same_layer_clearance_m"]):
-                clearance_ok = False
     return {
         "n_candidates": len(candidates),
         "verdicts": verdicts,
-        "all_pass": bool(verdicts) and all(v["pass"] for v in verdicts)
-        and clearance_ok,
-        "clearance_ok": clearance_ok,
+        "all_pass": bool(verdicts) and all(v["pass"] for v in verdicts),
         "reason_code": getattr(response, "reason_code", ""),
     }
 
