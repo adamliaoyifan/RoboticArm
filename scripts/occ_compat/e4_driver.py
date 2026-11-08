@@ -76,6 +76,11 @@ class E4Harness:
         self.planner = HardwarePlacePlanner(
             self.node, T1E4Adapter(client, self.node),
             group=self._group,
+            # aligned with the chain deployment's robot_state_max_age_ms
+            # (the full fixture enumeration legitimately takes ~1 s;
+            # the 1.0 s in-process default made the commit stale by
+            # ~0.1 s deterministically)
+            max_state_age_s=2.0,
             validity_topic="/uld_occ_observer/validity"
             if backend == "O" else "/luggage/cargo_map/validity",
             validity_backend="observer_o" if backend == "O" else "grid_g")
