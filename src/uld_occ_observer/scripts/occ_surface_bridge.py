@@ -30,7 +30,7 @@ import sys
 
 import yaml
 
-BRIDGE_VERSION = "occ_surface_bridge_v1"
+BRIDGE_VERSION = "occ_surface_bridge_v2"  # v2: conservative free (known == active)
 
 
 def load_geometry(geometry_path):
@@ -139,9 +139,19 @@ def build_surface_map(columns, geometry, identity):
         if column["has_occupied"]:
             height[x][y] = float(column["top_z"]) - floor_z
             state[x][y] = "occupied"
-        else:
+            confidence[x][y] = "sensor"
+            continue
+        # Conservative free (adjudication 2026-11-08): free ONLY when
+        # every ACTIVE voxel of the column is observed and none is
+        # occupied. A partially-known column still holds unobserved
+        # volume; the surface label feeds placement admission as volume
+        # evidence and surface-known must never be promoted to
+        # volume-free (known_count >= 1 is not enough).
+        if (0 < column["known_count"]
+                and column["known_count"] == column["active_count"]):
             state[x][y] = "free"
-        confidence[x][y] = "sensor"
+            confidence[x][y] = "sensor"
+        # partial knowledge stays unknown/none — fail-closed
     return {
         "bridge_version": BRIDGE_VERSION,
         "resolution": float(resolution),

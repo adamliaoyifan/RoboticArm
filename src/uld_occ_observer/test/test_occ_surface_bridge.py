@@ -41,7 +41,8 @@ def _geometry():
 
 
 def _columns(geometry, occupied_rows=(), free_rows=(), occupied_top=0.63):
-    """Synthetic column table: default unknown, some rows observed."""
+    """Synthetic column table: default unknown; free rows are FULLY
+    observed (known == active) per the conservative mapping."""
     sx = int(math.ceil(geometry["length"] / 0.02))
     sy = int(math.ceil(geometry["width"] / 0.02))
     columns = []
@@ -53,7 +54,7 @@ def _columns(geometry, occupied_rows=(), free_rows=(), occupied_top=0.63):
                                 "top_z": occupied_top})
             elif y in free_rows:
                 columns.append({"x": x, "y": y, "active_count": 74,
-                                "known_count": 5, "has_occupied": False,
+                                "known_count": 74, "has_occupied": False,
                                 "top_z": 0.0})
             else:
                 columns.append({"x": x, "y": y, "active_count": 74,
@@ -87,6 +88,28 @@ def test_builder_unknown_is_never_free():
     assert surface["state"][0][11] == "free"
     assert surface["height"][0][11] == 0.0
     assert surface["state"][0][12] == "unknown"
+
+
+def test_partial_knowledge_is_not_free():
+    """Adjudication 2026-11-08: a column with 1 of 74 voxels observed
+    free holds 73 unobserved voxels — the bridge must say unknown, not
+    free. Free requires EVERY active voxel observed (known == active)
+    and none occupied."""
+    geometry = _geometry()
+    columns = _columns(geometry, free_rows={11})
+    partial = {"x": 0, "y": 12, "active_count": 74, "known_count": 1,
+               "has_occupied": False, "top_z": 0.0}
+    columns.append(partial)
+    surface = bridge.build_surface_map(columns, geometry, _identity(geometry))
+    assert surface["state"][0][12] == "unknown", (
+        "1-of-74 known is partial knowledge, not volume free")
+    assert surface["confidence"][0][12] == "none"
+    assert surface["state"][0][11] == "free", "74-of-74 known is free"
+    near_full = dict(partial, y=13, known_count=73)
+    columns.append(near_full)
+    surface = bridge.build_surface_map(columns, geometry, _identity(geometry))
+    assert surface["state"][0][13] == "unknown", (
+        "73-of-74 known still holds an unobserved voxel")
     assert surface["height"][0][12] == 0.0
     assert surface["confidence"][0][12] == "none"
     assert surface["map_revision"] == 7 and surface["epoch"] == 1
@@ -355,11 +378,14 @@ def test_live_bridge_chain_cross_checks_freespace(tmp_path):
             receipt = future.result()
             assert receipt.receipt.status == "INTEGRATED", receipt.receipt.status
 
-        # Sweep rows 20..40 over layers 0..11 (a 0.20 m box needs 10 free
-        # cells), then an occupied strip at z=4 over a sub-patch.
+        # Sweep rows 20..40 over ALL 74 layers (the conservative bridge
+        # mapping marks a column free only when every active voxel is
+        # observed — the old 12-layer sweep left the band partially
+        # known, which now reads unknown), then an occupied strip at
+        # z=4 over a sub-patch.
         stamp = int(time.time() * 1e9)
         counter = 0
-        for z_cell in range(0, 12):
+        for z_cell in range(0, 74):
             for y in range(20, 40):
                 counter += 1
                 integrate_row(stamp + counter * 10_000_000, z_cell, y, sx - 1)
