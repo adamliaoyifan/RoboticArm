@@ -52,14 +52,16 @@ def _surface_with_cargo():
                    for ix in range(NX)],
         "state": [[states(ix, iy) for iy in range(NY)] for ix in range(NX)],
         "confidence": [["sensor" for _ in range(NY)] for _ in range(NX)],
+        # the deployment chamfer hull (user ruling 2026-11-08: the real
+        # chain is chamfer-only; the cuboid fixture was deleted)
         "geometry_descriptor": {
             "length": 1.49, "width": 1.97, "ceiling_z": CEIL,
             "floor_z": FLOOR, "frame_id": "container_link",
             "schema_version": 1,
-            # verbatim from the run07 cuboid payload — normalize_descriptor
-            # recomputes and compares the hash
-            "geometry_hash": "30a9914e50249d6abb42fcd6e861a977a"
-                             "83986c728525cc8d1345f942ad48a4a",
+            "chamfer": {"floor_y": 0.55, "side": "positive_y",
+                        "wall_y": 0.985, "wall_z": 0.9},
+            "geometry_hash": "cb41f55f243786d50ab30997291083ab"
+                             "40467507abcf78a00e55da77ffc00856",
         },
     }
 
