@@ -80,27 +80,36 @@ def _feasible(surface, box=BOX, yaws=(math.pi / 2.0,)):
     return [c for c in candidates if c.get("feasible")]
 
 
-def test_wall_sliver_candidates_rejected():
-    """The regression: boundary columns occupied full height (the map's
-    conservative wall representation). No feasible candidate's actual
-    footprint may overlap them — the 5mm spill past the last window
-    cell is a collision, and interior placements must still appear."""
+def test_wall_sliver_within_tolerance_deeper_rejects():
+    """OCC overlap tolerance (user ruling 2026-11-08 night): with the
+    exact-face hull margin and the boundary columns occupied full
+    height, a footprint clipping up to one cell (2cm) into the occupied
+    wall column is ACCEPTABLE; deeper than the tolerance rejects. The
+    default (auto) margin keeps candidates a full cell away regardless."""
     surface = _map(
         lambda ix, iy: "occupied" if not _interior(ix, iy) else "free")
-    feasible = _feasible(surface)
+    # exact-face margin so candidates can actually reach the wall column
+    params = dict(ps._default_params())
+    params["top_n"] = 8000
+    params["hull_margin"] = 0.0
+    result = ps.generate_candidates(surface, BOX,
+                                    allowed_yaws=[math.pi / 2.0],
+                                    params=params)
+    candidates = result if isinstance(result, list) else result["candidates"]
+    feasible = [c for c in candidates if c.get("feasible")]
     assert feasible, "interior placements must remain available"
     for candidate in feasible:
         fw = candidate["footprint"][0]
         x1 = candidate["center_container"][0] + fw / 2.0
         x0 = candidate["center_container"][0] - fw / 2.0
-        # the boundary column starts at the first grid line past the hull
-        assert x1 <= HX + 1e-9, (
-            "footprint spills into the occupied wall column", x1)
-        assert x0 >= -HX - 1e-9
+        # wall column 74 spans [0.73, 0.75]; a clip up to 2cm is legal
+        assert x1 <= 0.73 + RES + 1e-9, (
+            "footprint clips deeper than one cell into the wall column", x1)
+        assert x0 >= -0.73 - RES - 1e-9
         fd = candidate["footprint"][1]
         y1 = candidate["center_container"][1] + fd / 2.0
         y0 = candidate["center_container"][1] - fd / 2.0
-        assert y1 <= HY + 1e-9 and y0 >= -HY - 1e-9
+        assert y1 <= 0.965 + RES + 1e-9 and y0 >= -0.965 - RES - 1e-9
 
 
 def test_stacking_on_observed_cargo_still_legal():
@@ -153,15 +162,12 @@ def test_unknown_edge_sliver_never_claims_known_free():
 
 
 def test_contact_band_is_gap_side_only():
-    """Reviews 2026-11-08 penetration control: the support tolerance
-    governs the GAP side only. An occupied top 1cm ABOVE the box bottom
-    is positive-volume penetration and must reject; a top AT the bottom
-    is face contact; a top 4cm below is the gap band and stays legal.
-    The penetration side is judged at the FROZEN numeric tolerance
-    (PENETRATION_EPS_M == 1e-9, unified with the independent oracle):
-    float-representation dust (1e-12) is not penetration; a 1e-7 step
-    IS — it is real positive volume at the frozen rule (reviews
-    2026-11-08_1751 finding 3)."""
+    """OCC overlap band (user ruling 2026-11-08 night, superseding the
+    earlier any-depth penetration rule): an occupied top 3cm ABOVE the
+    box bottom exceeds the one-cell tolerance and must reject; 1cm
+    above is an acceptable clip and passes; a top AT the bottom is face
+    contact; 4cm below is the gap band and stays legal. An explicit
+    occ_overlap_tolerance=0.0 restores the strict any-depth rule."""
     nx, ny, res = 75, 99, 0.02
     ox = -nx * res / 2.0
 
@@ -176,10 +182,18 @@ def test_contact_band_is_gap_side_only():
                 "height": height, "state": state}
 
     # footprint centered at x=0.15, y=0.08 -> cells 30..45 in x
+    surface = surface_with(0.23)
+    overlaps, _ = ps._footprint_edge_state(
+        surface, 0.15, 0.08, 0.30, 0.20, box_bottom=0.20)
+    assert overlaps, "3cm above the bottom exceeds the 2cm tolerance"
     surface = surface_with(0.21)
     overlaps, _ = ps._footprint_edge_state(
         surface, 0.15, 0.08, 0.30, 0.20, box_bottom=0.20)
-    assert overlaps, "1cm penetration above the box bottom must reject"
+    assert not overlaps, "1cm clip is within the one-cell tolerance"
+    overlaps, _ = ps._footprint_edge_state(
+        surface, 0.15, 0.08, 0.30, 0.20, box_bottom=0.20,
+        overlap_tol=0.0)
+    assert overlaps, "explicit occ_overlap_tolerance=0.0 restores strict"
     surface = surface_with(0.20)
     overlaps, _ = ps._footprint_edge_state(
         surface, 0.15, 0.08, 0.30, 0.20, box_bottom=0.20)
@@ -188,10 +202,6 @@ def test_contact_band_is_gap_side_only():
     overlaps, _ = ps._footprint_edge_state(
         surface, 0.15, 0.08, 0.30, 0.20, box_bottom=0.20)
     assert not overlaps, "gap within the support tolerance stays legal"
-    surface = surface_with(0.2000001)
-    overlaps, _ = ps._footprint_edge_state(
-        surface, 0.15, 0.08, 0.30, 0.20, box_bottom=0.20)
-    assert overlaps, "a 1e-7 step is positive volume at the frozen 1e-9 rule"
     surface = surface_with(0.2 + 1e-12)
     overlaps, _ = ps._footprint_edge_state(
         surface, 0.15, 0.08, 0.30, 0.20, box_bottom=0.20)

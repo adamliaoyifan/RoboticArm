@@ -1689,12 +1689,12 @@ def selftest(manifest_path, out_dir):
     _d1_checks.append(_vc_d1(
         _d1_center, surface=_ring_surface,
         box_size=_d1_box, hull=_d1_hull)["pass"])
-    # (e/f) penetration pair (reviews 2026-11-08 control): the support
-    # tolerance governs the GAP side only. Box bottom at floor+0.20;
-    # an occupied top 1cm ABOVE the bottom is positive-volume
-    # penetration and must reject; a top AT the bottom is face contact
-    # and must pass; a top 4cm BELOW the bottom is the gap band and
-    # still supports.
+    # (e/f) OCC overlap band (user ruling 2026-11-08 night, superseding
+    # the earlier any-depth penetration rule): box bottom at floor+0.20,
+    # tolerance auto = one cell (2cm). A top 3cm above the bottom
+    # exceeds the band and must reject; 1cm above is within the band
+    # and passes (acceptable clip); a top AT the bottom is face contact;
+    # 4cm BELOW the bottom is the support gap band and still supports.
     def _support_surface(top_height):
         nx, ny, res = 75, 99, 0.02
         center_z = 0.53 + 0.20 + 0.10   # box bottom at floor+0.20
@@ -1711,7 +1711,8 @@ def selftest(manifest_path, out_dir):
                    "height": height, "state": state}
         return _vc_d1(box, surface=surface,
                        box_size=_d1_box, hull=_d1_hull)
-    _d1_checks.append(not _support_surface(0.21)["pass"])
+    _d1_checks.append(not _support_surface(0.23)["pass"])
+    _d1_checks.append(_support_surface(0.21)["pass"])
     _d1_checks.append(_support_surface(0.20)["pass"])
     _d1_checks.append(_support_surface(0.16)["pass"])
     wiring["w24_wall_clip_evidence"] = (

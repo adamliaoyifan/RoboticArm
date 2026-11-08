@@ -181,6 +181,15 @@ def test_boundary_layers_are_actually_read():
     assert ps.volume_state_in_evidence(
         evidence, center, footprint, FLOOR + 0.20, FLOOR + 0.30) == (
         ps.REASON_VOLUME_OCCUPIED)
+    # OCC overlap tolerance (user ruling 2026-11-08 night): an occupied
+    # voxel poking into the box volume by less than one cell from the
+    # boundary is an acceptable clip — only the tolerance-eroded
+    # interior must be occupancy-free. UNKNOWN is never loosened (the
+    # layer-10/19 unknown controls above still reject).
+    evidence = _evidence()
+    evidence["states"][_index(30, 40, 10)] = 2   # boundary layer clip
+    assert ps.volume_state_in_evidence(
+        evidence, center, footprint, FLOOR + 0.20, FLOOR + 0.30) is None
 
 
 def test_short_or_uncovered_evidence_rejects_fail_closed():

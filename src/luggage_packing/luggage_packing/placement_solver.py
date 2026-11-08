@@ -109,6 +109,15 @@ _REASON_TO_VERDICT = {
 #: real volume.
 PENETRATION_EPS_M = 1e-9
 OVERLAP_MIN_M = 1e-4
+#: OCC occupied-overlap tolerance (user ruling 2026-11-08 night): the
+#: placement box may clip up to ONE MAP CELL into OCC occupied cells —
+#: cell-granularity conservatism (a cell marked occupied may be only
+#: partially occupied in reality; boxes may touch/settle). Default
+#: None = AUTO = the map's resolution; an explicit float overrides.
+#: The EXACT hull geometry (chamfer faces, walls) keeps ZERO tolerance
+#: (the hull gate), and UNKNOWN space is not loosened at all — this
+#: tolerance governs collisions with OBSERVED occupancy only.
+OCC_OVERLAP_TOL_M = None
 
 # Stable placement failure taxonomy (docs/architecture/container_geometry.md).
 # The solver emits the first four. The node adds cargo-map identity,
@@ -464,6 +473,10 @@ def _default_params():
         # anchoring-offset miss, K01 run04/07). Default changed 2026-11-08
         # (user directive margin=resolution); 0.0 restores exact-face.
         "hull_margin": None,
+        # OCC occupied-overlap tolerance; None = AUTO = one map cell
+        # (see OCC_OVERLAP_TOL_M). An explicit float overrides (0.0
+        # restores the strict positive-volume rule).
+        "occ_overlap_tolerance": None,
         # Gentle support ramps: a contact plane that ramps across the
         # footprint keeps every cell within support_tol of the peak, so
         # support_ratio alone reads it as full contact — yet the box would
@@ -620,6 +633,10 @@ def _hypothetical_floor_windows(surface_map, box_size, allowed_yaws, cfg, hull,
     box_l, box_w, box_h = [float(v) for v in box_size]
     resolution = float(surface_map["resolution"])
     cfg["hull_margin"] = _resolved_hull_margin(cfg, resolution)
+    if cfg.get("occ_overlap_tolerance") is None:
+        cfg["occ_overlap_tolerance"] = resolution
+    if cfg.get("occ_overlap_tolerance") is None:
+        cfg["occ_overlap_tolerance"] = resolution
     nx = int(surface_map["nx"])
     ny = int(surface_map["ny"])
     inner_l, inner_w, inner_h = [float(v) for v in surface_map["inner_size"]]
@@ -798,7 +815,7 @@ def _support_ratio(cell_heights, peak, tol):
 
 
 def _footprint_edge_state(surface_map, cx, cy, footprint_l, footprint_w,
-                          box_bottom):
+                          box_bottom, overlap_tol=None):
     """Footprint-coverage occupancy/unknown scan (adjudication
     2026-11-08).
 
@@ -828,6 +845,17 @@ def _footprint_edge_state(surface_map, cx, cy, footprint_l, footprint_w,
     origin_y = -ny * resolution * 0.5
     x0, x1 = cx - footprint_l * 0.5, cx + footprint_l * 0.5
     y0, y1 = cy - footprint_w * 0.5, cy + footprint_w * 0.5
+    tol = resolution if overlap_tol is None else float(overlap_tol)
+    # OCC overlap tolerance (user ruling 2026-11-08 night): the occupied
+    # scan runs on the footprint ERODED by one tolerance — a clip up to
+    # tol deep into an occupied cell is acceptable; deeper is a
+    # collision. UNKNOWN stays on the FULL footprint: missing evidence
+    # is an authorization question, never loosened by a collision
+    # tolerance.
+    ex0 = x0 + min(tol, footprint_l * 0.5)
+    ex1 = x1 - min(tol, footprint_l * 0.5)
+    ey0 = y0 + min(tol, footprint_w * 0.5)
+    ey1 = y1 - min(tol, footprint_w * 0.5)
     overlaps_occupied = False
     overlaps_unknown = False
     ix_lo = max(0, int(math.floor((x0 - origin_x) / resolution)))
@@ -846,7 +874,12 @@ def _footprint_edge_state(surface_map, cx, cy, footprint_l, footprint_w,
                 continue
             state = states[ix][iy]
             if state == "occupied":
-                if float(heights[ix][iy]) > box_bottom + PENETRATION_EPS_M:
+                # eroded footprint must actually reach this cell
+                if (min(ex1, cx0 + resolution) - max(ex0, cx0)
+                        > OVERLAP_MIN_M
+                        and min(ey1, cy0 + resolution) - max(ey0, cy0)
+                        > OVERLAP_MIN_M
+                        and float(heights[ix][iy]) > box_bottom + tol):
                     overlaps_occupied = True
             elif state == "unknown":
                 overlaps_unknown = True
@@ -909,22 +942,41 @@ def volume_state_in_evidence(evidence, center, footprint, box_bottom,
     expected = nx * ny * nz
     if len(states) < expected:
         return REASON_VOLUME_UNVERIFIED   # short evidence
+    # OCC occupied-overlap tolerance: OCCUPIED voxels are judged on the
+    # box volume eroded by one tolerance per axis (a clip up to tol deep
+    # is acceptable — user ruling 2026-11-08 night). UNKNOWN is judged
+    # on the COMPLETE volume: missing evidence is an authorization
+    # question and is never loosened by a collision tolerance.
+    tol = resolution if evidence.get("overlap_tol") is None else float(
+        evidence["overlap_tol"])
+    ex0, ex1 = x0 + min(tol, fw * 0.5), x1 - min(tol, fw * 0.5)
+    ey0, ey1 = y0 + min(tol, fd * 0.5), y1 - min(tol, fd * 0.5)
+    ez0, ez1 = z0 + min(tol, (z1 - z0) * 0.5), z1 - min(
+        tol, (z1 - z0) * 0.5)
     for iz in range(iz_lo, iz_hi + 1):
         z_base = iz * resolution
         if min(z1, z_base + resolution) - max(z0, z_base) <= (
                 PENETRATION_EPS_M):
             continue
+        z_touch = min(ez1, z_base + resolution) - max(ez0, z_base) > (
+            PENETRATION_EPS_M)
         for ix in range(ix_lo, ix_hi + 1):
             cx0 = ox + ix * resolution
             if min(x1, cx0 + resolution) - max(x0, cx0) <= OVERLAP_MIN_M:
                 continue
+            x_touch = (min(ex1, cx0 + resolution) - max(ex0, cx0)
+                       > OVERLAP_MIN_M)
             for iy in range(iy_lo, iy_hi + 1):
                 cy0 = oy + iy * resolution
                 if min(y1, cy0 + resolution) - max(y0, cy0) <= OVERLAP_MIN_M:
                     continue
                 state = int(states[ix + nx * (iy + ny * iz)])
                 if state == 2:
-                    return REASON_VOLUME_OCCUPIED
+                    if z_touch and x_touch and (
+                            min(ey1, cy0 + resolution) - max(ey0, cy0)
+                            > OVERLAP_MIN_M):
+                        return REASON_VOLUME_OCCUPIED
+                    continue
                 if state != 1:
                     return REASON_VOLUME_UNKNOWN
     return None
@@ -1039,6 +1091,10 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
     box_l, box_w, box_h = [float(v) for v in box_size]
     resolution = float(surface_map["resolution"])
     cfg["hull_margin"] = _resolved_hull_margin(cfg, resolution)
+    if cfg.get("occ_overlap_tolerance") is None:
+        cfg["occ_overlap_tolerance"] = resolution
+    if cfg.get("occ_overlap_tolerance") is None:
+        cfg["occ_overlap_tolerance"] = resolution
     nx = int(surface_map["nx"])
     ny = int(surface_map["ny"])
     inner_l, inner_w, inner_h = [float(v) for v in surface_map["inner_size"]]
@@ -1098,7 +1154,8 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                 # cells it actually overlaps — the ceil-sized window can
                 # miss a 5mm sliver over an adjacent occupied column.
                 edge_occupied, edge_unknown = _footprint_edge_state(
-                    surface_map, lx, ly, footprint_l, footprint_w, peak)
+                    surface_map, lx, ly, footprint_l, footprint_w, peak,
+                    overlap_tol=cfg.get("occ_overlap_tolerance"))
                 if edge_occupied:
                     feasible = False
                     reason = REASON_EDGE_OCCUPIED

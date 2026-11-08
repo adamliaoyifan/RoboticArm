@@ -13,12 +13,14 @@ Geometry rules (reviews 1622 B1):
 - Coverage is VOLUME-level: a cell counts when its square intersects
   the oriented footprint with positive area — center-inside alone
   misses edge overlaps.
-- Contact tolerance (support) NEVER swallows a positive-volume occupied
-  overlap: the tolerance governs the GAP side only (an occupied top may
-  sit up to support_contact_tol BELOW the box bottom and still count as
-  support). An occupied top above the box bottom by more than the
-  numeric tolerance is a collision at ANY depth (1cm penetration
-  rejects — reviews 2026-11-08 penetration control).
+- OCC occupied-overlap tolerance (user ruling 2026-11-08 night,
+  superseding the earlier any-depth penetration rule): a clip up to one
+  map cell into OCC occupied cells is acceptable — xy judged on the
+  footprint eroded by the tolerance, z on the penetration band (an
+  occupied top may sit up to occ_overlap_tolerance ABOVE the box
+  bottom). Deeper is a collision. The support gap band
+  (support_contact_tol below the bottom) is unchanged, the exact hull
+  keeps zero tolerance, and UNKNOWN space is never loosened.
 - Numeric validity is checked FIRST: finite values, positive size,
   bottom at/above the floor, top at/below the ceiling, yaw within the
   frozen legal set.
@@ -43,6 +45,12 @@ POLICY = {
     # cell inside the exact wall face (K01 run04/07 anchoring miss).
     "hull_margin_default_m": None,
     "support_contact_tol_m": 0.05,
+    # OCC occupied-overlap tolerance (user ruling 2026-11-08 night): a
+    # clip up to this deep into OCC occupied cells — xy via the eroded
+    # footprint, z via the penetration band — is acceptable. None =
+    # AUTO = the surface's resolution (one cell). The exact hull keeps
+    # zero tolerance; unknown space is not loosened.
+    "occ_overlap_tolerance_m": None,
 }
 
 _ORIENTATIONS = (0.0, math.pi / 2)   # box_axis_pi yaw semantics
@@ -167,6 +175,14 @@ def verify_candidate(candidate, *, surface, box_size, hull,
         except (KeyError, TypeError, ValueError):
             result["legs"]["hull"] = "margin_auto_no_resolution"
             return result
+    occ_tol = POLICY["occ_overlap_tolerance_m"]
+    if occ_tol is None:
+        # auto: one map cell — independent of an explicit hull margin
+        try:
+            occ_tol = float(surface["resolution"])
+        except (KeyError, TypeError, ValueError):
+            result["legs"]["hull"] = "occ_tol_auto_no_resolution"
+            return result
 
     # ---- numeric validity FIRST (B1)
     tol = POLICY["float_tolerance_m"]
@@ -268,6 +284,12 @@ def verify_candidate(candidate, *, surface, box_size, hull,
     result["n_cells"] = len(cells)
     x0r, x1r = center[0] - fw / 2.0, center[0] + fw / 2.0
     y0r, y1r = center[1] - fd / 2.0, center[1] + fd / 2.0
+    # eroded footprint for the OCC collision judgment (user ruling
+    # 2026-11-08 night): a clip up to occ_tol deep is acceptable
+    ex0r = x0r + min(occ_tol, fw * 0.5)
+    ex1r = x1r - min(occ_tol, fw * 0.5)
+    ey0r = y0r + min(occ_tol, fd * 0.5)
+    ey1r = y1r - min(occ_tol, fd * 0.5)
 
     # ---- frame discipline: surface heights are FLOOR-RELATIVE
     floor_rel = float(surface.get("floor_z", 0.0) or 0.0)
@@ -279,12 +301,11 @@ def verify_candidate(candidate, *, surface, box_size, hull,
         top = floor_rel + height
         if state == "occupied":
             # Occupied cell = the whole cell (final D1 ruling). Contact
-            # semantics (reviews 2026-11-08 penetration control): the
-            # support tolerance governs the GAP side only — an occupied
-            # top ABOVE the box bottom by more than the numeric
-            # tolerance is a positive-volume penetration no matter how
-            # small (1cm must reject); a top within [bottom - tol_band,
-            # bottom + numeric] is support contact.
+            # semantics (user ruling 2026-11-08 night): a clip up to
+            # occ_tol into OCC occupancy is ACCEPTABLE (xy judged on the
+            # eroded footprint, z on the penetration band); deeper is a
+            # collision. A top within [bottom - contact_tol,
+            # bottom + occ_tol] is support contact.
             box_rects = _occupied_rectangles(
                 surface, hull, ix, iy, origin_xy, resolution)
             real_overlap = False
@@ -294,10 +315,13 @@ def verify_candidate(candidate, *, surface, box_size, hull,
                 iy_ov = min(y1r, ry1) - max(y0r, ry0)
                 if ix_ov <= tol or iy_ov <= tol:
                     continue
-                if top > z0_rel + tol:
-                    real_overlap = True  # positive-volume penetration
-                elif top >= z0_rel - contact_tol:
-                    contact_overlap = True  # support contact band
+                if top >= z0_rel - contact_tol:
+                    contact_overlap = True  # contact band (full rect)
+                e_ix_ov = min(ex1r, rx1) - max(ex0r, rx0)
+                e_iy_ov = min(ey1r, ry1) - max(ey0r, ry0)
+                if (e_ix_ov > tol and e_iy_ov > tol
+                        and top > z0_rel + occ_tol):
+                    real_overlap = True  # deeper than the tolerance
                 # occupied top below the bottom beyond the gap band:
                 # no interaction (overhang)
             if real_overlap:
