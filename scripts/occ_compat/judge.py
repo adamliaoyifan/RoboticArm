@@ -1034,6 +1034,14 @@ def judge_events(events, known_ids=None):
 
 
 # ---- mutation appliers (structural, per family) ----------------------
+def _n_mutated(original, mutated):
+    """How many rows a mutation actually changed — in-place edits PLUS
+    appended/deleted rows (m02 duplicates by APPENDING; a pairwise zip
+    diff alone would call that a no-op)."""
+    changed = sum(1 for a, b in zip(original, mutated) if a != b)
+    return changed + abs(len(original) - len(mutated))
+
+
 def _mutate(events, name):
     mutated = copy.deepcopy(events)
     def _placement_for(case_id, subprobe="", need_success=None):
@@ -1090,7 +1098,10 @@ def _mutate(events, name):
                     "epoch=", "epoch=None truncated ", 1)
                 break
     elif name == "m08_unknown_interior_marked_legal":
-        for event in mutated:
+        # target the row the judge READS (oracle_rows[-1]): mutating an
+        # earlier sibling row would leave the judged row untouched and
+        # the mutation degenerates to a no-op.
+        for event in reversed(mutated):
             if (event.get("case_id") == "K01"
                     and "candidate_sample" in event
                     and event.get("candidate_sample")):
@@ -1279,7 +1290,27 @@ def selftest(manifest_path, out_dir):
         candidates.sort(key=lambda p: p.stat().st_mtime)
         if not candidates:
             return {"error": "no full V1 group ledger found"}
-        ledger_path = str(candidates[-1])
+        # Corpus choice must be COVERAGE-based, not newest-mtime (A1
+        # refresh at a0a000df: re-judge touches made an O-side ledger
+        # newest, and m08 is a no-op on an honest 1.0-confidence O row —
+        # the family was "rejected" by standing NE noise, proving
+        # nothing). Score each candidate pair by how many mutation
+        # families actually MUTATE a row; newest mtime only breaks ties.
+        best = None
+        for path in reversed(candidates):
+            pair = [path]
+            sib = path.parent.parent / "v2-g-cuboid" / "events.jsonl"
+            if sib.exists():
+                pair.append(sib)
+            exercised = set()
+            for archive in pair:
+                events = load_events(archive)
+                for name, _rule in MUTATIONS:
+                    if _n_mutated(events, _mutate(events, name)) > 0:
+                        exercised.add(name)
+            if best is None or len(exercised) > len(best[1]):
+                best = (path, exercised)
+        ledger_path = str(best[0])
     known_ids = set()
     for manifest_json in Path(manifest.get("sfree_dir", ".")).glob(
             "*/MANIFEST.json"):
@@ -1331,13 +1362,16 @@ def selftest(manifest_path, out_dir):
     result["control_archives"] = [str(a) for a in control_archives]
     result["control"] = "PASS" if controls_ok else "FAIL"
     result["mutations_rule_hit"] = {}
+    result["mutations_applied"] = {}
     for name, expected_rule in MUTATIONS:
         rejected = False
         rule_hit = False
+        applied = 0
         for archive in archives:
             events = load_events(archive)
-            problems = judge_events(_mutate(events, name),
-                                    known_ids=known_ids)
+            mutated = _mutate(events, name)
+            applied += _n_mutated(events, mutated)
+            problems = judge_events(mutated, known_ids=known_ids)
             if problems:
                 rejected = True
             # The rule must fire in SOME archive that actually carries
@@ -1348,7 +1382,8 @@ def selftest(manifest_path, out_dir):
         result["mutations"][name] = "REJECTED" if rejected else (
             "FALSE_PASS" if controls_ok else "REJECTED")
         result["mutations_rule_hit"][name] = bool(
-            rejected and rule_hit)
+            rejected and rule_hit and applied > 0)
+        result["mutations_applied"][name] = applied
     # Tool/tree binding: the selftest records the worktree commit it ran
     # under; the formal A1 check compares it to the freeze's C1 commit.
     import subprocess
@@ -2058,6 +2093,14 @@ def _a1_gate(selftest, freeze):
         missed = [k for k, v in rule_hits.items() if not v]
         missing.append("mutation rule hits incomplete: %s"
                        % (missed[:4] or "absent"))
+    # A mutation that changed ZERO rows on the corpus proves nothing —
+    # its "rejection" can only be standing noise (a0a000df refresh:
+    # m08 was a no-op on an honest-1.0 O-side corpus picked by mtime).
+    applied = selftest.get("mutations_applied") or {}
+    noop = [k for k in MUTATION_IDS if applied.get(k, 0) <= 0]
+    if noop:
+        missing.append("mutation families not exercised (0 rows "
+                       "changed): %s" % noop[:4])
     got_commit = selftest.get("tree_commit")
     if not got_commit:
         missing.append("selftest lacks tree_commit binding")
