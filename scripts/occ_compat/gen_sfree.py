@@ -34,7 +34,11 @@ SEED = 20261105
 ROTATION = [0, 0, 1, -1, 0, 0, 0, -1, 0]
 ORIGINS_YZ = [(-0.8, 0.75), (0.0, 0.75), (0.8, 0.75),
               (-0.8, 1.20), (0.0, 1.20), (0.8, 1.20),
-              (-0.8, 1.70), (0.0, 1.70), (0.8, 1.70)]
+              (-0.8, 1.70), (0.0, 1.70), (0.8, 1.70),
+              # coverage proof round (adjudication 2026-11-08): the top
+              # band above every origin stayed unobserved with 3 z rows —
+              # a fourth row near the ceiling closes the column knowledge
+              (-0.8, 1.95), (0.0, 1.95), (0.8, 1.95)]
 DOOR_X = -1.15
 TARGET_STEP = 0.02
 WALL_EPS = 0.005
