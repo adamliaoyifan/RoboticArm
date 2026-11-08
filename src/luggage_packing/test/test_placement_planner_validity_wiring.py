@@ -77,6 +77,7 @@ def make_stub(module):
         _placed_aabbs_v2=lambda placed, wdh: [],
         _allowed_yaws=[0],
         _params={},
+        _volume_verifier=lambda surface: None,
         _constraint_verdict=lambda candidate, placed, size: (True, ""),
         _atlas_hook=lambda size: None,
         _atlas_cfg={"enabled": False},

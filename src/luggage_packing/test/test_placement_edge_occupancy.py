@@ -194,3 +194,35 @@ def test_contact_band_is_gap_side_only():
     overlaps, _ = ps._footprint_edge_state(
         surface, 0.15, 0.08, 0.30, 0.20, box_bottom=0.20)
     assert not overlaps, "numeric-representation dust is not penetration"
+
+
+def test_default_hull_margin_is_one_cell():
+    """Default wall margin = one map cell (2026-11-08 user directive).
+
+    The map's conservative boundary column reaches up to one cell inside
+    the exact wall face, so an exact-face margin can still slide a
+    footprint into map-occupied ring cells. Default params keep the
+    deepest footprint at least wall - resolution inside (quantized to
+    the window grid: 0.715 here); an explicit hull_margin=0.0 restores
+    the exact-face behavior (0.735, touching)."""
+    surface = _map(lambda ix, iy: "free")
+
+    feasible = _feasible(surface)   # default params (auto margin)
+    assert feasible
+    x1 = max(c["center_container"][0] + c["footprint"][0] / 2.0
+             for c in feasible)
+    assert x1 <= HX - RES + 1e-9, (
+        "default margin must keep the footprint one cell inside the wall", x1)
+
+    params = dict(ps._default_params())
+    params["top_n"] = 8000
+    params["hull_margin"] = 0.0
+    result = ps.generate_candidates(surface, BOX,
+                                    allowed_yaws=[math.pi / 2.0],
+                                    params=params)
+    candidates = result if isinstance(result, list) else result["candidates"]
+    exact = [c for c in candidates if c.get("feasible")]
+    x1_exact = max(c["center_container"][0] + c["footprint"][0] / 2.0
+                   for c in exact)
+    assert abs(x1_exact - 0.735) < 1e-9, (
+        "explicit hull_margin=0.0 restores exact-face touching", x1_exact)

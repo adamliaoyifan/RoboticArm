@@ -30,6 +30,7 @@ from luggage_packing.placement_solver import (
     _depth_datum,
     _depth_m,
     _hull_legal,
+    _resolved_hull_margin,
     _support_layer_z,
     _support_ratio,
     _support_tilt_ratio,
@@ -72,6 +73,10 @@ def evaluate_window(index, cls, ix0, iy0, cfg, hull, datum,
     surface_map = index._map
     box_l, box_w, box_h = index._box_size
     resolution = index.resolution
+    # Same auto wall margin as the exhaustive chain (None = one cell);
+    # copy so a caller-shared cfg is never mutated per window.
+    cfg = dict(cfg)
+    cfg["hull_margin"] = _resolved_hull_margin(cfg, resolution)
     inner_l, inner_w, inner_h = index.inner_size
     half_l, half_w = 0.5 * inner_l, 0.5 * inner_w
     half_h = 0.5 * inner_h

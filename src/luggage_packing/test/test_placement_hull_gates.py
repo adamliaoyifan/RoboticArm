@@ -232,7 +232,11 @@ def uld_map(res=0.05, state="unknown", height=0.0, descriptor=None,
 
 
 def enumerate_all(surface, box=BOX, yaws=(0.0, math.pi / 2), params=None):
-    cfg = {"top_n": 10 ** 9, "keep_rejected": 10 ** 9}
+    # This file tests the kernel at EXACT-FACE semantics (its
+    # oracle_box_contained asserts margin=0.0), so pin hull_margin=0.0
+    # explicitly — the product default is auto (one cell) since
+    # 2026-11-08.
+    cfg = {"top_n": 10 ** 9, "keep_rejected": 10 ** 9, "hull_margin": 0.0}
     if params:
         cfg.update(params)
     totals = {}

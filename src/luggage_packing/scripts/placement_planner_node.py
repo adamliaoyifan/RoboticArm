@@ -156,7 +156,13 @@ class PlacementPlannerNode(Node):
         # Inward clearance kept between the candidate box and the seven-face
         # hull. Default 0 preserves the historical flush-wall behavior; eval
         # profiles configure 0.01 (plan acceptance: >=10 mm).
-        self.declare_parameter("hull_margin", 0.0)
+        # Wall margin for placement legality. Default -1.0 = AUTO: one map
+        # cell (the admitted surface's resolution) — the map's conservative
+        # boundary column reaches up to one cell inside the exact wall
+        # face, so an exact-face margin can still overlap map-occupied
+        # ring cells (K01 run04/07 5 mm anchoring miss). An explicit
+        # value (0.0 = exact face) overrides. Default changed 2026-11-08.
+        self.declare_parameter("hull_margin", -1.0)
         from luggage_description.cargo_grid_parameters import declare_resolution
         declare_resolution(self, "floor_prior_resolution")
         # Cap on candidates serialized into the latched last_result dump
@@ -239,6 +245,12 @@ class PlacementPlannerNode(Node):
             # see deep slots, not only the 8 highest scores.
             "keep_rejected": 200,
         }
+        # Forward the wall margin into the solver params: the -1.0 auto
+        # default resolves per-surface INSIDE the solver (it owns the
+        # map resolution); an explicit value passes through unchanged.
+        _hull_margin_param = float(self.get_parameter("hull_margin").value)
+        self._params["hull_margin"] = (
+            None if _hull_margin_param < 0.0 else _hull_margin_param)
         self._aperture_margin = float(
             self.get_parameter("aperture_margin").value)
 
@@ -400,13 +412,19 @@ class PlacementPlannerNode(Node):
             import sys as _sys
             from luggage_description.ros_frame_bindings.runtime import (
                 node_runtime_from_params)
+            # The frame contract needs a concrete float at startup (before
+            # any surface is admitted): the -1.0 auto default resolves to
+            # the exact face here — the placement margin itself is applied
+            # per-surface in the solver and _constraint_verdict.
+            _frame_hull_margin = float(
+                self.get_parameter("hull_margin").value)
             self._runtime = node_runtime_from_params(
                 self,
                 resolved_config={
                     "scene_tf_config": str(
                         self.get_parameter("scene_tf_config").value or ""),
                     "frame_scene_revision": self._frame_scene_revision,
-                    "hull_margin": float(self.get_parameter("hull_margin").value),
+                    "hull_margin": max(0.0, _frame_hull_margin),
                     "atlas_runtime_config": str(
                         self.get_parameter("atlas_runtime_config").value or ""),
                 },
@@ -1428,6 +1446,14 @@ class PlacementPlannerNode(Node):
     def _constraint_verdict(self, candidate, placed_aabbs, smallest_size):
         """Return ``(reason, capacity_ok)`` for one candidate."""
         hull_margin = float(self.get_parameter("hull_margin").value)
+        if hull_margin < 0.0:
+            # auto: one map cell of the admitted surface (matches the
+            # solver's default; a missing resolution falls back exact)
+            surface = self._active_surface()
+            try:
+                hull_margin = float(surface.get("resolution") or 0.0)
+            except AttributeError:
+                hull_margin = 0.0
         hull = self._hull_geometry()
 
         def hull_contains_floor_relative(point):

@@ -561,6 +561,7 @@ class FrameMigrationPlacement(unittest.TestCase):
             _inner_size=(float(mapper.inner_l), float(mapper.inner_w),
                          float(mapper.inner_h)),
             _hull=types_module.SimpleNamespace(descriptor=lambda: {}),
+            _volume_verifier=lambda surface: None,
             get_logger=lambda: types_module.SimpleNamespace(
                 error=errors.append))
         planner = module['PlacementPlannerNode']
@@ -833,6 +834,7 @@ class FrameMigrationPlacement(unittest.TestCase):
                 _placed_aabbs_v2=lambda *a: [],
                 _active_surface=lambda: {'map_revision': active_revision},
                 _allowed_yaws=[0.0], _params={},
+                _volume_verifier=lambda surface: None,
                 _runtime=None, _committed=None,
                 _atlas_hook=lambda size: None,
                 behavior_hook=lambda name, detail="": None,
@@ -919,6 +921,7 @@ class PlacedLedgerSingleSource(unittest.TestCase):
                          float(mapper.inner_h)), _floor_z=0.0,
             _hull=types_module.SimpleNamespace(descriptor=lambda: {}),
             _runtime=None, _allowed_yaws=[0.0], _params={},
+            _volume_verifier=lambda surface: None,
             _atlas_hook=lambda size: None,
             behavior_hook=lambda name, detail="": None,
             get_logger=lambda: types_module.SimpleNamespace(

@@ -36,7 +36,12 @@ POLICY = {
     "float_tolerance_m": 1e-9,
     "same_layer_clearance_m": 0.02,
     "min_support_ratio": 0.55,
-    "hull_margin_default_m": 0.0,
+    # None = AUTO: one map cell (the surface's resolution) — mirrors the
+    # C1 default since 2026-11-08 (user directive margin=resolution; was
+    # 0.0 exact-face). One cell guarantees the footprint cannot overlap
+    # the map's conservative boundary column, which reaches up to one
+    # cell inside the exact wall face (K01 run04/07 anchoring miss).
+    "hull_margin_default_m": None,
     "support_contact_tol_m": 0.05,
 }
 
@@ -155,6 +160,13 @@ def verify_candidate(candidate, *, surface, box_size, hull,
     except (KeyError, TypeError, ValueError) as error:
         result["legs"]["decode"] = "malformed candidate: %s" % error
         return result
+    if margin is None:
+        # auto: one map cell (the C1 default since 2026-11-08)
+        try:
+            margin = float(surface["resolution"])
+        except (KeyError, TypeError, ValueError):
+            result["legs"]["hull"] = "margin_auto_no_resolution"
+            return result
 
     # ---- numeric validity FIRST (B1)
     tol = POLICY["float_tolerance_m"]

@@ -427,6 +427,20 @@ def placement_constraint_reason(
     return reason
 
 
+def _resolved_hull_margin(cfg, resolution):
+    """Resolve the hull margin: None (the default) = one map cell.
+
+    The map's conservative boundary column reaches up to one cell inside
+    the exact wall face, so a margin of one resolution guarantees the
+    footprint never overlaps a map-occupied ring column regardless of
+    the hull-vs-grid anchoring offset. An explicit float (0.0 = exact
+    face) overrides."""
+    margin = cfg.get("hull_margin")
+    if margin is None:
+        return float(resolution)
+    return float(margin)
+
+
 def _default_params():
     return {
         "clearance_margin": 0.03,   # required free space above the placed box [m]
@@ -442,9 +456,14 @@ def _default_params():
         "top_n": 8,
         "keep_rejected": 6,         # rejected candidates kept for visualization
         # --- ST09-A (S1) additions -------------------------------------------
-        # Wall margin handed to the hull kernel's closed faces (mirrors the
-        # node's hull_margin ROS parameter; 0.0 keeps the kernel exact).
-        "hull_margin": 0.0,
+        # Wall margin handed to the hull kernel's closed faces. Default
+        # None = AUTO: one map cell (the surface's resolution) — the
+        # map's conservative boundary column reaches up to one cell
+        # INSIDE the exact wall face, so an exact-face (0.0) margin can
+        # still slide a footprint into map-occupied ring cells (the 5 mm
+        # anchoring-offset miss, K01 run04/07). Default changed 2026-11-08
+        # (user directive margin=resolution); 0.0 restores exact-face.
+        "hull_margin": None,
         # Gentle support ramps: a contact plane that ramps across the
         # footprint keeps every cell within support_tol of the peak, so
         # support_ratio alone reads it as full contact — yet the box would
@@ -600,6 +619,7 @@ def _hypothetical_floor_windows(surface_map, box_size, allowed_yaws, cfg, hull,
     """
     box_l, box_w, box_h = [float(v) for v in box_size]
     resolution = float(surface_map["resolution"])
+    cfg["hull_margin"] = _resolved_hull_margin(cfg, resolution)
     nx = int(surface_map["nx"])
     ny = int(surface_map["ny"])
     inner_l, inner_w, inner_h = [float(v) for v in surface_map["inner_size"]]
@@ -1018,6 +1038,7 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
 
     box_l, box_w, box_h = [float(v) for v in box_size]
     resolution = float(surface_map["resolution"])
+    cfg["hull_margin"] = _resolved_hull_margin(cfg, resolution)
     nx = int(surface_map["nx"])
     ny = int(surface_map["ny"])
     inner_l, inner_w, inner_h = [float(v) for v in surface_map["inner_size"]]
@@ -1314,6 +1335,8 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
     cfg = _default_params()
     if params:
         cfg.update(params)
+    cfg["hull_margin"] = _resolved_hull_margin(
+        cfg, float(surface_map["resolution"]))
     hull = _surface_hull(surface_map)
     selected = None
     observation_requirement = None
