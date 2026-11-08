@@ -176,6 +176,21 @@ def _per_id(bound_run, group, case_id):
     return _evaluate_rows(bound_run[group][1], case_id)
 
 
+def _judge_per_id(verdict, group, case_id):
+    """The judge's own per-ID state for one case, worst across gate
+    subtables (A2/A3/A4_v1/A4_v2). The ledger recomputation in _per_id
+    cannot see judge-side BINDING checks (e.g. the K01 candidate-set
+    digest) — the judge verdict is the formal authority, so its FAIL
+    must dominate a ledger-recomputed PASS (merge refresh at c734edbd
+    printed A3=PASS while the authoritative K01 verdict was FAIL)."""
+    table = (verdict.get("gates_detail") or {}).get("per_id") or {}
+    key = "%s/%s" % (group, case_id)
+    states = [sub.get(key) for sub in table.values()
+              if isinstance(sub, dict)]
+    states = [s for s in states if s not in (None, "")]
+    return _worst(states) if states else None
+
+
 def _per_id_state(evidence_root, run, group, case_id):
     """Probe entry for the adversarial controls: reads
     <root>/<run>/<group>/events.jsonl ONLY — never an implicit shadow
@@ -205,7 +220,8 @@ def _bind_legacy(root, reuse, groups):
     return bound, run_dirs
 
 
-def _scope(reuse, bound, run_dirs, groups=None, required=None):
+def _scope(reuse, bound, run_dirs, groups=None, required=None,
+           verdicts_by_run=None):
     """Formal entry: (reuse, bound, run_dirs, groups, required).
 
     The 4-arg legacy probe form (map, root, groups, required) reads
@@ -230,9 +246,16 @@ def _scope(reuse, bound, run_dirs, groups=None, required=None):
                                % (group, case_id, source))
                 continue
             detail = _per_id(bound.get(source, {}), group, case_id)
-            if detail == "FAIL":
+            if verdicts_by_run and source in verdicts_by_run:
+                judge_state = _judge_per_id(verdicts_by_run[source],
+                                            group, case_id)
+                if judge_state is not None:
+                    detail = _worst([detail, judge_state])
+            if _severity(detail) == _SEVERITY["FAIL"]:
                 # The ledger's own FAIL always dominates; a map
-                # self-report never downgrades it (F03).
+                # self-report never downgrades it (F03). Judge per-ID
+                # states carry "FAIL: <reason>" — classify by head, not
+                # string equality.
                 failed.append("%s/%s" % (group, case_id))
             elif detail != "PASS":
                 not_hit.append("%s/%s(%s@%s)"
@@ -669,7 +692,8 @@ def main():
             ("A2", EXPECTED_V2G_GROUPS, V2_REQUIRED),
             ("A3", EXPECTED_V1_GROUPS, V1_REQUIRED)):
         failed, not_hit = _scope(reuse, bound, set(verdicts_by_run),
-                                 groups, required)
+                                 groups, required,
+                                 verdicts_by_run=verdicts_by_run)
         if failed:
             gates[gate] = "FAIL: %s" % failed[:4]
         elif not_hit:
@@ -679,7 +703,8 @@ def main():
     failed, not_hit = [], []
     for groups, required in ((EXPECTED_V1_O_GROUPS, V1_REQUIRED),
                              (EXPECTED_V2O_GROUPS, V2_REQUIRED)):
-        f, n = _scope(reuse, bound, set(verdicts_by_run), groups, required)
+        f, n = _scope(reuse, bound, set(verdicts_by_run), groups,
+                      required, verdicts_by_run=verdicts_by_run)
         failed += f
         not_hit += n
     gates["A4"] = ("FAIL: %s" % failed[:4] if failed else
