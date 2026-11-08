@@ -78,11 +78,14 @@ from luggage_packing.placement_admission import (
 from luggage_packing.placement_solver import (
     CODE_CARGO_MAP_GEOMETRY_MISMATCH,
     CODE_DETECT_FULL_GEOMETRY_REQUIRED,
+    REASON_VOLUME_UNVERIFIED,
     SAME_LAYER_CLEARANCE_M,
+    make_volume_verifier,
     placement_constraint_verdict,
     candidate_prefix_note,
     ranked_feasible_candidates,
     solve_placement,
+    volume_evidence_from_pages,
 )
 from luggage_description.container_geometry import (
     descriptor_from_scene_config,
@@ -289,6 +292,18 @@ class PlacementPlannerNode(Node):
                 "consumer deployment: the admission gate is mandatory")
         self._robot_max_age_ns = int(max(0, int(
             self.get_parameter("robot_state_max_age_ms").value)) * 1_000_000)
+        # [Volume authorization, reviews 2026-11-08_1751] Same-snapshot
+        # volume verification at the consumption boundary: when enabled,
+        # a sensor-supported candidate is authorized only when its OWN
+        # box volume reads observed free on the SAME snapshot the
+        # admitted surface was built from. The "observer" source reuses
+        # the native snapshot ROI query (GetSnapshot -> ReadCells ->
+        # ReleaseSnapshot); "" keeps the legacy surface-only path.
+        self.declare_parameter("volume_evidence_source", "")
+        self.declare_parameter("volume_observer_prefix",
+                               "/uld_occ_observer")
+        self.declare_parameter("volume_max_age_ms", 1000)
+        self._volume_clients = None
         # [G1] Controlled confirmation driver: when the gate parks an
         # unfamiliar identity, this timer asks the producer's REAL status
         # service for its current identity (never a stream re-read).
@@ -678,6 +693,143 @@ class PlacementPlannerNode(Node):
             return
         self._admission.observe_robot_state(RobotStateSample(
             stamp, "joint_states", {"name": list(msg.name)}))
+
+    def _volume_verifier(self, surface):
+        """Same-snapshot volume authorization verifier (reviews
+        2026-11-08_1751 finding 2).
+
+        ``volume_evidence_source`` "" (default) keeps the legacy
+        surface-only path. The ``observer`` deployment reuses the native
+        snapshot ROI query: acquire a lease, BIND its identity to the
+        admitted surface (geometry_hash / map_revision / epoch /
+        observed_revision — a mismatch means the surface and the cells
+        are not the same snapshot and authorizes nothing), read the
+        full-container cell ROI paged, release, and verify each
+        candidate's complete box volume locally. Any transport, binding,
+        or completeness failure is fail-closed: every sensor candidate
+        rejects with volume_evidence_unavailable.
+        """
+        source = str(
+            self.get_parameter("volume_evidence_source").value or "")
+        if not source:
+            return None
+
+        def closed(candidate, detail=""):
+            return "%s%s" % (REASON_VOLUME_UNVERIFIED,
+                             ":%s" % detail if detail else "")
+
+        if source != "observer":
+            self.get_logger().error(
+                "volume_evidence_source %r is not a known backend; "
+                "failing closed" % source)
+            return lambda candidate: closed(candidate, source)
+        try:
+            return self._observer_volume_verifier(surface)
+        except Exception as error:  # noqa: BLE001 - fail closed
+            self.get_logger().error(
+                "volume evidence unavailable, failing closed: %s" % error)
+            detail = str(error)   # the except name is unbound after the block
+            return lambda candidate: closed(candidate, detail)
+
+    def _observer_volume_verifier(self, surface):
+        """Build the volume verifier from the observer's native cells.
+
+        Reuses the node's MultiThreadedExecutor pattern from the
+        validity status client (call_async + bounded busy wait). The
+        evidence z reference is the hull descriptor's floor_z — the
+        bridged surface's own floor_z field is 0.0 (its heights are
+        floor-relative) while candidate centers are container-true.
+        """
+        import time as _time
+        from uld_occ_observer.srv import GetSnapshot, ReadCells, \
+            ReleaseSnapshot
+        if self._volume_clients is None:
+            prefix = str(
+                self.get_parameter("volume_observer_prefix").value)
+            self._volume_clients = {
+                name: self.create_client(srv, "%s/%s" % (prefix, name))
+                for name, srv in (
+                    ("get_snapshot", GetSnapshot),
+                    ("read_cells", ReadCells),
+                    ("release_snapshot", ReleaseSnapshot))}
+
+        def call(client, request, timeout_s=10.0):
+            future = client.call_async(request)
+            deadline = _time.monotonic() + timeout_s
+            while not future.done():
+                if _time.monotonic() > deadline:
+                    raise RuntimeError(
+                        "service timeout: %s" % client.srv_name)
+                _time.sleep(0.02)
+            return future.result()
+
+        for client in self._volume_clients.values():
+            if not client.wait_for_service(timeout_sec=2.0):
+                raise RuntimeError(
+                    "service missing: %s" % client.srv_name)
+        identity = {
+            "geometry_hash": str(surface.get("geometry_hash") or ""),
+            "map_revision": int(surface.get("map_revision", 0) or 0),
+            "epoch": int(surface.get("epoch", 0) or 0),
+            "observed_revision": int(
+                surface.get("observed_revision", 0) or 0),
+        }
+        lease = call(
+            self._volume_clients["get_snapshot"],
+            GetSnapshot.Request(max_age_ms=int(
+                self.get_parameter("volume_max_age_ms").value)))
+        if str(lease.status) != "OK":
+            raise RuntimeError("get_snapshot %s" % lease.status)
+        snapshot = {
+            "geometry_hash": str(lease.identity.geometry_hash),
+            "map_revision": int(lease.identity.map_revision),
+            "epoch": int(lease.identity.epoch),
+            "observed_revision": int(lease.identity.observed_revision),
+        }
+        for field, expected in identity.items():
+            if str(snapshot[field]) != str(expected):
+                raise RuntimeError(
+                    "snapshot identity mismatch on %s: surface=%s "
+                    "lease=%s" % (field, expected, snapshot[field]))
+        try:
+            resolution = float(surface["resolution"])
+            nx, ny = int(surface["nx"]), int(surface["ny"])
+            inner_h = float(surface["inner_size"][2])
+            nz = int(math.ceil(inner_h / resolution - 1e-9))
+            pages = []
+            cursor, done = 0, False
+            while not done:
+                page = call(
+                    self._volume_clients["read_cells"],
+                    ReadCells.Request(
+                        handle=lease.handle, begin=[0, 0, 0],
+                        end=[nx, ny, nz], cursor=cursor, limit=65536))
+                if str(page.status) != "OK":
+                    raise RuntimeError("read_cells %s" % page.status)
+                pages.append({
+                    "status": str(page.status),
+                    "states": page.states,
+                    "identity": {
+                        "geometry_hash": str(page.identity.geometry_hash),
+                        "map_revision": int(page.identity.map_revision),
+                        "epoch": int(page.identity.epoch),
+                        "observed_revision": int(
+                            page.identity.observed_revision),
+                    }})
+                cursor, done = int(page.next_cursor), bool(page.done)
+        finally:
+            self._volume_clients["release_snapshot"].call_async(
+                ReleaseSnapshot.Request(handle=lease.handle))
+        descriptor = surface.get("geometry_descriptor") or {}
+        evidence = volume_evidence_from_pages(
+            pages, resolution=resolution, nx=nx, ny=ny, nz=nz,
+            origin_xy=[-nx * resolution * 0.5, -ny * resolution * 0.5],
+            floor_z=float(descriptor.get(
+                "floor_z", surface.get("floor_z", 0.0))),
+            identity=snapshot)
+        if "error" in evidence:
+            raise RuntimeError("cells evidence: %s" % evidence["error"])
+        return make_volume_verifier(evidence)
 
     def _admit_surface_map(self, surface, source):
         """Admission-gate a freshly delivered surface map (v1 or v2).
@@ -1141,7 +1293,8 @@ class PlacementPlannerNode(Node):
             params=self._params,
             candidate_validator=lambda candidate: self._constraint_verdict(
                 candidate, placed_aabbs, size),
-            atlas_annotate=self._atlas_hook(size))
+            atlas_annotate=self._atlas_hook(size),
+            volume_verifier=self._volume_verifier(surface))
         response.resulting_map_revision = int(
             surface.get("map_revision") or 0)
         if not result["success"]:
@@ -1509,6 +1662,7 @@ class PlacementPlannerNode(Node):
                 candidate_validator=lambda candidate: self._constraint_verdict(
                     candidate, placed_aabbs, size),
                 atlas_annotate=self._atlas_hook(size),
+                volume_verifier=self._volume_verifier(surface),
             )
         candidates = result["candidates"]
         histogram = result["reject_histogram"]

@@ -12,6 +12,8 @@ occupied. Evidence that does not cover the volume rejects fail-closed.
 from __future__ import annotations
 
 import math
+import os
+import unittest
 
 import pytest
 
@@ -267,3 +269,97 @@ def test_raising_verifier_rejects_fail_closed():
     assert any(c.get("reason") == ps.REASON_VOLUME_UNVERIFIED for c in sensor)
     assert not any(c.get("feasible") for c in sensor), (
         "a broken evidence path authorizes nothing")
+
+
+# ---------------------------------------------------------------------------
+# Node boundary: the verifier is constructed at the REAL consumption
+# boundary (placement_planner_node's ComputePlacement handlers), reviews
+# 2026-11-08_1751 finding 2.
+
+def _load_node_module():
+    import importlib.util
+    path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "scripts", "placement_planner_node.py")
+    spec = importlib.util.spec_from_file_location(
+        "placement_planner_node_vol", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestNodeVolumeVerifierSource(unittest.TestCase):
+    """The verifier factory at the node boundary: default keeps the
+    legacy path; an unknown backend or an unreachable observer fails
+    closed (every sensor candidate rejects)."""
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import rclpy  # noqa: F401
+            from luggage_msgs.srv import ComputePlacement  # noqa: F401
+            from uld_occ_observer.srv import GetSnapshot  # noqa: F401
+        except ImportError as exc:
+            raise unittest.SkipTest("rclpy/luggage_msgs unavailable: %s" % exc)
+        cls.module = _load_node_module()
+
+    def setUp(self):
+        import threading
+
+        import rclpy
+        from rclpy.executors import SingleThreadedExecutor
+        from luggage_description._share import ENV_SCENE_TF
+        pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        scene_path = os.path.join(
+            pkg_root, "..", "luggage_description", "config", "scene_tf.yaml")
+        previous = os.environ.get(ENV_SCENE_TF)
+        os.environ[ENV_SCENE_TF] = scene_path
+        self._previous_scene_env = previous
+        rclpy.init()
+        self.rclpy = rclpy
+        self.executor = SingleThreadedExecutor()
+        self._spin = threading.Thread(target=self.executor.spin, daemon=True)
+        self.planner = self.module.PlacementPlannerNode()
+        self.executor.add_node(self.planner)
+        self._spin.start()
+        self.addCleanup(self._shutdown)
+
+    def _shutdown(self):
+        self.executor.remove_node(self.planner)
+        self.planner.destroy_node()
+        self.executor.shutdown()
+        self.rclpy.shutdown()
+        previous = self._previous_scene_env
+        env_key = None
+        from luggage_description._share import ENV_SCENE_TF as key
+        env_key = key
+        if previous is None:
+            os.environ.pop(env_key, None)
+        else:
+            os.environ[env_key] = previous
+
+    def _set_source(self, value):
+        self.planner.set_parameters([
+            self.rclpy.parameter.Parameter(
+                "volume_evidence_source", value=value)])
+
+    def test_default_source_keeps_legacy_path(self):
+        self._set_source("")
+        assert self.planner._volume_verifier(_surface_with_cargo()) is None
+
+    def test_unknown_backend_fails_closed(self):
+        self._set_source("not_a_backend")
+        verifier = self.planner._volume_verifier(_surface_with_cargo())
+        reason = verifier({"center_container": [0, 0, 0],
+                           "footprint": [0.1, 0.1], "size": [0.1, 0.1, 0.1]})
+        assert reason.startswith(ps.REASON_VOLUME_UNVERIFIED)
+
+    def test_observer_without_services_fails_closed(self):
+        """No observer is running in this environment: the native ROI
+        chain cannot produce evidence, so nothing may authorize. The
+        real observer path is exercised live by sfree_o_rehearsal."""
+        self._set_source("observer")
+        verifier = self.planner._volume_verifier(_surface_with_cargo())
+        reason = verifier({"center_container": [0, 0, 0],
+                           "footprint": [0.1, 0.1], "size": [0.1, 0.1, 0.1]})
+        assert reason.startswith(ps.REASON_VOLUME_UNVERIFIED)
