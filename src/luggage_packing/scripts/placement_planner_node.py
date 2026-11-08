@@ -153,9 +153,6 @@ class PlacementPlannerNode(Node):
         self.declare_parameter("min_support_ratio", 0.6)
         self.declare_parameter("top_n", 2000)
         self.declare_parameter("aperture_margin", 0.0)
-        # Inward clearance kept between the candidate box and the seven-face
-        # hull. Default 0 preserves the historical flush-wall behavior; eval
-        # profiles configure 0.01 (plan acceptance: >=10 mm).
         # Wall margin for placement legality. Default -1.0 = AUTO: one map
         # cell (the admitted surface's resolution) — the map's conservative
         # boundary column reaches up to one cell inside the exact wall
@@ -304,17 +301,20 @@ class PlacementPlannerNode(Node):
                 "consumer deployment: the admission gate is mandatory")
         self._robot_max_age_ns = int(max(0, int(
             self.get_parameter("robot_state_max_age_ms").value)) * 1_000_000)
-        # [Volume authorization, reviews 2026-11-08_1751] Same-snapshot
-        # volume verification at the consumption boundary: when enabled,
-        # a sensor-supported candidate is authorized only when its OWN
-        # box volume reads observed free on the SAME snapshot the
-        # admitted surface was built from. The "observer" source reuses
-        # the native snapshot ROI query (GetSnapshot -> ReadCells ->
-        # ReleaseSnapshot); "" keeps the legacy surface-only path.
+        # [Volume authorization + single-lease compute, user ruling
+        # 2026-11-08] volume_evidence_source "" (default) keeps the
+        # legacy topic-surface path with no volume gate. "observer" =
+        # SINGLE-LEASE compute: every request pulls BOTH the surface AND
+        # the volume evidence from ONE fresh observer lease (the latest
+        # map) — plan and verify against the same revision by
+        # construction; the two-reader identity-drift class is
+        # structurally impossible and there is no mixed mode.
         self.declare_parameter("volume_evidence_source", "")
         self.declare_parameter("volume_observer_prefix",
                                "/uld_occ_observer")
         self.declare_parameter("volume_max_age_ms", 1000)
+        self.declare_parameter("volume_observer_resolution", 0.02)
+        self.declare_parameter("volume_service_timeout_s", 2.0)
         self._volume_clients = None
         # [G1] Controlled confirmation driver: when the gate parks an
         # unfamiliar identity, this timer asks the producer's REAL status
@@ -712,55 +712,49 @@ class PlacementPlannerNode(Node):
         self._admission.observe_robot_state(RobotStateSample(
             stamp, "joint_states", {"name": list(msg.name)}))
 
-    def _volume_verifier(self, surface):
-        """Same-snapshot volume authorization verifier (reviews
-        2026-11-08_1751 finding 2).
+    def _compute_inputs(self):
+        """(surface, volume_verifier) for one compute request.
 
-        ``volume_evidence_source`` "" (default) keeps the legacy
-        surface-only path. The ``observer`` deployment reuses the native
-        snapshot ROI query: acquire a lease, BIND its identity to the
-        admitted surface (geometry_hash / map_revision / epoch /
-        observed_revision — a mismatch means the surface and the cells
-        are not the same snapshot and authorizes nothing), read the
-        full-container cell ROI paged, release, and verify each
-        candidate's complete box volume locally. Any transport, binding,
-        or completeness failure is fail-closed: every sensor candidate
-        rejects with volume_evidence_unavailable.
-        """
+        volume_evidence_source "" (default): the admitted topic surface,
+        no volume gate (legacy path). "observer": SINGLE-LEASE compute
+        (user ruling 2026-11-08 — no mixed two-reader mode): one fresh
+        observer lease supplies BOTH the surface (ReadSurface ->
+        conservative bridge mapping over this planner's own hull) and
+        the volume evidence (paged ReadCells), so the solver plans and
+        the verifier verifies against the same revision by construction
+        and every compute takes the observer's latest map. Failures
+        raise; the caller fails the request closed — never a silent
+        fallback to the topic surface."""
         source = str(
             self.get_parameter("volume_evidence_source").value or "")
         if not source:
-            return None
-
-        def closed(candidate, detail=""):
-            return "%s%s" % (REASON_VOLUME_UNVERIFIED,
-                             ":%s" % detail if detail else "")
-
+            return self._active_surface(), None
         if source != "observer":
-            self.get_logger().error(
-                "volume_evidence_source %r is not a known backend; "
-                "failing closed" % source)
-            return lambda candidate: closed(candidate, source)
-        try:
-            return self._observer_volume_verifier(surface)
-        except Exception as error:  # noqa: BLE001 - fail closed
-            self.get_logger().error(
-                "volume evidence unavailable, failing closed: %s" % error)
-            detail = str(error)   # the except name is unbound after the block
-            return lambda candidate: closed(candidate, detail)
+            raise ValueError(
+                "unknown volume_evidence_source %r" % source)
+        return self._observer_snapshot_compute()
 
-    def _observer_volume_verifier(self, surface):
-        """Build the volume verifier from the observer's native cells.
+    def _observer_snapshot_compute(self):
+        """One observer lease -> (surface, volume verifier).
 
-        Reuses the node's MultiThreadedExecutor pattern from the
-        validity status client (call_async + bounded busy wait). The
-        evidence z reference is the hull descriptor's floor_z — the
-        bridged surface's own floor_z field is 0.0 (its heights are
-        floor-relative) while candidate centers are container-true.
-        """
+        The lease's ValidityStamp must read VALID at the epoch this
+        planner's validity stream is bound to (reset contract), and the
+        lease-built surface enters the SAME admission gate as topic
+        surfaces. Transport, binding, admission, or completeness
+        failures raise RuntimeError (fail closed)."""
         import time as _time
-        from uld_occ_observer.srv import GetSnapshot, ReadCells, \
-            ReleaseSnapshot
+        from uld_occ_observer.srv import (GetSnapshot, ReadCells,
+                                          ReadSurface, ReleaseSnapshot)
+        try:
+            import occ_surface_bridge as _bridge
+        except ImportError as error:
+            # Deployment pairing: the observer package ships the bridge
+            # module beside its scripts (not a compiled library); the
+            # deployment must put it on PYTHONPATH. Fail closed, named.
+            raise RuntimeError(
+                "occ_surface_bridge not importable (the observer "
+                "package must ship it on PYTHONPATH): %s" % error)
+
         if self._volume_clients is None:
             prefix = str(
                 self.get_parameter("volume_observer_prefix").value)
@@ -768,12 +762,16 @@ class PlacementPlannerNode(Node):
                 name: self.create_client(srv, "%s/%s" % (prefix, name))
                 for name, srv in (
                     ("get_snapshot", GetSnapshot),
+                    ("read_surface", ReadSurface),
                     ("read_cells", ReadCells),
                     ("release_snapshot", ReleaseSnapshot))}
 
-        def call(client, request, timeout_s=10.0):
+        timeout_s = float(
+            self.get_parameter("volume_service_timeout_s").value)
+
+        def call(client, request):
             future = client.call_async(request)
-            deadline = _time.monotonic() + timeout_s
+            deadline = _time.monotonic() + max(timeout_s, 10.0)
             while not future.done():
                 if _time.monotonic() > deadline:
                     raise RuntimeError(
@@ -782,35 +780,71 @@ class PlacementPlannerNode(Node):
             return future.result()
 
         for client in self._volume_clients.values():
-            if not client.wait_for_service(timeout_sec=2.0):
+            if not client.wait_for_service(timeout_sec=timeout_s):
                 raise RuntimeError(
                     "service missing: %s" % client.srv_name)
-        identity = {
-            "geometry_hash": str(surface.get("geometry_hash") or ""),
-            "map_revision": int(surface.get("map_revision", 0) or 0),
-            "epoch": int(surface.get("epoch", 0) or 0),
-            "observed_revision": int(
-                surface.get("observed_revision", 0) or 0),
-        }
         lease = call(
             self._volume_clients["get_snapshot"],
             GetSnapshot.Request(max_age_ms=int(
                 self.get_parameter("volume_max_age_ms").value)))
         if str(lease.status) != "OK":
             raise RuntimeError("get_snapshot %s" % lease.status)
-        snapshot = {
+        # Reset-contract binding ON THE LEASE: the observer's validity
+        # board must be VALID, at the epoch this planner is bound to,
+        # when the snapshot was taken (the stamp is from the response's
+        # own commit check).
+        stamp = lease.validity
+        if str(stamp.state) != "VALID":
+            raise RuntimeError(
+                "observer validity %s (%s)" % (stamp.state, stamp.reason))
+        current_epoch = str(
+            getattr(self._admission.validity, "epoch", "") or "")
+        if current_epoch and str(stamp.epoch) != current_epoch:
+            raise RuntimeError(
+                "lease epoch %s != admitted epoch %s"
+                % (stamp.epoch, current_epoch))
+        identity = {
             "geometry_hash": str(lease.identity.geometry_hash),
             "map_revision": int(lease.identity.map_revision),
             "epoch": int(lease.identity.epoch),
             "observed_revision": int(lease.identity.observed_revision),
+            "last_integrated_stamp_ns":
+                int(lease.identity.last_integrated_stamp_ns),
+            "clock_domain": str(lease.identity.clock_domain),
+            "validity_generation": int(stamp.generation),
         }
-        for field, expected in identity.items():
-            if str(snapshot[field]) != str(expected):
-                raise RuntimeError(
-                    "snapshot identity mismatch on %s: surface=%s "
-                    "lease=%s" % (field, expected, snapshot[field]))
+        resolution = float(
+            self.get_parameter("volume_observer_resolution").value)
         try:
-            resolution = float(surface["resolution"])
+            columns = []
+            cursor, done = 0, False
+            while not done:
+                page = call(
+                    self._volume_clients["read_surface"],
+                    ReadSurface.Request(handle=lease.handle, cursor=cursor,
+                                        limit=65536))
+                if str(page.status) != "OK":
+                    raise RuntimeError(
+                        "read_surface %s" % page.status)
+                for i in range(len(page.x)):
+                    columns.append({
+                        "x": page.x[i], "y": page.y[i],
+                        "active_count": page.active_count[i],
+                        "known_count": page.known_count[i],
+                        "has_occupied": page.has_occupied[i],
+                        "top_z": page.top_z[i]})
+                cursor, done = page.next_cursor, page.done
+            geometry = dict(self._hull.descriptor())
+            geometry["_resolution"] = resolution
+            surface = _bridge.build_surface_map(columns, geometry, identity)
+            if "error" in surface:
+                raise RuntimeError(
+                    "surface build: %s" % surface["error"])
+            # the lease surface passes the SAME admission gate as topic
+            # surfaces: epoch / validity generation / map progression
+            if not self._admit_surface_map(surface, "observer_lease"):
+                raise RuntimeError(
+                    "lease surface rejected by admission gate")
             nx, ny = int(surface["nx"]), int(surface["ny"])
             inner_h = float(surface["inner_size"][2])
             nz = int(math.ceil(inner_h / resolution - 1e-9))
@@ -819,9 +853,9 @@ class PlacementPlannerNode(Node):
             while not done:
                 page = call(
                     self._volume_clients["read_cells"],
-                    ReadCells.Request(
-                        handle=lease.handle, begin=[0, 0, 0],
-                        end=[nx, ny, nz], cursor=cursor, limit=65536))
+                    ReadCells.Request(handle=lease.handle,
+                                      begin=[0, 0, 0], end=[nx, ny, nz],
+                                      cursor=cursor, limit=65536))
                 if str(page.status) != "OK":
                     raise RuntimeError("read_cells %s" % page.status)
                 pages.append({
@@ -831,23 +865,28 @@ class PlacementPlannerNode(Node):
                         "geometry_hash": str(page.identity.geometry_hash),
                         "map_revision": int(page.identity.map_revision),
                         "epoch": int(page.identity.epoch),
-                        "observed_revision": int(
-                            page.identity.observed_revision),
+                        "observed_revision":
+                            int(page.identity.observed_revision),
                     }})
                 cursor, done = int(page.next_cursor), bool(page.done)
+                if len(pages) > 64:
+                    raise RuntimeError("read_cells paging did not finish")
         finally:
             self._volume_clients["release_snapshot"].call_async(
                 ReleaseSnapshot.Request(handle=lease.handle))
-        descriptor = surface.get("geometry_descriptor") or {}
         evidence = volume_evidence_from_pages(
             pages, resolution=resolution, nx=nx, ny=ny, nz=nz,
             origin_xy=[-nx * resolution * 0.5, -ny * resolution * 0.5],
-            floor_z=float(descriptor.get(
-                "floor_z", surface.get("floor_z", 0.0))),
-            identity=snapshot)
+            floor_z=float(geometry["floor_z"]), identity=identity)
         if "error" in evidence:
-            raise RuntimeError("cells evidence: %s" % evidence["error"])
-        return make_volume_verifier(evidence)
+            raise RuntimeError(
+                "cells evidence: %s" % evidence["error"])
+        self.get_logger().info(
+            "observer lease epoch=%s rev=%d gen=%d -> %d columns, "
+            "%d cells pages" % (identity["epoch"], identity["map_revision"],
+                                identity["validity_generation"],
+                                len(columns), len(pages)))
+        return surface, make_volume_verifier(evidence)
 
     def _admit_surface_map(self, surface, source):
         """Admission-gate a freshly delivered surface map (v1 or v2).
@@ -1259,7 +1298,17 @@ class PlacementPlannerNode(Node):
         # against a different map revision is stale, whatever the solver
         # would find on the current one. The floor prior carries revision
         # 0; a first-box request against no admitted map matches 0.
-        surface = self._active_surface()
+        # Single-lease mode (volume_evidence_source=observer): the
+        # request's map IS the fresh lease snapshot (surface + volume
+        # evidence from one revision, fail-closed, no mixed mode).
+        volume_verifier = None
+        try:
+            surface, volume_verifier = self._compute_inputs()
+        except Exception as error:  # noqa: BLE001 - fail closed
+            response.success = False
+            response.reason_code = "OBSERVER_SNAPSHOT_UNAVAILABLE"
+            response.message = "OBSERVER_SNAPSHOT_UNAVAILABLE: %s" % error
+            return response
         active_revision = int(surface.get("map_revision") or 0)
         requested_revision = int(request.expected_map_revision or 0)
         if requested_revision != active_revision:
@@ -1312,7 +1361,7 @@ class PlacementPlannerNode(Node):
             candidate_validator=lambda candidate: self._constraint_verdict(
                 candidate, placed_aabbs, size),
             atlas_annotate=self._atlas_hook(size),
-            volume_verifier=self._volume_verifier(surface))
+            volume_verifier=volume_verifier)
         response.resulting_map_revision = int(
             surface.get("map_revision") or 0)
         if not result["success"]:
@@ -1674,7 +1723,14 @@ class PlacementPlannerNode(Node):
                 },
             })
             return response
-        surface = self._active_surface()
+        volume_verifier = None
+        try:
+            surface, volume_verifier = self._compute_inputs()
+        except Exception as error:  # noqa: BLE001 - fail closed
+            response.success = False
+            response.reason_code = "OBSERVER_SNAPSHOT_UNAVAILABLE"
+            response.message = "OBSERVER_SNAPSHOT_UNAVAILABLE: %s" % error
+            return response
         placed_aabbs = self._placed_aabbs(request.placed)
         atlas, atlas_diag = self._atlas_for(size)
         if bool(self.get_parameter("structural_search").value):
@@ -1688,7 +1744,7 @@ class PlacementPlannerNode(Node):
                 candidate_validator=lambda candidate: self._constraint_verdict(
                     candidate, placed_aabbs, size),
                 atlas_annotate=self._atlas_hook(size),
-                volume_verifier=self._volume_verifier(surface),
+                volume_verifier=volume_verifier,
             )
         candidates = result["candidates"]
         histogram = result["reject_histogram"]

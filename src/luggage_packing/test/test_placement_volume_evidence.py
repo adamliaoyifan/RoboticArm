@@ -274,9 +274,9 @@ def test_raising_verifier_rejects_fail_closed():
 
 
 # ---------------------------------------------------------------------------
-# Node boundary: the verifier is constructed at the REAL consumption
-# boundary (placement_planner_node's ComputePlacement handlers), reviews
-# 2026-11-08_1751 finding 2.
+# Node boundary: single-lease compute (user ruling 2026-11-08 — one lease
+# supplies BOTH the surface and the volume evidence; no mixed two-reader
+# mode, failures fail the request closed).
 
 def _load_node_module():
     import importlib.util
@@ -290,10 +290,11 @@ def _load_node_module():
     return module
 
 
-class TestNodeVolumeVerifierSource(unittest.TestCase):
-    """The verifier factory at the node boundary: default keeps the
-    legacy path; an unknown backend or an unreachable observer fails
-    closed (every sensor candidate rejects)."""
+class TestNodeComputeInputs(unittest.TestCase):
+    """The compute-inputs factory at the node boundary: default keeps the
+    legacy admitted-surface path with no verifier; the observer source
+    requires the whole single-lease chain and fails closed without it
+    (the real chain is exercised live end-to-end)."""
 
     @classmethod
     def setUpClass(cls):
@@ -316,7 +317,7 @@ class TestNodeVolumeVerifierSource(unittest.TestCase):
             pkg_root, "..", "luggage_description", "config", "scene_tf.yaml")
         previous = os.environ.get(ENV_SCENE_TF)
         os.environ[ENV_SCENE_TF] = scene_path
-        self._previous_scene_env = previous
+        self._previous_scene_env = (ENV_SCENE_TF, previous)
         rclpy.init()
         self.rclpy = rclpy
         self.executor = SingleThreadedExecutor()
@@ -331,37 +332,33 @@ class TestNodeVolumeVerifierSource(unittest.TestCase):
         self.planner.destroy_node()
         self.executor.shutdown()
         self.rclpy.shutdown()
-        previous = self._previous_scene_env
-        env_key = None
-        from luggage_description._share import ENV_SCENE_TF as key
-        env_key = key
+        key, previous = self._previous_scene_env
         if previous is None:
-            os.environ.pop(env_key, None)
+            os.environ.pop(key, None)
         else:
-            os.environ[env_key] = previous
+            os.environ[key] = previous
 
-    def _set_source(self, value):
+    def _set(self, name, value):
         self.planner.set_parameters([
-            self.rclpy.parameter.Parameter(
-                "volume_evidence_source", value=value)])
+            self.rclpy.parameter.Parameter(name, value=value)])
 
     def test_default_source_keeps_legacy_path(self):
-        self._set_source("")
-        assert self.planner._volume_verifier(_surface_with_cargo()) is None
+        self._set("volume_evidence_source", "")
+        self._set("structural_search", False)
+        surface, verifier = self.planner._compute_inputs()
+        assert verifier is None
+        assert surface == self.planner._active_surface()
 
     def test_unknown_backend_fails_closed(self):
-        self._set_source("not_a_backend")
-        verifier = self.planner._volume_verifier(_surface_with_cargo())
-        reason = verifier({"center_container": [0, 0, 0],
-                           "footprint": [0.1, 0.1], "size": [0.1, 0.1, 0.1]})
-        assert reason.startswith(ps.REASON_VOLUME_UNVERIFIED)
+        self._set("volume_evidence_source", "not_a_backend")
+        with pytest.raises(ValueError):
+            self.planner._compute_inputs()
 
     def test_observer_without_services_fails_closed(self):
-        """No observer is running in this environment: the native ROI
-        chain cannot produce evidence, so nothing may authorize. The
-        real observer path is exercised live by sfree_o_rehearsal."""
-        self._set_source("observer")
-        verifier = self.planner._volume_verifier(_surface_with_cargo())
-        reason = verifier({"center_container": [0, 0, 0],
-                           "footprint": [0.1, 0.1], "size": [0.1, 0.1, 0.1]})
-        assert reason.startswith(ps.REASON_VOLUME_UNVERIFIED)
+        """No observer runs in this environment: the single-lease chain
+        cannot produce (surface, evidence), so nothing may authorize.
+        The live chain is proven by the end-to-end run."""
+        self._set("volume_evidence_source", "observer")
+        self._set("volume_service_timeout_s", 0.2)
+        with pytest.raises(RuntimeError):
+            self.planner._compute_inputs()

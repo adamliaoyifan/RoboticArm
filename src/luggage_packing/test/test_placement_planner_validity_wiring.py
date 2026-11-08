@@ -77,7 +77,6 @@ def make_stub(module):
         _placed_aabbs_v2=lambda placed, wdh: [],
         _allowed_yaws=[0],
         _params={},
-        _volume_verifier=lambda surface: None,
         _constraint_verdict=lambda candidate, placed, size: (True, ""),
         _atlas_hook=lambda size: None,
         _atlas_cfg={"enabled": False},
@@ -91,10 +90,11 @@ def make_stub(module):
         _publish_last=last_published.append,
         behavior_hook=lambda name, detail="": None,
         get_parameter=lambda name: types.SimpleNamespace(
-            value=(False if name == "structural_search" else 8)),
+            value=("" if name == "volume_evidence_source"
+                   else False if name == "structural_search" else 8)),
     )
     for name in ('_validity_admit', '_validity_commit', '_handle',
-                 '_handle_v2'):
+                 '_handle_v2', '_compute_inputs'):
         setattr(stub, name,
                 types.MethodType(getattr(planner, name), stub))
     return stub, admission, last_published

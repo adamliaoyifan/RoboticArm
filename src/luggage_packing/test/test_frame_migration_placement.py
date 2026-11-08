@@ -561,7 +561,8 @@ class FrameMigrationPlacement(unittest.TestCase):
             _inner_size=(float(mapper.inner_l), float(mapper.inner_w),
                          float(mapper.inner_h)),
             _hull=types_module.SimpleNamespace(descriptor=lambda: {}),
-            _volume_verifier=lambda surface: None,
+            get_parameter=lambda name: types_module.SimpleNamespace(
+                value=("" if name == "volume_evidence_source" else False)),
             get_logger=lambda: types_module.SimpleNamespace(
                 error=errors.append))
         planner = module['PlacementPlannerNode']
@@ -750,6 +751,7 @@ class FrameMigrationPlacement(unittest.TestCase):
         stub._active_surface = types_module.MethodType(
             planner._active_surface, stub)
         for name in ('_validity_admit', '_validity_commit', '_handle_v2',
+                     '_compute_inputs',
                      '_publish_last'):
             setattr(stub, name,
                     types_module.MethodType(getattr(planner, name), stub))
@@ -834,15 +836,17 @@ class FrameMigrationPlacement(unittest.TestCase):
                 _placed_aabbs_v2=lambda *a: [],
                 _active_surface=lambda: {'map_revision': active_revision},
                 _allowed_yaws=[0.0], _params={},
-                _volume_verifier=lambda surface: None,
                 _runtime=None, _committed=None,
                 _atlas_hook=lambda size: None,
                 behavior_hook=lambda name, detail="": None,
                 _surface={'map_revision': active_revision},
+                get_parameter=lambda name: types_module.SimpleNamespace(
+                    value=("" if name == "volume_evidence_source"
+                           else False)),
                 get_logger=lambda: types_module.SimpleNamespace(
                     error=lambda *_: None, warning=lambda *_: None))
             for name in ('_validity_admit', '_validity_commit',
-                         '_handle_v2'):
+                         '_handle_v2', '_compute_inputs'):
                 setattr(stub, name, types_module.MethodType(
                     getattr(planner, name), stub))
             _open_validity_state(stub)
@@ -921,16 +925,17 @@ class PlacedLedgerSingleSource(unittest.TestCase):
                          float(mapper.inner_h)), _floor_z=0.0,
             _hull=types_module.SimpleNamespace(descriptor=lambda: {}),
             _runtime=None, _allowed_yaws=[0.0], _params={},
-            _volume_verifier=lambda surface: None,
             _atlas_hook=lambda size: None,
             behavior_hook=lambda name, detail="": None,
+            get_parameter=lambda name: types_module.SimpleNamespace(
+                value=("" if name == "volume_evidence_source" else False)),
             get_logger=lambda: types_module.SimpleNamespace(
                 error=lambda *_: None))
         for name in ('_surface_context', '_surface_view_from_record',
                      '_on_surface_v2', '_on_committed', '_active_surface',
                      '_placed_matches_ledger', '_ledger_aabbs',
                      '_admit_surface_map', '_validity_admit',
-                     '_validity_commit', '_handle_v2'):
+                     '_validity_commit', '_handle_v2', '_compute_inputs'):
             setattr(stub, name,
                     types_module.MethodType(getattr(planner, name), stub))
         _open_validity_state(stub)
