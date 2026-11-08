@@ -125,16 +125,19 @@ def prove(geometry_path):
         "z_cells": z_hi - z_lo,
         "footprint_cells": (vix1 - vix0 + 1) * (viy1 - viy0 + 1)}
 
-    # C. solver-level positive: on the projected surface the (footprint-
-    # fixed) solver must return a feasible sensor-supported candidate,
-    # and the campaign oracle must verify it — proving a legal candidate
-    # exists on OBSERVED known-free, per the contract's S-free
-    # precondition. Floor-level whole-column free is NOT required (the
-    # fixture's integrate_min_z policy makes floor columns partially
-    # observed by construction; the sanctioned positive is the support
-    # top).
+    # C. solver-level positive, per-candidate voxel binding (reviews
+    # 2026-11-08): EVERY sensor-supported feasible candidate is verified
+    # TWICE against the SAME snapshot — the campaign oracle (column
+    # semantics) AND the voxel grid (the candidate's OWN box volume must
+    # be fully observed and unoccupied; an observed support face does
+    # not authorize unknown space above it). Floor-level whole-column
+    # free is NOT required (min_z policy; the sanctioned positive is
+    # the observed support top).
     from luggage_packing import placement_solver as ps
-    from .oracle import verify_candidate
+    from .oracle import verify_candidate, _cells_overlapping
+    import numpy as np
+    from luggage_perception.cargo_grid_projection import _arrays
+    vox, active = _arrays(mapper)
     solver_surface = dict(surface)
     solver_surface["geometry_descriptor"] = dict(hull)
     params = dict(ps._default_params())
@@ -143,33 +146,64 @@ def prove(geometry_path):
         solver_surface, list(PROBE), allowed_yaws=[0.0, math.pi / 2.0],
         params=params)
     cands = result if isinstance(result, list) else result["candidates"]
-    sensor_ok = oracle_ok = 0
+    sensor_ok = oracle_ok = voxel_ok = 0
+    failures = []
     first = None
+    oxg, oyg = -nx * RES / 2.0, -ny * RES / 2.0
+    inner_h = float(hull["ceiling_z"]) - floor
     for c in cands:
         if not c.get("feasible") or c.get("support_source") != "sensor":
             continue
         sensor_ok += 1
+        center = [float(v) for v in c["center_container"]]
         verdict = verify_candidate(
-            {"center_container": c["center_container"],
+            {"center_container": center,
              "yaw": float(c.get("box_yaw", 0.0)),
              "confidence_ratio": float(c.get("confidence_ratio", 0.0))},
             surface=surface, box_size=list(PROBE),
             hull={"inner_size": [float(hull["length"]),
-                                 float(hull["width"]),
-                                 float(hull["ceiling_z"]) - floor],
+                                 float(hull["width"]), inner_h],
                   "floor_z_container": floor,
                   **({"chamfer": hull["chamfer"]}
                      if hull.get("chamfer") else {})})
-        if verdict["pass"]:
+        oracle_pass = verdict["pass"]
+        # the candidate's OWN volume, voxel level, same snapshot
+        fw, fd = float(c["footprint"][0]), float(c["footprint"][1])
+        cells = _cells_overlapping((fw, fd), (center[0], center[1]),
+                                   RES, (oxg, oyg), nx, ny)
+        z0_rel = center[2] - floor - PROBE[2] / 2.0
+        z_lo = max(0, int(math.floor(z0_rel / RES + 1e-9)))
+        z_hi = min(vox.shape[0] - 1,
+                   int(math.floor((z0_rel + PROBE[2]) / RES - 1e-9)))
+        block_ok = True
+        for ix, iy in cells:
+            column = vox[z_lo:z_hi + 1, iy, ix]
+            column_active = active[z_lo:z_hi + 1, iy, ix]
+            if not column_active.all() or (column == 0).any():
+                block_ok = False       # unobserved voxel inside the box
+                break
+            if (column == 2).any():
+                block_ok = False       # occupied voxel inside the box
+                break
+        if oracle_pass:
             oracle_ok += 1
-            if first is None:
-                first = {"center": [round(v, 4) for v in
-                                    c["center_container"]],
-                         "support_source": c["support_source"],
-                         "confidence": c["confidence_ratio"]}
+        if block_ok:
+            voxel_ok += 1
+        if oracle_pass and block_ok and first is None:
+            first = {"center": [round(v, 4) for v in center],
+                     "support_source": c["support_source"],
+                     "confidence": c["confidence_ratio"],
+                     "volume_cells": len(cells) * (z_hi - z_lo + 1)}
+        if (not oracle_pass or not block_ok) and len(failures) < 3:
+            failures.append({"center": [round(v, 4) for v in center],
+                             "oracle_pass": oracle_pass,
+                             "voxel_pass": block_ok})
     report["checks"]["C_legal_candidate_on_observed_support"] = {
-        "pass": oracle_ok > 0, "sensor_supported_feasible": sensor_ok,
-        "oracle_verified": oracle_ok, "example": first}
+        "pass": sensor_ok > 0 and sensor_ok == oracle_ok == voxel_ok,
+        "sensor_supported_feasible": sensor_ok,
+        "oracle_verified": oracle_ok,
+        "voxel_volume_verified": voxel_ok,
+        "failures": failures, "example": first}
 
     # D. informational: ring occupancy distribution (the door side of
     # the ring is an aperture — rays legitimately pass through; the far
