@@ -327,7 +327,25 @@ class PlacementPlannerNode(Node):
         self.declare_parameter("volume_max_age_ms", 1000)
         self.declare_parameter("volume_observer_resolution", 0.02)
         self.declare_parameter("volume_service_timeout_s", 2.0)
+        # [G v2 production wiring, 2026-11-09] "grid_g" = the G mapper's
+        # own typed query services: ONE snapshot token supplies BOTH the
+        # mapper's surface projection (get_surface_patch_v2 FULL) and the
+        # paged cell evidence (query_cells_v2 CELLS) — the same
+        # single-snapshot shape as the observer lease, with the token's
+        # identity (epoch/revision) in place of the lease stamp. No
+        # topic-surface fallback: any failure fails the request closed.
+        self.declare_parameter("volume_grid_g_prefix", "/cargo_map")
+        # Full-container typed cells dump for the volume gate. OFF by
+        # default: the G service's token budget (five wall seconds,
+        # 4096 cells/page hard cap) cannot serve a 4.3M-cell 1 cm grid
+        # read — measured live 2026-11-09 (SNAPSHOT_EXPIRED mid
+        # paging). The paging assembly below stays unit-pinned for when
+        # the G service grows a budget-fitting evidence export; until
+        # then grid_g computes on the snapshot surface with verifier
+        # None (the chain-accepted G semantics).
+        self.declare_parameter("volume_grid_g_cells", False)
         self._volume_clients = None
+        self._grid_g_clients = None
         # [G1] Controlled confirmation driver: when the gate parks an
         # unfamiliar identity, this timer asks the producer's REAL status
         # service for its current identity (never a stream re-read).
@@ -750,6 +768,8 @@ class PlacementPlannerNode(Node):
                 if float(self.get_parameter("hull_margin").value) < 0.0
                 else float(self.get_parameter("hull_margin").value))
             return surface, None
+        if source == "grid_g":
+            return self._grid_g_snapshot_compute()
         if source != "observer":
             raise ValueError(
                 "unknown volume_evidence_source %r" % source)
@@ -908,6 +928,287 @@ class PlacementPlannerNode(Node):
                                 identity["validity_generation"],
                                 len(columns), len(pages)))
         return surface, make_volume_verifier(evidence)
+
+    def _grid_g_snapshot_compute(self):
+        """One /cargo_map snapshot token -> (surface, volume verifier).
+
+        grid_g single-snapshot compute (G v2 production wiring): the G
+        mapper's typed query services share one snapshot-token
+        mechanism, so ONE ``use_current`` acquire supplies BOTH the
+        mapper's own surface projection (get_surface_patch_v2 FULL)
+        and the paged cell evidence (query_cells_v2 CELLS) — the same
+        single-snapshot shape as the observer lease, with the token's
+        identity (epoch/revision) in place of the lease stamp. Surface
+        and cells are bound to ONE revision by construction; there is
+        no topic-surface fallback. Transport, binding, identity, or
+        admission failures raise RuntimeError (fail closed).
+
+        Cells (volume evidence) only run with volume_grid_g_cells:=true:
+        the typed dump cannot fit the service's five-second token at
+        1 cm (see the parameter note), so the default returns
+        verifier=None — the volume authorization gate stays
+        observer-wired until the G service offers a budget-fitting
+        evidence export.
+        """
+        import time as _time
+        from luggage_msgs.srv import (GetCargoSurfacePatchV2,
+                                      QueryCargoCellsV2)
+
+        if self._validity_backend != "grid_g":
+            raise RuntimeError(
+                "volume_evidence_source=grid_g requires "
+                "validity_backend=grid_g (got %r)"
+                % self._validity_backend)
+        if self._grid_g_clients is None:
+            prefix = str(
+                self.get_parameter("volume_grid_g_prefix").value)
+            self._grid_g_clients = {
+                name: self.create_client(srv, "%s/%s" % (prefix, name))
+                for name, srv in (
+                    ("query_cells_v2", QueryCargoCellsV2),
+                    ("get_surface_patch_v2", GetCargoSurfacePatchV2))}
+
+        timeout_s = float(
+            self.get_parameter("volume_service_timeout_s").value)
+
+        def call(client, request):
+            future = client.call_async(request)
+            deadline = _time.monotonic() + max(timeout_s, 10.0)
+            while not future.done():
+                if _time.monotonic() > deadline:
+                    raise RuntimeError(
+                        "service timeout: %s" % client.srv_name)
+                _time.sleep(0.02)
+            return future.result()
+
+        for client in self._grid_g_clients.values():
+            if not client.wait_for_service(timeout_sec=timeout_s):
+                raise RuntimeError(
+                    "service missing: %s" % client.srv_name)
+
+        # 1) acquire a FRESH snapshot and pull the mapper's own surface
+        #    projection from it in one call; the returned token keeps
+        #    the session open for the cell pages below.
+        request = GetCargoSurfacePatchV2.Request()
+        request.mode = GetCargoSurfacePatchV2.Request.FULL
+        request.query.request_id = "planner-surface-%d" % (
+            _time.monotonic_ns(),)
+        request.query.frame_id = "container_link"
+        request.query.use_current = True
+        cells_mode = bool(
+            self.get_parameter("volume_grid_g_cells").value)
+        request.query.release_after_query = not cells_mode
+        patch = call(self._grid_g_clients["get_surface_patch_v2"], request)
+        meta = patch.meta
+        if str(meta.status) != "OK":
+            raise RuntimeError("surface_patch %s (%s)"
+                               % (meta.status, meta.reason))
+        token = str(meta.snapshot_token)
+        if cells_mode and not token:
+            raise RuntimeError(
+                "surface_patch returned no snapshot token")
+        ident = meta.identity
+        # Same-snapshot epoch binding (reset contract): the snapshot
+        # must belong to the epoch this planner's validity stream is
+        # bound to — the grid_g analog of the observer lease stamp.
+        # The validity intake (from_json) canonicalizes epochs; the
+        # snapshot identity arrives raw, so normalize before comparing
+        # (a dashed UUID and its 32-hex form are one epoch).
+        try:
+            snapshot_epoch = normalize_epoch(str(ident.epoch),
+                                             self._validity_backend)
+        except EpochFormatError as error:
+            raise RuntimeError("snapshot epoch format: %s" % error)
+        current_epoch = str(
+            getattr(self._admission.validity, "epoch", "") or "")
+        if current_epoch and snapshot_epoch != current_epoch:
+            raise RuntimeError(
+                "snapshot epoch %s != admitted epoch %s"
+                % (snapshot_epoch, current_epoch))
+        if str(meta.grid.geometry_hash) != self._geometry_hash:
+            # GEO-8: never consume a map built for another hull, and
+            # never answer from the floor prior instead.
+            raise RuntimeError(
+                "CARGO_MAP_GEOMETRY_MISMATCH: snapshot hull %s != "
+                "planner hull %s" % (meta.grid.geometry_hash,
+                                     self._geometry_hash))
+
+        # 2) rebuild the mapper's surface record from the patch arrays.
+        #    The patch raveled layout is x-fastest (i = x + shape_x*y);
+        #    the record layout is rows of columns (row = x, len = ny) —
+        #    the same shape surface_from_message produces for the topic
+        #    contract, so the planner's own view conversion applies.
+        state_names = {0: "unknown", 1: "free", 2: "occupied"}
+        source_names = {0: "unknown", 1: "sensor", 2: "verified_geometry"}
+        nx, ny = int(patch.shape_xy[0]), int(patch.shape_xy[1])
+        if nx <= 0 or ny <= 0 or len(patch.surface_z_container) != nx * ny:
+            raise RuntimeError("surface patch shape mismatch")
+        z_rows, s_rows, c_rows = [], [], []
+        for ix in range(nx):
+            z_row, s_row, c_row = [], [], []
+            for iy in range(ny):
+                i = ix + nx * iy
+                if bool(patch.has_surface_z[i]):
+                    z_row.append(float(patch.surface_z_container[i]))
+                    s_row.append(state_names.get(
+                        int(patch.state[i]), "unknown"))
+                    c_row.append(source_names.get(
+                        int(patch.contract_confidence[i]), "unknown"))
+                else:
+                    z_row.append(None)
+                    s_row.append("unknown")
+                    c_row.append("none")
+            z_rows.append(z_row)
+            s_rows.append(s_row)
+            c_rows.append(c_row)
+        view = self._surface_view_from_record({
+            "geometry_hash": str(meta.grid.geometry_hash),
+            "floor_z_container": float(patch.floor_z_container),
+            "resolution_m": float(meta.grid.resolution),
+            "surface_z_container": z_rows,
+            "state": s_rows,
+            "confidence": c_rows,
+            "map_revision": int(ident.revision)})
+        # Opportunistic cross-check against an admitted topic surface of
+        # the SAME revision: a transposed x/y rebuild would show up as
+        # swapped grid dims here.
+        topic = self._surface
+        if (topic is not None
+                and int(topic.get("map_revision", -1) or -1)
+                == int(ident.revision)
+                and (int(topic.get("nx", 0) or 0),
+                     int(topic.get("ny", 0) or 0)) != (nx, ny)):
+            raise RuntimeError(
+                "snapshot surface %dx%d != admitted topic surface %dx%d"
+                % (nx, ny, topic.get("nx"), topic.get("ny")))
+        # The snapshot surface enters the SAME admission gate as topic
+        # surfaces (epoch / generation / revision binding). Generation
+        # is the planner's current validity generation — the snapshot
+        # epoch binding above ties the two.
+        if not self._admit_surface_map({
+                "epoch": snapshot_epoch,
+                "validity_generation": int(getattr(
+                    self._admission.validity, "generation", 0) or 0),
+                "map_revision": int(ident.revision),
+                "geometry_hash": str(meta.grid.geometry_hash)},
+                "grid_g_snapshot"):
+            raise RuntimeError(
+                "snapshot surface rejected by admission gate")
+        if not cells_mode:
+            self.get_logger().info(
+                "grid_g snapshot epoch=%s rev=%d -> surface %dx%d "
+                "(cells off: volume gate not wired for this backend)"
+                % (snapshot_epoch, int(ident.revision), nx, ny))
+            return view, None
+
+        # 3) page the SAME snapshot's cells (token + full expected
+        #    identity on every call). The evidence grid is anchored on
+        #    the snapshot's OWN grid origin, so cell z and the verifier's
+        #    container-z candidates stay in one frame by construction.
+        resolution = float(meta.grid.resolution)
+        grid_shape = [int(v) for v in meta.grid.shape]
+        if grid_shape[0] != nx or grid_shape[1] != ny:
+            raise RuntimeError(
+                "snapshot cell grid %s != surface grid %dx%d"
+                % (grid_shape, nx, ny))
+        inner_h = float(view["inner_size"][2])
+        nz = int(math.ceil(inner_h / resolution - 1e-9))
+        if grid_shape[2] < nz:
+            raise RuntimeError(
+                "snapshot grid z %d < planner volume nz %d"
+                % (grid_shape[2], nz))
+
+        def _identity_fields(message_identity):
+            return {field: str(getattr(message_identity, field))
+                    for field in ("epoch", "revision", "content_digest",
+                                  "voxel_digest", "index_schema_version")}
+
+        expected = _identity_fields(ident)
+        states = [0] * (nx * ny * nz)   # UNKNOWN until observed otherwise
+        cursor, pages = "", 0
+        try:
+            while True:
+                request = QueryCargoCellsV2.Request()
+                request.mode = QueryCargoCellsV2.Request.CELLS
+                request.query.request_id = "planner-cells-%d" % (
+                    _time.monotonic_ns(),)
+                request.query.frame_id = "container_link"
+                request.query.use_current = False
+                request.query.snapshot_token = token
+                request.query.cursor = cursor
+                request.query.limit = 4096
+                for field in ("epoch", "revision", "content_digest",
+                              "voxel_digest", "index_schema_version"):
+                    setattr(request.query.expected_identity, field,
+                            getattr(ident, field))
+                page = call(self._grid_g_clients["query_cells_v2"], request)
+                pages += 1
+                if str(page.meta.status) != "OK":
+                    raise RuntimeError("query_cells %s (%s)"
+                                       % (page.meta.status,
+                                          page.meta.reason))
+                if _identity_fields(page.meta.identity) != expected:
+                    raise RuntimeError(
+                        "query_cells identity drift inside one snapshot")
+                for cell in page.cells:
+                    ix, iy, iz = (int(cell.index[0]), int(cell.index[1]),
+                                  int(cell.index[2]))
+                    if not (0 <= ix < nx and 0 <= iy < ny
+                            and 0 <= iz < nz):
+                        raise RuntimeError(
+                            "cell index %s outside planner grid"
+                            % list(cell.index))
+                    states[ix + nx * (iy + ny * iz)] = int(cell.state)
+                if bool(page.meta.complete) or not str(
+                        page.meta.next_cursor):
+                    break
+                cursor = str(page.meta.next_cursor)
+                if pages > 512:
+                    raise RuntimeError("query_cells paging did not finish")
+        finally:
+            # Best-effort explicit release (a single-cell lookup with
+            # release_after_query): if this call is lost the server
+            # expires the token within its five-second window anyway.
+            release = QueryCargoCellsV2.Request()
+            release.mode = QueryCargoCellsV2.Request.CELL
+            release.query.request_id = "planner-release-%d" % (
+                _time.monotonic_ns(),)
+            release.query.frame_id = "container_link"
+            release.query.use_current = False
+            release.query.snapshot_token = token
+            release.query.release_after_query = True
+            release.cell_index = [0, 0, 0]
+            for field in ("epoch", "revision", "content_digest",
+                          "voxel_digest", "index_schema_version"):
+                setattr(release.query.expected_identity, field,
+                        getattr(ident, field))
+            self._grid_g_clients["query_cells_v2"].call_async(release)
+
+        identity = {
+            "geometry_hash": str(meta.grid.geometry_hash),
+            "map_revision": int(ident.revision),
+            "epoch": str(ident.epoch)}
+        evidence = volume_evidence_from_pages(
+            [{"status": "OK", "states": states, "identity": identity}],
+            resolution=resolution, nx=nx, ny=ny, nz=nz,
+            origin_xy=[float(meta.grid.origin.x),
+                       float(meta.grid.origin.y)],
+            floor_z=float(meta.grid.origin.z),
+            identity=identity)
+        if "error" in evidence:
+            raise RuntimeError(
+                "cells evidence: %s" % evidence["error"])
+        self.get_logger().info(
+            "grid_g snapshot epoch=%s rev=%d -> surface %dx%d, %d cell "
+            "pages" % (ident.epoch, int(ident.revision), nx, ny, pages))
+        return view, make_volume_verifier(evidence)
+
+    def _evidence_unavailable_code(self):
+        """Named fail-closed code for the configured evidence source."""
+        if str(self.get_parameter("volume_evidence_source").value
+               or "") == "grid_g":
+            return "GRID_G_SNAPSHOT_UNAVAILABLE"
+        return "OBSERVER_SNAPSHOT_UNAVAILABLE"
 
     def _admit_surface_map(self, surface, source):
         """Admission-gate a freshly delivered surface map (v1 or v2).
@@ -1305,9 +1606,13 @@ class PlacementPlannerNode(Node):
         try:
             surface, volume_verifier = self._compute_inputs()
         except Exception as error:  # noqa: BLE001 - fail closed
+            code = self._evidence_unavailable_code()
+            if "CARGO_MAP_GEOMETRY_MISMATCH" in str(error):
+                # GEO-8 attribution survives the snapshot path too.
+                code = "CARGO_MAP_GEOMETRY_MISMATCH"
             response.success = False
-            response.reason_code = "OBSERVER_SNAPSHOT_UNAVAILABLE"
-            response.message = "OBSERVER_SNAPSHOT_UNAVAILABLE: %s" % error
+            response.reason_code = code
+            response.message = "%s: %s" % (code, error)
             return response
         gate, planning_admission = self._validity_admit()
         if gate is not None:
@@ -1692,9 +1997,13 @@ class PlacementPlannerNode(Node):
         try:
             surface, volume_verifier = self._compute_inputs()
         except Exception as error:  # noqa: BLE001 - fail closed
+            code = self._evidence_unavailable_code()
+            if "CARGO_MAP_GEOMETRY_MISMATCH" in str(error):
+                # GEO-8 attribution survives the snapshot path too.
+                code = "CARGO_MAP_GEOMETRY_MISMATCH"
             response.success = False
-            response.reason_code = "OBSERVER_SNAPSHOT_UNAVAILABLE"
-            response.message = "OBSERVER_SNAPSHOT_UNAVAILABLE: %s" % error
+            response.reason_code = code
+            response.message = "%s: %s" % (code, error)
             return response
         if (self._surface is None and self._rejected_maps
                 and str(self.get_parameter(

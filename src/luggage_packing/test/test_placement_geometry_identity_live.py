@@ -88,7 +88,8 @@ class TestGeometryIdentityLive(unittest.TestCase):
             # hard-reject before the geometry assertions (same as e2e)
             "-p", "atlas_enabled:=false",
             # chain-aligned robot window: real computes take ~0.3-0.5 s
-            "-p", "robot_state_max_age_ms:=2000"])
+            "-p", "robot_state_max_age_ms:=2000"]
+            + list(getattr(type(self), "_EXTRA_INIT_ARGS", ())))
         # MultiThreaded (production-shaped), created AFTER rclpy.init: a
         # single-threaded executor starves the planner's service handler
         # behind the mapper's cloud/republish callbacks and the robot
