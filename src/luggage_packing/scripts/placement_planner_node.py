@@ -1729,6 +1729,21 @@ class PlacementPlannerNode(Node):
                 "message": response.message,
             })
             return response
+        gate, planning_admission = self._validity_admit()
+        if gate is not None:
+            response.success = False
+            response.reason_code = "VALIDITY_GATE_CLOSED"
+            response.message = gate
+            self._publish_last({
+                "success": False,
+                "reason_code": "VALIDITY_GATE_CLOSED",
+                "message": gate,
+                "geometry_hash": self._geometry_hash,
+                "candidates": [],
+                "execution_active": bool(
+                    self._admission.executing_generations),
+            })
+            return response
         size = [max(0.0, float(box.width)),
                 max(0.0, float(box.depth)),
                 max(0.0, float(box.height))]
@@ -1821,21 +1836,6 @@ class PlacementPlannerNode(Node):
             response.candidate_reasons = []
             dump["message"] = response.message
             self._publish_last(dump)
-            return response
-        gate, planning_admission = self._validity_admit()
-        if gate is not None:
-            response.success = False
-            response.reason_code = "VALIDITY_GATE_CLOSED"
-            response.message = gate
-            self._publish_last({
-                "success": False,
-                "reason_code": "VALIDITY_GATE_CLOSED",
-                "message": gate,
-                "geometry_hash": self._geometry_hash,
-                "candidates": [],
-                "execution_active": bool(
-                    self._admission.executing_generations),
-            })
             return response
         self.behavior_hook("after_admit", "token=%s" % (
             planning_admission.seq if planning_admission is not None
