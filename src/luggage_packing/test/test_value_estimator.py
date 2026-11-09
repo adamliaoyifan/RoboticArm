@@ -30,9 +30,18 @@ def _model():
 
 class TestSampling(unittest.TestCase):
     def test_mean_item_volume_matches_catalog(self):
-        """E[V_item] over the catalog == 0.0845 m^3 (design §1.1)."""
-        v = mean_item_volume(_entries())
-        self.assertAlmostEqual(v, 0.0845, places=3)
+        """E[V_item] over the catalog (design §1.1).
+
+        The expectation is DERIVED from the catalog (weights normalized
+        2026-11-09; the old constant 0.0845 belonged to the pre-inch20
+        three-entry catalog and drifted when inch20 was added)."""
+        entries = _entries()
+        expected = sum(
+            e["weight"] * e["size"][0] * e["size"][1] * e["size"][2]
+            for e in entries) / sum(e["weight"] for e in entries)
+        v = mean_item_volume(entries)
+        self.assertAlmostEqual(v, expected, places=3)
+        self.assertAlmostEqual(expected, 0.0627, places=3)
 
     def test_sample_item_distribution(self):
         """Empirical sample frequencies approach the catalog weights."""
