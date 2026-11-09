@@ -33,23 +33,20 @@ DEPS = {
 # with its own payload-closed A0). run02 = full matrix; run03 =
 # targeted re-collection of the two driver-defect legs (R03 both
 # backends: unreleased hook park; V1-O-cuboid: E4 joint-sample aging).
-G2_TARGETS = {
-    "V2-G-cuboid/R04": "g2/run05", "V2-O-cuboid/R04": "g2/run05",
-    "V2-G-cuboid/R05": "g2/run07", "V2-O-cuboid/R05": "g2/run07",
-    # run08 (FREEZE_G3E, request_link fields): supersedes run07's R03/R12
-    # (identity NE) and run04's K05/K10 (deadline NE)
-    "V2-G-cuboid/R03": "g2/run08", "V2-O-cuboid/R03": "g2/run08",
-    "V2-G-cuboid/R12": "g2/run08", "V2-O-cuboid/R12": "g2/run08",
-}
-for _g in ("V1-G-cuboid", "V1-G-chamfer", "V1-O-cuboid", "V1-O-chamfer"):
-    for _cid in ("K05", "K05/E2", "K05/E3", "K05/E4",
-                 "K10", "K10/E2", "K10/E3", "K10/E4"):
-        G2_TARGETS["%s/%s" % (_g, _cid)] = "g2/run08"
-# K01 (all four composites) in every V1 group re-collected with the
-# externally-bound oracle payload under G3C
-for _g in ("V1-G-cuboid", "V1-G-chamfer", "V1-O-cuboid", "V1-O-chamfer"):
-    for _cid in ("K01", "K01/E2", "K01/E3", "K01/E4"):
-        G2_TARGETS["%s/%s" % (_g, _cid)] = "g2/run07"
+# G3H generation (user ruling 2026-11-09: fix-then-close ONE
+# generation; the product commit moved — cross-generation inheritance is
+# void by the identical-product-commits gate — so EVERY required ID of
+# the chamfer-only universe is re-collected under FREEZE_G3H in the
+# single full-matrix run g2/run10).
+G2_TARGETS = {}
+for _g in ("V1-G-chamfer", "V1-O-chamfer"):
+    for _cid in tuple("K%02d" % i for i in range(1, 11)):
+        G2_TARGETS["%s/%s" % (_g, _cid)] = "g2/run10"
+        for _e in ("E2", "E3", "E4"):
+            G2_TARGETS["%s/%s/%s" % (_g, _cid, _e)] = "g2/run10"
+for _g in ("V2-G-chamfer", "V2-O-chamfer"):
+    for _cid in tuple("R%02d" % i for i in range(1, 13)):
+        G2_TARGETS["%s/%s" % (_g, _cid)] = "g2/run10"
 G2_GROUPS = {}
 G2_DEFAULT = "g2/run04"
 
