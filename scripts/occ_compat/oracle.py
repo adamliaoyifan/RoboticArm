@@ -32,23 +32,31 @@ from __future__ import annotations
 
 import math
 
-#: Frozen policy (C1 placement code values; changing these here is a
-#: contract change, not a tuning knob).
+#: Frozen policy. The numeric VALUES are taken from the solver's own
+#: frozen definitions, not mirrored as literals (user ruling 2026-11-09:
+#: no dead constants — the same_layer mirror sat at 0.02 and
+#: min_support_ratio at 0.55 while the deployed values were 0.05 / 0.6,
+#: and nothing noticed until the placed-leg audit). Sharing the
+#: definition shares the number without sharing any computation; the
+#: geometry recompute below stays fully independent.
+from luggage_packing.placement_solver import (  # noqa: E402
+    SAME_LAYER_CLEARANCE_M as _SOLVER_SAME_LAYER_CLEARANCE_M)
+from luggage_packing.placement_solver import (  # noqa: E402
+    _default_params as _solver_default_params)
+
 POLICY = {
     "float_tolerance_m": 1e-9,
-    # solver SAME_LAYER_CLEARANCE_M = 0.05 (the deployed default the
-    # v3 payload records as ground truth). This mirror said 0.02 — a
-    # dead constant nobody read, but a trap for any future consumer;
-    # the placed_clearance leg reads the PAYLOAD value, never this.
-    "same_layer_clearance_m": 0.05,
-    "min_support_ratio": 0.55,
+    "same_layer_clearance_m": float(_SOLVER_SAME_LAYER_CLEARANCE_M),
+    "min_support_ratio": float(
+        _solver_default_params()["min_support_ratio"]),
     # None = AUTO: one map cell (the surface's resolution) — mirrors the
     # C1 default since 2026-11-08 (user directive margin=resolution; was
     # 0.0 exact-face). One cell guarantees the footprint cannot overlap
     # the map's conservative boundary column, which reaches up to one
     # cell inside the exact wall face (K01 run04/07 anchoring miss).
     "hull_margin_default_m": None,
-    "support_contact_tol_m": 0.05,
+    "support_contact_tol_m": float(
+        _solver_default_params()["support_tol"]),
     # OCC occupied-overlap tolerance (user ruling 2026-11-08 night): a
     # clip up to this deep into OCC occupied cells — xy via the eroded
     # footprint, z via the penetration band — is acceptable. None =
@@ -518,8 +526,12 @@ def placed_clearance_leg(payload):
     from luggage_description.scene_tf_config_utils import (
         load_scene_tf_config)
     hull = payload.get("hull") or {}
-    floor_z = float(hull.get("floor_z_container", 0.53))
+    if "floor_z_container" not in hull:
+        return "NOT_EVALUATED_hull_floor_missing"
+    floor_z = float(hull["floor_z_container"])
     inner_h = float((hull.get("inner_size") or [0.0, 0.0, 0.0])[2])
+    if inner_h <= 0.0:
+        return "NOT_EVALUATED_hull_inner_missing"
     scene = load_scene_tf_config(scene_path)
     aabbs = placed_aabbs_from_records(
         placed, scene=scene, floor_z=floor_z, inner_h=inner_h)

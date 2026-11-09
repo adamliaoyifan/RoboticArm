@@ -416,10 +416,20 @@ def _e3_conflict_verdict(surface, candidate_center, box_size,
     solver = _e3_imports()
     candidate = {"center_container": list(candidate_center),
                  "size": list(box_size)}
+    # hull datum from the caller's admitted map descriptor — never a
+    # hardcoded container size (user ruling 2026-11-09); a map without a
+    # complete descriptor fails the case loudly by name, never silently
+    _desc = surface.get("geometry_descriptor") or {}
+    _inner = [float(_desc.get("length", 0.0)),
+              float(_desc.get("width", 0.0)),
+              float(_desc.get("ceiling_z", 0.0))]
+    _floor = float(_desc.get("floor_z", 0.0))
+    if min(_inner) <= 0.0 or _floor <= 0.0:
+        return "scene_descriptor_missing"
     reason, _cap = solver.placement_constraint_verdict(
-        candidate, inner_h=1.48,
+        candidate, inner_h=_inner[2],
         placed_aabbs=[tuple(float(v) for v in obstacle_aabb)],
-        inner_size=[1.49, 1.97, 1.48], floor_z=0.53)
+        inner_size=_inner, floor_z=_floor)
     return reason
 
 
@@ -521,14 +531,18 @@ def _k02(ctx, run_e3=None, run_e4=None):
     # driver's ledger copy in elfin_base_link) — the solver must place
     # around it and the placed recording captures a non-empty entry.
     placed_box = None
-    if getattr(ctx, "scene_tf_config", ""):
+    # floor datum from the MAP'S OWN descriptor (user ruling 2026-11-09:
+    # no hardcoded 0.53 — a scene change would silently move the placed
+    # copy off the real floor)
+    _floor_z = (surface.get("geometry_descriptor") or {}).get("floor_z")
+    if getattr(ctx, "scene_tf_config", "") and _floor_z is not None:
         from luggage_description.scene_tf_config_utils import (
             _local_point_to_base_link, load_scene_tf_config,
             yaw_base_link_to_world)
         import math as _math
         scene = load_scene_tf_config(ctx.scene_tf_config)
         p_base = _local_point_to_base_link(
-            [cx, cy, 0.53 + bh * 0.5], scene)
+            [cx, cy, float(_floor_z) + bh * 0.5], scene)
         # counter the base->world yaw so the planner's round-trip
         # conversion recovers the support box's container-frame axes
         # (yaw_world = yaw_base + robot yaw; identity orientation would
