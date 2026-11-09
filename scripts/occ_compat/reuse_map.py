@@ -125,13 +125,14 @@ def _lookup(states, case_id):
 
 
 def build(evidence_root):
+    # G3H ruling (user 2026-11-09): the acceptance universe is the
+    # judge's EXPECTED chamfer-only groups; the retired cuboid groups
+    # stay archived but are no longer required sources.
     groups = {
-        "V1-G-cuboid": ("V1", V1_REQUIRED),
         "V1-G-chamfer": ("V1", V1_REQUIRED),
-        "V1-O-cuboid": ("V1", V1_REQUIRED),
         "V1-O-chamfer": ("V1", V1_REQUIRED),
-        "V2-G-cuboid": ("V2", V2_REQUIRED),
-        "V2-O-cuboid": ("V2", V2_REQUIRED),
+        "V2-G-chamfer": ("V2", V2_REQUIRED),
+        "V2-O-chamfer": ("V2", V2_REQUIRED),
     }
     out = {
         "schema": "reuse-map-v1",
