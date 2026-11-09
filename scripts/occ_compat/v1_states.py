@@ -29,7 +29,7 @@ class CaseContext:
     """One live chain + client + ledger scoped to a (backend, hull)."""
 
     def __init__(self, backend, hull, stack, client, ledger, fixtures,
-                 clock_stop):
+                 clock_stop, scene_tf_config=""):
         self.backend = backend
         self.hull = hull
         self.stack = stack
@@ -38,6 +38,10 @@ class CaseContext:
         self.fixtures = fixtures       # {"S-free": [docs], ...}
         self.clock_stop = clock_stop
         self.reset_seq = 0
+        # [placed-leg data, user ruling 2026-11-09] frozen scene config
+        # the oracle re-derives placed frame conversion from
+        self.scene_tf_config = str(scene_tf_config or "")
+        self.last_placement = None
 
     def reset_producer(self, reason):
         """Idempotent reset to a defined BUILDING state (unique id)."""
@@ -190,13 +194,27 @@ def _placement(ctx, case, subprobe, box, **kwargs):
     start = mono_ns()
     link = "%s-%s-%d" % (case, subprobe or "main", start)
     response = ctx.client.place_v1(box, **kwargs)
+    # [placed-leg data] the raw request copy (elfin_base_link records)
+    # rides into the oracle payload — the judge re-derives, never trusts
+    ctx.last_placement = {
+        "placed": [dict(entry) for entry in kwargs.get("placed") or ()]}
+    if ctx.last_placement["placed"]:
+        # [placed-leg data] the raw request copy rides the durable
+        # placement row too — K01's oracle payload is written only after
+        # the K01 compute; a later case's placed copy (K02's control)
+        # would otherwise live nowhere but memory.
+        extra = {"placed_records": json.dumps(
+            ctx.last_placement["placed"], sort_keys=True)}
+    else:
+        extra = {}
     ctx.ledger.emit(
         backend=ctx.backend, consumer="E1", hull=ctx.hull, case_id=case,
         subprobe=subprobe, event_kind="placement_request",
         stage="consumer", state="REPLIED",
         **budget_fields(start, request_link=link),
         reason=str(getattr(response, "reason_code", "") or ""),
-        message=str(getattr(response, "message", "") or "")[:120])
+        message=str(getattr(response, "message", "") or "")[:120],
+        **extra)
     return response
 
 
@@ -252,8 +270,22 @@ def _k01(ctx, run_e3=None, run_e4=None):
             "chamfer": _descriptor["chamfer"],
             "geometry_hash": _descriptor.get("geometry_hash", ""),
         }
+    # [placed-leg data, user ruling 2026-11-09] the three inputs the
+    # judge's placed_clearance leg needs (run10's v2 payload recorded
+    # none of them — placed list, selected marker, effective same-layer
+    # policy). Selected = candidates[0] on success (the node contract:
+    # slot == candidates[0]); placed is the RAW request copy so the
+    # judge re-derives the container AABBs from the frozen scene.
+    from luggage_packing.placement_solver import \
+        SAME_LAYER_CLEARANCE_M as _same_layer_default
+    from .oracle import placed_clearance_leg as _placed_leg
+    _placement_record = getattr(ctx, "last_placement", None) or {}
+    _selected = None
+    if getattr(response, "success", False) and dump:
+        _selected = {"candidate_id": str(
+            dump[0].get("candidate_id", dump[0].get("id", 0)))}
     oracle_payload = {
-        "schema": "k01-oracle-payload-v2",
+        "schema": "k01-oracle-payload-v3",
         "surface": surface, "box_size": list(BOX_A),
         "hull": _hull,
         "candidates": dump, "verdicts": verdict["verdicts"],
@@ -261,7 +293,18 @@ def _k01(ctx, run_e3=None, run_e4=None):
             "epoch": str(surface.get("epoch", "")),
             "map_revision": surface.get("map_revision", 0)},
         "backend": ctx.backend, "hull_tag": str(ctx.hull),
+        "placed": [dict(entry) for entry in
+                   _placement_record.get("placed") or ()],
+        "selected": _selected,
+        "response": {
+            "success": bool(getattr(response, "success", False)),
+            "reason_code": str(
+                getattr(response, "reason_code", "") or "")},
+        "same_layer_clearance_m": float(_same_layer_default),
+        "scene_tf_config": str(
+            getattr(ctx, "scene_tf_config", "") or ""),
     }
+    oracle_payload["placed_clearance"] = _placed_leg(oracle_payload)
     payload_name = "K01_oracle.json"
     payload_path = ctx.ledger.path.parent / payload_name
     payload_path.write_text(json.dumps(oracle_payload, sort_keys=True))
@@ -471,9 +514,34 @@ def _k02(ctx, run_e3=None, run_e4=None):
     reason = _e3_conflict_verdict(surface, candidate_center, BOX_A,
                                   obstacle_aabb)
     refused = reason not in ("", None, "ok")
-    # Legal control: the unconstrained service still finds candidates
-    # (ledgered — the judge recomputes this terminal from this row).
-    control = _placement(ctx, "K02", "main", BOX_A)
+    # Legal control: the service still finds candidates (ledgered — the
+    # judge recomputes this terminal from this row). [placed-leg data,
+    # user ruling 2026-11-09] the control now carries the support box
+    # as the REQUEST-CARRIED placed ledger copy (production shape: the
+    # driver's ledger copy in elfin_base_link) — the solver must place
+    # around it and the placed recording captures a non-empty entry.
+    placed_box = None
+    if getattr(ctx, "scene_tf_config", ""):
+        from luggage_description.scene_tf_config_utils import (
+            _local_point_to_base_link, load_scene_tf_config,
+            yaw_base_link_to_world)
+        import math as _math
+        scene = load_scene_tf_config(ctx.scene_tf_config)
+        p_base = _local_point_to_base_link(
+            [cx, cy, 0.53 + bh * 0.5], scene)
+        # counter the base->world yaw so the planner's round-trip
+        # conversion recovers the support box's container-frame axes
+        # (yaw_world = yaw_base + robot yaw; identity orientation would
+        # read as a 90-degree swap on this scene)
+        yaw_base = -yaw_base_link_to_world(scene, 0.0)
+        qz = _math.sin(yaw_base * 0.5)
+        qw = _math.cos(yaw_base * 0.5)
+        placed_box = {"position": [float(v) for v in p_base],
+                      "quaternion": [0.0, 0.0, qz, qw],
+                      "width": bw, "depth": bd, "height": bh}
+    control = _placement(
+        ctx, "K02", "main", BOX_A,
+        placed=[placed_box] if placed_box else ())
     control_ok = bool(getattr(control, "success", False)) or any(
         code in str(getattr(control, "reason_code", "")) for code in (
             "BIN_FULL", "NO_KNOWN_FREE"))

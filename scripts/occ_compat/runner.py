@@ -116,7 +116,8 @@ def run_v1_group(backend, hull, manifest, run_root, run_id, cases=None):
         stack, client, stop, fixtures = _bring_up(
             backend, hull, manifest, Path(run_root) / "chain")
         ctx = v1_states.CaseContext(
-            backend, hull, stack, client, ledger, fixtures, stop)
+            backend, hull, stack, client, ledger, fixtures, stop,
+            scene_tf_config=manifest.get("scene_tf", ""))
         # Static TFs for the E4 plan() lookups (stamped at the base).
         base = int(fixtures["S-free"][0]["stamp_ns"])
         identity_matrix = [1, 0, 0, 0, 1, 0, 0, 0, 1]

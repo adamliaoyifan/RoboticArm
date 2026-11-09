@@ -584,6 +584,26 @@ class ChainClient(Node):
         request.box.height_source = 1  # MEASURED_SUPPORT
         request.geometry_hash = str(geometry_hash)
         request.max_candidates = int(max_candidates)
+        # [placed-leg data, user ruling 2026-11-09] the placed kwarg was
+        # declared but never populated — a placed-carrying request was
+        # silently sent empty. Records are elfin_base_link
+        # {position, quaternion, width, depth, height}.
+        from luggage_msgs.msg import SlotSpec
+        from geometry_msgs.msg import Pose as _Pose
+        for entry in placed or ():
+            slot = SlotSpec()
+            pose = _Pose()
+            pose.position.x, pose.position.y, pose.position.z = (
+                float(v) for v in entry.get("position", [0.0, 0.0, 0.0]))
+            (pose.orientation.x, pose.orientation.y,
+             pose.orientation.z, pose.orientation.w) = (
+                float(v) for v in entry.get(
+                    "quaternion", [0.0, 0.0, 0.0, 1.0]))
+            slot.place_pose = pose
+            slot.width = float(entry.get("width", 0.0))
+            slot.height = float(entry.get("height", 0.0))
+            slot.depth = float(entry.get("depth", 0.0))
+            request.placed.append(slot)
         return self._call("placement", request, timeout_s)
 
     # -- observables (absorb barriers) -------------------------------------

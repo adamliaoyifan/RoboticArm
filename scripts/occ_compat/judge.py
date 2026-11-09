@@ -571,6 +571,16 @@ def _k01_independent_oracle(events, ledger_dir):
     if claimed and claimed[-1].get("n_candidates") not in (
             None, verdict["n_candidates"]):
         return ["K01: claimed candidate count != archived payload"]
+    # [placed-clearance leg, user ruling 2026-11-09] v3 payloads carry
+    # the placed ledger copy + the selected marker + the effective
+    # same-layer policy; the judge re-derives the container AABBs from
+    # the frozen scene and re-verifies the ONE selected candidate. A v2
+    # payload has no "placed" key — the leg is absent and the re-judge
+    # of an old run stays byte-identical.
+    from .oracle import placed_clearance_leg as _placed_leg
+    leg = _placed_leg(payload)
+    if leg is not None and not str(leg).startswith("PASS"):
+        return ["K01: placed clearance leg %s" % leg]
     return []
 LEG_FACT_PLACEMENT = {("R03", "new-epoch-healthy")}
 

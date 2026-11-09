@@ -391,3 +391,179 @@ def classify_no_solution(response):
     legal = {"BIN_FULL", "NO_KNOWN_FREE", "OUTSIDE_HULL",
              "OUTSIDE_APERTURE", "NO_SUPPORT"}
     return reason in legal, reason
+
+
+# ---------------------------------------------------------------------------
+# [placed-clearance leg, user ruling 2026-11-09] recompute the SELECTED
+# candidate's clearance against the REQUEST-carried placed ledger. The
+# three v3 payload fields feed it (placed / selected /
+# same_layer_clearance_m + the frozen scene config); a v2 payload has no
+# "placed" key and the leg is simply absent — old re-judges stay
+# byte-identical. This mirrors the product boundary (planner
+# _placed_aabbs + solver aabb_overlap / _same_layer_reason) WITHOUT
+# importing it, and binds only the ONE selected entry: the response's
+# candidates are mutually exclusive alternatives (reviews D1), so the
+# pairwise-among-alternatives reading stays impossible.
+# ---------------------------------------------------------------------------
+
+
+def _yaw_from_quaternion(x, y, z, w):
+    return math.atan2(2.0 * (w * z + x * y),
+                      1.0 - 2.0 * (y * y + z * z))
+
+
+def _rect_corners(cx, cy, yaw, length, width):
+    c, s = math.cos(yaw), math.sin(yaw)
+    hl, hw = 0.5 * length, 0.5 * width
+    # rotation of the four local corners (+-hl, +-hw): the fourth
+    # corner (-hl, +hw) maps to (cx - c*hl - s*hw, cy - s*hl + c*hw) —
+    # a degenerate copy of the third corner was caught live on run13
+    # real data (the SAT went blind on one side of an axis-aligned
+    # placed box).
+    return [(cx + c * hl - s * hw, cy + s * hl + c * hw),
+            (cx + c * hl + s * hw, cy + s * hl - c * hw),
+            (cx - c * hl + s * hw, cy - s * hl - c * hw),
+            (cx - c * hl - s * hw, cy - s * hl + c * hw)]
+
+
+def _rects_overlap(a, b):
+    """SAT overlap of two convex quads (shared edges count as overlap)."""
+    for quad in (a, b):
+        for index in range(len(quad)):
+            x0, y0 = quad[index]
+            x1, y1 = quad[(index + 1) % len(quad)]
+            nx, ny = y1 - y0, x0 - x1
+            a_min = min(nx * px + ny * py for px, py in a)
+            a_max = max(nx * px + ny * py for px, py in a)
+            b_min = min(nx * px + ny * py for px, py in b)
+            b_max = max(nx * px + ny * py for px, py in b)
+            if a_max < b_min or b_max < a_min:
+                return False
+    return True
+
+
+def _aabb_strict_overlap(a, b):
+    """Positive-volume AABB overlap; touching faces allowed (the
+    solver's aabb_overlap semantics at the POLICY float tolerance)."""
+    t = POLICY["float_tolerance_m"]
+    return (a[0] < b[3] - t and a[3] > b[0] + t
+            and a[1] < b[4] - t and a[4] > b[1] + t
+            and a[2] < b[5] - t and a[5] > b[2] + t)
+
+
+def placed_aabbs_from_records(records, *, scene, floor_z, inner_h):
+    """Mirror of the planner node's _placed_aabbs: elfin_base_link
+    placed records (position + quaternion + width/depth/height) ->
+    floor-relative container AABBs via the frozen scene config."""
+    from luggage_description.scene_tf_config_utils import (
+        _point_in_container_link, yaw_base_link_to_world)
+    aabbs = []
+    for record in records or []:
+        px, py, pz = (float(v) for v in record.get(
+            "position", [0.0, 0.0, 0.0]))
+        qx, qy, qz, qw = (float(v) for v in record.get(
+            "quaternion", [0.0, 0.0, 0.0, 1.0]))
+        local = _point_in_container_link([px, py, pz], scene)
+        yaw_world = yaw_base_link_to_world(
+            scene, _yaw_from_quaternion(qx, qy, qz, qw))
+        w, d = float(record.get("width", 0.0)), float(
+            record.get("depth", 0.0))
+        rotated = abs(abs(yaw_world) - math.pi / 2.0) < math.radians(10.0)
+        footprint_l = d if rotated else w
+        footprint_w = w if rotated else d
+        h = float(record.get("height", 0.0))
+        z_floor = float(local[2]) - float(floor_z)
+        aabbs.append((
+            float(local[0]) - footprint_l * 0.5,
+            float(local[1]) - footprint_w * 0.5,
+            max(0.0, z_floor - h * 0.5),
+            float(local[0]) + footprint_l * 0.5,
+            float(local[1]) + footprint_w * 0.5,
+            min(float(inner_h), z_floor + h * 0.5)))
+    return aabbs
+
+
+def placed_clearance_leg(payload):
+    """The placed-clearance verdict for one oracle payload.
+
+    Returns ``None`` for a v2 payload (no ``placed`` key — the leg is
+    not evaluated and old re-judges stay byte-identical), ``"PASS"``
+    for an empty placed ledger (vacuously clear), or a named
+    ``FAIL_*`` / ``NOT_EVALUATED_*`` string for the selected candidate.
+    """
+    if "placed" not in (payload or {}):
+        return None
+    placed = list(payload.get("placed") or [])
+    if not placed:
+        return "PASS"
+    selected = payload.get("selected") or {}
+    selected_id = str(selected.get("candidate_id", "") or "")
+    if not selected_id:
+        return "NOT_EVALUATED_no_selection"
+    candidates = payload.get("candidates") or []
+    candidate = next((c for c in candidates if str(
+        c.get("candidate_id", c.get("id", ""))) == selected_id), None)
+    if candidate is None:
+        return "FAIL_selected_missing"
+    scene_path = str(payload.get("scene_tf_config", "") or "")
+    if not scene_path:
+        return "NOT_EVALUATED_no_scene"
+    import os
+    if not os.path.isfile(scene_path):
+        return "NOT_EVALUATED_scene_missing"
+    from luggage_description.scene_tf_config_utils import (
+        load_scene_tf_config)
+    hull = payload.get("hull") or {}
+    floor_z = float(hull.get("floor_z_container", 0.53))
+    inner_h = float((hull.get("inner_size") or [0.0, 0.0, 0.0])[2])
+    scene = load_scene_tf_config(scene_path)
+    aabbs = placed_aabbs_from_records(
+        placed, scene=scene, floor_z=floor_z, inner_h=inner_h)
+    center = [float(v) for v in (candidate.get("center_container")
+                                 or [0.0, 0.0, 0.0])]
+    size = [float(v) for v in (candidate.get("size") or [0.0, 0.0, 0.0])]
+    footprint = candidate.get("footprint") or size[:2]
+    fl, fw = float(footprint[0]), float(footprint[1])
+    height = size[2]
+    z_center = center[2] - floor_z
+    box = (center[0] - fl * 0.5, center[1] - fw * 0.5,
+           z_center - height * 0.5,
+           center[0] + fl * 0.5, center[1] + fw * 0.5,
+           z_center + height * 0.5)
+    if any(_aabb_strict_overlap(box, aabb) for aabb in aabbs):
+        return "FAIL_placed_overlap"
+    clearance = float(payload.get("same_layer_clearance_m", 0.0) or 0.0)
+    support_tol = POLICY["support_contact_tol_m"]
+    if clearance > 0.0:
+        # mirror _candidate_footprint exactly: with box_yaw the rect is
+        # the RAW size dims rotated by yaw; without it the (already
+        # oriented) footprint with yaw 0 — using the oriented footprint
+        # AND the yaw would rotate twice (caught on run13 real data: a
+        # 90-degree candidate drew a swapped grown rect).
+        if "box_yaw" in candidate:
+            rect_l, rect_w = size[0], size[1]
+            yaw = float(candidate.get("box_yaw") or 0.0)
+        else:
+            _fp = candidate.get("footprint") or size[:2]
+            rect_l, rect_w = float(_fp[0]), float(_fp[1])
+            yaw = 0.0
+        z_bottom = z_center - height * 0.5
+        here = _rect_corners(center[0], center[1], yaw, rect_l, rect_w)
+        here_grown = _rect_corners(center[0], center[1], yaw,
+                                   rect_l + clearance, rect_w + clearance)
+        for aabb in aabbs:
+            ocx = 0.5 * (aabb[0] + aabb[3])
+            ocy = 0.5 * (aabb[1] + aabb[4])
+            ol, ow = aabb[3] - aabb[0], aabb[4] - aabb[1]
+            other = _rect_corners(ocx, ocy, 0.0, ol, ow)
+            on_parent = (abs(z_bottom - aabb[5]) <= support_tol
+                         and _rects_overlap(here, other))
+            if on_parent:
+                continue        # stacked on its own support parent
+            if abs(z_bottom - aabb[2]) > support_tol:
+                continue        # a different layer
+            other_grown = _rect_corners(ocx, ocy, 0.0,
+                                        ol + clearance, ow + clearance)
+            if _rects_overlap(here_grown, other_grown):
+                return "FAIL_same_layer_clearance"
+    return "PASS"
