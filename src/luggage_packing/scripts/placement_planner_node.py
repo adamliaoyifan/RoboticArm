@@ -265,6 +265,11 @@ class PlacementPlannerNode(Node):
         self._hull = descriptor_from_scene_config(self._scene)
         self._geometry_hash = str(self._hull.geometry_hash)
         self._rejected_maps = 0
+        # geometry-identity rejections (foreign-hull maps): the identity
+        # contract's own counter, distinct from lifecycle admission
+        # rejections (a first publication legitimately races the
+        # validity binding and is finally rejected)
+        self._geometry_rejected_maps = 0
         # Highest map revision admitted through either surface transport
         # (None = no map admitted yet). The v2 subscription enforces strict
         # progression against it; ComputePlacementV2 checks requests against
@@ -964,6 +969,7 @@ class PlacementPlannerNode(Node):
             # Fail closed: a map built for another hull must never be read
             # for its inner_size or heights.
             self._rejected_maps += 1
+            self._geometry_rejected_maps += 1
             self.get_logger().error(
                 "rejected cargo map: geometry_hash %s != planner %s "
                 "(rejected=%d)"
@@ -1056,6 +1062,7 @@ class PlacementPlannerNode(Node):
             return
         if str(record.get("geometry_hash") or "") != self._geometry_hash:
             self._rejected_maps += 1
+            self._geometry_rejected_maps += 1
             self.get_logger().error(
                 "rejected v2 cargo map: geometry_hash %s != planner %s"
                 % (record.get("geometry_hash"), self._geometry_hash))
@@ -1689,48 +1696,6 @@ class PlacementPlannerNode(Node):
             response.reason_code = "OBSERVER_SNAPSHOT_UNAVAILABLE"
             response.message = "OBSERVER_SNAPSHOT_UNAVAILABLE: %s" % error
             return response
-        gate, planning_admission = self._validity_admit()
-        if gate is not None:
-            response.success = False
-            response.reason_code = "VALIDITY_GATE_CLOSED"
-            response.message = gate
-            self._publish_last({
-                "success": False,
-                "reason_code": "VALIDITY_GATE_CLOSED",
-                "message": gate,
-                "geometry_hash": self._geometry_hash,
-                "candidates": [],
-                "execution_active": bool(
-                    self._admission.executing_generations),
-            })
-            return response
-        self.behavior_hook("after_admit", "token=%s" % (
-            planning_admission.seq if planning_admission is not None
-            else "?"))
-        self.behavior_hook("before_solve", "")
-        # E0/E4 contract: packing needs measured full geometry. A top-only
-        # detection must not become a collision box inside the container.
-        # Catalog size is spawn-only and is never a substitute for height.
-        source = int(getattr(box, "height_source", 0) or 0)
-        if (not bool(getattr(box, "height_valid", False))
-                or source != 1):
-            response.success = False
-            response.reason_code = CODE_DETECT_FULL_GEOMETRY_REQUIRED
-            response.message = (
-                "DETECT_FULL_GEOMETRY_REQUIRED: ComputePlacement needs "
-                "height_source=MEASURED_SUPPORT; got height_valid=%s "
-                "height_source=%d" % (
-                    bool(getattr(box, "height_valid", False)), source))
-            return response
-        requested_hash = str(getattr(request, "geometry_hash", "") or "")
-        if requested_hash and requested_hash != self._geometry_hash:
-            response.success = False
-            response.reason_code = CODE_CARGO_MAP_GEOMETRY_MISMATCH
-            response.message = (
-                "%s: request pinned %s, planner hull is %s"
-                % (CODE_CARGO_MAP_GEOMETRY_MISMATCH, requested_hash,
-                   self._geometry_hash))
-            return response
         if (self._surface is None and self._rejected_maps
                 and str(self.get_parameter(
                     "volume_evidence_source").value or "") != "observer"):
@@ -1857,6 +1822,49 @@ class PlacementPlannerNode(Node):
             dump["message"] = response.message
             self._publish_last(dump)
             return response
+        gate, planning_admission = self._validity_admit()
+        if gate is not None:
+            response.success = False
+            response.reason_code = "VALIDITY_GATE_CLOSED"
+            response.message = gate
+            self._publish_last({
+                "success": False,
+                "reason_code": "VALIDITY_GATE_CLOSED",
+                "message": gate,
+                "geometry_hash": self._geometry_hash,
+                "candidates": [],
+                "execution_active": bool(
+                    self._admission.executing_generations),
+            })
+            return response
+        self.behavior_hook("after_admit", "token=%s" % (
+            planning_admission.seq if planning_admission is not None
+            else "?"))
+        self.behavior_hook("before_solve", "")
+        # E0/E4 contract: packing needs measured full geometry. A top-only
+        # detection must not become a collision box inside the container.
+        # Catalog size is spawn-only and is never a substitute for height.
+        source = int(getattr(box, "height_source", 0) or 0)
+        if (not bool(getattr(box, "height_valid", False))
+                or source != 1):
+            response.success = False
+            response.reason_code = CODE_DETECT_FULL_GEOMETRY_REQUIRED
+            response.message = (
+                "DETECT_FULL_GEOMETRY_REQUIRED: ComputePlacement needs "
+                "height_source=MEASURED_SUPPORT; got height_valid=%s "
+                "height_source=%d" % (
+                    bool(getattr(box, "height_valid", False)), source))
+            return response
+        requested_hash = str(getattr(request, "geometry_hash", "") or "")
+        if requested_hash and requested_hash != self._geometry_hash:
+            response.success = False
+            response.reason_code = CODE_CARGO_MAP_GEOMETRY_MISMATCH
+            response.message = (
+                "%s: request pinned %s, planner hull is %s"
+                % (CODE_CARGO_MAP_GEOMETRY_MISMATCH, requested_hash,
+                   self._geometry_hash))
+            return response
+
 
         best = result.get("preferred_candidate", result["selected"])
         # Reset-contract commit check (§3): the second epoch/generation look
