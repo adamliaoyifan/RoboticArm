@@ -237,11 +237,19 @@ def _k01_hull(ctx, surface):
         scene = load_scene_tf_config(ctx.scene_tf_config)
         floor = float(container_inner_floor_z(scene))
         length, width, ceiling = container_inner_dimensions(scene)
+        # CONVENTION TRAP: verify_candidate reads inner_size[2] as the
+        # container-ABSOLUTE ceiling (z1 > inner_size[2] against
+        # container-frame z), while the planner/solver use inner SIZE
+        # [2] = height (ceiling - floor). The oracle pair must feed the
+        # CEILING (2.01) — the historical 1.48 literal (and the height
+        # this helper briefly produced) made the collection-time
+        # clearance leg 0.53 m too low for tall stacks.
         hull = {"inner_size": [float(length), float(width),
-                               float(ceiling) - floor],
+                               float(ceiling)],
                 "floor_z_container": floor}
     else:
-        hull = {"inner_size": [1.49, 1.97, 1.48],
+        # no-scene fallback: the ORACLE convention (absolute ceiling)
+        hull = {"inner_size": [1.49, 1.97, 2.01],
                 "floor_z_container": 0.53}
     descriptor = (surface or {}).get("geometry_descriptor") or {}
     if descriptor.get("chamfer"):
