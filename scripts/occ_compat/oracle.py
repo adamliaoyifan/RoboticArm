@@ -36,7 +36,11 @@ import math
 #: contract change, not a tuning knob).
 POLICY = {
     "float_tolerance_m": 1e-9,
-    "same_layer_clearance_m": 0.02,
+    # solver SAME_LAYER_CLEARANCE_M = 0.05 (the deployed default the
+    # v3 payload records as ground truth). This mirror said 0.02 — a
+    # dead constant nobody read, but a trap for any future consumer;
+    # the placed_clearance leg reads the PAYLOAD value, never this.
+    "same_layer_clearance_m": 0.05,
     "min_support_ratio": 0.55,
     # None = AUTO: one map cell (the surface's resolution) — mirrors the
     # C1 default since 2026-11-08 (user directive margin=resolution; was
