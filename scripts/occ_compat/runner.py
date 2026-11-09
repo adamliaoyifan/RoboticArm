@@ -249,13 +249,14 @@ def run_matrices(freeze_path, matrices, out_dir, cases=None,
                "isolation": "one subprocess + unique ROS domain per group"}
     index = 0
     plan = []
+    # User ruling 2026-11-09: chamfer-only universe (the real chain);
+    # cuboid is retired — never faked under a cuboid group name.
     if "V1" in matrices:
         for backend in ("G", "O"):
-            for hull in ("cuboid", "chamfer"):
-                plan.append(("V1", backend, hull))
+            plan.append(("V1", backend, "chamfer"))
     if "V2" in matrices:
         for backend in ("G", "O"):
-            plan.append(("V2", backend, "cuboid"))
+            plan.append(("V2", backend, "chamfer"))
     if groups:
         # targeted supplement (G2 §7): the frozen EXPECTED universe is
         # unchanged — unselected groups simply are not re-collected and

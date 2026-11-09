@@ -209,7 +209,8 @@ def _expected_skeleton():
     never derived from observed outcomes."""
     expected = {"schema": "expected-v1", "V1": {}, "V2": {}}
     for backend in ("G", "O"):
-        for hull in ("cuboid", "chamfer"):
+        # user ruling 2026-11-09: chamfer-only acceptance universe
+        for hull in ("chamfer",):
             for consumer in ("E1", "E2", "E3", "E4"):
                 for case in V1_CASES:
                     key = "V1|%s|%s|%s|%s" % (backend, hull, consumer, case)

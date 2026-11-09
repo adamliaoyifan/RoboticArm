@@ -1299,7 +1299,7 @@ def selftest(manifest_path, out_dir):
         best = None
         for path in reversed(candidates):
             pair = [path]
-            sib = path.parent.parent / "v2-g-cuboid" / "events.jsonl"
+            sib = path.parent.parent / "v2-g-chamfer" / "events.jsonl"
             if sib.exists():
                 pair.append(sib)
             exercised = set()
@@ -1320,7 +1320,7 @@ def selftest(manifest_path, out_dir):
     archives = []
     primary = Path(ledger_path)
     archives.append(primary)
-    sibling = primary.parent.parent / "v2-g-cuboid" / "events.jsonl"
+    sibling = primary.parent.parent / "v2-g-chamfer" / "events.jsonl"
     if not sibling.exists() or "R05" not in sibling.read_text():
         # the sibling must be a FULL V2 group (a targeted --cases smoke
         # cannot exercise the R-case mutation families); fall back to
@@ -1330,7 +1330,7 @@ def selftest(manifest_path, out_dir):
             "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/"
             "occ_grid_consumer_compat_20261105"))
         cands = []
-        for path in root.glob("**/V2-G-cuboid/events.jsonl"):
+        for path in root.glob("**/V2-G-chamfer/events.jsonl"):
             try:
                 text = path.read_text()
             except OSError:
@@ -1417,7 +1417,7 @@ def selftest(manifest_path, out_dir):
         partial, None).startswith("FAIL") else "FALSE_PASS"
     terminals = [dict(case_id=i, state="NOT_EVALUATED")
                  for i in V2_REQUIRED]
-    named = _scope_gate([("V2-G-cuboid", terminals, [])],
+    named = _scope_gate([("V2-G-chamfer", terminals, [])],
                         V2_REQUIRED, EXPECTED_V2G_GROUPS)
     wiring["w04_named_required_blocks"] = (
         "REJECTED" if named.startswith("NOT_EVALUATED")
@@ -1429,7 +1429,7 @@ def selftest(manifest_path, out_dir):
             "NOT_EVALUATED") else "FALSE_PASS"
     weird = [dict(case_id=i, state="WEIRD_STATE") for i in V2_REQUIRED]
     wiring["w08_unknown_terminal_state"] = "REJECTED" if _scope_gate(
-        [("V2-G-cuboid", weird, [])], V2_REQUIRED,
+        [("V2-G-chamfer", weird, [])], V2_REQUIRED,
         EXPECTED_V2G_GROUPS).startswith("NOT_EVALUATED") else "FALSE_PASS"
     wiring["w05_missing_failure_payload"] = "REJECTED" if _replay_gate(
         out / "w_missing_replay").startswith("FAIL") else "FALSE_PASS"
@@ -1488,8 +1488,8 @@ def selftest(manifest_path, out_dir):
     # by judge_archive ITSELF (the formal entry derives known_ids from
     # the freeze's fixture manifest), not only by the selftest helper.
     w13_dir = out / "w13_foreign_input"
-    (w13_dir / "V1-G-cuboid").mkdir(parents=True, exist_ok=True)
-    (w13_dir / "V1-G-cuboid" / "events.jsonl").write_text(json.dumps({
+    (w13_dir / "V1-G-chamfer").mkdir(parents=True, exist_ok=True)
+    (w13_dir / "V1-G-chamfer" / "events.jsonl").write_text(json.dumps({
         "event_kind": "integrate", "case_id": "K99",
         "request_id": "foreign#0", "result_repr": "OK"}) + "\n")
     sfree = out / "w13_sfree" / "sfree_x"
@@ -1808,7 +1808,7 @@ def selftest(manifest_path, out_dir):
     formal_dir.mkdir(parents=True)
 
     def _write_archive(name, rows):
-        d = formal_dir / name / "V2-G-cuboid"
+        d = formal_dir / name / "V2-G-chamfer"
         d.mkdir(parents=True, exist_ok=True)
         (d / "events.jsonl").write_text(
             "".join(json.dumps(r) + "\n" for r in rows))
@@ -1937,7 +1937,7 @@ def selftest(manifest_path, out_dir):
                         "confidence_ratio": 1.0}],
         "map_identity": {"epoch": "t", "map_revision": 1},
     }
-    f05_dir = formal_dir / "f05_illegal_candidate" / "V2-G-cuboid"
+    f05_dir = formal_dir / "f05_illegal_candidate" / "V2-G-chamfer"
     f05_dir.mkdir(parents=True, exist_ok=True)
     (f05_dir / "K01_oracle.json").write_text(json.dumps(bad_payload))
     import hashlib as _h5
@@ -2234,11 +2234,13 @@ _JUDGE_TREE = _judge_tree()
 #: universe, not against whatever directories happen to be present —
 #: a missing required group or an unknown terminal state can never
 #: silently pass (reviews 2026-11-06_1620 counterexamples 2).
-EXPECTED_V1_GROUPS = ("V1-G-cuboid", "V1-G-chamfer",
-                      "V1-O-cuboid", "V1-O-chamfer")
-EXPECTED_V1_O_GROUPS = ("V1-O-cuboid", "V1-O-chamfer")
-EXPECTED_V2G_GROUPS = ("V2-G-cuboid",)
-EXPECTED_V2O_GROUPS = ("V2-O-cuboid",)
+# User ruling 2026-11-09: chamfer-only acceptance universe (cuboid
+# retired from the real chain). Historical cuboid groups remain in the
+# archives under the superseded universe — never required again.
+EXPECTED_V1_GROUPS = ("V1-G-chamfer", "V1-O-chamfer")
+EXPECTED_V1_O_GROUPS = ("V1-O-chamfer",)
+EXPECTED_V2G_GROUPS = ("V2-G-chamfer",)
+EXPECTED_V2O_GROUPS = ("V2-O-chamfer",)
 
 
 def _case_leg_states(rows):
