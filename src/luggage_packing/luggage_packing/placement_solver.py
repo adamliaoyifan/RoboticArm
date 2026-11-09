@@ -20,6 +20,8 @@ from __future__ import division
 
 import math
 
+import numpy as np
+
 from luggage_packing.placement_legacy_v1 import v1_candidate_view
 
 
@@ -635,8 +637,6 @@ def _hypothetical_floor_windows(surface_map, box_size, allowed_yaws, cfg, hull,
     cfg["hull_margin"] = _resolved_hull_margin(cfg, resolution)
     if cfg.get("occ_overlap_tolerance") is None:
         cfg["occ_overlap_tolerance"] = resolution
-    if cfg.get("occ_overlap_tolerance") is None:
-        cfg["occ_overlap_tolerance"] = resolution
     nx = int(surface_map["nx"])
     ny = int(surface_map["ny"])
     inner_l, inner_w, inner_h = [float(v) for v in surface_map["inner_size"]]
@@ -781,6 +781,121 @@ def _footprint_cells(footprint_l, footprint_w, resolution):
     cells_x = max(1, int(math.ceil(footprint_l / resolution - 1e-9)))
     cells_y = max(1, int(math.ceil(footprint_w / resolution - 1e-9)))
     return cells_x, cells_y
+
+
+def _grid_arrays(surface_map):
+    """Numpy views of one surface map (built once per enumeration).
+
+    Exact-parity contract with the per-window Python scans: heights are
+    float64 copies of the map's lists; the state masks are boolean and
+    the one-cell False/0 padding reproduces the scans' bounds clamping
+    (cells outside the grid were skipped, never read)."""
+    heights = np.array(surface_map["height"], dtype=float)
+    states = surface_map["state"]
+    unknown = np.array(
+        [[c == "unknown" for c in row] for row in states], dtype=bool)
+    occupied = np.array(
+        [[c == "occupied" for c in row] for row in states], dtype=bool)
+    confidences = surface_map.get("confidence")
+    if confidences:
+        sensor = np.array(
+            [[c == "sensor" for c in row] for row in confidences],
+            dtype=bool)
+    else:
+        sensor = np.zeros_like(unknown)
+    pad_f = lambda a: np.pad(a, 1, mode="constant", constant_values=False)  # noqa: E731
+    return {
+        "heights": heights,
+        "heights_p": np.pad(heights, 1, mode="constant",
+                            constant_values=0.0),
+        "unknown_p": pad_f(unknown),
+        "occupied_p": pad_f(occupied),
+        "sensor": sensor, "unknown": unknown, "occupied": occupied,
+    }
+
+
+def _sliding(window, shape, stride):
+    """Stride-sliced sliding-window view of `window` with shape `shape`."""
+    from numpy.lib.stride_tricks import sliding_window_view
+    return sliding_window_view(window, shape)[::stride, ::stride]
+
+
+def _rel_cells(edge, span, cells, resolution):
+    """Relative window-cell indices [lo, hi) whose squares overlap
+    [edge, edge + span] with more than the sliver floor.
+
+    Evaluates the SAME min/max overlap expression the scalar scan used,
+    over the tiny candidate range — exact float parity, no off-by-one
+    derivations. The kept set is contiguous (unimodal overlap)."""
+    keep = [r for r in range(-1, cells + 2)
+            if min(edge + span, (r + 1) * resolution)
+            - max(edge, r * resolution) > OVERLAP_MIN_M]
+    if not keep:
+        return 0, 0
+    return keep[0], keep[-1] + 1
+
+
+def _edge_scan_grid(arrays, peak, nx, ny, resolution, half_l, half_w,
+                    footprint_l, footprint_w, cells_x, cells_y, stride,
+                    occ_tol):
+    """Vectorized _footprint_edge_state over ALL window positions of one
+    yaw — exact parity with the per-window scalar scan.
+
+    Geometry identity: lx = -half_l + (ix0 + cells_x/2)*res, so as ix0
+    advances by one the footprint shifts by exactly one cell — its
+    position relative to the grid lines is CONSTANT per yaw. The cells
+    the continuous footprint overlaps (unknown judgment) and the cells
+    its tolerance-eroded core reaches (occupied judgment) are therefore
+    two constant relative rectangles around the window block, computed
+    once with the scalar overlap expression. Inside the window block
+    every height <= the window's peak by definition, so occupied
+    PENETRATION can only trigger where the eroded core reaches; the
+    padding stands in for the clamped out-of-grid skip.
+
+    ``peak`` is the per-window peak array (strided window grid). Returns
+    (pen_any, unknown_any) boolean arrays on the same grid."""
+    from numpy.lib.stride_tricks import sliding_window_view
+    ox, oy = -nx * resolution * 0.5, -ny * resolution * 0.5
+    # footprint left edges relative to the window's first grid line
+    a_x = (-half_l - ox) + (cells_x * resolution - footprint_l) * 0.5
+    a_y = (-half_w - oy) + (cells_y * resolution - footprint_w) * 0.5
+    tol_x = min(occ_tol, footprint_l * 0.5)
+    tol_y = min(occ_tol, footprint_w * 0.5)
+
+    ulo_x, uhi_x = _rel_cells(a_x, footprint_l, cells_x, resolution)
+    ulo_y, uhi_y = _rel_cells(a_y, footprint_w, cells_y, resolution)
+    elo_x, ehi_x = _rel_cells(a_x + tol_x, footprint_l - 2.0 * tol_x,
+                              cells_x, resolution)
+    elo_y, ehi_y = _rel_cells(a_y + tol_y, footprint_w - 2.0 * tol_y,
+                              cells_y, resolution)
+
+    def windows(mask, lo_x, hi_x, lo_y, hi_y):
+        """Sliding windows of `mask` whose top-left sits at the window
+        origin plus the constant relative offset (padded indexing). The
+        base is cropped so the LAST window origin equals the
+        enumeration's (nx - cells_x, ny - cells_y) — without the crop
+        the padding lets the view slide one position past it."""
+        if hi_x <= lo_x or hi_y <= lo_y:
+            return None
+        wx, wy = hi_x - lo_x, hi_y - lo_y
+        base = mask[1 + lo_x: 1 + lo_x + (nx - cells_x) + wx,
+                    1 + lo_y: 1 + lo_y + (ny - cells_y) + wy]
+        return sliding_window_view(base, (wx, wy))[::stride, ::stride]
+
+    shape = (max(0, (nx - cells_x) // stride + 1),
+             max(0, (ny - cells_y) // stride + 1))
+    unknown_win = windows(arrays["unknown_p"], ulo_x, uhi_x, ulo_y, uhi_y)
+    unknown_any = (unknown_win.any(axis=(2, 3))
+                   if unknown_win is not None
+                   else np.zeros(shape, dtype=bool))
+
+    pen_any = np.zeros(shape, dtype=bool)
+    occ_win = windows(arrays["occupied_p"], elo_x, ehi_x, elo_y, ehi_y)
+    if occ_win is not None:
+        h_win = windows(arrays["heights_p"], elo_x, ehi_x, elo_y, ehi_y)
+        pen_any = (occ_win & (h_win > peak[:, :, None, None]
+                              + occ_tol)).any(axis=(2, 3))
+    return pen_any, unknown_any
 
 
 def _window_stats(surface_map, ix0, iy0, cells_x, cells_y):
@@ -1093,8 +1208,6 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
     cfg["hull_margin"] = _resolved_hull_margin(cfg, resolution)
     if cfg.get("occ_overlap_tolerance") is None:
         cfg["occ_overlap_tolerance"] = resolution
-    if cfg.get("occ_overlap_tolerance") is None:
-        cfg["occ_overlap_tolerance"] = resolution
     nx = int(surface_map["nx"])
     ny = int(surface_map["ny"])
     inner_l, inner_w, inner_h = [float(v) for v in surface_map["inner_size"]]
@@ -1110,6 +1223,7 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
     hull = _surface_hull(surface_map)
     datum_point, datum_normal = _depth_datum(surface_map, hull)
     expand_headings = str(cfg.get("payload_symmetry", "none")).lower() == "pi"
+    arrays = _grid_arrays(surface_map)
     for box_yaw, rotated in _snap_yaws(allowed_yaws):
         footprint_l, footprint_w = (box_w, box_l) if rotated else (box_l, box_w)
         if footprint_l > inner_l + 1e-6 or footprint_w > inner_w + 1e-6:
@@ -1126,12 +1240,32 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
             # stage, never merged here.
             headings.append(base_heading + math.pi)
 
-        for ix0 in range(0, nx - cells_x + 1, stride):
-            for iy0 in range(0, ny - cells_y + 1, stride):
-                peak, has_unknown, cell_heights, confidence_ratio = _window_stats(
-                    surface_map, ix0, iy0, cells_x, cells_y
-                )
-                support_ratio = _support_ratio(cell_heights, peak, cfg["support_tol"])
+        # Vectorized aggregates for EVERY window of this yaw (exact
+        # parity with _window_stats/_support_ratio/_footprint_edge_state;
+        # the scalar helpers remain for the legacy enumeration path).
+        hw = _sliding(arrays["heights"], (cells_x, cells_y), stride)
+        peak_g = np.maximum(hw.max(axis=(2, 3)), 0.0)
+        unknown_g = _sliding(
+            arrays["unknown"], (cells_x, cells_y), stride).any(axis=(2, 3))
+        total_cells = cells_x * cells_y
+        sensor_g = _sliding(
+            arrays["sensor"], (cells_x, cells_y), stride).sum(axis=(2, 3))
+        confidence_g = sensor_g / float(total_cells)
+        contact_g = (hw >= peak_g[:, :, None, None]
+                     - cfg["support_tol"]).sum(axis=(2, 3))
+        support_g = contact_g / float(total_cells)
+        pen_g, spill_unknown_g = _edge_scan_grid(
+            arrays, peak_g, nx, ny, resolution, half_l, half_w,
+            footprint_l, footprint_w, cells_x, cells_y, stride,
+            float(cfg["occ_overlap_tolerance"]))
+        for i in range(peak_g.shape[0]):
+            ix0 = i * stride
+            for j in range(peak_g.shape[1]):
+                iy0 = j * stride
+                peak = float(peak_g[i, j])
+                has_unknown = bool(unknown_g[i, j])
+                confidence_ratio = float(confidence_g[i, j])
+                support_ratio = float(support_g[i, j])
                 top_of_box = peak + box_h
                 clearance_top = inner_h - top_of_box
 
@@ -1153,9 +1287,8 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                 # the continuous footprint is checked against the grid
                 # cells it actually overlaps — the ceil-sized window can
                 # miss a 5mm sliver over an adjacent occupied column.
-                edge_occupied, edge_unknown = _footprint_edge_state(
-                    surface_map, lx, ly, footprint_l, footprint_w, peak,
-                    overlap_tol=cfg.get("occ_overlap_tolerance"))
+                edge_occupied = bool(pen_g[i, j])
+                edge_unknown = bool(spill_unknown_g[i, j])
                 if edge_occupied:
                     feasible = False
                     reason = REASON_EDGE_OCCUPIED
@@ -1202,9 +1335,12 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                 elif feasible:
                     # ST09-A S1: a support ramp within support_tol per cell
                     # reads as full support by ratio; the span across the
-                    # contact cells exposes the tilt.
+                    # contact cells exposes the tilt. (lazy: only windows
+                    # that reach this gate pay for the slice)
                     tilt_span = _support_tilt_ratio(
-                        cell_heights, peak, cfg["support_tol"])
+                        arrays["heights"][ix0:ix0 + cells_x,
+                                          iy0:iy0 + cells_y].ravel().tolist(),
+                        peak, cfg["support_tol"])
                     tilt_ratio = tilt_span / max(footprint_l, footprint_w, 1e-6)
                     if tilt_ratio > float(cfg["max_support_tilt_ratio"]):
                         feasible = False
