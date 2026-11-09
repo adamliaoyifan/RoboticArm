@@ -46,7 +46,11 @@ for _g in ("V1-G-chamfer", "V1-O-chamfer"):
             G2_TARGETS["%s/%s/%s" % (_g, _cid, _e)] = "g2/run10"
 for _g in ("V2-G-chamfer", "V2-O-chamfer"):
     for _cid in tuple("R%02d" % i for i in range(1, 13)):
-        G2_TARGETS["%s/%s" % (_g, _cid)] = "g2/run10"
+        # R12 comes from run12 (FREEZE_G3H3, same product generation):
+        # the controlled-confirmation fact the current judge requires
+        # is only emitted by the G3H3 driver
+        G2_TARGETS["%s/%s" % (_g, _cid)] = (
+            "g2/run12" if _cid == "R12" else "g2/run10")
 G2_GROUPS = {}
 G2_DEFAULT = "g2/run04"
 
