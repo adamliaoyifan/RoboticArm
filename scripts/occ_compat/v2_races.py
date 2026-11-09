@@ -522,6 +522,20 @@ def run_r12(ctx, stack, restart_producer):
     if not ctx.client.wait_validity("VALID", 8.0):
         return _terminal(ctx, "R12", "main", "FAIL", "setup failed")
     pre_epoch = (ctx.client.validity_record() or {}).get("epoch")
+    # snapshot the planner's admission-rejection count: refusions that
+    # appear AFTER the restart are the OLD stream being refused by the
+    # consumer's own gate (the typed fact the judge's R12 leg requires —
+    # emitted only when the product actually refused, verbatim line in
+    # the message)
+    _planner_log_path = ""
+    for _proc in stack.processes:
+        if _proc.name == "planner":
+            _planner_log_path = _proc.log_path
+    _pre_rejects = 0
+    if _planner_log_path is not None and getattr(
+            _planner_log_path, "exists", lambda: False)():
+        _pre_rejects = _planner_log_path.read_text(
+            errors="ignore").count("rejected")
     proc2 = restart_producer()
     # Discovery residue of the killed participant can linger ~a lease
     # period; give the graph time to evict the dead identity before
@@ -582,6 +596,29 @@ def run_r12(ctx, stack, restart_producer):
     post = {"epoch": confirmed_epoch}
     new_identity = (confirmed_epoch is not None
                     and str(confirmed_epoch) != str(pre_epoch))
+    # typed fact: the old stream's post-restart delivery was refused by
+    # the planner's admission gate (only counted from NEW log lines)
+    if _planner_log_path is not None and getattr(
+            _planner_log_path, "exists", lambda: False)():
+        _log_text = _planner_log_path.read_text(errors="ignore")
+        _new_reject_lines = [
+            line.strip() for line in _log_text.splitlines()
+            if "rejected" in line][_pre_rejects:]
+        _epoch_refusals = [
+            line for line in _new_reject_lines
+            if ("epoch" in line.lower() or "validity" in line.lower())]
+        if _epoch_refusals:
+            ctx.ledger.emit(
+                backend=ctx.backend, consumer="-", hull=ctx.hull,
+                case_id="R12", subprobe="old-stream-refused",
+                event_kind="probe_detail", stage="restart",
+                state="REFUSED",
+                reason="EPOCH_MISMATCH: old-epoch stream refused by the "
+                       "consumer admission gate (post-restart lines)",
+                message=" | ".join(_epoch_refusals[-2:])[:300],
+                epoch=str(post.get("epoch") or "?"),
+                producer_pid=proc2.process.pid,
+                request_link=str(_r12_link))
     healthy = False
     if confirmed:
         # The PLANNER's own confirm timer (0.5s period, 1s service call)
