@@ -94,7 +94,7 @@ def make_stub(module):
                    else False if name == "structural_search" else 8)),
     )
     for name in ('_validity_admit', '_validity_commit', '_handle',
-                 '_handle_v2', '_compute_inputs'):
+                 '_handle_v2', '_compute_inputs', '_placed_ledger_recheck'):
         setattr(stub, name,
                 types.MethodType(getattr(planner, name), stub))
     return stub, admission, last_published

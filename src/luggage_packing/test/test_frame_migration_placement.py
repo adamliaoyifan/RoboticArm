@@ -846,7 +846,7 @@ class FrameMigrationPlacement(unittest.TestCase):
                 get_logger=lambda: types_module.SimpleNamespace(
                     error=lambda *_: None, warning=lambda *_: None))
             for name in ('_validity_admit', '_validity_commit',
-                         '_handle_v2', '_compute_inputs'):
+                         '_handle_v2', '_compute_inputs', '_placed_ledger_recheck'):
                 setattr(stub, name, types_module.MethodType(
                     getattr(planner, name), stub))
             _open_validity_state(stub)
@@ -935,7 +935,7 @@ class PlacedLedgerSingleSource(unittest.TestCase):
                      '_on_surface_v2', '_on_committed', '_active_surface',
                      '_placed_matches_ledger', '_ledger_aabbs',
                      '_admit_surface_map', '_validity_admit',
-                     '_validity_commit', '_handle_v2', '_compute_inputs'):
+                     '_validity_commit', '_handle_v2', '_compute_inputs', '_placed_ledger_recheck'):
             setattr(stub, name,
                     types_module.MethodType(getattr(planner, name), stub))
         _open_validity_state(stub)
