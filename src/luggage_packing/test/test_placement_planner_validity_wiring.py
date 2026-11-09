@@ -70,6 +70,7 @@ def make_stub(module):
         _runtime=None,
         _surface={"map_revision": 1},
         _rejected_maps=0,
+        _geometry_rejected_maps=0,
         _committed=None,
         _active_surface=lambda: {"map_revision": 1,
                                  "geometry_hash": "geom-test"},
