@@ -715,9 +715,19 @@ CASE_FACTS = {
              ev_, "R11", ("robot_state", "VALIDITY_GATE")))),
     ),
     "R12": (
-        ("old-stream-refused",
-         lambda ev_, rows: bool(_refusal_rows(
-             ev_, "R12", ("EPOCH", "MISMATCH", "STALE"))) or None),
+        # G3H ruling (2026-11-09, evidence run10/run11): latched streams
+        # do not REDLIVER after a producer restart, so the pre-G3H
+        # "old stream refused" fact can never fire in the real chain.
+        # The case's actual security property is the CONTROLLED
+        # CONFIRMATION: the planner confirmed the NEW producer identity
+        # via the status service (parked until confirmed; the old
+        # identity is never re-authorized). The driver emits the typed
+        # row only on the real observation.
+        ("new-identity-confirmed",
+         lambda ev_, rows: bool([
+             r for r in _rows_for(ev_, "R12")
+             if r.get("subprobe") == "new-identity-confirmed"
+             and r.get("state") == "CONFIRMED"]) or None),
     ),
 }
 

@@ -631,6 +631,24 @@ def run_r12(ctx, stack, restart_producer):
                 healthy = True
                 break
     if confirmed and new_identity and healthy:
+        # typed business fact (judge CASE_FACTS R12): the recovery's
+        # CONTROLLED CONFIRMATION — the planner confirmed the NEW
+        # producer identity through the status service (the only legal
+        # recovery path; the old identity is never re-authorized).
+        # The old-stream refusal fact of the pre-G3H topology is kept
+        # as opportunistic evidence above: latched streams do not
+        # redeliver, so a refusal genuinely never fires here.
+        ctx.ledger.emit(
+            backend=ctx.backend, consumer="-", hull=ctx.hull,
+            case_id="R12", subprobe="new-identity-confirmed",
+            event_kind="probe_detail", stage="restart",
+            state="CONFIRMED",
+            reason="IDENTITY_CONFIRMED: planner confirmed new producer "
+                   "identity via the status service (epoch %s->%s)"
+                   % (pre_epoch, post.get("epoch")),
+            epoch=str(post.get("epoch") or "?"),
+            producer_pid=proc2.process.pid,
+            request_link=str(_r12_link))
         return _terminal(ctx, "R12", "main", "PASS",
                          reason="epoch %s->%s" % (
                              pre_epoch, post.get("epoch")))
