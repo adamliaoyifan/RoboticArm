@@ -524,15 +524,20 @@ def placed_clearance_leg(payload):
     if not os.path.isfile(scene_path):
         return "NOT_EVALUATED_scene_missing"
     from luggage_description.scene_tf_config_utils import (
+        container_inner_dimensions, container_inner_floor_z,
         load_scene_tf_config)
-    hull = payload.get("hull") or {}
-    if "floor_z_container" not in hull:
-        return "NOT_EVALUATED_hull_floor_missing"
-    floor_z = float(hull["floor_z_container"])
-    inner_h = float((hull.get("inner_size") or [0.0, 0.0, 0.0])[2])
-    if inner_h <= 0.0:
-        return "NOT_EVALUATED_hull_inner_missing"
     scene = load_scene_tf_config(scene_path)
+    # The container does not change: the frozen scene config IS the
+    # default hull datum (user ruling 2026-11-09) — floor and inner
+    # height (ceiling - floor) derive from the SAME source the planner
+    # builds its hull from. Never trust payload hull.inner_size[2] as a
+    # height: v3 payloads carried the ABSOLUTE ceiling (2.01) there,
+    # not the inner height (1.48).
+    floor_z = float(container_inner_floor_z(scene))
+    _dims = container_inner_dimensions(scene)
+    inner_h = float(_dims[2]) - floor_z
+    if inner_h <= 0.0:
+        return "NOT_EVALUATED_scene_height"
     aabbs = placed_aabbs_from_records(
         placed, scene=scene, floor_z=floor_z, inner_h=inner_h)
     center = [float(v) for v in (candidate.get("center_container")

@@ -218,6 +218,39 @@ def _placement(ctx, case, subprobe, box, **kwargs):
     return response
 
 
+def _k01_hull(ctx, surface):
+    """[user ruling 2026-11-09] hull datum for the K01 oracle pair.
+
+    The container does not change: dims and floor derive from the
+    FROZEN SCENE CONFIG (the same source the planner builds its hull
+    from) — inner_size[2] is the HEIGHT (ceiling - floor), never the
+    absolute ceiling the old descriptor path leaked there (2.01 vs
+    1.48). The map's own descriptor contributes only the chamfer faces
+    + hash (reviews 1355: actual chamfer geometry, never a hardcoded
+    rectangle). A run without a scene config keeps the historical
+    deployment literals as an explicit, named fallback."""
+    hull = None
+    if getattr(ctx, "scene_tf_config", ""):
+        from luggage_description.scene_tf_config_utils import (
+            container_inner_dimensions, container_inner_floor_z,
+            load_scene_tf_config)
+        scene = load_scene_tf_config(ctx.scene_tf_config)
+        floor = float(container_inner_floor_z(scene))
+        length, width, ceiling = container_inner_dimensions(scene)
+        hull = {"inner_size": [float(length), float(width),
+                               float(ceiling) - floor],
+                "floor_z_container": floor}
+    else:
+        hull = {"inner_size": [1.49, 1.97, 1.48],
+                "floor_z_container": 0.53}
+    descriptor = (surface or {}).get("geometry_descriptor") or {}
+    if descriptor.get("chamfer"):
+        hull = dict(hull)
+        hull["chamfer"] = descriptor["chamfer"]
+        hull["geometry_hash"] = descriptor.get("geometry_hash", "")
+    return hull
+
+
 def _k01(ctx, run_e3=None, run_e4=None):
     """Healthy: real VALID map, >=1 legal candidate, oracle passes."""
     ctx.reset_producer("K01")
@@ -246,8 +279,7 @@ def _k01(ctx, run_e3=None, run_e4=None):
                        "reason_code": getattr(response, "reason_code",
                                               "")})(),
         surface=surface, box_size=BOX_A,
-        hull={"inner_size": [1.49, 1.97, 1.48],
-                       "floor_z_container": 0.53})
+        hull=_k01_hull(ctx, surface))
     classes = [v.get("candidate_class") for v in verdict["verdicts"]]
     sample = (ctx.client.last_result.get("candidates") or [{}])[0]
     # Independent-oracle payload (reviews 1210 #2): everything the JUDGE
@@ -256,20 +288,7 @@ def _k01(ctx, run_e3=None, run_e4=None):
     # the collection-time verdicts — written beside the ledger and
     # referenced by digest.
     import hashlib as _hl
-    _hull = {"inner_size": [1.49, 1.97, 1.48],
-             "floor_z_container": 0.53}
-    _descriptor = surface.get("geometry_descriptor") or {}
-    if _descriptor.get("chamfer"):
-        # the hull comes from the MAP'S OWN descriptor (reviews 1355:
-        # actual chamfer geometry, never a hardcoded rectangle)
-        _hull = {
-            "inner_size": [float(_descriptor.get("length", 1.49)),
-                           float(_descriptor.get("width", 1.97)),
-                           float(_descriptor.get("ceiling_z", 1.48))],
-            "floor_z_container": float(_descriptor.get("floor_z", 0.53)),
-            "chamfer": _descriptor["chamfer"],
-            "geometry_hash": _descriptor.get("geometry_hash", ""),
-        }
+    _hull = _k01_hull(ctx, surface)
     # [placed-leg data, user ruling 2026-11-09] the three inputs the
     # judge's placed_clearance leg needs (run10's v2 payload recorded
     # none of them — placed list, selected marker, effective same-layer
@@ -420,10 +439,10 @@ def _e3_conflict_verdict(surface, candidate_center, box_size,
     # hardcoded container size (user ruling 2026-11-09); a map without a
     # complete descriptor fails the case loudly by name, never silently
     _desc = surface.get("geometry_descriptor") or {}
+    _floor = float(_desc.get("floor_z", 0.0))
     _inner = [float(_desc.get("length", 0.0)),
               float(_desc.get("width", 0.0)),
-              float(_desc.get("ceiling_z", 0.0))]
-    _floor = float(_desc.get("floor_z", 0.0))
+              float(_desc.get("ceiling_z", 0.0)) - _floor]
     if min(_inner) <= 0.0 or _floor <= 0.0:
         return "scene_descriptor_missing"
     reason, _cap = solver.placement_constraint_verdict(
@@ -531,18 +550,18 @@ def _k02(ctx, run_e3=None, run_e4=None):
     # driver's ledger copy in elfin_base_link) — the solver must place
     # around it and the placed recording captures a non-empty entry.
     placed_box = None
-    # floor datum from the MAP'S OWN descriptor (user ruling 2026-11-09:
-    # no hardcoded 0.53 — a scene change would silently move the placed
-    # copy off the real floor)
-    _floor_z = (surface.get("geometry_descriptor") or {}).get("floor_z")
-    if getattr(ctx, "scene_tf_config", "") and _floor_z is not None:
+    # The container does not change: the frozen scene config IS the
+    # default floor datum (user ruling 2026-11-09) — the same source the
+    # planner builds its hull from, no hardcoded 0.53.
+    if getattr(ctx, "scene_tf_config", ""):
         from luggage_description.scene_tf_config_utils import (
-            _local_point_to_base_link, load_scene_tf_config,
-            yaw_base_link_to_world)
+            _local_point_to_base_link, container_inner_floor_z,
+            load_scene_tf_config, yaw_base_link_to_world)
         import math as _math
         scene = load_scene_tf_config(ctx.scene_tf_config)
+        _floor_z = float(container_inner_floor_z(scene))
         p_base = _local_point_to_base_link(
-            [cx, cy, float(_floor_z) + bh * 0.5], scene)
+            [cx, cy, _floor_z + bh * 0.5], scene)
         # counter the base->world yaw so the planner's round-trip
         # conversion recovers the support box's container-frame axes
         # (yaw_world = yaw_base + robot yaw; identity orientation would
