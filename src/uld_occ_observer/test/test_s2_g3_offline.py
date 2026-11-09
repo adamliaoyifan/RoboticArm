@@ -20,7 +20,7 @@ GEOMETRY = FIXTURES / "geometry_chamfer.yaml"
 CONFIG = FIXTURES / "config_chamfer_r0p02.yaml"
 CLI = os.environ.get(
     "OCC_S2_PROFILE_CLI",
-    "/tmp/s2-install/uld_occ_observer/lib/uld_occ_observer/observer_profile_cli")
+    "/tmp/elfin-occ-compat-o-control/install/uld_occ_observer/lib/uld_occ_observer/observer_profile_cli")
 
 
 def test_review_counterexamples_are_not_replayable():

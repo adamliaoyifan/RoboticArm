@@ -134,46 +134,13 @@ class TestGeometryIdentityLive(unittest.TestCase):
         request.geometry_hash = geometry_hash
         return request
 
-    def _open_validity_gate(self, planner, mapper):
-        """TEST STUB (not the real machine): bind the grid validity
-        stream with the mapper store's OWN epoch, then REPUBLISH the
-        map (its startup publication landed before any validity and is
-        finally rejected), then tick a fresh robot sample. Real G
-        deployments have the mapper-side validity producer and real
-        joint states — nothing is missing on the real chain."""
-        import json as _json
-        from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
-        from std_msgs.msg import String as _String
-        from sensor_msgs.msg import JointState as _JointState
-        qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
-                         durability=DurabilityPolicy.TRANSIENT_LOCAL)
-        # initialize the mapper's validity board the production way (a
-        # reset establishes epoch + generation; surfaces then stamp both)
-        from luggage_msgs.srv import ResetCargoMap
-        reset = planner.create_client(ResetCargoMap, "/cargo_map/reset")
-        self.assertTrue(self._spin_until(
-            reset.service_is_ready, 10.0), "mapper reset service missing")
-        future = reset.call_async(ResetCargoMap.Request())
-        self.assertTrue(self._spin_until(future.done, 10.0))
-        epoch = future.result().epoch
-        pub = planner.create_publisher(
-            _String, "/cargo_map/validity", qos)
-        pub.publish(_String(data=_json.dumps({
-            "state": "VALID", "epoch": str(epoch), "generation": 1,
-            "validity_generation": 1,
-            "reason": "observed", "reset_id": "",
-            "transition_mono_ns": 1, "map_revision": 1,
-            "observed_revision": 1, "last_integrated_stamp_ns": 1,
-            "geometry_hash": str(planner._geometry_hash),
-            "config_digest": "", "clock_domain": "ros"})))
-        self._spin_until(lambda: planner._validity_seen, 10.0)
-        mapper._publish_all()   # re-deliver the map after binding
-        self._joints_pub = planner.create_publisher(
-            _JointState, "/joint_states", 10)
-
     def _fresh_joints(self, planner):
-        """TEST STUB: one robot sample inside the freshness window."""
+        """TEST STUB (real machines publish real joint states): one
+        robot sample inside the freshness window."""
         from sensor_msgs.msg import JointState as _JointState
+        if not hasattr(self, "_joints_pub"):
+            self._joints_pub = planner.create_publisher(
+                _JointState, "/joint_states", 10)
         msg = _JointState()
         msg.header.stamp = planner.get_clock().now().to_msg()
         msg.name = ["elfin_joint%d" % i for i in range(1, 7)]
@@ -202,7 +169,6 @@ class TestGeometryIdentityLive(unittest.TestCase):
         expected = str(container_inner_geometry_descriptor(
             load_scene_tf_config(self.scene_path))["geometry_hash"])
         mapper, planner = self._start(self.scene_path, self.scene_path)
-        self._open_validity_gate(planner, mapper)
         self.assertEqual(mapper._geometry_hash, expected)
         self.assertTrue(
             self._spin_until(lambda: planner._surface is not None, 10.0),
@@ -218,7 +184,6 @@ class TestGeometryIdentityLive(unittest.TestCase):
 
     def test_foreign_cargo_map_fails_closed_without_floor_prior(self):
         mapper, planner = self._start(self.mutated_path, self.scene_path)
-        self._open_validity_gate(planner, mapper)
         self.assertNotEqual(mapper._geometry_hash, planner._geometry_hash)
         self.assertTrue(
             self._spin_until(lambda: planner._rejected_maps > 0, 10.0),
@@ -236,7 +201,6 @@ class TestGeometryIdentityLive(unittest.TestCase):
 
     def test_request_hash_pin_is_enforced(self):
         _mapper, planner = self._start(self.scene_path, self.scene_path)
-        self._open_validity_gate(planner, mapper)
         self._spin(0.5)
         response = self._compute(planner, self._request("not-this-hull"))
         self.assertFalse(response.success)

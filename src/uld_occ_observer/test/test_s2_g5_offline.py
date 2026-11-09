@@ -418,7 +418,7 @@ def test_ready_wait_respects_timeout_and_the_eight_limit(tmp_path):
     import s2_rehearsal
     node = os.environ.get(
         "OCC_S2_NODE",
-        "/tmp/s2-install/uld_occ_observer/lib/uld_occ_observer/observer_node")
+        "/tmp/elfin-occ-compat-o-control/install/uld_occ_observer/lib/uld_occ_observer/observer_node")
     geometry = "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_o6_o7_20261029/run01/fixtures/geometry_chamfer.yaml"
     config = "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_o6_o7_20261029/run01/fixtures/config_chamfer_r0p02.yaml"
     if not Path(node).is_file():

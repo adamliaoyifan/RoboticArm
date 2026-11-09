@@ -371,3 +371,64 @@ class TestNodeComputeInputs(unittest.TestCase):
         self._set("volume_service_timeout_s", 0.2)
         with pytest.raises(RuntimeError):
             self.planner._compute_inputs()
+
+
+def test_placed_ledger_recheck_at_commit_time():
+    """[A6, user ruling 2026-11-09] the selected candidate is re-verified
+    against the LATEST latched committed ledger at commit time: a box
+    that landed between compute and commit voids the plan; a disjoint
+    ledger does not."""
+    import json as _json
+    from std_msgs.msg import String as _String
+
+    surface = _surface_with_cargo()
+    params = _params()
+    result = ps.generate_candidates(surface, BOX, allowed_yaws=[0.0],
+                                    params=params)
+    candidates = result if isinstance(result, list) else result["candidates"]
+    best = next(c for c in candidates
+                if c.get("feasible") and c.get("support_source") == "sensor")
+    # overlap the selected candidate with a landed box
+    center = best["center_container"]
+    overlapping = {
+        "boxes": [{"center": list(center), "size": [0.10, 0.10, 0.10],
+                   "yaw": 0.0}],
+        "map_revision": 9, "geometry_hash": "h", "epoch": "1",
+        "content_digest": ""}
+    disjoint = {
+        "boxes": [{"center": [center[0] + 0.5, center[1], center[2]],
+                   "size": [0.10, 0.10, 0.10], "yaw": 0.0}],
+        "map_revision": 9, "geometry_hash": "h", "epoch": "1",
+        "content_digest": ""}
+
+    class _Fake:
+        pass
+
+    node = _Fake()
+    node._inner_size = [1.49, 1.97, INNER_H]
+    node._floor_z = FLOOR
+    from luggage_description.container_geometry import (
+        descriptor_from_scene_config)
+    import yaml as _yaml, os as _os
+    _pkg = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    _scene = _os.path.join(_pkg, "..", "luggage_description", "config",
+                           "scene_tf.yaml")
+    node._hull_geometry = lambda: descriptor_from_scene_config(
+        _yaml.safe_load(open(_scene).read()))
+    node._aperture_y = None          # no aperture gate in this unit check
+    node._params = {"same_layer_clearance_m": 0.05, "support_tol": 0.05}
+    node.get_parameter = lambda name: type("P", (), {"value": -1.0})()
+    import sys
+    module = _load_node_module()
+    # bind the REAL methods onto the fake (the recheck is what we test)
+    node._ledger_aabbs = module.PlacementPlannerNode._ledger_aabbs.__get__(node)
+    node._constraint_verdict = \
+        module.PlacementPlannerNode._constraint_verdict.__get__(node)
+    recheck = module.PlacementPlannerNode._placed_ledger_recheck.__get__(node)
+
+    node._committed = overlapping
+    assert recheck(best, BOX) is not None, "a landed box on the slot must void"
+    node._committed = disjoint
+    assert recheck(best, BOX) is None, "a disjoint ledger must not void"
+    node._committed = None
+    assert recheck(best, BOX) is None, "no latch (v1) -> nothing newer"

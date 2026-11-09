@@ -1,0 +1,144 @@
+# Cargo map query API, schema 2
+
+`OccupancyMapStore.apply_update` owns facts and derived index publication.
+Consumers acquire immutable `MapQuerySnapshot` handles; no query can write
+the mapper, change fusion, renew a runtime lease or create observed facts.
+The legacy content digest retains its meaning. The query identity adds a
+canonical voxel digest and index schema version to the legacy three legs.
+
+Schema 2 explicitly changes only the query canonical-hash recipe. In each
+native-order block, SHA256 hashes 64 consecutive complete evidence records
+per leaf (the final leaf may be shorter). The block SHA256 binds the domain
+`cargo-map-block-v2\0`, uint64 little-endian record count, ordered 32-byte leaf
+hashes, active bytes and sorted length-prefixed geometry memberships. The
+outer identity retains grid, ordered block roots, bindings and publication
+provenance. Changed leaves alone are rehashed; initialization and incremental
+maintenance give identical roots. Schema 1 pinned requests are rejected rather
+than interpreted as schema 2. The legacy content_digest and old ROS APIs stay
+unchanged.
+
+Legacy content hashing still feeds exactly `repr(part)` as UTF-8 followed by
+NUL into SHA256, in the same field order. `occupancy_content_digest` streams
+the large columns tuple in 512-record chunks, including exact empty/singleton
+tuple syntax. It changes temporary allocation only: heights retain their old
+digest rounding, surface heights retain full precision, and neither the
+legacy identity recipe nor map commit semantics change. GC policy is untouched.
+
+Canonical full-evidence buffers and leaf hashes belong only to the index
+writer and are charged to its memory budget. Immutable read generations
+retain only detached public records, memberships and roots. Updating a
+private canonical buffer cannot mutate any old query snapshot. Public record
+patches and block counts use the net delta; unchanged state and instance
+memberships are shared.
+
+The writer-private canonical records use packed blocks with prefix offsets
+so a whole transaction can gather its first-old facts and patch its final-new
+facts in native code. Partial blocks retain their compact native record order
+without padding. The complete allocation and metadata are charged to the
+existing 512MiB budget.
+This is derived index storage; the primary mapper arrays and Python lists
+retain their existing layout and mutation order.
+
+Store binds a prior-evidence reader when constructing each delta builder.
+Mutation notifications collect touched keys; finalization reads their prior
+facts before the index owner applies the delta, then gathers final facts from
+the primary mapper. An evidence-generation guard rejects a stale binding.
+Standalone mapper builders and unavailable indexes retain immediate primary
+capture. Binding failures follow the existing index-failure boundary: keep
+the physical fact, close new queries by name, recover on explicit reset.
+All canonical mutations stay inside QueryIndexOwner initialize/apply/reset,
+through the focused CanonicalEvidenceBlocks helper. Read generations never
+retain its mutable records. The schema-2 hash recipe is unchanged.
+
+Writer diagnostics separate `patched_canonical_bytes` (private records
+overwritten in place) from `copied_evidence_bytes` (detached public record
+buffers copied for changed blocks). Both describe derived index work only.
+
+Page expansion converts detached record columns to built-in integer values
+in batches; cell order, sorted box membership and cursor accounting retain
+their existing meaning. No returned record shares writable index storage.
+Distance response assembly fills each point's own generated match/cell
+defaults through public setters; nested objects are never shared across
+points or requests.
+
+Python reads include summary, cell/ROI/frontier/instance pages, exact
+point-to-voxel-AABB distances, full surface and bounded surface changes.
+Coordinates are `container_link`. Cell ROI intersection has positive volume;
+surface ROI selects whole columns by positive XY intersection. Surface
+projection includes inactive-column behavior from the legacy full oracle.
+Pages use stable x-fastest flat-index order; legacy frontier enumeration
+keeps its old order. Limits default to 1024 and cannot exceed 4096.
+
+There are four typed ROS services:
+
+| Service | Read operation |
+|---|---|
+| `/cargo_map/get_summary_v2` | Frozen counts/provenance/confirmation |
+| `/cargo_map/query_cells_v2` | Cells, frontiers, instances, frontier count, one cell |
+| `/cargo_map/query_distance_v2` | Occupied and optionally separate unknown distance |
+| `/cargo_map/get_surface_patch_v2` | Full surface arrays or bounded column patch |
+
+Every request supplies a nonempty `request_id` (at most 128 characters),
+`frame_id=container_link`, and either `use_current=true` with an empty
+expected identity/token, or a full five-leg expected identity. World-frame
+queries are rejected; the adapter does not fetch latest TF. Response metadata
+echoes the request and frozen identity/grid, completion, cursor, work and time.
+Error responses have a named status/reason and `complete=false`.
+
+The first request may return a `snapshot_token`. Continue pages with that
+token, its full response identity, and `use_current=false`; the token can
+resolve the preceding retained generation even after CURRENT advances.
+There are at most two retained generations, 128 sessions and a five-second
+monotonic lifetime. Resuming never extends it. Set `release_after_query=true`
+to close explicitly, including after partial reads; a returned cursor then
+does not retain a session. Invalid queries do not close an existing valid
+token unless release was explicitly requested. Expired data never silently
+switches to CURRENT. Resource limits refuse new sessions/publications by name.
+
+Cell states and sources and instance kinds are typed enums. Sensor instances
+require an explicit `legacy:<epoch>` namespace until a producer binding exists.
+Committed-box instances require an actual existing box identity; ledger
+positions are not identities. Missing/ambiguous bindings are named failures.
+
+Distance policy `SEPARATE_UNKNOWN` returns independent occupied and unknown
+results. `OCCUPIED_ONLY` leaves unknown unqueried. MATCH is exact to voxel
+volume with smallest-flat-index tie breaking. NO_MATCH proves no target cells.
+The block/leaf heap exposes one pending leaf per block in stable lower-bound
+order. It preserves global visit order and work charging while avoiding
+heap entries for leaves pruned before visitation.
+RADIUS_CLEAR has no exact distance and carries only its proved lower bound.
+Outside/budget errors never certify safety. Defaults: up to 256 points,
+radius .30m (maximum map diagonal), two million examined cells, 50,000 blocks
+and 200ms. A Python `DistanceBudget` can only reduce work/time limits. This
+point query does not replace payload or hull collision certification.
+
+Full surface arrays have local index `x + shape_x*y`, with explicit validity
+for nullable v2 heights; invalid wire heights are canonical zero and cannot be
+treated as support. Patch records have global XY indices and a retained,
+same-epoch `since_identity`. Both nominal legacy fields and v2 datum fields
+are read from the same frozen publication.
+
+Distance reads use immutable state-membership lists for four-cell leaves within each block. The index owner builds them at initialization and updates them only when a block's state changes; unchanged memberships are shared. Their bytes are included in the retained-generation budget. They store no distances or nearest-obstacle parents.
+
+Queries convert leaf bounds to container coordinates and memoize only visited cell volumes within the request. Every tested cell and visited hierarchy node counts against the fixed work caps. Branch-and-bound visits equal lower bounds to preserve the lowest-flat-index tie rule. Page expansion batches sorted geometry-membership lookups per block, preserving fields and stable ordering.
+
+Immutable voxel blocks cache their conservative byte charge at construction.
+Registry publication still counts unique retained blocks and applies the same
+512MiB limit; it does not recompute unchanged payload sizes on every update.
+
+Distance leaf layouts also retain immutable native-order XYZ coordinates,
+shared by blocks with the same shape. The registry charges each distinct layout
+once across retained blocks and generations; block charges include their own
+payloads. Independent layout allocations are charged separately under the same
+512MiB cap. A query adds the block's integer start before the same
+float64 world-AABB arithmetic; neither primary facts nor distance membership,
+visit order, tie rules, schema-2 hashes or work budgets change. Direct local
+offsets handle partial edge blocks as well as full 16-cube blocks.
+Each distance batch selects candidate blocks per target state once from the
+pinned immutable summaries. Point-specific pruning and all visit budgets remain
+unchanged; these request-local lists do not survive the batch.
+
+Surface maintenance work reports `columns_recomputed` for the last refresh and
+`total_columns` as cumulative column computations since initialization,
+including the initial full projection. The map's column count is instead
+`grid.shape[0] * grid.shape[1]`; the cumulative work counter is not its size.

@@ -78,6 +78,8 @@ from luggage_packing.placement_admission import (
 from luggage_packing.placement_solver import (
     CODE_CARGO_MAP_GEOMETRY_MISMATCH,
     CODE_DETECT_FULL_GEOMETRY_REQUIRED,
+    REASON_OVERLAP,
+    REASON_SAME_LAYER_CLEARANCE,
     REASON_VOLUME_UNVERIFIED,
     SAME_LAYER_CLEARANCE_M,
     make_volume_verifier,
@@ -116,6 +118,11 @@ CODE_STALE_MAP_REVISION = "STALE_MAP_REVISION"
 #: from the single source — the witness_02 divergence class, now caught
 #: at the planner boundary instead of planning against a phantom.
 CODE_PLACED_LEDGER_MISMATCH = "PLACED_LEDGER_MISMATCH"
+#: [A6, user ruling 2026-11-09] A box landed in the committed ledger
+#: between this request's compute and its commit: the selected candidate
+#: no longer clears the LATEST ledger, so the plan is not delivered.
+#: The caller re-requests and re-plans against the moved world.
+CODE_PLACED_LEDGER_MOVED = "PLACED_LEDGER_MOVED"
 
 
 def yaw_from_quaternion(q):
@@ -1408,6 +1415,15 @@ class PlacementPlannerNode(Node):
             response.reason_code = "VALIDITY_COMMIT_REJECTED"
             response.message = commit
             return response
+        moved = self._placed_ledger_recheck(best, size)
+        if moved is not None:
+            response.success = False
+            response.reason_code = CODE_PLACED_LEDGER_MOVED
+            response.message = (
+                "%s: a box landed in the committed ledger during planning "
+                "(%s); re-request against the moved map" % (
+                    CODE_PLACED_LEDGER_MOVED, moved))
+            return response
         self._admission.record_execution()
         slot_message, _record = self._slot_message(best, request_id)
         response.slot = slot_message
@@ -1508,6 +1524,25 @@ class PlacementPlannerNode(Node):
                 min(inner_h, z_floor + h * 0.5),
             ))
         return aabbs
+
+    def _placed_ledger_recheck(self, best, size):
+        """[A6] Re-verify the SELECTED candidate against the LATEST
+        latched committed ledger at commit time.
+
+        The compute-time clearance ran against a ledger snapshot; a box
+        that landed in the window between compute and commit must void
+        the plan (user ruling 2026-11-09: re-run on the latest ledger).
+        Returns None when the plan still clears (or no v2 committed
+        latch exists — v1 deployments have nothing newer than the
+        request copy), else the collision reason."""
+        committed = getattr(self, "_committed", None)
+        if committed is None or not best:
+            return None
+        reason, _capacity = self._constraint_verdict(
+            best, self._ledger_aabbs(committed), size)
+        if reason in (REASON_OVERLAP, REASON_SAME_LAYER_CLEARANCE):
+            return reason
+        return None
 
     def _constraint_verdict(self, candidate, placed_aabbs, smallest_size):
         """Return ``(reason, capacity_ok)`` for one candidate."""
@@ -1841,6 +1876,20 @@ class PlacementPlannerNode(Node):
             dump["candidates"] = []
             dump["execution_active"] = bool(
                 self._admission.executing_generations)
+            self._publish_last(dump)
+            return response
+        moved = self._placed_ledger_recheck(best, size)
+        if moved is not None:
+            response.success = False
+            response.reason_code = CODE_PLACED_LEDGER_MOVED
+            response.message = (
+                "%s: a box landed in the committed ledger during planning "
+                "(%s); re-request against the moved map" % (
+                    CODE_PLACED_LEDGER_MOVED, moved))
+            dump["success"] = False
+            dump["reason_code"] = response.reason_code
+            dump["message"] = response.message
+            dump["candidates"] = []
             self._publish_last(dump)
             return response
         slot, annotated = self._slot_from_candidate(best, size)
