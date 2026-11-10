@@ -5,6 +5,10 @@ filled support surface under a ULD ceiling, withdrawal, and rear-face push.
 It has no production imports of downward-pick gates or atlas queries and
 does not send robot commands. Its geometry comes from the source worktree.
 
+The first measured result is in [RESULTS.md](RESULTS.md): 168/864 parameter
+combinations yielded fixed-tool geometry candidates; full-arm paths and
+contact physics remain unvalidated.
+
 Run in a shell with ROS Humble Python dependencies available:
 
 ```bash
