@@ -33,6 +33,10 @@ def set_span_collector(collector):
     global _SPAN_COLLECTOR
     _SPAN_COLLECTOR = collector
 MAX_PAGE = 4096
+#: Dense-plane page ceiling in CELLS (uint8): 262144 cells = 256 KiB
+#: per response — the full 1 cm container grid (4.34 M cells) needs
+#: ~17 pages at this size, ~66 at the 65536 default.
+MAX_DENSE_PAGE = 262144
 CELL_DTYPE = np.dtype([('state', 'u1'), ('source', 'u1'), ('label', '<i8'), ('instance', '<i8')])
 
 
@@ -129,6 +133,12 @@ class QueryResult:
 @dataclass(frozen=True)
 class CellPage(QueryResult):
     cells: tuple = ()
+
+
+@dataclass(frozen=True)
+class DensePage(QueryResult):
+    """One byte slice of the full-grid state plane (x-fastest flat order)."""
+    states: bytes = b''
 
 
 @dataclass(frozen=True)
@@ -427,6 +437,60 @@ class MapQuerySnapshot:
 
     def query_frontiers(self, region=None, page=None):
         return self._query(region, (0,), None, page, frontier=True)
+
+    def query_dense(self, page=None):
+        """[dense export, unlock ruling 2026-11-10] full-grid state plane.
+
+        One uint8 per cell in the CargoMapCellV2 enum (0 unknown,
+        1 free, 2 occupied), x-fastest over ``grid.shape``. The plane
+        materializes ONCE per snapshot handle by scattering every
+        block's active record states over a zeros array (cells absent
+        from every block stay UNKNOWN); pages then serve byte slices
+        along the flat order under the same HMAC cursor contract as
+        the typed path. Full grid only — a region filter is
+        INVALID_FILTER by contract until it earns a consumer.
+        """
+        started = time.perf_counter_ns()
+        data = self._data()
+        page = page if page is not None else QueryPage()
+        if (not isinstance(page, QueryPage) or type(page.limit) is not int
+                or not 1 <= page.limit <= MAX_DENSE_PAGE
+                or not isinstance(page.cursor, str)):
+            raise QueryError('INVALID_FILTER')
+        query_hash = hashlib.sha256(json.dumps(
+            ('dense',), separators=(',', ':')).encode()).hexdigest()
+        last = self._decode_cursor(data, page.cursor, query_hash) if page.cursor else -1
+        shape = self.grid.shape
+        volume = int(shape[0]) * int(shape[1]) * int(shape[2])
+        cached = getattr(self, '_dense_plane', None)
+        if cached is None or cached[1] != volume:
+            import numpy as np
+            plane = np.zeros(volume, dtype=np.uint8)
+            examined = 0
+            for block in data.blocks:
+                active = np.frombuffer(block.active, 'u1').astype(bool)
+                flat = block.flat_indices[active]
+                plane[flat] = block.records()['state'][active]
+                examined += len(flat)
+            cached = (plane, volume, examined)
+            object.__setattr__(self, '_dense_plane', cached)
+        plane, _, examined = cached
+        low = last + 1
+        if low >= volume:
+            return DensePage('INVALID_CURSOR', 'beyond end of plane',
+                             self.identity, self.grid)
+        high = min(low + page.limit, volume)
+        states = plane[low:high].tobytes()
+        complete = high >= volume
+        cursor = '' if complete else self._encode_cursor(
+            data, query_hash, high - 1)
+        return DensePage('OK', '', self.identity, self.grid,
+                         complete=complete, next_cursor=cursor,
+                         returned_count=high - low,
+                         examined_cells=examined,
+                         examined_blocks=len(data.blocks),
+                         elapsed_ns=time.perf_counter_ns() - started,
+                         states=states)
 
     def query_instance(self, instance_key, region=None, page=None):
         return self._query(region, (2,), instance_key, page, frontier=False)

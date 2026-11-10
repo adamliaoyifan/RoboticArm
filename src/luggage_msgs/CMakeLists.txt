@@ -21,6 +21,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CargoMapSurfaceColumnV2.msg"
   "srv/GetCargoMapSummaryV2.srv"
   "srv/QueryCargoCellsV2.srv"
+  "srv/QueryCargoCellsDenseV2.srv"
   "srv/QueryCargoDistanceV2.srv"
   "srv/GetCargoSurfacePatchV2.srv"
   "srv/ResetCargoMapV2.srv"
