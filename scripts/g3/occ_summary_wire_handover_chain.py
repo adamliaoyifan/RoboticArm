@@ -34,7 +34,7 @@ Fault injection (by THIS parent, on disk, between phases):
 
 Usage:
   python3 scripts/g3/occ_summary_wire_handover_chain.py \
-      --install <dir>/install/swf --out <evidence-dir> [--source <repo>]
+      --install <dir>/install --out <evidence-dir> [--source <repo>]
 """
 
 import argparse
@@ -269,7 +269,7 @@ def child_env(install, extra_ld):
     dist = [os.path.join(install, pkg, 'local', 'lib', 'python3.10',
                          'dist-packages')
             for pkg in ('luggage_msgs', 'luggage_perception',
-                        'luggage_description')]
+                        'luggage_description', 'st09_contracts')]
     keep = [p for p in env.get('PYTHONPATH', '').split(os.pathsep)
             if p and os.path.normpath(p) != repo
             and not os.path.normpath(p).startswith(repo + os.sep)]
@@ -565,7 +565,7 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__.splitlines()[0])
     parser.add_argument('--install', required=True,
-                        help='fixed install dir (e.g. <repo>/install/swf)')
+                        help='fixed install dir (e.g. <repo>/install)')
     parser.add_argument('--out', required=True,
                         help='evidence output dir (kept, never deleted)')
     parser.add_argument('--source', default=None,
