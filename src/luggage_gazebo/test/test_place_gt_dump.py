@@ -34,6 +34,15 @@ class TestPlaceGtDump(unittest.TestCase):
     def setUp(self):
         self.cfg = load_scene_tf_config(resolve_scene_tf_config_path())
 
+    def test_cached_gt_hull_matches_reference_for_all_voxel_centers(self):
+        from luggage_gazebo.place_gt_dump import mapper_from_scene
+        from luggage_description.scene_tf_config_utils import container_hull_local_inside_fn
+        mapper = mapper_from_scene(self.cfg, resolution=0.1)
+        reference = container_hull_local_inside_fn(self.cfg)
+        for ix, iy, iz in itertools.product(range(mapper.nx), range(mapper.ny), range(mapper.nz)):
+            local = mapper._voxel_center_local(ix, iy, iz)
+            self.assertEqual(mapper._hull_local_inside(*local), reference(*local))
+
     def test_container_mapper_is_invariant_under_scene_pose_64_cases(self):
         from luggage_gazebo.place_gt_dump import mapper_from_scene, mark_placed_on_mapper
         cases = itertools.product((0, math.pi/2, math.pi, math.atan2(4,3)),

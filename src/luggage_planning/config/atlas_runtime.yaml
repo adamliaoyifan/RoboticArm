@@ -20,7 +20,6 @@ atlas_file: ""           # absolute .npz override; meta = same stem + .yaml
 # and the live robot_description both match the atlas metadata. Placement
 # then returns ATLAS_IDENTITY_UNVERIFIED instead of hard-rejecting or
 # re-ranking from a stale grid. The deploy cell stays warn.
-hash_policy: "strict"    # off | warn | strict, against the atlas meta hashes
 query_offset: [0.0, 0.0, 0.0]   # container-frame [x, y, z] added to queries
 payload:
   policy: "auto"         # auto = smallest built atlas enveloping the measured

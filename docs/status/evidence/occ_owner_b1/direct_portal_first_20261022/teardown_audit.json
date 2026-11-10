@@ -1,0 +1,5 @@
+{
+  "clean": true,
+  "matching_live_processes": [],
+  "scope": "actual sim/bridge executable argv and installed domain7 peers; excludes inspection shell"
+}

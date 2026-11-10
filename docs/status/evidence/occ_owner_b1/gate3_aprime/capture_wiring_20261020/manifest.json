@@ -1,0 +1,591 @@
+{
+  "base_revision": "c240a79612984c86c223235d5fde1734d8932a1d",
+  "created_at": "2026-10-20T18:41:30.184990+08:00",
+  "verification_revision_rule": "base plus explicit source SHA256; instrumentation changes dirty at verification; committed together afterward",
+  "source_files": [
+    {
+      "path": "src/luggage_planning/luggage_planning/async_boundary_capture.py",
+      "bytes": 9059,
+      "sha256": "3a2a69970f50b5584926dbde3f293842d50bb35775a8ee4e71d16618a08e5655"
+    },
+    {
+      "path": "src/luggage_planning/luggage_planning/diagnostic_action_capture.py",
+      "bytes": 11383,
+      "sha256": "42e2a7c8af2e938968efb7ee8aa00949ce87ab76dd0ff66ae30bdb98a36ef308"
+    },
+    {
+      "path": "src/luggage_planning/luggage_planning/diagnostic_capture_routes.py",
+      "bytes": 625,
+      "sha256": "b209e9c06d446175c8505cade22fd427ad0160060371ceaae46b8458530001b8"
+    },
+    {
+      "path": "src/luggage_planning/scripts/diagnostic_capture_node.py",
+      "bytes": 1115,
+      "sha256": "7e468035eef2094ff014e50d8c5b15acda250fb91c1ca1bb437ab7115a8ffdfc"
+    },
+    {
+      "path": "src/luggage_planning/test/test_capture_wiring.py",
+      "bytes": 17227,
+      "sha256": "f472371723f97969380081d550fe356b3b5fa0b6dd1ce2d0bf9363ec99ce400f"
+    },
+    {
+      "path": "src/luggage_planning/CMakeLists.txt",
+      "bytes": 2737,
+      "sha256": "275effd57526a44da0043178691f8b2eb4fc6e46145bf91ef9c8874eb760f925"
+    },
+    {
+      "path": "src/luggage_planning/package.xml",
+      "bytes": 2202,
+      "sha256": "51df5568cdcb94343ee6d981a61e2a8324d9ff85a7eacb0ece53a52b47efca74"
+    },
+    {
+      "path": "src/luggage_gazebo/luggage_gazebo/transit_capture_exit.py",
+      "bytes": 2500,
+      "sha256": "dd7114d4404b473dc285503474e2a27111e7c44b4448a1e406f5c837a1ced953"
+    },
+    {
+      "path": "src/luggage_gazebo/scripts/diagnostic_transit_driver.py",
+      "bytes": 5438,
+      "sha256": "9800f2393a0175ba7d8dc1376598d6c925a59c1dcc8b427f1b380fbd15a07fa6"
+    },
+    {
+      "path": "src/luggage_gazebo/scripts/place_smoke_driver.py",
+      "bytes": 193643,
+      "sha256": "5ceebaf03c8fabba340ef9e21882254bf8610ea3ec323941745964aeb410fb9b"
+    },
+    {
+      "path": "src/luggage_gazebo/scripts/pack_eval_driver.py",
+      "bytes": 49502,
+      "sha256": "c5ff02b9103f582e0cbfd622a6f37ad868d1f2d313f23ee706d08ecb99bb5a82"
+    },
+    {
+      "path": "src/luggage_gazebo/test/test_transit_capture_exit.py",
+      "bytes": 8993,
+      "sha256": "21722a7c02e0708a06d9849ea8cee2d7eceaa7d01e57681539b5179335fc382c"
+    },
+    {
+      "path": "src/luggage_gazebo/launch/sim_world.launch.py",
+      "bytes": 58643,
+      "sha256": "cb8878f330c7f7cb4c2c3cb32db11d9769781fafcf8c03579c6e352334b6f236"
+    },
+    {
+      "path": "src/luggage_gazebo/CMakeLists.txt",
+      "bytes": 2377,
+      "sha256": "16363774b8df5b2d14b3114af8f6dd8c26b07a9e81c773e1bc55ca0ae164684b"
+    },
+    {
+      "path": "scripts/g3/inspect_capture_stream.py",
+      "bytes": 1260,
+      "sha256": "8260c2eee28b615f3007a3542a9be6e65f11aaca07c2213f492509607b3affcf"
+    }
+  ],
+  "artifact_files": [
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/REPORT.md",
+      "bytes": 8851,
+      "sha256": "4cbafde5f607d7bccf5cdf46d607f684ee6c906a9d69da51d6e04b52514aa455"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/build.txt.gz",
+      "bytes": 1165,
+      "sha256": "ad07da8dd00c7dd2eb347dfac73c9f7fe438f784d683b10a9f26213ed7335ee6"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/build_copy_install.txt.gz",
+      "bytes": 6345,
+      "sha256": "8b91c105c323e21c0706ce46ae0f548d23525775b0bccbb1ff98c563fab992ca"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/build_final.txt",
+      "bytes": 94575,
+      "sha256": "7f253c2139d3fa2b7cdd1764207dc5e772473ed81646d699b8759f4abef12bf6"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/fjt_sample.jsonl",
+      "bytes": 1225,
+      "sha256": "a4232f30b11f68bb6285c62e931c8ec4256dffde9c658814ddb8fd59b042414f"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/installed_help.txt",
+      "bytes": 185,
+      "sha256": "4fa5b7bf20085985c168a79c57a1a5cbf00e19dcdbe95f1ac019e1d6b5e7d9f4"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/installed_launch_args.txt",
+      "bytes": 9697,
+      "sha256": "e6cfe82fa56966b0b78fdd61cd26986a174e515887ec5fddbbf0865cc79cb9a5"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/pytest.txt",
+      "bytes": 546,
+      "sha256": "72945f11bce0a7ef2a46812f8ee621f85edeb246392ed9012b998a46bda4007c"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/pytest_final.txt",
+      "bytes": 890,
+      "sha256": "6d5f2e902a83e88fa97ef90750633b46c8cb6385f55a2bc7bf907349f5e516eb"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/pytest_verified.txt",
+      "bytes": 890,
+      "sha256": "dce01584307c3347419a6500325a5cb7d6de59a01a4050d9b477cb07d29431af"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/pytest_workload_window.txt",
+      "bytes": 98,
+      "sha256": "b11fe566595402793b378ab8ca557a708f399166ed42c0d2d0d943c913c17c46"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/action_abort/assertions.json",
+      "bytes": 557,
+      "sha256": "1f86080324434d6f2e8b7b7c7d4fe821ecd87df0591b0dd6421eb40b48fee932"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/action_abort/health.json",
+      "bytes": 303,
+      "sha256": "4942f2d0cca6d2f39ccdf3eae91410631ca44876dbe4e5c391e2920898db69fb"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/action_abort/messages.bin",
+      "bytes": 9327,
+      "sha256": "f2051dfcfb4de72e02e745a3771f68603689e48ea3ef3f256b791e7aea6b66d5"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/action_cancel/assertions.json",
+      "bytes": 560,
+      "sha256": "c74090c02f1c51cdc0839fca5303351a9854c7a3ff84fec0fad3cac7301f4005"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/action_cancel/health.json",
+      "bytes": 305,
+      "sha256": "214d8cdd9b424d6a9b95470955a840d41c79b0dbb4f557540ac3a066ad63bc25"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/action_cancel/messages.bin",
+      "bytes": 12150,
+      "sha256": "f6d8d181526f43c695e41790eecab30c7217a967e67484395117bb9b470d2289"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/action_capture_fault/assertions.json",
+      "bytes": 682,
+      "sha256": "5c3b6eba15fcf0e216b0a2d52e52371e680ede736f9286c74363f0af83aad792"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/action_capture_fault/health.json",
+      "bytes": 410,
+      "sha256": "87a178a3e488d860348b229a88eacf96a3c2a5a721e7ef6254b61a15c3400fa5"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/action_capture_fault/messages.bin",
+      "bytes": 6715,
+      "sha256": "054e46fe9faaa3c58a5e9fae535e9361d9a31ff2c442e6566124bb1db40075f3"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/action_reject/assertions.json",
+      "bytes": 559,
+      "sha256": "456c6e0e3bfa0a713c268dcb189c4ce360d333096c62ae7ea4ef038022d7965c"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/action_reject/health.json",
+      "bytes": 304,
+      "sha256": "26342d3bd63797c8a00b3b0a6d6a21c09c2d5f0e2dd131375129a6deb7577dea"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/action_reject/messages.bin",
+      "bytes": 7523,
+      "sha256": "c29b39e44ed6af04c4f6e7c3dd83a7da0d77dd10f3f108b64c1ae645bee101cb"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/action_success/assertions.json",
+      "bytes": 562,
+      "sha256": "2ca095d45bb900641ea96156f0fb25207f01cf7553f87ab7459d797e8e8b8af9"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/action_success/health.json",
+      "bytes": 306,
+      "sha256": "d5895a5347e73df02fbe29b1ffe617105e2ff94ce3986cdbb2dbfa8753744e43"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/action_success/messages.bin",
+      "bytes": 10117,
+      "sha256": "c706bd330ddbb02a0d10645e91933de6934a2103c4386d19978426bee513ed20"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/certificate/health.json",
+      "bytes": 306,
+      "sha256": "5efe2e000081bf92711735fde43a0c6f5c70600d1fd38b2ca3753b8810268345"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/certificate/messages.bin",
+      "bytes": 1297,
+      "sha256": "63ee7905c04c7215403cb6a7bead526c45ee3d16960d7fb4f56c0b68d4b68792"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/disk_fault/health.json",
+      "bytes": 394,
+      "sha256": "589a4157214c5db3a45baeef7b30219212b66f3cc2d62d7e152e95eb02051fca"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/mid_write_fault/health.json",
+      "bytes": 402,
+      "sha256": "0399d54b0480b70813f3f61bb5b53e33d5e4068279c051ed6a30d9324724a2f6"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/queue_full/health.json",
+      "bytes": 393,
+      "sha256": "ebd42f1ec20b817c9b3ffd087e3bf71b9b2c7624dc751da8830f01519562de1e"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/queue_full/messages.bin",
+      "bytes": 726,
+      "sha256": "bc34a9ea59d7abb8d4fdfbe7394392badbfbc1a71ed58e87b34abe4d3394fcde"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/rate_1400hz/health.json",
+      "bytes": 313,
+      "sha256": "9d132b4456655ae31130ade348c25650bf3ab77aaf38654bbdaf15e821207c5c"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/rate_1400hz/messages.bin",
+      "bytes": 2586093,
+      "sha256": "81169d3fd7b5c24f6b9055d5890d92a8f6511eb593f1b16bae58ebb81534edbb"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic/rate_1400hz/rate_result.json",
+      "bytes": 773,
+      "sha256": "e26512affdb67b6702daf6699fe36c1a86dcbacdb1c3a0751884355f671a4b51"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/action_abort/assertions.json",
+      "bytes": 557,
+      "sha256": "1f86080324434d6f2e8b7b7c7d4fe821ecd87df0591b0dd6421eb40b48fee932"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/action_abort/health.json",
+      "bytes": 303,
+      "sha256": "4942f2d0cca6d2f39ccdf3eae91410631ca44876dbe4e5c391e2920898db69fb"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/action_abort/messages.bin",
+      "bytes": 9327,
+      "sha256": "835e770841876ea6328e6d80d85d394b5ff45a26f4b195f3df33560a0729ad7e"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/action_cancel/assertions.json",
+      "bytes": 560,
+      "sha256": "c74090c02f1c51cdc0839fca5303351a9854c7a3ff84fec0fad3cac7301f4005"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/action_cancel/health.json",
+      "bytes": 305,
+      "sha256": "214d8cdd9b424d6a9b95470955a840d41c79b0dbb4f557540ac3a066ad63bc25"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/action_cancel/messages.bin",
+      "bytes": 12150,
+      "sha256": "cdc9aa9867bb9bc36ba510ea25b6a379c98d18d621b366973737381607542d96"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/action_capture_fault/assertions.json",
+      "bytes": 681,
+      "sha256": "558de6574e68a1e134bc05ab42f979c0124744e6d67643b096c6f7d15e52b3d9"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/action_capture_fault/health.json",
+      "bytes": 409,
+      "sha256": "7ab3381beecb7975cf649ae42587f6977b5edd4081310be1b9de17e8df04d559"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/action_capture_fault/messages.bin",
+      "bytes": 5727,
+      "sha256": "3cb6fc55e549e461c8fea6605e44658ed44d7890d24a7cb2dd5dcc2f02cf95ba"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/action_reject/assertions.json",
+      "bytes": 559,
+      "sha256": "456c6e0e3bfa0a713c268dcb189c4ce360d333096c62ae7ea4ef038022d7965c"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/action_reject/health.json",
+      "bytes": 304,
+      "sha256": "26342d3bd63797c8a00b3b0a6d6a21c09c2d5f0e2dd131375129a6deb7577dea"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/action_reject/messages.bin",
+      "bytes": 7523,
+      "sha256": "16e1327cfcaf881894438379e961b3e1c7840f32935a3cc1e026495cbbf48c61"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/action_success/assertions.json",
+      "bytes": 562,
+      "sha256": "2ca095d45bb900641ea96156f0fb25207f01cf7553f87ab7459d797e8e8b8af9"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/action_success/health.json",
+      "bytes": 306,
+      "sha256": "d5895a5347e73df02fbe29b1ffe617105e2ff94ce3986cdbb2dbfa8753744e43"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/action_success/messages.bin",
+      "bytes": 10117,
+      "sha256": "219b6bb0086717c99d95e8b861a3cc2700a2d6d2efb4348a282d83a744777a2f"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/certificate/health.json",
+      "bytes": 306,
+      "sha256": "5efe2e000081bf92711735fde43a0c6f5c70600d1fd38b2ca3753b8810268345"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/certificate/messages.bin",
+      "bytes": 1297,
+      "sha256": "a8decd53a4b8f1607ef6359b014b9c2acc839a47b4c866761faa12c17b28ee27"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/disk_fault/health.json",
+      "bytes": 394,
+      "sha256": "589a4157214c5db3a45baeef7b30219212b66f3cc2d62d7e152e95eb02051fca"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/mid_write_fault/health.json",
+      "bytes": 402,
+      "sha256": "0399d54b0480b70813f3f61bb5b53e33d5e4068279c051ed6a30d9324724a2f6"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/queue_full/health.json",
+      "bytes": 393,
+      "sha256": "ebd42f1ec20b817c9b3ffd087e3bf71b9b2c7624dc751da8830f01519562de1e"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/queue_full/messages.bin",
+      "bytes": 726,
+      "sha256": "39d19dfdc4ef803367bc69630b467f5643b518c0b91b47f34321d529bde6a7aa"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/rate_1750hz/health.json",
+      "bytes": 313,
+      "sha256": "214ff541961e0ef89b5da01ffa48301845f581aa3663d20d1967ea9b5b9046ba"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/rate_1750hz/messages.bin",
+      "bytes": 3232893,
+      "sha256": "1733716742ae830574e29e933244375e1a19492afad79235b5b19e0d8dca0ce5"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_final/rate_1750hz/rate_result.json",
+      "bytes": 776,
+      "sha256": "49e0f797bdc70b12efc655c442603c807917afa09f58eb614014e3b72c1647ff"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/action_abort/assertions.json",
+      "bytes": 557,
+      "sha256": "1f86080324434d6f2e8b7b7c7d4fe821ecd87df0591b0dd6421eb40b48fee932"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/action_abort/health.json",
+      "bytes": 303,
+      "sha256": "4942f2d0cca6d2f39ccdf3eae91410631ca44876dbe4e5c391e2920898db69fb"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/action_abort/messages.bin",
+      "bytes": 9327,
+      "sha256": "8576ad04a56f69126f2a305b6f66a84264d6d72591222d055a0d02ea4acfb8ba"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/action_cancel/assertions.json",
+      "bytes": 560,
+      "sha256": "c74090c02f1c51cdc0839fca5303351a9854c7a3ff84fec0fad3cac7301f4005"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/action_cancel/health.json",
+      "bytes": 305,
+      "sha256": "214d8cdd9b424d6a9b95470955a840d41c79b0dbb4f557540ac3a066ad63bc25"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/action_cancel/messages.bin",
+      "bytes": 12150,
+      "sha256": "b97be57457cd5055289df0ff1685d38545fe7810e12ea69d187c4485b22697e3"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/action_capture_fault/assertions.json",
+      "bytes": 783,
+      "sha256": "6e0af0ff135c08230a0dbd41f32b4bb364c4bf9584eb8a9229c76707f2e11bd8"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/action_capture_fault/health.json",
+      "bytes": 511,
+      "sha256": "97b3fc92ba04cac9460faa5d89d411e6b9b3309b29a66bfce16cf367692bf7da"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/action_capture_fault/messages.bin",
+      "bytes": 8064,
+      "sha256": "affc359897c93a395a98248ae7c6813495457ee643f1717e2c3983b28db39e68"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/action_reject/assertions.json",
+      "bytes": 559,
+      "sha256": "456c6e0e3bfa0a713c268dcb189c4ce360d333096c62ae7ea4ef038022d7965c"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/action_reject/health.json",
+      "bytes": 304,
+      "sha256": "26342d3bd63797c8a00b3b0a6d6a21c09c2d5f0e2dd131375129a6deb7577dea"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/action_reject/messages.bin",
+      "bytes": 7523,
+      "sha256": "24d55d590390bc380bddc4af7673120b07de424f77e4590d2981ae37c87a920c"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/action_success/assertions.json",
+      "bytes": 562,
+      "sha256": "2ca095d45bb900641ea96156f0fb25207f01cf7553f87ab7459d797e8e8b8af9"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/action_success/health.json",
+      "bytes": 306,
+      "sha256": "d5895a5347e73df02fbe29b1ffe617105e2ff94ce3986cdbb2dbfa8753744e43"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/action_success/messages.bin",
+      "bytes": 10117,
+      "sha256": "0dfee62a94c54defb9318d6f2d8541e3ed3e43b252ae7eca02016c587b6fd44a"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/certificate/health.json",
+      "bytes": 306,
+      "sha256": "5efe2e000081bf92711735fde43a0c6f5c70600d1fd38b2ca3753b8810268345"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/certificate/messages.bin",
+      "bytes": 1297,
+      "sha256": "d6edc9c44c4bc061622b3475806281b697f4969993cfa98a27d973fb9e3f71a4"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/disk_fault/health.json",
+      "bytes": 394,
+      "sha256": "589a4157214c5db3a45baeef7b30219212b66f3cc2d62d7e152e95eb02051fca"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/mid_write_fault/health.json",
+      "bytes": 402,
+      "sha256": "0399d54b0480b70813f3f61bb5b53e33d5e4068279c051ed6a30d9324724a2f6"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/queue_full/health.json",
+      "bytes": 393,
+      "sha256": "ebd42f1ec20b817c9b3ffd087e3bf71b9b2c7624dc751da8830f01519562de1e"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/queue_full/messages.bin",
+      "bytes": 726,
+      "sha256": "a8dc22c161813de4ddacd6cc692fb42a003157c40d948bc22cd20169d9cafaa7"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/rate_1750hz/health.json",
+      "bytes": 313,
+      "sha256": "214ff541961e0ef89b5da01ffa48301845f581aa3663d20d1967ea9b5b9046ba"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/rate_1750hz/messages.bin",
+      "bytes": 3232893,
+      "sha256": "6abe0efef38731becfbdd9ea1476880789973d1d94fbfd61006ed07f49a76944"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_verified/rate_1750hz/rate_result.json",
+      "bytes": 775,
+      "sha256": "e0cf98e313371f294e7485b9fe5948d9ccfc01ee1f609ac57f311d0f9ab0da3d"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_workload_window/rate_1750hz/health.json",
+      "bytes": 313,
+      "sha256": "214ff541961e0ef89b5da01ffa48301845f581aa3663d20d1967ea9b5b9046ba"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_workload_window/rate_1750hz/messages.bin",
+      "bytes": 3232893,
+      "sha256": "0dfad06d49fbea0e649996f04cf86b754e1e5e6c898aba91dfb53605bf283604"
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/gate3_aprime/capture_wiring_20261020/synthetic_workload_window/rate_1750hz/rate_result.json",
+      "bytes": 876,
+      "sha256": "5ce59bede6eee698762cd4300b2f8f858f8b9cecff77d9c9acbbda6f0a40d3e2"
+    }
+  ],
+  "result": {
+    "passed": 107,
+    "skipped": 3,
+    "skip_reason": "missing historical G9/baseline evidence",
+    "new_wiring_tests": 21,
+    "targeted_probe_window_recheck": "1 passed; publication-window-only heartbeat count and maximum gap"
+  },
+  "command": "/usr/bin/python3 -m pytest -q -rs --tb=short src/luggage_planning/test/test_capture_wiring.py src/luggage_planning/test/test_ros_boundary_capture.py src/luggage_gazebo/test/test_transit_capture_exit.py src/luggage_gazebo/test/test_handoff_driver_gate.py src/luggage_gazebo/test/test_handoff_settle.py src/luggage_gazebo/test/test_startup_probe.py src/luggage_planning/test/test_timed_execution_budget.py",
+  "environment": {
+    "ROS_DOMAIN_ID": 118,
+    "ros": "Humble",
+    "python": "/usr/bin/python3",
+    "overlays": [
+      "/opt/ros/humble/setup.bash",
+      "/home/adamliao/work/elfin_humble_ws/install/setup.bash",
+      "/tmp/elfin-master-pack-baseline-g3/install/setup.bash"
+    ],
+    "PYTHONPATH": [
+      "src/luggage_planning",
+      "src/luggage_gazebo"
+    ],
+    "synthetic_backend_only": true
+  },
+  "synthetic_rate_result": {
+    "synthetic_only": true,
+    "published": 7000,
+    "per_topic_published": [
+      5000,
+      1000,
+      1000
+    ],
+    "elapsed_s": 4.000051696,
+    "offered_hz": 1749.9773832922983,
+    "target_hz": 1750,
+    "target_topic_hz": {
+      "/clock": 1250,
+      "/joint_states": 250,
+      "/elfin_arm_controller/controller_state": 250
+    },
+    "callback_p99_ms": 0.045115,
+    "callback_max_ms": 0.182205,
+    "execution_heartbeats": 799,
+    "probe_max_gap_ms": 5.414251,
+    "measurement_window": "publication workload only; excludes setup/drain",
+    "health": {
+      "received": 7000,
+      "enqueued": 7000,
+      "written": 7000,
+      "dropped": 0,
+      "failed": 0,
+      "written_bytes": 3232893,
+      "errors": [],
+      "closed": true,
+      "queued_bytes": 0,
+      "run_id": "synthetic-1750hz",
+      "worker_alive": false,
+      "pending": 0,
+      "recorder_io_complete": true,
+      "run_capture_complete": false
+    }
+  },
+  "simulation_runs": 0,
+  "motion_runs": 0,
+  "scored_units": 0,
+  "dispatch_ready": false,
+  "historical_replay_admitted": false,
+  "capture_complete": false,
+  "historical_goal_recovered": false,
+  "production_failure_captured": false,
+  "automatic_retry": false,
+  "transport_context_change": "explicit action/service forwarding; downstream rejection maps to upstream abort after acceptance",
+  "remaining": [
+    "freeze new single-run command/config/install revision and budget",
+    "verify required same-run boundary coverage on actual future diagnostic",
+    "audit complete goals/actions/source feedback before replay admission"
+  ],
+  "teardown": "all synthetic ROS executors shut down, nodes destroyed, recorders drained; no sim started"
+}

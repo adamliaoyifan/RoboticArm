@@ -1,0 +1,747 @@
+{
+  "implementation_revision": "b7ebea8cdf30d691a009b7ac5b4aa74b67e9af97",
+  "functional_suites_passed": 0,
+  "functional_suites_attempted": 2,
+  "files": {
+    "teardown_audit.json": {
+      "bytes": 156,
+      "sha256": "60c669eaeaa82844a6e13ad778f28c4c70a0b187859cef4cf1ce1c45e29ac613",
+      "git_compact_evidence": true
+    },
+    "pytest.log": {
+      "bytes": 179,
+      "sha256": "5471693db36b5beee664e47a19f478d981d492edd42e38d3c72b17dede4b3e2a",
+      "git_compact_evidence": true
+    },
+    "build.log": {
+      "bytes": 1052,
+      "sha256": "cdc8e626637bf00678e653a77894b23e866e14e0256e8b08a8b6f98ef7ac4fbb",
+      "git_compact_evidence": true
+    },
+    "summarize_run.py": {
+      "bytes": 2717,
+      "sha256": "4d0649a09b466d8390c4a176334fcb6d8ea94623aa88f9980d2bd2c3e3b24e14",
+      "git_compact_evidence": true
+    },
+    "REPORT.md": {
+      "bytes": 4976,
+      "sha256": "3a6bfe045e38a0de0019f382eee3cfcd63530baf8a4fab7b64492466ad94a039",
+      "git_compact_evidence": true
+    },
+    "live_02/manifest.json": {
+      "bytes": 1077,
+      "sha256": "2e9d6859d3836ed32e2e8935a9c43f9e2819dc8a783bd73f1d8ba3dd625627c7",
+      "git_compact_evidence": true
+    },
+    "live_02/physical_attachment.jsonl": {
+      "bytes": 968,
+      "sha256": "b768ba6bea42e487f5ceb30fe4e20e3873ce1239e5ba947258df8d1510f4e1e0",
+      "git_compact_evidence": true
+    },
+    "live_02/driver.log": {
+      "bytes": 3852,
+      "sha256": "d31cef0ecff42f43dbdf07d266f9a9458e05a746fdfc128e5bd7392789c3b9f7",
+      "git_compact_evidence": true
+    },
+    "live_02/metrics.json": {
+      "bytes": 3514,
+      "sha256": "dc3735dbf967b2e578ef618f976648c12e4f1f8c0598e8b2614465b1d915baca",
+      "git_compact_evidence": true
+    },
+    "live_02/spawn.sdf": {
+      "bytes": 3283,
+      "sha256": "64e8d008db03c27081d62178e9865aaeed954ef627456b71fd6093a3e1e81a42",
+      "git_compact_evidence": true
+    },
+    "live_02/robot_expanded.urdf": {
+      "bytes": 23248,
+      "sha256": "6e99521fd038b281a893b673335a515ac8bd45020494b008965ad6be9414dc92",
+      "git_compact_evidence": true
+    },
+    "live_02/runner.log": {
+      "bytes": 270,
+      "sha256": "e5b97ecaebf394d61e33e51ad9d427fca9f89f5822486566b8f6f5b141e46256",
+      "git_compact_evidence": true
+    },
+    "live_02/startup_preflight.json": {
+      "bytes": 274,
+      "sha256": "384faa5051c66f3c4b122e52758ecd8f09a3ff43061c9db29e8a62a07abe658f",
+      "git_compact_evidence": true
+    },
+    "live_02/scene_tf_used.yaml": {
+      "bytes": 1499,
+      "sha256": "fa2af81a47a0946581faf5bd69ed28f942baabff90ad0c87b191d6d457d1e960",
+      "git_compact_evidence": true
+    },
+    "live_02/robot_poses_used.yaml": {
+      "bytes": 1193,
+      "sha256": "52932ce4247f7dab7b06357c6b74e930d3bd2de8a1f56d25c4d3605af5e4a074",
+      "git_compact_evidence": true
+    },
+    "live_02/preflight.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "git_compact_evidence": true
+    },
+    "live_02/attachment_geometry.yaml": {
+      "bytes": 371,
+      "sha256": "3fa5139862ff950eb84ed5e139752e4d9776ded7d75007ba8ee9209cecae9956",
+      "git_compact_evidence": true
+    },
+    "live_02/launch.log": {
+      "bytes": 107536,
+      "sha256": "3a753e661cc89d456180575f4a22cd56af8f6164c245d277064e12c6e392e740",
+      "git_compact_evidence": true
+    },
+    "live_02/teardown.log": {
+      "bytes": 65,
+      "sha256": "c9dc9bdfc2f2475d3fca0f27d39e90ff4ebdc966b0c06954aa3be5184dd936df",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/ledger.jsonl": {
+      "bytes": 1120,
+      "sha256": "354bf809dd25929102d82613b84826661aef80d83d87f6559959d34904c5524d",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/graph_diagnostics.json": {
+      "bytes": 870,
+      "sha256": "ebb73c905440bdfca81a2a60d0d00decebcaa48a7e0e0acde1d63d9bf7e31563",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/rtf.jsonl": {
+      "bytes": 48,
+      "sha256": "32f682698e9eef04a805206da46686c8ffc0ca4894e2b56889abea37be390328",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/sequence.json": {
+      "bytes": 255,
+      "sha256": "404db59539c6a5994669d73540595ba47d5bcbfc4bab786474c48923e99459c1",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/trials.jsonl": {
+      "bytes": 1120,
+      "sha256": "354bf809dd25929102d82613b84826661aef80d83d87f6559959d34904c5524d",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/suite.json": {
+      "bytes": 1482,
+      "sha256": "234486d9b37422c783660270c30ec118a52140098c0c4f66983853fd71a31795",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/executor_lifecycle.jsonl": {
+      "bytes": 418,
+      "sha256": "8e53b4b17059d1185515d831480676aa5917205a3cb711efc063a487ed179c7d",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/final_layout/occupancy_gt.json": {
+      "bytes": 31115,
+      "sha256": "f02f1fb0a7040d4ec2aae1739112e9a7ae83718a22aa186d9cf739a9117c0559",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/final_layout/interior_free.ply": {
+      "bytes": 513179,
+      "sha256": "3f188efd5cd10e90edaa76298dd6786c99431d42ef062f37aa23883886ceb9e8",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/final_layout/meta.json": {
+      "bytes": 726,
+      "sha256": "718e9fa9a3687068c45462a6525f39abc177144cdd9f92368b3d9731a4b0c202",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/final_layout/occupancy_gt.png": {
+      "bytes": 790,
+      "sha256": "f7750f1001e4b23e21776f93e1af37984732296ce90ea429aa266694ba81fda9",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/final_layout/layout.html": {
+      "bytes": 148771,
+      "sha256": "73b18856734201313274bc4f2c2ae7a9abcbd93a78efe7a738c1aea5a876c768",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/final_layout/surface_2d.json": {
+      "bytes": 109009,
+      "sha256": "e700e35aa8fb813d20ce54eb3e9c03092a0c63eb4be9585867bbd2f9735c95ee",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/final_layout/layout.ply": {
+      "bytes": 755879,
+      "sha256": "d5f0b7671524ec42a08a325479bc230207bb8f72827122714472ec77016a9b2e",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/final_layout/boxes.json": {
+      "bytes": 97,
+      "sha256": "63a7c7faf563d2f97490bab21d83f67979b6a0bbe065ccdf8e2cc68926e2c7eb",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/final_layout/container_and_boxes.ply": {
+      "bytes": 242879,
+      "sha256": "3d9a558f152845531e68dac5e415664f72bfbc2c970cc0d772c70aa399973c23",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/commit.json": {
+      "bytes": 68,
+      "sha256": "3520f5200e28f8dfeb7b7c8a9712f5694ed694f9a5f99b652b0b444accb5d8e8",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/vacuum_events.jsonl": {
+      "bytes": 99,
+      "sha256": "5109435913aee0849bdd33b10f8ad67b3a8ee19b2195afb8b5b6641e2eadd621",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/perception_boundary.json": {
+      "bytes": 38673,
+      "sha256": "e369727dc69e3c91460583aa40f4de32ee23c3e47a744013615a6d81a87511a3",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/scene.json": {
+      "bytes": 1753,
+      "sha256": "bb0f08c9257c8d02dad234d1138657da4d3694e6f9c992cc63094dc893f8e345",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/reject_histogram.json": {
+      "bytes": 3,
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/trial.json": {
+      "bytes": 466392,
+      "sha256": "6a112fca86c02648e80ecff689ca22b79e9130544c1adc3522bbdbd018850c92",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/box_model": {
+      "bytes": 25,
+      "sha256": "23f0bb7e99e797886890b08c8b0d7c6541d78f50044d91025764c20c07bc1e50",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/surface_2d.json": {
+      "bytes": 109009,
+      "sha256": "e700e35aa8fb813d20ce54eb3e9c03092a0c63eb4be9585867bbd2f9735c95ee",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/tf_trace.jsonl": {
+      "bytes": 2539,
+      "sha256": "6ca48712f4538aa58b5447774898070daacc5814ff27d9af99416e3345cafaac",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/box.json": {
+      "bytes": 466328,
+      "sha256": "f78d656895f655d975b79b7b6efd8c0fdf8076f5885f242dac48cc0e7c28c2d6",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/slot.json": {
+      "bytes": 386,
+      "sha256": "23d6b2ae99aed0cad2f1e20e88b124259e07932ecdb0826ac524e9fc217dd9fc",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/compute_placement.json": {
+      "bytes": 3,
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/segments.jsonl": {
+      "bytes": 3342,
+      "sha256": "31d00ec469eb6375bdb138510dc4e9485ce57a1905e2b3e1b2f7918c2f6850a9",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/corridor_audit.json": {
+      "bytes": 204,
+      "sha256": "8d2c92c06ef69824f4865a8f38a71847787a4f77db58f14965e41a3aa88e36ed",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/state_timeline.jsonl": {
+      "bytes": 1218,
+      "sha256": "0705b72474fe9d1489b07e52b020e4a93793895740fdd56d2f333d5e7b929211",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/replay/manifest.json": {
+      "bytes": 465,
+      "sha256": "f86b18ddb78d00f1bc83d469c61d5a5af67c0262df8ada2e28549b16a7bedb70",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/replay/perception_refs.json": {
+      "bytes": 694,
+      "sha256": "4cc9e3be6b8214b3ad638f697f53af30e97afe93771e8064fbc555072af34ed9",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/replay/last_boundary.json": {
+      "bytes": 2645,
+      "sha256": "1cb2749ec54acfececcd19cfca5d31ca0c8c4069922461e33f34f612e1236a2c",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/replay/surface_2d.json": {
+      "bytes": 109009,
+      "sha256": "e700e35aa8fb813d20ce54eb3e9c03092a0c63eb4be9585867bbd2f9735c95ee",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/replay/joint_ring.jsonl": {
+      "bytes": 250618,
+      "sha256": "91015b05fe57764ca51b6e0852a20f121f42ad5891ec516934eb0882ff7485be",
+      "git_compact_evidence": true
+    },
+    "live_02/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/replay/planning_scene.json": {
+      "bytes": 1753,
+      "sha256": "bb0f08c9257c8d02dad234d1138657da4d3694e6f9c992cc63094dc893f8e345",
+      "git_compact_evidence": true
+    },
+    "live_02/selection_boundary/place-v2-2/planning_scene.cdr": {
+      "bytes": 15081,
+      "sha256": "0f77db40223ac103567a5e1f3b42fbb11c0cf33688e68579cf0af6058aa8062d",
+      "git_compact_evidence": true
+    },
+    "live_02/selection_boundary/place-v2-2/response.cdr": {
+      "bytes": 248536,
+      "sha256": "7d70d2f9db837a974d4766b4c3bbaca5d1b370507f2104fdba415d3e5dbcf1d5",
+      "git_compact_evidence": true
+    },
+    "live_02/selection_boundary/place-v2-2/request.json": {
+      "bytes": 571879,
+      "sha256": "b6267753bf824b3cd29119b4df2fb153968d96761880c4067b63003e74b5238f",
+      "git_compact_evidence": true
+    },
+    "live_02/selection_boundary/place-v2-2/response_rows.json": {
+      "bytes": 17993,
+      "sha256": "27b94b9d89bd631d29864645e7e1fac1ca39d69d441ef215a090d9e4534ad9a3",
+      "git_compact_evidence": true
+    },
+    "live_02/joint_capture/manifest_recorder.json": {
+      "bytes": 603,
+      "sha256": "0f809038f1340afec138ddef10b3e57b0bd7f8e3bea231e8e9ffc15c8c346990",
+      "git_compact_evidence": true
+    },
+    "live_02/joint_capture/events.bin": {
+      "bytes": 288,
+      "sha256": "3f53d350220644f7ba552c84e33a6e0f058a9c82506e9ba87f677edbc0724607",
+      "git_compact_evidence": true
+    },
+    "live_02/joint_capture/plugin_write.bin": {
+      "bytes": 119390080,
+      "sha256": "205b2cd86549ef691eeae31d804f41cbe1b455de4c92c09a66edfaad32eb2085",
+      "git_compact_evidence": false
+    },
+    "live_02/joint_capture/plugin_read.bin": {
+      "bytes": 11415512,
+      "sha256": "d987c08719311508f69a88e1ca5ebe8edaf18e715e3be4e624707e135b8c77f6",
+      "git_compact_evidence": false
+    },
+    "live_02/joint_capture/follow_trace.jsonl": {
+      "bytes": 3142463,
+      "sha256": "249dc54b93aee3b8245e2a8fa85b0dc38a11d5ede02accb4a4f7caf53b1ea5d6",
+      "git_compact_evidence": false
+    },
+    "live_02/joint_capture/iteration.bin": {
+      "bytes": 1073622,
+      "sha256": "a114efd99fba43fa402b400b6cf339773d8794337b590887589471b919c36aa7",
+      "git_compact_evidence": true
+    },
+    "live_02/joint_capture/health.json": {
+      "bytes": 482,
+      "sha256": "8e371dd063912092a142a31d8a741081dc03d5f231fddd7a192f5a43edd1aee3",
+      "git_compact_evidence": true
+    },
+    "live_02/joint_capture/ctl/stop": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "git_compact_evidence": true
+    },
+    "startup_01/manifest.json": {
+      "bytes": 1077,
+      "sha256": "81d3a093045c2147599790b645ba3d6d60e3025296d0fb7cc78de63a5a14d7ac",
+      "git_compact_evidence": true
+    },
+    "startup_01/robot_expanded.urdf": {
+      "bytes": 23248,
+      "sha256": "6e99521fd038b281a893b673335a515ac8bd45020494b008965ad6be9414dc92",
+      "git_compact_evidence": true
+    },
+    "startup_01/runner.log": {
+      "bytes": 281,
+      "sha256": "8dc460e011345bd8a1e73d15c9a69541d391f4c0a793265951fdcc14dd1bf1d7",
+      "git_compact_evidence": true
+    },
+    "startup_01/startup_preflight.json": {
+      "bytes": 275,
+      "sha256": "366537a5291a80804cdb13a7a6d5e68643ad7a5fbd339b181bdf3dadc4ad804e",
+      "git_compact_evidence": true
+    },
+    "startup_01/scene_tf_used.yaml": {
+      "bytes": 1499,
+      "sha256": "fa2af81a47a0946581faf5bd69ed28f942baabff90ad0c87b191d6d457d1e960",
+      "git_compact_evidence": true
+    },
+    "startup_01/robot_poses_used.yaml": {
+      "bytes": 1193,
+      "sha256": "52932ce4247f7dab7b06357c6b74e930d3bd2de8a1f56d25c4d3605af5e4a074",
+      "git_compact_evidence": true
+    },
+    "startup_01/preflight.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "git_compact_evidence": true
+    },
+    "startup_01/attachment_geometry.yaml": {
+      "bytes": 371,
+      "sha256": "3fa5139862ff950eb84ed5e139752e4d9776ded7d75007ba8ee9209cecae9956",
+      "git_compact_evidence": true
+    },
+    "startup_01/launch.log": {
+      "bytes": 69069,
+      "sha256": "f98411cbb80fc1d8d3705212107f65e055bd595b237cacf531a3b4dd8e858460",
+      "git_compact_evidence": true
+    },
+    "startup_01/teardown.log": {
+      "bytes": 65,
+      "sha256": "856de570030badf53f2b5b1608e9a45011a6e22c431ce5b52c05cd1869934ed6",
+      "git_compact_evidence": true
+    },
+    "startup_01/joint_capture/manifest_recorder.json": {
+      "bytes": 586,
+      "sha256": "9d1226eb8f3dce75003a809c092b2afab7f4d126a16697ad85e4b34c702f4f81",
+      "git_compact_evidence": true
+    },
+    "startup_01/joint_capture/events.bin": {
+      "bytes": 288,
+      "sha256": "e320d03e513740233e808faf05e234aa23f17a2ee6087c309b4165611b8cedf2",
+      "git_compact_evidence": true
+    },
+    "startup_01/joint_capture/plugin_write.bin": {
+      "bytes": 3140632,
+      "sha256": "14367df1b1b9c84e77929de2736cfbc0fb422adb39371fef382ab6761cdc41f2",
+      "git_compact_evidence": false
+    },
+    "startup_01/joint_capture/plugin_read.bin": {
+      "bytes": 300128,
+      "sha256": "246c2f6e93a645edbf9ec855dea0355941a71a8f9e9b3f4db76049946375dd8b",
+      "git_compact_evidence": true
+    },
+    "startup_01/joint_capture/iteration.bin": {
+      "bytes": 28368,
+      "sha256": "a20b08308e160b52b9251f027403f0bdc1a0d6bb16e7b09d89c55ffceb1e064e",
+      "git_compact_evidence": true
+    },
+    "startup_01/joint_capture/health.json": {
+      "bytes": 465,
+      "sha256": "5ff56373999c1a9eb171bbbd88c6b7ceff06b48598a96e7d47421bc2992ce2e8",
+      "git_compact_evidence": true
+    },
+    "startup_01/joint_capture/ctl/stop": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "git_compact_evidence": true
+    },
+    "live_01/manifest.json": {
+      "bytes": 1077,
+      "sha256": "9ca8266f4cd5af4e4c9dac653190313706a49017f8830b2f3b3473a2dbdf3658",
+      "git_compact_evidence": true
+    },
+    "live_01/physical_attachment.jsonl": {
+      "bytes": 967,
+      "sha256": "0f318d196d9c215302369528212a9682a202780f0f5bcef38f739f00cba9f878",
+      "git_compact_evidence": true
+    },
+    "live_01/driver.log": {
+      "bytes": 3852,
+      "sha256": "3b1008f136f97447480cd76ed6af7fb90091ff7b133109699cc8be71017ce54f",
+      "git_compact_evidence": true
+    },
+    "live_01/metrics.json": {
+      "bytes": 21683,
+      "sha256": "e26586fd8a5ccc6fa11be36cc24551d25eeb5b1c3c1a5307c2b927fc40909e31",
+      "git_compact_evidence": true
+    },
+    "live_01/spawn.sdf": {
+      "bytes": 3283,
+      "sha256": "64e8d008db03c27081d62178e9865aaeed954ef627456b71fd6093a3e1e81a42",
+      "git_compact_evidence": true
+    },
+    "live_01/robot_expanded.urdf": {
+      "bytes": 23248,
+      "sha256": "6e99521fd038b281a893b673335a515ac8bd45020494b008965ad6be9414dc92",
+      "git_compact_evidence": true
+    },
+    "live_01/runner.log": {
+      "bytes": 270,
+      "sha256": "70cd83c93338018cc9cda48445c8fee9c3bf4ee0f8e986cf48a27c4b2c6dbd26",
+      "git_compact_evidence": true
+    },
+    "live_01/startup_preflight.json": {
+      "bytes": 275,
+      "sha256": "48b65af588bd1791e9734d986e3c09e51765578ca4f23e87c67e496ada0ac6af",
+      "git_compact_evidence": true
+    },
+    "live_01/scene_tf_used.yaml": {
+      "bytes": 1499,
+      "sha256": "fa2af81a47a0946581faf5bd69ed28f942baabff90ad0c87b191d6d457d1e960",
+      "git_compact_evidence": true
+    },
+    "live_01/robot_poses_used.yaml": {
+      "bytes": 1193,
+      "sha256": "52932ce4247f7dab7b06357c6b74e930d3bd2de8a1f56d25c4d3605af5e4a074",
+      "git_compact_evidence": true
+    },
+    "live_01/preflight.log": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "git_compact_evidence": true
+    },
+    "live_01/attachment_geometry.yaml": {
+      "bytes": 371,
+      "sha256": "3fa5139862ff950eb84ed5e139752e4d9776ded7d75007ba8ee9209cecae9956",
+      "git_compact_evidence": true
+    },
+    "live_01/launch.log": {
+      "bytes": 141241,
+      "sha256": "df58bf3552c7824a41ece7d8aa24d203af579dc794bc0160d83e3b8d54a83f00",
+      "git_compact_evidence": true
+    },
+    "live_01/teardown.log": {
+      "bytes": 65,
+      "sha256": "bec4ff65d6a5898145e0ecbd1caf96661446a0a253fe5e54e28c52d3d74fe189",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/ledger.jsonl": {
+      "bytes": 1122,
+      "sha256": "215f3b50943733fb25805975e6b58ee9586a7e227b1aec3b8e8ff3780863e387",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/graph_diagnostics.json": {
+      "bytes": 1146,
+      "sha256": "25c0792a37ab3f3caa3e21082ce84002351279ee0168b69494e32c1aa217ebd2",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/rtf.jsonl": {
+      "bytes": 45,
+      "sha256": "0deb2189619496ec25c6b88ea1de1e8d462cea52e9105db1c13f5c07dcf3d676",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/sequence.json": {
+      "bytes": 255,
+      "sha256": "404db59539c6a5994669d73540595ba47d5bcbfc4bab786474c48923e99459c1",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/trials.jsonl": {
+      "bytes": 1122,
+      "sha256": "215f3b50943733fb25805975e6b58ee9586a7e227b1aec3b8e8ff3780863e387",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/suite.json": {
+      "bytes": 1482,
+      "sha256": "5eac11f83bc672d5cf5296d11d82879f215680b99a8283c09a14572d99211f71",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/executor_lifecycle.jsonl": {
+      "bytes": 419,
+      "sha256": "0227484b2323ca0f7b0d141162d9559dbb07cc04d0b3526fd12cf751a54b9902",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/final_layout/occupancy_gt.json": {
+      "bytes": 31115,
+      "sha256": "f02f1fb0a7040d4ec2aae1739112e9a7ae83718a22aa186d9cf739a9117c0559",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/final_layout/interior_free.ply": {
+      "bytes": 513179,
+      "sha256": "3f188efd5cd10e90edaa76298dd6786c99431d42ef062f37aa23883886ceb9e8",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/final_layout/meta.json": {
+      "bytes": 726,
+      "sha256": "718e9fa9a3687068c45462a6525f39abc177144cdd9f92368b3d9731a4b0c202",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/final_layout/occupancy_gt.png": {
+      "bytes": 790,
+      "sha256": "f7750f1001e4b23e21776f93e1af37984732296ce90ea429aa266694ba81fda9",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/final_layout/layout.html": {
+      "bytes": 148771,
+      "sha256": "73b18856734201313274bc4f2c2ae7a9abcbd93a78efe7a738c1aea5a876c768",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/final_layout/surface_2d.json": {
+      "bytes": 109009,
+      "sha256": "9de944482c4505d54ee0976193ddd1dce20f6bf4c0ee34b0175fe30665169f47",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/final_layout/layout.ply": {
+      "bytes": 755879,
+      "sha256": "d5f0b7671524ec42a08a325479bc230207bb8f72827122714472ec77016a9b2e",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/final_layout/boxes.json": {
+      "bytes": 97,
+      "sha256": "63a7c7faf563d2f97490bab21d83f67979b6a0bbe065ccdf8e2cc68926e2c7eb",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/final_layout/container_and_boxes.ply": {
+      "bytes": 242879,
+      "sha256": "3d9a558f152845531e68dac5e415664f72bfbc2c970cc0d772c70aa399973c23",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/commit.json": {
+      "bytes": 68,
+      "sha256": "3520f5200e28f8dfeb7b7c8a9712f5694ed694f9a5f99b652b0b444accb5d8e8",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/vacuum_events.jsonl": {
+      "bytes": 99,
+      "sha256": "5109435913aee0849bdd33b10f8ad67b3a8ee19b2195afb8b5b6641e2eadd621",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/perception_boundary.json": {
+      "bytes": 29293,
+      "sha256": "3ea85506b7f295ac5bacae6b2868c0b3addb816b0ae03f2cdf8513e1e3e1c240",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/scene.json": {
+      "bytes": 1753,
+      "sha256": "62a632d1c5c7290a4a30a36a597eb6e12c1f333bd6cdf1ba10cbcc1529b5c6bb",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/reject_histogram.json": {
+      "bytes": 3,
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/trial.json": {
+      "bytes": 480424,
+      "sha256": "a5ee7a9dcaf6bc0a59ac8f2b749b89f044a6c849e4dc4f37c6eae301e5e4bdf5",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/box_model": {
+      "bytes": 25,
+      "sha256": "23f0bb7e99e797886890b08c8b0d7c6541d78f50044d91025764c20c07bc1e50",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/surface_2d.json": {
+      "bytes": 109009,
+      "sha256": "9de944482c4505d54ee0976193ddd1dce20f6bf4c0ee34b0175fe30665169f47",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/tf_trace.jsonl": {
+      "bytes": 2542,
+      "sha256": "8f154e764cfe835b0fb1269cf03698ddd539ffbcde71d196f790c27295f86a61",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/box.json": {
+      "bytes": 480359,
+      "sha256": "d15315fe8d004c108ce6102208ad7b193d06689d0e5660e3d90ed3be8c1fe7c3",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/slot.json": {
+      "bytes": 388,
+      "sha256": "c09a8d3a32696e719fdde8bf9c35b44abe48de0fe1fc23f20484e146ebbf1b29",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/compute_placement.json": {
+      "bytes": 3,
+      "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/segments.jsonl": {
+      "bytes": 3346,
+      "sha256": "e1f4d5aba09ced7a0b4a72eb654f78bd14a527f8264a2fac5a5fef3677cb9d02",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/corridor_audit.json": {
+      "bytes": 204,
+      "sha256": "12c6517bb829ec1456d3ef37a7cd4c132cccafede0f1be1567a2f8f597c4b0ea",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/state_timeline.jsonl": {
+      "bytes": 1222,
+      "sha256": "48a1462cbc7ac7def9fb1a092483aaa92ec43c1ec17dd079c0610e336396e326",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/replay/manifest.json": {
+      "bytes": 465,
+      "sha256": "f86b18ddb78d00f1bc83d469c61d5a5af67c0262df8ada2e28549b16a7bedb70",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/replay/perception_refs.json": {
+      "bytes": 692,
+      "sha256": "ebde88a324442350a27cb43046c31adc35f85574b372587d7a3221901444e21d",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/replay/last_boundary.json": {
+      "bytes": 2643,
+      "sha256": "b48bcd708ab102736447c73b60d3affc61e72b6e11e22ab76a57c5949120276b",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/replay/surface_2d.json": {
+      "bytes": 109009,
+      "sha256": "9de944482c4505d54ee0976193ddd1dce20f6bf4c0ee34b0175fe30665169f47",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/replay/joint_ring.jsonl": {
+      "bytes": 250212,
+      "sha256": "16188c2403b3be975090cd85f92d6bdb356f21ed6da314aee81f87c5f16fa56b",
+      "git_compact_evidence": true
+    },
+    "live_01/driver_out/dumps/box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))/replay/planning_scene.json": {
+      "bytes": 1753,
+      "sha256": "62a632d1c5c7290a4a30a36a597eb6e12c1f333bd6cdf1ba10cbcc1529b5c6bb",
+      "git_compact_evidence": true
+    },
+    "live_01/selection_boundary/place-v2-2/planning_scene.cdr": {
+      "bytes": 15081,
+      "sha256": "394a9382f6ddc424a4f12a4493c8482f57ccab032adbd42c2e13ea7bfa012b52",
+      "git_compact_evidence": true
+    },
+    "live_01/selection_boundary/place-v2-2/response.cdr": {
+      "bytes": 311673,
+      "sha256": "343d330d643b336e69102b4876f1bcc2ee3d9fd6fb84004b2fbf3e6edfdf603f",
+      "git_compact_evidence": true
+    },
+    "live_01/selection_boundary/place-v2-2/request.json": {
+      "bytes": 571151,
+      "sha256": "397fe8493e3a71da21f575c2886537e3c299fd73966377dec0be38365007a32b",
+      "git_compact_evidence": true
+    },
+    "live_01/selection_boundary/place-v2-2/response_rows.json": {
+      "bytes": 90165,
+      "sha256": "d659450c8790b65a9d7d810c7fd3c37550c12648ae1574c8aa87deb772772670",
+      "git_compact_evidence": true
+    },
+    "live_01/joint_capture/manifest_recorder.json": {
+      "bytes": 605,
+      "sha256": "768b18d8ebc54bdb8e1c6b2d997a9d16457742b4dc3eac80e38a3f228eb58240",
+      "git_compact_evidence": true
+    },
+    "live_01/joint_capture/events.bin": {
+      "bytes": 288,
+      "sha256": "15e6d56354fb537a88e82f18c0059b62e382ec36abbebe3989e8c0e09a521ca3",
+      "git_compact_evidence": true
+    },
+    "live_01/joint_capture/plugin_write.bin": {
+      "bytes": 150441400,
+      "sha256": "4f81e089400ff1490cf7d86d3ddebd2afbd4c8908ccf98c4c90a8e589d85e02b",
+      "git_compact_evidence": false
+    },
+    "live_01/joint_capture/plugin_read.bin": {
+      "bytes": 14384236,
+      "sha256": "b7a8cb6363b97fc9312b066148917d9ce63bdfefc7aaffdae1e06695b4d613a8",
+      "git_compact_evidence": false
+    },
+    "live_01/joint_capture/follow_trace.jsonl": {
+      "bytes": 4118633,
+      "sha256": "0517f46f9f0bb996e5f31caa215cfa8d6b777caa5128841082a52e9cc54fc754",
+      "git_compact_evidence": false
+    },
+    "live_01/joint_capture/iteration.bin": {
+      "bytes": 1352791,
+      "sha256": "256e22297a5ef3c96873e15a57bc5990c98dca2430b8c6900b6894ac759a2adf",
+      "git_compact_evidence": true
+    },
+    "live_01/joint_capture/health.json": {
+      "bytes": 484,
+      "sha256": "fb942bc1d9657e9f0f0bcdfa268e188dade79af7d4ec2bc771233605085c61b5",
+      "git_compact_evidence": true
+    },
+    "live_01/joint_capture/ctl/stop": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "git_compact_evidence": true
+    }
+  }
+}

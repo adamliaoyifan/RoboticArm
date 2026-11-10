@@ -1,0 +1,70 @@
+{
+  "request_id": "place-v2-2",
+  "scene_revision": "603f9b6523e104f675cbeea77805e1ff",
+  "box_wdh": [
+    0.5143269596827336,
+    0.3325262888606958,
+    0.21754086462522926
+  ],
+  "grasp": {
+    "reference": "suction_contact_frame",
+    "orientation_semantics": "box",
+    "position": [
+      5.399988216401082e-10,
+      8.13944417142293e-11,
+      0.10877043044061717
+    ],
+    "quaternion_xyzw": [
+      -1.0,
+      7.99789054428679e-13,
+      -7.2093850714873596e-12,
+      -2.739008216232456e-12
+    ],
+    "scene_revision": "603f9b6523e104f675cbeea77805e1ff",
+    "contract_version": 2,
+    "request_id": "place-v2-2",
+    "frame_id": "suction_contact_frame",
+    "length_unit": "m",
+    "stamp_ns": 20850000000,
+    "time_basis": "scene",
+    "box_id": "pickup_box_0001_inch20",
+    "generation": 2
+  },
+  "start_tcp": {
+    "contract_version": 2,
+    "frame_id": "container_link",
+    "length_unit": "m",
+    "stamp_ns": 0,
+    "time_basis": "scene",
+    "scene_revision": "603f9b6523e104f675cbeea77805e1ff",
+    "request_id": "place-v2-2",
+    "kind": "pose",
+    "reference": "suction_contact_frame",
+    "orientation_semantics": "tool_quaternion",
+    "position": [
+      -0.745,
+      -0.27,
+      1.65
+    ],
+    "quaternion_xyzw": [
+      1.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "start_joints": [
+    1.7413681058489334,
+    -1.7363665542329836,
+    -1.447857132609944,
+    4.755977733552989,
+    1.5770018576849458,
+    -1.417188799234697
+  ],
+  "geometry_hash": "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+  "map_revision": 1,
+  "box_id": "pickup_box_0001_inch20",
+  "generation": 2,
+  "mono": 3265942.6141375,
+  "sim": 26.205
+}

@@ -1,0 +1,9 @@
+{
+  "failed_windows": [],
+  "pass": false,
+  "pooled_latency": "not_computed",
+  "reasons": [
+    "window_count"
+  ],
+  "status": "fail"
+}

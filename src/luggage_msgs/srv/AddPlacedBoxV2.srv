@@ -7,7 +7,33 @@ float64[3] size_wdh
 string measured_source
 uint64 expected_map_revision
 string geometry_hash
+# [commit anchor] Verify-measured box center in container_link and the
+# caller's match tolerance. tolerance == 0 means "not supplied" and keeps
+# the legacy un-anchored commit; negative or non-finite values are
+# rejected; when supplied, the mapper rejects a slot farther than
+# tolerance from the measured pose (witness_02: a stale pre-select
+# compute slot committed 0.65 m from the verified box).
+float64[3] verified_center_container
+float64 verify_tolerance_m
+
+# [B1 transaction] Idempotency key and the full snapshot-identity premise
+# (with expected_map_revision above). Empty operation_id = pre-B1 caller
+# (a key is synthesized from the normalized content). status is one of
+# accepted/already_processed/rejected/recorded_pending.
+string operation_id
+string expected_epoch
+string expected_content_digest
+# [release-failure contract] Correlation identity of the released box
+# (must match the box_released fact's box_id) and the DECLARED source of
+# the verify measurement ("sim_gt_pose" in sim; deployment declares its
+# real observation source).
+string box_id
+string verify_source
 ---
 bool success
 string message
 uint64 resulting_map_revision
+string status
+string reason
+string epoch
+string content_digest

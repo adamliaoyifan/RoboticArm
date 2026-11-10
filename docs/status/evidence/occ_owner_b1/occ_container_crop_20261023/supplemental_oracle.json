@@ -1,0 +1,89 @@
+{
+  "revision": "b7ac4371777a18dbbe7b9cc29eae71a640d205de",
+  "rows": [
+    {
+      "yaw": 0.6457718232379019,
+      "resolution": 0.01,
+      "rays": 10000,
+      "different_sets": 0,
+      "states": {
+        "_grid": true,
+        "_source": true,
+        "_sensor_seen": true,
+        "_sensor_values": true,
+        "_sensor_labels": true,
+        "_sensor_instance_ids": true
+      }
+    },
+    {
+      "yaw": 0.6457718232379019,
+      "resolution": 0.02,
+      "rays": 10000,
+      "different_sets": 0,
+      "states": {
+        "_grid": true,
+        "_source": true,
+        "_sensor_seen": true,
+        "_sensor_values": true,
+        "_sensor_labels": true,
+        "_sensor_instance_ids": true
+      }
+    },
+    {
+      "yaw": 0.6457718232379019,
+      "resolution": 0.05,
+      "rays": 10000,
+      "different_sets": 0,
+      "states": {
+        "_grid": true,
+        "_source": true,
+        "_sensor_seen": true,
+        "_sensor_values": true,
+        "_sensor_labels": true,
+        "_sensor_instance_ids": true
+      }
+    },
+    {
+      "yaw": 1.5707963267948966,
+      "resolution": 0.01,
+      "rays": 10000,
+      "different_sets": 0,
+      "states": {
+        "_grid": true,
+        "_source": true,
+        "_sensor_seen": true,
+        "_sensor_values": true,
+        "_sensor_labels": true,
+        "_sensor_instance_ids": true
+      }
+    },
+    {
+      "yaw": 1.5707963267948966,
+      "resolution": 0.02,
+      "rays": 10000,
+      "different_sets": 0,
+      "states": {
+        "_grid": true,
+        "_source": true,
+        "_sensor_seen": true,
+        "_sensor_values": true,
+        "_sensor_labels": true,
+        "_sensor_instance_ids": true
+      }
+    },
+    {
+      "yaw": 1.5707963267948966,
+      "resolution": 0.05,
+      "rays": 10000,
+      "different_sets": 0,
+      "states": {
+        "_grid": true,
+        "_source": true,
+        "_sensor_seen": true,
+        "_sensor_values": true,
+        "_sensor_labels": true,
+        "_sensor_instance_ids": true
+      }
+    }
+  ]
+}

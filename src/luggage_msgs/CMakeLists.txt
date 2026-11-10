@@ -10,6 +10,7 @@ find_package(trajectory_msgs REQUIRED)
 find_package(moveit_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/AttachmentGeometryV2.msg"
   "msg/FrameIdentityV2.msg"
   "msg/RuntimeArtifactV2.msg"
   "msg/RuntimeEndpointV2.msg"
@@ -25,6 +26,13 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/RouteLegV2.msg"
   "msg/RouteLegResultV2.msg"
   "srv/ValidateRouteV2.srv"
+  "srv/CheckPlacementToolV2.srv"
+  "srv/CheckGraspLocalPaths.srv"
+  "msg/GraspLocalBranch.msg"
+  "srv/PreparePlacementPriorV2.srv"
+  "srv/ResetCargoMapV2.srv"
+  "srv/GetCargoValidity.srv"
+  "msg/PlacementPriorChoiceV2.msg"
   "srv/ValidateSelectedRoute.srv"
   "srv/PlanObservationRouteV2.srv"
   "srv/CheckExecutionAdmission.srv"
@@ -41,6 +49,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/AddSceneBoxV2.srv"
   "srv/RemoveSceneBoxV2.srv"
   "srv/VacuumCommandV2.srv"
+  "srv/NotifyOccupancyEvent.srv"
   "msg/DetectedLuggage.msg"
   "msg/SuctionCandidate.msg"
   "msg/YoloBox.msg"
@@ -73,6 +82,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ResetCargoMap.srv"
   "srv/IntegrateCargoView.srv"
   "srv/GetCargoMapStats.srv"
+  "srv/GetCargoVolumeV2.srv"
   "srv/EvaluateCargoViews.srv"
   "srv/OrchestratorStep.srv"
   "action/PlanMotion.action"

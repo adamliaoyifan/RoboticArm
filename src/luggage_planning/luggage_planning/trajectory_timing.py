@@ -8,7 +8,7 @@ short dip cannot race at constant ``v_max``.
 from __future__ import division
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 # Match elfin_moveit_config/config/joint_limits.yaml.
 JOINT_VEL_LIMIT_RAD = 1.57
@@ -36,6 +36,7 @@ class TimedPath:
     v_max: float
     a_max: float
     a_decel: float
+    time_scale: float = 1.0
 
 
 def cartesian_joint_limits(vel_scale, acc_scale):
@@ -53,8 +54,27 @@ def cartesian_joint_limits(vel_scale, acc_scale):
 
 def time_parameterize_cartesian(positions_rad, vel_scale, acc_scale):
     v_max, a_max = cartesian_joint_limits(vel_scale, acc_scale)
-    return time_parameterize_rest_to_rest(
-        positions_rad, v_max, a_max, a_decel=HARDWARE_DECEL_RAD)
+    positions = [list(row) for row in positions_rad]
+    timed = time_parameterize_rest_to_rest(
+        positions, v_max, a_max, a_decel=HARDWARE_DECEL_RAD)
+    from luggage_planning.spline_timing_bounds import required_time_scale
+    scale = required_time_scale(positions, timed.times_s, timed.velocities_rad,
+                                timed.accelerations_rad, v_max, min(a_max,HARDWARE_DECEL_RAD))
+    # q_new(t*scale) == q_old(t): preserving the whole interpolated curve
+    # requires scaling derivative fields as well as knot times.
+    for _ in range(3):
+        if scale != 1.:
+            timed = replace(timed, times_s=[t*scale for t in timed.times_s],
+                velocities_rad=[[v/scale for v in row] for row in timed.velocities_rad],
+                accelerations_rad=[[a/(scale*scale) for a in row] for row in timed.accelerations_rad],
+                duration=timed.duration*scale, v_peak=timed.v_peak/scale,
+                time_scale=timed.time_scale*scale)
+        wire_times = [round(t*1e9)/1e9 for t in timed.times_s]
+        scale = required_time_scale(positions, wire_times, timed.velocities_rad,
+                                    timed.accelerations_rad, v_max, min(a_max,HARDWARE_DECEL_RAD))
+        if scale == 1.:
+            return timed
+    raise ValueError('cannot bound controller spline after nanosecond rounding')
 
 
 def time_parameterize_rest_to_rest(positions_rad, v_max, a_max, a_decel=None):

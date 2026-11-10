@@ -6,8 +6,8 @@ Does not modify pick_retreat_eval_driver.py. Reuses its graph / pick helpers
 by subclassing, then continues into place instead of vacuum-off + observe.
 
 Order after descend: RELEASE_SETTLE → VacuumCommand(false) → retreat →
-AddPlacedBox. Adding the placed box while the cup is still on the lid makes
-retreat start in-collision.
+cargo-map commit ([G3 wave5] the slot-named scene AddPlacedBox channel is
+removed; occupancy columns are the single rigid-obstacle source).
 """
 
 from __future__ import division
@@ -16,12 +16,14 @@ import argparse
 import json
 import math
 import os
+import re
 import shutil
 import signal
 import subprocess
 import sys
 import threading
 import time
+import traceback
 from collections import deque
 
 import rclpy
@@ -39,13 +41,11 @@ from moveit_msgs.srv import GetPlanningScene
 from luggage_msgs.action import PlanMotion
 from luggage_msgs.msg import DetectedLuggage, MotionSegment, SlotSpec
 from luggage_msgs.srv import (
-    AddPlacedBox,
     BuildMotionSequence,
     CheckExecutionAdmission,
     ClearCurrentBox,
     DetectLuggage,
     GetCurrentBox,
-    RemovePlacedBox,
     SpawnNextBox,
 )
 
@@ -71,6 +71,7 @@ from luggage_planning.motion_boundary import (
 from luggage_planning.planning_scene_client import summarize_planning_scene
 from luggage_planning.waypoint_generator import nearest_box_yaw, tool_down_yaw
 
+from luggage_gazebo.pose_text import PoseTextDecoder, parse_pose_samples
 from luggage_gazebo.capture_budget import CONTROLLER_STATE_TOPIC
 from luggage_gazebo.handoff_settle import (
     HandoffPolicy,
@@ -546,6 +547,229 @@ def _yaw_quat(yaw):
     return q
 
 
+class ReleasePoseStream:
+    """[r7 release-boundary fix] Continuous pose/info subscription cache.
+
+    The release boundary used to read the box pose via one-shot
+    `ign model -m <name> --pose` CLI calls — the read failed with no
+    diagnostic twice (r4 box0, r6 box1: "no release pose" 4x fast
+    empty). This class keeps a daemon thread reading
+    `ign topic -e -t /world/<w>/pose/info` and caches the LATEST pose
+    per model with (sim stamp ns, wall receive s).
+
+    Freshness contract (r7 frozen thresholds): sim age <= 100 ms,
+    wall-receive age <= 500 ms; a FUTURE stamp or a stamp older than
+    the epoch floor (first stamp the cache ever observed, minus
+    tolerance) is a previous-instance / time-jump-back message and is
+    REJECTED — never served. A missing or stale sample refuses the
+    release by name; there is no fallback read and no reuse of
+    pre-delete samples after the swap (the frozen pose is the value
+    read BEFORE the static delete).
+    """
+
+    SIM_AGE_MAX_S = 0.100
+    WALL_AGE_MAX_S = 0.500
+    EPOCH_TOL_S = 0.250
+
+    def __init__(self, world=GZ_WORLD, ign_bin=None):
+        self._world = str(world)
+        self._ign = ign_bin or _ign_model_bin()
+        self._lock = threading.Lock()
+        self._latest = {}        # name -> (stamp_ns, pose7, recv_wall)
+        self._epoch_floor_ns = None
+        self._proc = None
+        self._thread = None
+        self._stop = threading.Event()
+        self._decoder = PoseTextDecoder()
+        self.errors = self._decoder.errors
+
+    # -- lifecycle ------------------------------------------------------
+    def start(self):
+        if self._thread is not None:
+            return self
+        topic = "/world/%s/pose/info" % self._world
+        self._proc = subprocess.Popen(
+            [self._ign, "topic", "-e", "-t", topic],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, errors="replace")
+        self._thread = threading.Thread(
+            target=self._read_loop, daemon=True,
+            name="release_pose_stream")
+        self._thread.start()
+        return self
+
+    def stop(self):
+        self._stop.set()
+        if self._proc is not None:
+            try:
+                self._proc.terminate()
+            except OSError:
+                pass
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+
+    def _read_loop(self):
+        try:
+            for line in self._proc.stdout:
+                if self._stop.is_set():
+                    break
+                self._ingest_line(line)
+        except (OSError, ValueError) as exc:  # keep the cache; record why
+            self.errors.append({"reason": "reader_error", "detail": repr(exc)})
+        finally:
+            with self._lock:
+                self._decoder.finish()
+
+    # -- parsing --------------------------------------------------------
+    def _ingest_line(self, line):
+        with self._lock:
+            for sample in self._decoder.feed_line(line):
+                if (self._epoch_floor_ns is None
+                        or sample.stamp_ns < self._epoch_floor_ns):
+                    self._epoch_floor_ns = (
+                        sample.stamp_ns - int(self.EPOCH_TOL_S * 1e9))
+                self._latest[sample.model] = (
+                    sample.stamp_ns, list(sample.pose7), time.monotonic())
+
+    # -- reads ----------------------------------------------------------
+    def latest(self, model):
+        with self._lock:
+            return self._latest.get(str(model))
+
+    def read_release_pose(self, model, now_sim_s,
+                          timeout_s=2.0, wall_now=None, *,
+                          after_sim_stamp_ns=None, after_receive_monotonic_s=None,
+                          accept_pose=None):
+        """(pose7|None, record). Refuses stale/missing/future/old-epoch
+        samples by name; never falls back."""
+        wall = wall_now or time.monotonic
+        deadline = time.monotonic() + float(timeout_s)
+        reason = None
+        rejected = []
+        rejection_count = 0
+        last_candidate = None
+        while True:
+            with self._lock:
+                entry = self._latest.get(str(model))
+                floor = self._epoch_floor_ns
+                decoder_evidence = self._decoder.diagnostics()
+                parse_reason = self._decoder.last_rejections.get(str(model))
+            record = {"model": str(model), "epoch_floor_ns": floor,
+                      "decoder": decoder_evidence,
+                      "after_sim_stamp_ns": after_sim_stamp_ns,
+                      "after_receive_monotonic_s": after_receive_monotonic_s}
+            if entry is None:
+                reason = parse_reason or "no_message"
+            else:
+                stamp_ns, pose6, recv_wall = entry
+                sim_now = now_sim_s() if callable(now_sim_s) else now_sim_s
+                now_ns = int(float(sim_now) * 1e9)
+                sim_age_s = (now_ns - stamp_ns) / 1e9
+                wall_age_s = wall() - recv_wall
+                record.update({
+                    "stamp_ns": stamp_ns,
+                    "received_monotonic_s": recv_wall,
+                    "sim_age_ms": round(sim_age_s * 1e3, 1),
+                    "wall_age_ms": round(wall_age_s * 1e3, 1),
+                })
+                if after_sim_stamp_ns is not None and stamp_ns <= after_sim_stamp_ns:
+                    reason = "pre_command_stamp"
+                elif after_receive_monotonic_s is not None and recv_wall <= after_receive_monotonic_s:
+                    reason = "pre_command_receive"
+                elif sim_age_s < -self.EPOCH_TOL_S:
+                    reason = "future_stamp"
+                elif floor is not None and stamp_ns < floor:
+                    reason = "old_epoch_stamp"
+                elif sim_age_s > self.SIM_AGE_MAX_S:
+                    reason = "stale_sim_age"
+                elif wall_age_s > self.WALL_AGE_MAX_S:
+                    reason = "stale_wall_age"
+                elif accept_pose is not None and not accept_pose(pose6):
+                    reason = "pose_not_confirmed"
+                    last_candidate = list(pose6)
+                else:
+                    record.update(verdict="fresh", rejection_count=rejection_count,
+                                  rejected_samples=rejected)
+                    return list(pose6), record
+                # Keep a bounded upstream window; repeated polling of the same
+                # cached sample is one observation, not multiple measurements.
+                sample_key = (stamp_ns, recv_wall, reason)
+                if not rejected or sample_key != tuple(rejected[-1][key] for key in
+                                                       ("stamp_ns", "received_monotonic_s", "reason")):
+                    rejection_count += 1
+                    rejected.append(dict(stamp_ns=stamp_ns, received_monotonic_s=recv_wall,
+                                         pose_xyzw7=list(pose6), reason=reason))
+                    if len(rejected) > 8:
+                        rejected.pop(0)
+            if time.monotonic() >= deadline:
+                record.update(rejection_count=rejection_count, rejected_samples=rejected,
+                              last_candidate_pose_xyzw7=last_candidate)
+                record["verdict"] = "refused"
+                record["reason"] = reason or "no_message"
+                return None, record
+            time.sleep(0.02)
+
+
+def parse_pose_stream_sample(text, model):
+    """Replay the same Pose_V text decoder used by the live release cache."""
+    return parse_pose_samples(text, model)
+
+
+def _quat7_to_rpy6(pose7):
+    """[x,y,z,qx,qy,qz,qw] -> [x,y,z,roll,pitch,yaw] (ZYX, clamped)."""
+    x, y, z, qx, qy, qz, qw = [float(v) for v in pose7]
+    sinr_cosp = 2.0 * (qw * qx + qy * qz)
+    cosr_cosp = 1.0 - 2.0 * (qx * qx + qy * qy)
+    roll = math.atan2(sinr_cosp, cosr_cosp)
+    sinp = 2.0 * (qw * qy - qz * qx)
+    pitch = math.copysign(math.pi / 2.0, 1.0) if abs(sinp) >= 1.0 \
+        else math.asin(sinp)
+    siny_cosp = 2.0 * (qw * qz + qx * qy)
+    cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
+    yaw = math.atan2(siny_cosp, cosy_cosp)
+    return [x, y, z, roll, pitch, yaw]
+
+
+def _quat_angle_deg(qa, qb):
+    """Geodesic angle between two xyzw quaternions, degrees."""
+    dot = abs(sum(float(a) * float(b)
+                  for a, b in zip(qa, qb)))
+    return math.degrees(2.0 * math.acos(min(1.0, max(-1.0, dot))))
+
+
+def _first_dynamic_state(model, timeout_s=3.0, world=GZ_WORLD):
+    """First two dynamic_pose/info samples of `model` after the swap.
+
+    Returns a record with the first pose (spawn-consistency evidence:
+    compare vs the spawn request in the verdict), the finite-difference
+    first-step velocity (the stream carries no twist fields), or a
+    named gap. Evidence-only: it never gates the motion itself.
+    """
+    try:
+        proc = subprocess.run(
+            [_ign_model_bin(), "topic", "-e", "-t",
+             "/world/%s/dynamic_pose/info" % world, "--num", "60"],
+            capture_output=True, text=True, timeout=timeout_s)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"available": False, "reason": str(exc)}
+    samples = parse_pose_stream_sample(proc.stdout or "", model)
+    if len(samples) < 2:
+        return {"available": False, "reason": "insufficient_samples",
+                "n": len(samples)}
+    (t0, p0), (t1, p1) = samples[0], samples[1]
+    dt = (t1 - t0) / 1e9
+    if dt <= 0:
+        return {"available": False, "reason": "non_monotone_stamps"}
+    vel = [(b - a) / dt for a, b in zip(p0[:3], p1[:3])]
+    return {
+        "available": True, "t_sim_ns": [t0, t1],
+        "pose6": [round(v, 6) for v in p0],
+        "dt_s": round(dt, 4),
+        "first_step_velocity_mps": [round(v, 5) for v in vel],
+        "velocity_method": "finite_difference(pose_stream)",
+    }
+
+
 def _parse_synthetic_size(text):
     parts = [p.strip() for p in str(text or "").split(",") if p.strip()]
     if len(parts) != 3:
@@ -603,6 +827,17 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._probe_joints = None
         self._follow_skipped0 = 0
         self._last_joint_state = None
+        #: [B3] Live per-leg execution admission (armed only by a
+        #: successful ValidateSelectedRoute after Select; None = no leg
+        #: may claim a certified scope).
+        self._execution_admission = None
+        self._verify_route_client = None
+        self._map_stats_client = None
+        #: [release-failure contract] True from vacuum-off until the next
+        #: cycle: a physically released box stays in the world (and in
+        #: the map as pending) whatever the acceptance verdict.
+        self._frame_released = False
+        self._note_event_client = None
         self._joint_ring = deque()
         self._joint_ring_horizon_sec = JOINT_RING_FLOOR_SEC
         self._segment_exec_t0 = None
@@ -627,12 +862,6 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._subscribe_controller_state()
         self._state_pub = self.create_publisher(
             String, "/luggage/place/state", latch)
-        self._add_placed = self.create_client(
-            AddPlacedBox, "/scene_manager/add_placed_box",
-            callback_group=self._group)
-        self._remove_placed = self.create_client(
-            RemovePlacedBox, "/scene_manager/remove_placed_box",
-            callback_group=self._group)
         self._box_model = ""
         self._release_physics = None
         self._gz_create = self.create_client(
@@ -992,26 +1221,147 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._tf_trace.append(sample)
         return sample
 
+    def _release_pose_stream(self):
+        """Lazily started pose/info cache (driver-lifetime: the epoch
+        floor is set at first message, well before any release)."""
+        stream = getattr(self, "_pose_stream", None)
+        if stream is None:
+            stream = ReleasePoseStream().start()
+            self._pose_stream = stream
+        return stream
+
     def _gz_box_pose(self, model=None):
         model = str(model or self._box_model or "") or self.gt_model_name()
+        self._last_gz_pose_probe = {"model": model}
         if not model:
+            self._last_gz_pose_probe["error"] = "missing model name"
             return None
-        try:
-            out = subprocess.check_output(
-                [_ign_model_bin(), "model", "-m", model, "--pose"],
-                text=True, timeout=5.0, stderr=subprocess.STDOUT)
-        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-            return None
-        return parse_ign_model_pose(out)
+        # G3 wave4 (multi_run01): a single ign CLI read raced the sim and
+        # returned nothing right at the release boundary ("no release
+        # pose"), aborting a healthy cycle. Bounded retry over ~2 s;
+        # the caller's own semantics are unchanged. [prior-g1 merge]
+        # Each probe also feeds the prior branch's diagnostic record
+        # (_last_gz_pose_probe) — observability only.
+        command = [_ign_model_bin(), "model", "-m", model, "--pose"]
+        for attempt in range(4):
+            self._last_gz_pose_probe["command"] = command
+            try:
+                out = subprocess.check_output(
+                    command,
+                    text=True, timeout=5.0, stderr=subprocess.STDOUT)
+            except (OSError, subprocess.CalledProcessError,
+                    subprocess.TimeoutExpired) as exc:
+                output = getattr(exc, "output", "") or ""
+                if isinstance(output, bytes):
+                    output = output.decode(errors="replace")
+                self._last_gz_pose_probe.update(
+                    error=type(exc).__name__, detail=str(exc),
+                    output=str(output)[-16000:],
+                    returncode=getattr(exc, "returncode", None))
+                out = ""
+            pose = parse_ign_model_pose(out) if out else None
+            if pose is not None:
+                self._last_gz_pose_probe.update(
+                    output=out[-16000:], parsed=pose)
+                return pose
+            # Unparseable-but-returned output is recorded too (the prior
+            # branch's forensic contract: the raw text must survive).
+            # Empty `out` means the exception path already recorded the
+            # raw text — do not clobber it.
+            if out:
+                self._last_gz_pose_probe.update(
+                    output=out[-16000:], parsed=None)
+            if attempt < 3:
+                time.sleep(0.5)
+        return None
 
     def on_detected_luggage(self, pick_msg, trial, spawn):
         """Hook after DetectLuggage. Return a fail_code or empty string.
 
         Pack-eval computes the place slot from this detection. Spawn GT
         must not become ComputePlacement input.
+
+        [placement-prior opt-in] With --placement-prior the measured
+        prior is prepared and bound HERE — strictly BEFORE the grasp —
+        and narrows the measured suction candidates to the chosen one.
+        The typed prior hint only REORDERS Select candidates (Select,
+        admission and route certification are unchanged); the actual
+        attachment after the grasp is the measured attach record, and
+        nothing re-chooses the grasp after it. Any failure is a NAMED
+        fallback to the original flow (adopted=false + reason); a
+        stale/old prior is never used.
         """
-        del pick_msg, trial, spawn
+        if not bool(getattr(self._args, "placement_prior", False)):
+            return ""
+        record = self._apply_placement_prior(pick_msg)
+        if record:
+            trial.extras.setdefault("placement_prior", record)
         return ""
+
+    def _placement_prior_client(self):
+        client = getattr(self, "_placement_prior_client_obj", None)
+        if client is None:
+            from luggage_planning.placement_prior_client import (
+                PlacementPriorClient)
+            client = PlacementPriorClient(
+                self, group=getattr(self, "_group", None))
+            self._placement_prior_client_obj = client
+        return client
+
+    def _apply_placement_prior(self, pick_msg):
+        """One measured prior attempt; returns the evidence record."""
+        started = time.monotonic()
+        self._typed.set_placement_prior(None)   # cycle start: no stale hint
+        record = {"adopted": False}
+        try:
+            client = self._placement_prior_client()
+            response = client.prepare(
+                pick_msg, self._frame_request_id("prior"))
+            if response is None:
+                record["reason"] = "PRIOR_UNAVAILABLE_OR_STALE_SURFACE"
+                self._typed.set_placement_prior(None)  # uniform reset
+                return record
+            from luggage_planning.placement_prior_requests import (
+                measured_detection_view)
+            _bound, choice = client.bind(
+                response, measured_detection_view(pick_msg),
+                self._frame_scene_revision)
+            selected = [candidate for candidate
+                        in pick_msg.suction_candidates
+                        if candidate.candidate_id == choice.candidate_id]
+            if len(selected) != 1:
+                raise ValueError(
+                    "selected measured suction candidate is not unique")
+            # Retain the original measured contact and rank; only narrow
+            # the candidate list consumed by the existing pick builder.
+            pick_msg.suction_candidates = selected
+            self._typed.set_placement_prior(response)
+            surface = getattr(client, "_surface", None)
+            record.update({
+                "adopted": True,
+                "slot_id": choice.slot_id,
+                "candidate_id": choice.candidate_id,
+                "prior_elapsed_s": getattr(response, "elapsed_s", None),
+                "cache_hit": bool(getattr(response, "cache_hit", False)),
+                "driver_hook_s": round(time.monotonic() - started, 4),
+                "snapshot_identity": {
+                    "map_revision": getattr(surface, "map_revision", None),
+                    "geometry_hash": getattr(surface, "geometry_hash", ""),
+                    "epoch": getattr(surface, "epoch", ""),
+                    "content_digest": getattr(
+                        surface, "content_digest", ""),
+                    "scene_revision": getattr(
+                        getattr(surface, "identity", None),
+                        "scene_revision", "")},
+                "grasp_candidate": {
+                    "candidate_id": choice.candidate_id,
+                    "observation_id": getattr(
+                        selected[0], "observation_id", "")},
+            })
+        except Exception as exc:  # noqa: BLE001 - named fallback only
+            record["reason"] = "%s:%s" % (type(exc).__name__, exc)[:200]
+            self._typed.set_placement_prior(None)
+        return record
 
     def _place_slot_for(self, pick_msg, box_msg, trial):
         """Place slot from measured detection, never from GetCurrentBox."""
@@ -1019,30 +1369,27 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         if not bool(getattr(pick_msg, "height_valid", False)):
             trial.fail_code = trial.fail_code or "DETECT_FULL_GEOMETRY_REQUIRED"
             return None, None
-        # [ST09-I] on the typed chain the slot comes from
-        # ComputePlacementV2 -> SelectPlacePathV2 and the place motion is
-        # the producer's certified route legs (see run_place_from_carry).
+        # Typed chain: the slot and the place motion come from
+        # ComputePlacementV2 -> SelectPlacePathV2. The fixed floor-center
+        # slot stays a named fixture for callers without that chain.
         if getattr(self, "_typed", None) is not None:
             return self._typed_place_slot(pick_msg, trial)
-        # [ST09-I S5.7-5 legacy lock] the fixed floor-center slot is a
-        # TEST FIXTURE of the pack-eval lineage. On the typed production
-        # chain it is a named refusal — placement slots come from
-        # ComputePlacementV2, and a fixture fallback must never mask a
-        # placement failure.
         slot, meta = self._fixed_slot(pick_msg)
         meta["slot_source"] = "test_fixture"
         return slot, meta
 
     def _typed_place_slot(self, pick_msg, trial):
-        """Certified-route slot: ComputePlacementV2 -> SelectPlacePathV2.
+        """Certified-route slot: ComputePlacementV2 then SelectPlacePathV2.
 
-        Adapted from MotionOccDriver._frame_place_slot without the probe
-        loop: the pack chain executes the returned carry legs directly
-        (``run_place_from_carry``), so a certified route that is refused
-        fails the box with the producer's reason, never silently falls
-        back to a fixture slot.
+        A certified route that is refused fails the box with the
+        producer's reason. It does not fall back to the fixture slot.
         """
-        import math as _math
+        import math as _math  # noqa: F401 - legacy local alias
+        # [B3] A stale admission from a previous cycle must never arm the
+        # next cycle's legs; the new one is armed only after re-verify.
+        self._execution_admission = None
+        # [release-failure contract] per-cycle release boundary.
+        self._frame_released = False
         from luggage_description.frame_contracts import ContractError
         from luggage_description.frame_diagnostics import BoundaryContext
         from luggage_description.ros_frame_bindings.poses import (
@@ -1056,24 +1403,30 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         from luggage_planning.typed_driver_adapter import (
             container_transform_fields, tcp_record)
 
-        surface_msg = self._surface_v2_msg
+        surface_msg = getattr(self, "_surface_v2_msg", None)
         if surface_msg is None:
             trial.fail_code = trial.fail_code or "SURFACE_V2_MISSING"
             return None, None
         geometry_hash = str(surface_msg.geometry_hash or "")
+        # box_wdh = placement semantics: footprint_x, footprint_y,
+        # vertical_extent (see docs/architecture/size_semantics.md).
         box_wdh = [float(pick_msg.width), float(pick_msg.depth),
                    float(pick_msg.height)]
         self._frame_box_wdh = list(box_wdh)
+        self._frame_selection_capture_dir = None
+        attachment_geometry = getattr(self, '_frame_attachment_geometry', None)
+        if attachment_geometry is None:
+            trial.fail_code = trial.fail_code or 'ATTACHMENT_GEOMETRY_MISSING'
+            return None, None
         request_id = self._frame_request_id("place")
         try:
             placement = self._typed.compute_placement(
                 request_id=request_id, box_wdh=box_wdh,
+                conservative_geometry=attachment_geometry,
                 height_measured=True,
                 scene_revision=self._frame_scene_revision,
                 geometry_hash=geometry_hash,
                 expected_map_revision=int(surface_msg.map_revision),
-                # The route producer reorders by its own tiering, so hand
-                # it the deep feasible list, not a top-5 prefix.
                 max_candidates=2000)
         except ContractError as error:
             trial.fail_code = trial.fail_code or error.code
@@ -1101,7 +1454,6 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         grasp["request_id"] = request_id
         self._frame_grasp = grasp
 
-        # Door-portal carry TCP (map frame): the route's entry anchor.
         world = container_opening_target_point_in_world(self._scene_config)
         base = xyz_world_to_base_link(self._scene_config, world)
         local = _point_in_container_link(base, self._scene_config)
@@ -1112,10 +1464,52 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         start_joints = [float(v) for v in (live.get("position")
                                            or live.get("positions") or [])]
         box_count = max(1, int(getattr(self._args, "max_boxes", 1) or 1))
-        select_timeout_s = route_budget_s(box_count) + 30.0
+        # Client wait = the SERVICE-side select budget (which must match
+        # what the searcher actually enforces) plus an explicit 30 s
+        # communication overhead. --select-budget-s > 0 mirrors the
+        # selector's diagnostic_route_budget_s override so the client
+        # never cuts a diagnostic search short; 0 (default) keeps the
+        # frozen n*60s formula — production behavior unchanged.
+        budget_override_s = float(
+            getattr(self._args, "select_budget_s", 0.0) or 0.0)
+        service_budget_s = (
+            budget_override_s if budget_override_s > 0.0
+            else route_budget_s(box_count))
+        select_timeout_s = service_budget_s + 30.0
+        from luggage_gazebo.selection_capture import capture_selection
+        capture_root = os.environ.get("ELFIN_SELECTION_CAPTURE_DIR", "").strip()
+        selection_only = bool(getattr(self._args, "diagnostic_selection_only", False))
+        if selection_only and not capture_root:
+            capture_root = os.path.join(self._args.out, "selection_boundary")
+        selection_boundary = dict(
+            request_id=request_id, scene_revision=self._frame_scene_revision,
+            conservative_geometry=attachment_geometry.to_dict(),
+            box_wdh=box_wdh, grasp=grasp, start_tcp=start_tcp,
+            start_joints=start_joints, geometry_hash=geometry_hash,
+            map_revision=int(surface_msg.map_revision),
+            box_id=str(grasp.get("box_id") or ""),
+            generation=int(grasp.get("generation") or 0),
+            mono=time.monotonic(), sim=float(self.ros_now_sec()))
+        if capture_root:
+            from rosidl_runtime_py.convert import message_to_ordereddict
+            selection_boundary.update(
+                slots=[message_to_ordereddict(slot) for slot in slot_messages],
+                slot_scores=list(scores),
+                surface=message_to_ordereddict(surface_msg),
+                inner_size=list(container_usable_dimensions(self._scene_config)),
+                container_transform=container_transform_fields(self._scene_config),
+                excluded_ids=[])
+        self._frame_selection_capture_dir = capture_selection(capture_root, selection_boundary)
+        if self._frame_selection_capture_dir:
+            snapshot = self._scene_snapshot(raw_capture_path=os.path.join(
+                self._frame_selection_capture_dir, 'planning_scene.cdr'))
+            if snapshot.get('error'):
+                trial.fail_code = trial.fail_code or 'SELECTION_SCENE_CAPTURE_FAILED'
+                return None, None
         try:
             selection = self._typed.select_place_path(
                 request_id=request_id, box_wdh=box_wdh,
+                conservative_geometry=attachment_geometry,
                 slots=slot_messages, slot_scores=scores,
                 surface_message=surface_msg,
                 inner_size=list(
@@ -1136,12 +1530,27 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             trial.extras["selector_error"] = "%s: %s" % (
                 error.code, error.field)
             return None, None
+        capture_selection(capture_root, selection_boundary, selection)
+        if selection_only and selection is not None and selection.success:
+            trial.fail_code = "DIAGNOSTIC_SELECTION_CAPTURED"
+            trial.extras["selection_boundary"] = selection_boundary
+            return None, None
         if selection is None or not selection.success:
             trial.fail_code = trial.fail_code or (
                 getattr(selection, "reason_code", None)
                 or "PLANNING_ROUTE_REQUIRED")
             trial.extras["selector_error"] = (
                 selection.reason_code if selection else "timeout")
+            # [Functional diagnostic, 2026-10-22] Keep the selector's own
+            # per-candidate/per-edge failure rows and stage timings
+            # (prep/search/certify/revalidate/total) with the trial —
+            # budget exhaustion closes with named evidence, not just the
+            # terminal reason code.
+            if selection is not None:
+                trial.extras["selector_stage_timings"] = json.loads(
+                    getattr(selection, "stage_timings_json", None) or "{}")
+                trial.extras["selector_rows"] = json.loads(
+                    getattr(selection, "rows_json", None) or "[]")
             return None, None
 
         winner_index = int(selection.slot_index)
@@ -1158,6 +1567,23 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._frame_slot_record = record
         self._selected_carry_v2 = list(selection.motion_segments)
         self._selected_carry_v1 = list(selection.carry_segments)
+        # [B3 execution invalidation] With verify_selected_route on (the
+        # production launches), the selected route must be re-verified and
+        # carry a live per-leg admission before any leg executes: handoff
+        # polling, the release transition, and the executor's
+        # pre-submission gate all read _execution_admission, which stayed
+        # None on this path before (every check no-oped). Legacy harnesses
+        # keep the pre-B3 behavior with the flag off.
+        if getattr(self._args, "verify_selected_route", False):
+            ok, reason = self._verify_selected_admission(
+                selection, request_id)
+            if not ok:
+                trial.fail_code = trial.fail_code or reason
+                trial.extras["verify_selected"] = reason
+                self._execution_admission = None
+                self._selected_carry_v2 = None
+                self._selected_carry_v1 = None
+                return None, None
         self._selected_path = {
             "method": str(selection.path_source),
             "selection_id": str(selection.selection_id),
@@ -1182,7 +1608,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         slot.place_pose.position.z = float(base_xyz[2])
         slot.place_pose.orientation.z = _math.sin(0.5 * yaw_container)
         slot.place_pose.orientation.w = _math.cos(0.5 * yaw_container)
-        slot.width, slot.height, slot.depth = box_wdh[0], box_wdh[2], box_wdh[1]
+        slot.width, slot.height, slot.depth = (
+            box_wdh[0], box_wdh[2], box_wdh[1])
         return slot, self._slot_meta(slot)
 
     def _fixed_slot(self, box):
@@ -1224,17 +1651,23 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         out.place_pose.orientation = _yaw_quat(slot_meta["pose_world"]["yaw"])
         return out
 
-    def _scene_snapshot(self):
+    def _scene_snapshot(self, raw_capture_path=None):
         request = GetPlanningScene.Request()
         request.components.components = int(
             PlanningSceneComponents.WORLD_OBJECT_NAMES
             | PlanningSceneComponents.WORLD_OBJECT_GEOMETRY
             | PlanningSceneComponents.ROBOT_STATE
             | PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS
+            | PlanningSceneComponents.OCTOMAP
+            | PlanningSceneComponents.TRANSFORMS
             | PlanningSceneComponents.ALLOWED_COLLISION_MATRIX)
         response = self.call_srv(self._get_scene, request, timeout=5.0)
         if response is None:
             return {"error": "get_planning_scene timeout"}
+        if raw_capture_path:
+            from rclpy.serialization import serialize_message
+            with open(raw_capture_path, 'wb') as handle:
+                handle.write(serialize_message(response))
         scene = response.scene
         acm = scene.allowed_collision_matrix
         summary = summarize_planning_scene(scene)
@@ -1252,11 +1685,12 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             return 0
 
     def _clear_smoke_slot(self, slot, delete_model=False):
-        resp = self.call_srv(
-            self._remove_placed, RemovePlacedBox.Request(slot=slot), timeout=5.0)
+        # [G3 wave5] no scene placed object to remove (occ-only); the
+        # map rollback happens through the cargo-map chain.
         if delete_model:
-            self.call_srv(self._clear, ClearCurrentBox.Request(), timeout=15.0)
-        return resp
+            return self.call_srv(
+                self._clear, ClearCurrentBox.Request(), timeout=15.0)
+        return None
 
     def _commit_to_cargo_map(self, trial, slot, slot_meta):
         """Commit the released box to the cargo-map ledger.
@@ -1365,6 +1799,209 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             if index < len(states):
                 admission["load_state"] = str(states[index])
         return admission
+
+    def _evaluate_place_verify(self, trial, expected, actual, pose_release,
+                               pose_drift):
+        """[release-failure contract] Fill trial metrics + the SHARED
+        verify-evidence dict, then judge the gates.
+
+        The evidence (poses, direction, errors, inside flag) is written
+        BEFORE any gate decision, so a failing verify dumps exactly what
+        a passing one would. Returns the failing gate name or None.
+        """
+        trial.err_xy = math.hypot(
+            actual[0] - expected[0], actual[1] - expected[1])
+        trial.err_z = actual[2] - expected[2]
+        rel = _xyz3(pose_release)
+        drift = _xyz3(pose_drift)
+        if rel and drift:
+            trial.drift = math.sqrt(sum(
+                (drift[i] - rel[i]) ** 2 for i in range(3)))
+        if pose_drift is not None and len(pose_drift) >= 5:
+            trial.roll = float(pose_drift[3])
+            trial.pitch = float(pose_drift[4])
+        base_actual = xyz_world_to_base_link(self._scene_config, actual)
+        trial.inside_inner_box = point_inside_container_inner_box(
+            base_actual, self._scene_config, margin=0.0)
+        trial.extras["verify"].update({
+            "err_xy": trial.err_xy, "err_z": trial.err_z,
+            "drift": trial.drift,
+            "release_drift_direction_world": [
+                actual[0] - expected[0], actual[1] - expected[1]],
+            "inside_inner_box": trial.inside_inner_box,
+        })
+        if trial.err_xy > 0.04:
+            return "PLACE_VERIFY_XY"
+        if abs(trial.err_z) > 0.03:
+            return "PLACE_VERIFY_Z"
+        if trial.drift is not None and trial.drift > 0.02:
+            return "PLACE_VERIFY_DRIFT"
+        if trial.roll is not None and abs(trial.roll) > math.radians(2.0):
+            return "PLACE_VERIFY_TIP"
+        if trial.pitch is not None and abs(trial.pitch) > math.radians(2.0):
+            return "PLACE_VERIFY_TIP"
+        if not trial.inside_inner_box:
+            return "PLACE_VERIFY_XY"
+        return None
+
+    def _notify_box_released(self):
+        """[release-failure contract] Record the box_released fact with
+        the commanded footprint on the cargo map at vacuum-off.
+
+        Returns (ok, message). The map enters pending immediately; the
+        confirmation gate then blocks next-box planning until the fact
+        resolves (anchored accepted commit, or an observing view).
+        """
+        record = getattr(self, "_frame_slot_record", None) or {}
+        box_wdh = getattr(self, "_frame_box_wdh", None) or []
+        position = [float(v) for v in (record.get("position")
+                                       or [0.0, 0.0, 0.0])]
+        if len(position) < 3 or len(box_wdh) < 3 \
+                or any(v <= 0.0 for v in box_wdh[:3]):
+            return False, "no commanded footprint to report"
+        yaw = 2.0 * math.atan2(
+            float((record.get("quaternion_xyzw") or [0, 0, 0, 1])[2]),
+            float((record.get("quaternion_xyzw") or [0, 0, 0, 1])[3]))
+        client = getattr(self, "_note_event_client", None)
+        if client is None:
+            from luggage_msgs.srv import NotifyOccupancyEvent
+            client = self.create_client(
+                NotifyOccupancyEvent, "/cargo_map/note_occupancy_event")
+            self._note_event_client = client
+        from luggage_msgs.srv import NotifyOccupancyEvent
+        request = NotifyOccupancyEvent.Request()
+        request.event = "box_released"
+        request.box_id = str(
+            (getattr(self, "_frame_grasp", None) or {}).get("box_id")
+            or "")
+        request.box_center_container = position[:3]
+        request.box_size_wdh = [float(v) for v in box_wdh[:3]]
+        request.box_yaw = float(yaw)
+        request.source = "place_smoke_driver"
+        response = self._call_srv_sync(client, request, timeout=10.0)
+        if response is None:
+            return False, "service unavailable"
+        if response.status != "accepted":
+            return False, "%s: %s" % (response.status, response.reason)
+        return True, ("pending=%s epoch=%s" % (
+            not response.occupancy_confirmed, response.epoch[:8]))
+
+    def _leg_trajectory_digest(self, segment):
+        """Rebuild the certified trajectory digest from a v2 leg message.
+
+        [B3] Ported from motion_occ_eval_driver: _leg_execution_admission
+        always looked for this helper and silently degraded to a
+        scope-less admission when it was absent; the B3 verify wiring
+        makes the absence a named refusal (LEG_DIGEST_UNAVAILABLE), so
+        the helper now exists here too.
+        """
+        from st09_contracts.graph import TimedTrajectory
+        trajectory = None
+        if getattr(segment, "joint_trajectory", None) is not None:
+            trajectory = getattr(segment.joint_trajectory, "trajectory",
+                                 None)
+        if trajectory is None or not trajectory.points:
+            return ""
+        points = list(trajectory.points)
+
+        def _times():
+            return tuple(
+                int(p.time_from_start.sec) * 1_000_000_000
+                + int(p.time_from_start.nanosec) for p in points)
+
+        try:
+            return TimedTrajectory(
+                joint_names=tuple(trajectory.joint_names),
+                positions=tuple(
+                    tuple(float(v) for v in p.positions) for p in points),
+                velocities=tuple(
+                    tuple(float(v) for v in p.velocities) for p in points),
+                accelerations=tuple(
+                    tuple(float(v) for v in p.accelerations)
+                    for p in points),
+                time_from_start_ns=_times()).digest()
+        except Exception:  # noqa: BLE001 - malformed leg = no digest match
+            return ""
+
+    def _call_srv_sync(self, client, request, timeout=30.0):
+        """Minimal synchronous service call (event-wait, None on timeout)."""
+        import threading
+        if not client.wait_for_service(timeout_sec=timeout):
+            return None
+        event = threading.Event()
+        future = client.call_async(request)
+        future.add_done_callback(lambda _f: event.set())
+        if not event.wait(timeout):
+            return None
+        return future.result()
+
+    def _verify_selected_admission(self, selection, request_id):
+        """[B3] Re-verify the selected route and arm the leg admission.
+
+        Certify A, execute A: the selector re-checks identity, start
+        state, and live map admission, re-certifies the exact edges, and
+        the returned per-leg digests must match what this driver holds.
+        Only then does _execution_admission arm — handoff polling, the
+        release transition, and the executor's pre-submission gate all
+        become live (they read the same record and no-oped while it was
+        None). Wiring mirrors motion_occ_eval_driver._verify_selected_route.
+        Returns (True, "") or (False, reason).
+        """
+        client = getattr(self, "_verify_route_client", None)
+        if client is None:
+            from luggage_msgs.srv import ValidateSelectedRoute
+            client = self.create_client(
+                ValidateSelectedRoute,
+                "/trajectory_selector/validate_selected_route")
+            self._verify_route_client = client
+        if not client.wait_for_service(timeout_sec=5.0):
+            return False, "VERIFY_UNAVAILABLE"
+        from luggage_msgs.srv import ValidateSelectedRoute, GetCargoMapStats
+        stats_client = getattr(self, "_map_stats_client", None)
+        if stats_client is None:
+            stats_client = self.create_client(
+                GetCargoMapStats, "/cargo_map/get_stats")
+            self._map_stats_client = stats_client
+        # Fail-closed on the LATEST map: a failed stats fetch never falls
+        # back to the selection-time revision.
+        stats_response = self._call_srv_sync(
+            stats_client, GetCargoMapStats.Request(), timeout=5.0)
+        if stats_response is None or not stats_response.success:
+            return False, "MAP_STATUS_UNAVAILABLE"
+        live = getattr(self, "_last_joint_state", None) or {}
+        request = ValidateSelectedRoute.Request()
+        request.request_id = str(request_id)
+        request.scene_revision = str(self._frame_scene_revision or "")
+        request.route_digest = str(
+            getattr(selection, "path_hash", "") or "")
+        request.current_joint_state = [float(v) for v in
+                                       (live.get("position")
+                                        or live.get("positions") or [])]
+        request.latest_map_revision = int(stats_response.map_revision)
+        result = self._call_srv_sync(client, request, timeout=30.0)
+        if result is None:
+            return False, "VERIFY_UNAVAILABLE"
+        if not result.valid:
+            return False, str(result.reason_code or "VERIFY_REJECTED")
+        digest_fn = getattr(self, "_leg_trajectory_digest", None)
+        if not callable(digest_fn):
+            return False, "LEG_DIGEST_UNAVAILABLE"
+        local = [digest_fn(segment)
+                 for segment in (selection.motion_segments or [])]
+        certified = [str(digest) for digest in (result.leg_digests or [])]
+        if local != certified or any(not digest for digest in local):
+            return False, "LEG_DIGEST_MISMATCH"
+        self._execution_admission = {
+            "route_digest": str(
+                getattr(selection, "path_hash", "") or ""),
+            "certification_id": str(result.certification_id or ""),
+            "admission_map_revision": int(
+                result.validated_map_revision or 0),
+            "leg_digests": list(certified),
+            "leg_load_states": [
+                str(state) for state in (result.leg_load_states or [])],
+        }
+        return True, ""
 
     def _peek_leg_load_state(self, segment):
         """Certified load_state for this leg, without consuming the index."""
@@ -1556,6 +2193,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             "message": str(message or ""),
             "submit_wall": submit_times.get("submit_wall"),
             "submit_sim_stamp": submit_times.get("submit_sim_stamp"),
+            "response_wait_s": submit_times.get("response_wait_s"),
             "result_wall": time.time(),
             "result_sim_stamp": float(self.ros_now_sec()),
             "trajectory": trajectory_dump(motion_segment),
@@ -1656,6 +2294,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         def should_abort():
             if not rclpy.ok():
                 return "HANDOFF_CANCELLED"
+            lifecycle = getattr(self, "_executor_lifecycle", None)
+            if lifecycle is not None and lifecycle.failure is not None:
+                return "DRIVER_EXECUTOR_FAILED"
             if carrying:
                 holds, reason = self._carrying_vacuum_holds()
                 if not holds:
@@ -1692,6 +2333,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 self._CONTROLLER_STATE_SUCCESS_ROWS
                 if record.get("status") == "ready" else None))
         record["controller_state"] = window
+        if record.get("status") != "ready":
+            from luggage_gazebo.handoff_failure_capture import retain_failure
+            record["post_verdict_capture"] = retain_failure(self, record)
         self.get_logger().info(
             "handoff %s->%s status=%s waited=%.3fs samples=%d" % (
                 previous.get("name"), name, record.get("status"),
@@ -1842,7 +2486,22 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 # that fell off refuses the leg by name BEFORE any
                 # controller submission (absent feed = no signal, not
                 # payload-lost; the producer-side gates still hold).
-                if leg_admission.get("load_state") == "carrying":
+                # No certified admission scope (Select's response alone
+                # carries no ValidateSelectedRoute record): the same
+                # no-admission semantics as the transition/handoff/peek
+                # helpers, with the carrying determination falling back
+                # to the segment contract the payload gate uses.
+                if leg_admission:
+                    leg_carries_payload = (
+                        leg_admission.get("load_state") == "carrying")
+                else:
+                    leg_carries_payload = segment_requires_payload_attached(
+                        motion_segment,
+                        load_state=self._peek_leg_load_state(
+                            motion_segment),
+                        detached=bool(getattr(
+                            self, "_payload_detached", False)))
+                if leg_carries_payload:
                     holds, lost_reason = self._carrying_vacuum_holds()
                     if not holds:
                         return False, lost_reason, None
@@ -1865,13 +2524,20 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                     "submit_mono": time.monotonic(),
                     "submit_sim_stamp": float(self.ros_now_sec()),
                 }
+                from luggage_gazebo.observation_execution_budget import certified_execution_wait
+                try:
+                    response_wait = certified_execution_wait(
+                        motion_segment, self._args.plan_timeout)
+                except (ValueError, AttributeError) as exc:
+                    return False, "INVALID_CERTIFIED_TIMING:%s" % exc, None
+                submit_times["response_wait_s"] = response_wait
                 ok, message, result = self._typed.plan_motion(
-                    motion_segment, self._args.plan_timeout,
+                    motion_segment, response_wait,
                     name="PlanMotionV2:%s" % name,
                     admission=leg_admission,
                     should_abort=(
                         (lambda: not self._carrying_vacuum_holds()[0])
-                        if leg_admission.get("load_state") == "carrying"
+                        if leg_carries_payload
                         else None))
                 self._note_leg_submitted(motion_segment, name, ok)
                 self._record_submitted_leg(
@@ -1954,16 +2620,12 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         return _decode_dump_image(best), ""
 
     def _capture_success_debug(self, trial, slot, slot_meta, pose_world):
-        """GT occupancy image, interior+box cloud, retreat-lift color frame.
-
-        The color frame is not captured here: run_place_from_carry stores
-        it right after the vertical retreat lift, before the pull-back and
-        return legs carry the camera out of the container. Nothing is
-        captured after those legs.
-        """
-        color = getattr(self, "_retreat_lift_color", None)
-        color_err = getattr(
-            self, "_retreat_lift_color_err", "no retreat lift frame captured")
+        """Camera at retreat pose, GT occupancy image, interior+box cloud."""
+        if not self._args.plan_only:
+            time.sleep(0.35)
+        color, color_err = self._latest_color(
+            min_stamp=(self.ros_now_sec() - 1.0) if not self._args.plan_only else None,
+            timeout=2.5 if not self._args.plan_only else 0.1)
         size = None
         if slot is not None:
             size = [float(slot.width), float(slot.depth), float(slot.height)]
@@ -2236,8 +2898,20 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         boundary = load_latest_boundary(
             os.environ.get("MOTION_BOUNDARY_DUMP", ""))
         fail = str(getattr(trial, "fail_code", "") or "")
+        from luggage_gazebo.motion_replay_boundary import replay_boundary
+        boundary = replay_boundary(
+            trial.extras.get("submitted_legs", []),
+            getattr(self, "_segment_exec_name", None), boundary,
+            typed=getattr(self, "_typed", None) is not None)
         detect_stage = fail.startswith("DETECT_")
-        if boundary and not detect_stage:
+        from luggage_gazebo.selection_capture import preserve_failed_selection
+        selection_failure = preserve_failed_selection(
+            getattr(self, '_frame_selection_capture_dir', None), replay_dir)
+        if selection_failure is not None and not detect_stage:
+            selection_artifacts, selection_missing = selection_failure
+            artifacts.update(selection_artifacts)
+            missing.extend(selection_missing)
+        elif boundary and not detect_stage:
             with open(os.path.join(replay_dir, "last_boundary.json"), "w",
                       encoding="utf-8") as handle:
                 json.dump(boundary, handle, indent=2, sort_keys=True,
@@ -2246,6 +2920,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             artifacts["last_boundary"] = "replay/last_boundary.json"
             if not (boundary.get("trajectory") or boundary.get("fjt_trajectory")):
                 missing.append("trajectory")
+            elif (boundary.get("trajectory") or {}).get("truncated"):
+                missing.append("trajectory_truncated")
         elif not detect_stage:
             missing.append("last_boundary")
         scene = self._scene_snapshot()
@@ -2318,7 +2994,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             handle.write("\n")
         artifacts["perception_refs"] = "replay/perception_refs.json"
         stage = "motion"
-        if detect_stage:
+        if selection_failure is not None and not detect_stage:
+            stage = 'selection'
+        elif detect_stage:
             stage = "detect"
         elif fail.startswith("PLACE_PLAN_"):
             stage = fail[len("PLACE_PLAN_"):]
@@ -2340,6 +3018,226 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         trial.extras["replay"]["stage"] = stage
         return manifest
 
+    def _placed_primitive_size(self, visual, command_size):
+        """[G3 wave3] Placed-body primitive extents from the tier manifest.
+
+        The manifest is the single machine-readable truth for asset,
+        GT-reference and primitive collision sizes (pipeline:
+        ``generate_sized_suitcases.py sync-manifest``); the spawner's
+        command size stays the fallback when no record exists.
+        """
+        try:
+            from luggage_description.suitcase_visual import (
+                sized_model_name,
+                sized_suitcases_manifest_path,
+                size_tier_name,
+            )
+        except ImportError:
+            return None
+        tier = size_tier_name(command_size)
+        if not tier:
+            return None
+        root = getattr(self, "_placed_models_root", None)
+        if root is None:
+            try:
+                from ament_index_python.packages import (
+                    get_package_share_directory)
+                root = os.path.join(
+                    get_package_share_directory("luggage_gazebo"), "models")
+            except Exception:  # noqa: BLE001 - package share may be absent
+                root = ""
+            self._placed_models_root = root
+        if not root:
+            return None
+        path = sized_suitcases_manifest_path(root)
+        if not os.path.isfile(path):
+            return None
+        manifest = getattr(self, "_placed_manifest", None)
+        if manifest is None:
+            with open(path, "r", encoding="utf-8") as handle:
+                manifest = json.load(handle)
+            self._placed_manifest = manifest
+        entry = manifest.get(sized_model_name(str(visual), tier)) or {}
+        primitive = entry.get("primitive_collision_size")
+        if not primitive:
+            return None
+        return [float(v) for v in primitive]
+
+    def _placed_lid_offset(self, visual, command_size):
+        """Tier lid_offset for the contact-recess collision (manifest
+        constant, same loader as _placed_primitive_size; None makes the
+        SDF builder fail closed rather than measure online)."""
+        try:
+            from luggage_description.suitcase_visual import (
+                sized_model_name,
+                sized_suitcases_manifest_path,
+                size_tier_name,
+            )
+        except ImportError:
+            return None
+        tier = size_tier_name(command_size)
+        if not tier:
+            return None
+        root = getattr(self, "_placed_models_root", None)
+        if root is None:
+            try:
+                from ament_index_python.packages import (
+                    get_package_share_directory)
+                root = os.path.join(
+                    get_package_share_directory("luggage_gazebo"), "models")
+                self._placed_models_root = root
+            except Exception:  # noqa: BLE001 - share dir absent offline
+                return None
+        path = sized_suitcases_manifest_path(root)
+        if not os.path.isfile(path):
+            return None
+        manifest = getattr(self, "_placed_manifest", None)
+        if manifest is None:
+            with open(path, "r", encoding="utf-8") as handle:
+                manifest = json.load(handle)
+            self._placed_manifest = manifest
+        entry = manifest.get(sized_model_name(str(visual), tier)) or {}
+        off = entry.get("lid_offset")
+        return float(off) if off else None
+
+    def _release_capture_event(self, event, **details):
+        """[prior-g1 merge] Measured-replay provenance (env-gated, inert
+        unless ELFIN_RELEASE_CAPTURE_DIR is set)."""
+        directory = getattr(self, '_release_capture_directory', None)
+        if directory:
+            with open(os.path.join(directory, 'events.jsonl'), 'a') as handle:
+                handle.write(json.dumps(dict(event=event, wall=time.time(),
+                    monotonic=time.monotonic(), ros=self.ros_now_sec(),
+                    model=self._box_model, details=details))+'\n')
+
+    def _stop_release_capture(self):
+        recorder = getattr(self, '_release_capture_process', None)
+        if recorder is not None:
+            if recorder.poll() is None:
+                recorder.terminate()
+            recorder.wait(timeout=5.)
+            self._release_capture_process = None
+
+    def _start_release_capture(self):
+        root = os.environ.get('ELFIN_RELEASE_CAPTURE_DIR', '').strip()
+        if not root:
+            return
+        directory = os.path.join(root, str(self._box_model))
+        os.makedirs(directory, exist_ok=False)
+        self._release_capture_directory = directory
+        topic = os.environ.get('ELFIN_BOX_CONTACT_TOPIC', '').strip()
+        if not topic:
+            raise RuntimeError('release capture requires contact topic')
+        # Owned child remains in the driver process group and also self-expires.
+        with open(os.path.join(directory, 'recorder.log'), 'w') as log:
+            self._release_capture_process = subprocess.Popen([
+                sys.executable, '-m', 'luggage_gazebo.release_capture',
+                '--output', directory, '--contact-topic', topic],
+                stdout=log, stderr=subprocess.STDOUT)
+        deadline = time.monotonic()+3.
+        while not os.path.isfile(os.path.join(directory, 'ready.json')):
+            if self._release_capture_process.poll() is not None or time.monotonic() >= deadline:
+                self._release_capture_process.terminate()
+                self._release_capture_process.wait(timeout=5.)
+                raise RuntimeError('release recorder failed to start')
+            time.sleep(.02)
+        self._release_capture_event('before_vacuum_off')
+
+    def _release_kinematic(self, model, slot_meta):
+        """[planning-verification mode, user directive 2026-10-19]
+
+        Keep the carried body as a STATIC obstacle at the DECLARED
+        release end-state: no delete, no dynamic respawn, no free fall,
+        no ejection — the contact-solver artifacts of the dynamic track
+        are out of scope here by declaration. ONE declared transition:
+        set_pose to the slot's support-rest pose; presence re-read via
+        the fresh-only pose stream ("the released box must not vanish").
+
+        Proves: planning + state-chain feasibility (placement legality,
+        full-route legality incl. payload, multi-box state via the
+        committed ACTUAL pose). Does NOT prove contact-safety, suction
+        reliability, or landing accuracy — those stay on the separate
+        dynamic track. The support/end-state conditions are still
+        checked: the declared pose must match the slot's support rest
+        and fresh world XY must match within 5 mm. Per user directive
+        2026-10-23, Z discrepancy is recorded, not an acceptance gate;
+        descend intentionally retains a release gap before set_pose.
+        """
+        pose_world = (slot_meta or {}).get("pose_world") or {}
+        expected = pose_world.get("position")
+        if not expected or len(expected) < 3:
+            return False, "no declared slot pose", {"mode": "kinematic"}
+        yaw = float(pose_world.get("yaw") or 0.0)
+        declared = [float(expected[0]), float(expected[1]),
+                    float(expected[2]), 0.0, 0.0, yaw]
+        record = {"mode": "kinematic",
+                  "declared_pose_rpy6": list(declared),
+                  "position_acceptance_axes": "xy",
+                  "position_tolerance_m": 0.005,
+                  "set_pose_request": {"sim_s": self.ros_now_sec(),
+                                       "wall_s": time.time(),
+                                       "monotonic_s": time.monotonic()}}
+        ok, msg = self._set_model_pose_declared(model, declared)
+        record["set_pose_response"] = {"sim_s": self.ros_now_sec(),
+                                       "wall_s": time.time(),
+                                       "monotonic_s": time.monotonic()}
+        record["set_pose"] = msg
+        if not ok:
+            return False, "kinematic set_pose refused: %s" % msg, record
+        # Confirm the commanded state, not merely a recently cached state.
+        # Keep the existing bounded2s read budget and5mm XY gate; an actual
+        # persistent offset still refuses, while a pre-command sample cannot.
+        response = record["set_pose_response"]
+        pose7, evidence = self._release_pose_stream().read_release_pose(
+            model, self.ros_now_sec,
+            after_sim_stamp_ns=int(response["sim_s"] * 1e9),
+            after_receive_monotonic_s=response["monotonic_s"],
+            accept_pose=lambda value: math.hypot(
+                value[0] - declared[0], value[1] - declared[1]) <= 0.005)
+        record["presence_evidence"] = evidence
+        if pose7 is None:
+            if (evidence.get("reason") == "pose_not_confirmed"
+                    and evidence.get("last_candidate_pose_xyzw7") is not None):
+                pose7 = evidence["last_candidate_pose_xyzw7"]
+            else:
+                return False, "kinematic presence refused (%s)" % (
+                    evidence.get("reason")), record
+        delta = [float(pose7[i]) - declared[i] for i in range(3)]
+        xy_error = math.hypot(delta[0], delta[1])
+        record["observed_pose_xyzw7"] = list(pose7)
+        record["declared_to_world_delta_xyz_m"] = delta
+        record["declared_vs_world_m"] = math.dist(declared[:3], pose7[:3])
+        record["declared_vs_world_xy_m"] = xy_error
+        record["declared_vs_world_z_m"] = delta[2]
+        if xy_error > record["position_tolerance_m"]:
+            return False, "kinematic xy mismatch %.4f m" % xy_error, record
+        record["verdict"] = "declared_xy_confirmed"
+        return True, "kinematic", record
+
+    def _set_model_pose_declared(self, model, pose_rpy6):
+        """One declared set_pose via the bridged world service (the same
+        channel the spawner/vacuum follow use). Fail-closed message."""
+        from ros_gz_interfaces.srv import SetEntityPose
+        cli = getattr(self, "_set_pose_cli", None)
+        if cli is None:
+            cli = self.create_client(
+                SetEntityPose, "/world/%s/set_pose" % GZ_WORLD)
+            self._set_pose_cli = cli
+        if not cli.wait_for_service(timeout_sec=5.0):
+            return False, "set_pose service unavailable"
+        request = SetEntityPose.Request()
+        request.entity.name = str(model)
+        x, y, z, roll, pitch, yaw = [float(v) for v in pose_rpy6]
+        qx, qy, qz, qw = rpy_to_quaternion([roll, pitch, yaw])
+        request.pose.position.x, request.pose.position.y = x, y
+        request.pose.position.z = z
+        request.pose.orientation.x, request.pose.orientation.y = qx, qy
+        request.pose.orientation.z, request.pose.orientation.w = qz, qw
+        resp = self.call_srv(cli, request, timeout=10.0)
+        if resp is None or not getattr(resp, "success", False):
+            return False, "set_pose rejected"
+        return True, "ok"
+
     def _release_as_dynamic(self):
         """Replace the static carry body with the same mesh, dynamic, in place.
 
@@ -2349,33 +3247,71 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         """
         physics = getattr(self, "_release_physics", None) or {}
         size = list(physics.get("command_size") or [])
+        command_size = list(size)
         visual = str(physics.get("visual_id") or "")
         mass = physics.get("mass_kg")
         model = str(self._box_model or physics.get("model_name") or "")
-        release = self._gz_box_pose()
+        # [G3 wave3] single source: the tier manifest's registered
+        # primitive_collision_size (falls back to the command size).
+        size = list(self._placed_primitive_size(visual, size) or size)
+        # [r7] Release pose from the continuous pose/info cache —
+        # fresh-only, instance- and epoch-matched, NO CLI fallback. The
+        # pose is FROZEN here, before the static delete; a refusal is a
+        # named stop that keeps the entity and the pending obstacle
+        # (vacuum is already off; nothing is deleted below this point).
+        release, pose_evidence = self._release_pose_stream(
+            ).read_release_pose(model, self.ros_now_sec())
+        self._release_pose_evidence = pose_evidence
+        if release is None:
+            return False, "release pose refused (%s)" % (
+                pose_evidence.get("reason")), None
+        # The cache speaks quaternion; the release path's frozen record
+        # keeps the historical rpy6 shape (spawn + verify read it).
+        release = _quat7_to_rpy6(release)
+        pose_evidence["pose_rpy6"] = [round(v, 6) for v in release]
+        # [prior-g1 merge] measured-replay provenance hook (record-only)
+        self._release_capture_event('pre_recreation_pose', pose=release)
         if len(size) != 3 or not visual or mass is None or not model:
             return False, "missing physics identity", release
         try:
             mass_kg = float(mass)
             topic = os.environ.get("ELFIN_BOX_CONTACT_TOPIC", "").strip() or None
             from luggage_description.gazebo_spawn_collision import BOX_FULL_MASK
+            # Placed body carries a box-primitive collision (authorized
+            # 2026-10-15): a resting suitcase STL on the container
+            # trimesh drives ODE trimesh-trimesh contact pathological
+            # (RTF ~0.03 measured, rehearsal_06); the primitive keeps
+            # the outer extents and the mesh visual for perception.
             sdf = pickup_visual_sdf(
                 model, size, mass_kg, visual, static=False,
-                contact_topic=topic, collide_bitmask=BOX_FULL_MASK)
+                contact_topic=topic, collide_bitmask=BOX_FULL_MASK,
+                collision_kind="box_recess",
+                lid_offset=self._placed_lid_offset(visual, command_size))
             release_dump = os.environ.get("ELFIN_BOX_RELEASE_SDF", "").strip()
             if release_dump:
                 with open(release_dump, "w", encoding="utf-8") as handle:
                     handle.write(sdf)
+            if getattr(self, '_release_capture_directory', None):
+                with open(os.path.join(self._release_capture_directory, 'release.sdf'), 'w') as handle:
+                    handle.write(sdf)
         except (TypeError, ValueError) as exc:
             return False, str(exc), release
         if release is None or len(release) < 6:
-            return False, "no release pose", release
+            return False, "release pose refused (malformed)", release
+        # [release observation] Sim-clock timing of the static->dynamic
+        # swap, for the synchronized release-window capture (the pose
+        # stream and these stamps share the simulation clock).
+        self._release_dynamic_timing = {
+            "t_delete_req_sim": float(self.ros_now_sec())}
         delete = DeleteEntity.Request()
         delete.entity.name = model
         delete.entity.type = Entity.MODEL
         removed = self.call_srv(self._gz_delete, delete, timeout=15.0)
+        self._release_capture_event('delete_response', success=bool(removed and removed.success))
         if removed is None or not getattr(removed, "success", False):
             return False, "delete failed", release
+        self._release_dynamic_timing["t_delete_done_sim"] = float(
+            self.ros_now_sec())
         spawn = SpawnEntity.Request()
         spawn.entity_factory.name = model
         spawn.entity_factory.sdf = sdf
@@ -2388,9 +3324,54 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         spawn.entity_factory.pose.orientation.z = float(qz)
         spawn.entity_factory.pose.orientation.w = float(qw)
         created = self.call_srv(self._gz_create, spawn, timeout=15.0)
+        self._release_capture_event('create_response', success=bool(created and created.success))
         if created is None or not getattr(created, "success", False):
             return False, "create failed", release
+        self._release_dynamic_timing["t_spawn_done_sim"] = float(
+            self.ros_now_sec())
+        self._release_dynamic_timing["spawn_pose_world"] = [
+            float(v) for v in release[:3]]
+        # [r7 evidence] First physical state of the dynamic body vs the
+        # spawn request (<=1 mm / <=0.5 deg is a verdict gate, not a
+        # motion gate) + finite-difference first-step velocity.
+        first = _first_dynamic_state(model)
+        if first.get("available"):
+            dx = math.dist(release[:3], first["pose6"][:3])
+            first["spawn_request_rpy6"] = [round(v, 6) for v in release]
+            first["position_delta_m"] = round(dx, 6)
+            first["rotation_delta_deg"] = round(_quat_angle_deg(
+                rpy_to_quaternion(release[3:6]),
+                first["pose6"][3:7]), 4)
+        self._release_dynamic_timing["first_dynamic_state"] = first
         return True, "dynamic", release
+
+    def _release_dwell(self, dwell_s, anchor_stamp):
+        """[release dwell, user directive 2026-10-19] Hold the retreat
+        knot while the released box falls clear of the panel.
+
+        r5 evidence: the retreat began 0.39 s after vacuum-off while the
+        box still sat at the release height (top ~= panel underside at
+        zero vacuum-grasp clearance); the first, lateral stroke swept
+        the box top for 20 ms. Sim-clock dwell from the anchor (swap
+        completion if known, else the detach response); the box pose at
+        dwell end is recorded as separation evidence. Never aborts —
+        an unreadable pose is recorded and the caller's existing
+        contracts decide the rest.
+        """
+        record = {"dwell_s": float(dwell_s),
+                  "anchor_sim": float(anchor_stamp or 0.0)}
+        if float(dwell_s) <= 0.0:
+            record["skipped"] = True
+            return record
+        deadline = float(anchor_stamp or 0.0) + float(dwell_s)
+        while True:
+            now = float(self.ros_now_sec())
+            if now >= deadline:
+                break
+            time.sleep(min(0.05, max(deadline - now, 1e-3)))
+        record["t_end_sim"] = float(self.ros_now_sec())
+        record["box_pose_at_dwell_end"] = self._gz_box_pose()
+        return record
 
     def _poses_after_settle(self):
         """Return ``(residual_start, residual_end, verdict)``.
@@ -2436,6 +3417,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         return start, last, verdict
 
     def _abort(self, trial, code, carrying, extra=None):
+        self._release_capture_event('abort', code=code)
+        self._stop_release_capture()
         trial.fail_code = code
         pending_handoff = getattr(self, "_handoff_failure_record", None)
         if pending_handoff is not None:
@@ -2504,6 +3487,49 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         if ready:
             return None
         return self._abort(trial, "CONTACT_CAPTURE_NOT_READY", True, extra=extras)
+
+    def _prepare_return_observe(self, trial):
+        """Overridden by pack to commit VERIFIED occupancy before return planning."""
+        return True
+
+    def _return_observe_with_evidence(self, trial, extras, debug):
+        """Durable release/verify checkpoint before the fallible HOME boundary."""
+        # Preserve release/verification and replay data BEFORE entering HOME.
+        # A readiness exception must never discard the successful upstream case.
+        trial.place_state = self._place_state
+        timing = trial.extras.setdefault("return_boundary_timings", {})
+        timing["checkpoint_start_monotonic"] = time.monotonic()
+        self._dump_place(trial, extra=extras, debug=debug)
+        timing["checkpoint_end_monotonic"] = time.monotonic()
+        self._set_state("HOME")
+        if not self._args.plan_only:
+            runtime = getattr(self, "_frame_runtime_handle", None)
+            if runtime is not None:
+                trial.extras["return_readiness_before"] = runtime.snapshot()
+            try:
+                goto_ok, goto_msg, _ = self._home_arm()
+            except Exception as error:  # boundary evidence, then ordinary failure ledger
+                from luggage_description.frame_contracts import ContractError
+                trial.extras["return_exception"] = {
+                    "type": type(error).__name__, "message": str(error),
+                    "code": getattr(error, "code", ""),
+                    "field": getattr(error, "field", ""),
+                }
+                trial.fail_code = "RETURN_OBSERVE_EXCEPTION"
+                trial.place_state = self._place_state
+                if runtime is not None:
+                    trial.extras["return_readiness_after"] = runtime.snapshot()
+                self._dump_place(trial, extra=extras, debug=debug)
+                if not isinstance(error, ContractError):
+                    raise
+                return
+            trial.extras["return_observe"] = goto_msg
+            trial.extras["return_route"] = dict(getattr(self, "_last_goto_route", None) or {})
+            trial.extras["exit_yaw"] = dict(self._exit_yaw or {})
+            if runtime is not None:
+                trial.extras["return_readiness_after"] = runtime.snapshot()
+            if not goto_ok:
+                trial.fail_code = self.home_arm_code()
 
     def run_place_from_carry(self, pick_msg, trial, slot, slot_meta):
         self._probe_joints = None
@@ -2588,7 +3614,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 self._set_state("DESCEND")
             elif segment.name in state_by_name:
                 self._set_state(state_by_name[segment.name])
+            diagnostic = getattr(self, "_transit_capture_exit", None)
+            if diagnostic is not None:
+                reason = diagnostic.before(segment.name)
+                if reason:
+                    return self._abort(trial, reason, True, extra=extras)
             ok, code, rec = self._execute_segment(segment, trial)
+            if diagnostic is not None:
+                if ok:
+                    trial.segments_succeeded += 1
+                return diagnostic.finish(self, trial, ok, code, extras)
             if rec and segment.name == "descend":
                 trial.descend_fraction = rec.get("fraction")
                 trial.used_ompl_fallback_descend = rec.get("used_ompl_fallback")
@@ -2623,10 +3658,12 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         detach_request_stamp = None
         detach_response_stamp = None
         if getattr(self._args, "use_vacuum", False) and not self._args.plan_only:
+            self._start_release_capture()
             joints_before_detach = self._joint_sample()
             detach_request_stamp = float(self.ros_now_sec())
             # Unlock follow at this instant, before retreat plans a new TCP.
             off_ok, off_msg = self.vacuum_command(False)
+            self._release_capture_event('vacuum_off_response', success=off_ok)
             detach_response_stamp = float(self.ros_now_sec())
             trial.extras["vac_detach"] = off_msg
             if off_ok:
@@ -2637,11 +3674,45 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 # retreat never submits (named stop, zero controller
                 # submissions past the release boundary).
                 return self._abort(trial, "VACUUM_DETACH", True, extra=extras)
-            dyn_ok, dyn_msg, release_pose = self._release_as_dynamic()
-            trial.extras["dynamic_body"] = dyn_msg
-            trial.extras["box_pose_at_release"] = release_pose
-            if not dyn_ok:
-                return self._abort(trial, "DYNAMIC_BODY", False, extra=extras)
+            # [release-failure contract] The world changed the instant
+            # the box left the tool — notify the map BEFORE any
+            # acceptance decision so a later verify failure can never
+            # leave this spot readable as free. The commanded footprint
+            # (slot record + box wdh) is container_link, matching the
+            # mapper's frame. Fail-closed: no notification = the map is
+            # blind to a landed box; stop the session by name rather
+            # than continue.
+            self._frame_released = True
+            notify_ok, notify_msg = self._notify_box_released()
+            trial.extras["release_notify"] = notify_msg
+            if not notify_ok:
+                return self._abort(
+                    trial, "RELEASE_NOTIFY_FAILED", False, extra=extras)
+            release_mode = str(
+                getattr(self._args, "release_mode", "kinematic")
+                or "kinematic").lower()
+            if release_mode == "kinematic":
+                k_ok, k_msg, k_rec = self._release_kinematic(
+                    str(self._box_model or ""), slot_meta)
+                trial.extras["release_kinematic"] = k_rec
+                trial.extras["box_pose_at_release"] =                     k_rec.get("declared_pose_rpy6")
+                if not k_ok:
+                    return self._abort(
+                        trial, "KINEMATIC_RELEASE(%s)" % k_msg,
+                        False, extra=extras)
+                release_pose = list(
+                    k_rec.get("declared_pose_rpy6") or [])
+            else:
+                dyn_ok, dyn_msg, release_pose = self._release_as_dynamic()
+                trial.extras["dynamic_body"] = dyn_msg
+                trial.extras["box_pose_at_release"] = release_pose
+                trial.extras["release_pose"] = getattr(
+                    self, "_release_pose_evidence", None)
+                trial.extras["release_dynamic_timing"] = getattr(
+                    self, "_release_dynamic_timing", None)
+                if not dyn_ok:
+                    return self._abort(
+                        trial, "DYNAMIC_BODY", False, extra=extras)
             # [ST09-I S5.7-6] explicit release-boundary phase
             # transition BEFORE any post-release leg: the certifier
             # side activates the UNLOADED phase only against verified
@@ -2655,6 +3726,21 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                     trial, "ADMISSION_PHASE_%s" % (
                         phase_reason or "TRANSITION_FAILED"),
                     False, extra=extras)
+
+        if (retreat_seg is not None and not self._args.plan_only
+                and str(getattr(self._args, "release_mode", "kinematic")
+                        or "kinematic").lower() != "kinematic"):
+            # [release dwell, dynamic mode only] The box falls DURING
+            # this dwell; the arm stays on the certified knot the whole
+            # time, so the retreat_start contract below is unchanged.
+            # Kinematic mode has no dynamic body to wait for.
+            timing = getattr(self, "_release_dynamic_timing", None) or {}
+            dwell_anchor = timing.get("t_spawn_done_sim") \
+                or detach_response_stamp
+            dwell = self._release_dwell(
+                getattr(self._args, "release_dwell_s", 2.0), dwell_anchor)
+            trial.extras["release_dwell"] = dwell
+            extras["release_dwell.json"] = dwell
 
         if retreat_seg is not None and not self._args.plan_only:
             # The certified retreat knot is descend's final waypoint. Submit
@@ -2674,27 +3760,26 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         if retreat_seg is not None:
             self._set_state("PLACE_RETREAT")
             for post_seg in post_release:
+                self._release_capture_event('post_release_segment_start')
                 ok, code, rec = self._execute_segment(post_seg, trial)
+                self._release_capture_event('post_release_segment_end', success=ok, code=code,
+                                           name=(rec or {}).get('name'))
                 if ok:
                     trial.segments_succeeded += 1
                 else:
                     return self._abort(trial, code, False, extra=extras)
-                # Capture the evidence frame at the retreat lift: the
-                # first retreat leg ends directly above the placed box,
-                # before the pull-back and return legs leave the
-                # container. One attempt only; no frame is captured
-                # after the post-release chain completes.
-                if (str(post_seg.name) == "retreat"
-                        and getattr(self, "_retreat_lift_color", None) is None
-                        and getattr(self, "_retreat_lift_color_err", None) is None
-                        and not self._args.plan_only):
-                    time.sleep(0.35)
-                    color, color_err = self._latest_color(
-                        min_stamp=self.ros_now_sec() - 1.0, timeout=2.5)
-                    self._retreat_lift_color = color
-                    self._retreat_lift_color_err = color_err
 
         pose_release, pose_drift, settle = self._poses_after_settle()
+        self._release_capture_event('settle_complete', pose=pose_drift, verdict=settle)
+        self._stop_release_capture()
+        # Preserve the raw comparison inputs before commit or verification can
+        # abort. The success-only summary below cannot diagnose a failed gate.
+        trial.extras["verify_inputs"] = {
+            "box_pose_after_release": pose_release,
+            "box_pose_after_drift_wait": pose_drift,
+            "box_pose_at_release": trial.extras.get("box_pose_at_release"),
+            "expected_box_position_world": list(slot_meta["pose_world"]["position"]),
+        }
         trial.extras["settle"] = {
             "settled": bool(settle.get("settled")),
             "window_move_m": settle.get("window_move_m"),
@@ -2706,12 +3791,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             trial.extras["fall_m"] = xyz_separation(release_xyz, landed_xyz)
         self._set_state("COMMITTED")
         if (not self._args.plan_only) and getattr(self._args, "use_vacuum", False):
-            add = AddPlacedBox.Request()
-            add.slot = self._slot_world_msg(slot, slot_meta)
-            resp = self.call_srv(self._add_placed, add, timeout=10.0)
-            trial.extras["add_placed"] = resp.message if resp else "timeout"
-            if resp is None or not resp.success:
-                return self._abort(trial, "COMMIT_FAILED", False, extra=extras)
+            # [G3 wave5] the slot-named scene object channel is gone; the
+            # confirmed cargo-map commit is the single rigid-obstacle
+            # source (occupancy columns, map_revision-bound).
+            trial.extras["add_placed"] = "occ-only"
             if not self._commit_to_cargo_map(trial, slot, slot_meta):
                 return self._abort(trial, "COMMIT_FAILED", False, extra=extras)
             self._set_place_touch(False)
@@ -2719,64 +3802,54 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._set_state("VERIFIED")
         expected = slot_meta["pose_world"]["position"]
         actual = _xyz3(pose_drift or pose_release)
-        if (actual is None
-                and getattr(self._args, "use_vacuum", False)
-                and not self._args.plan_only):
-            return self._abort(trial, "PLACE_VERIFY_XY", False, extra=extras)
-        if actual is not None:
-            trial.err_xy = math.hypot(
-                actual[0] - expected[0], actual[1] - expected[1])
-            trial.err_z = actual[2] - expected[2]
-            rel = _xyz3(pose_release)
-            drift = _xyz3(pose_drift)
-            if rel and drift:
-                trial.drift = math.sqrt(sum(
-                    (drift[i] - rel[i]) ** 2 for i in range(3)))
-            if pose_drift is not None and len(pose_drift) >= 5:
-                trial.roll = float(pose_drift[3])
-                trial.pitch = float(pose_drift[4])
-            base_actual = xyz_world_to_base_link(self._scene_config, actual)
-            trial.inside_inner_box = point_inside_container_inner_box(
-                base_actual, self._scene_config, margin=0.0)
-            if trial.err_xy > 0.04:
-                return self._abort(trial, "PLACE_VERIFY_XY", False, extra=extras)
-            if abs(trial.err_z) > 0.03:
-                return self._abort(trial, "PLACE_VERIFY_Z", False, extra=extras)
-            if trial.drift is not None and trial.drift > 0.02:
-                return self._abort(
-                    trial, "PLACE_VERIFY_DRIFT", False, extra=extras)
-            if trial.roll is not None and abs(trial.roll) > math.radians(2.0):
-                return self._abort(trial, "PLACE_VERIFY_TIP", False, extra=extras)
-            if trial.pitch is not None and abs(trial.pitch) > math.radians(2.0):
-                return self._abort(trial, "PLACE_VERIFY_TIP", False, extra=extras)
-            if not trial.inside_inner_box:
-                return self._abort(trial, "PLACE_VERIFY_XY", False, extra=extras)
+        # [release-failure contract] Evidence lands BEFORE the gates:
+        # success and failure share one dump path, and a failing verify
+        # must not discard the poses/direction/timing that explain it
+        # (witness r10: box 1's settled direction was lost exactly here).
         trial.extras["verify"] = {
             "box_pose_after_release": pose_release,
             "box_pose_after_drift_wait": pose_drift,
             "box_pose_at_release": trial.extras.get("box_pose_at_release"),
-            "err_xy": trial.err_xy, "err_z": trial.err_z,
-            "drift": trial.drift,
+            "expected_pose_world": expected,
+            "err_xy": None, "err_z": None, "drift": None,
+            "release_drift_direction_world": None,
             "fall_m": trial.extras.get("fall_m"),
             "settled": bool(settle.get("settled")),
-            "inside_inner_box": trial.inside_inner_box,
+            "inside_inner_box": None,
+            "detach_request_stamp": locals().get("detach_request_stamp"),
+            "detach_response_stamp": locals().get("detach_response_stamp"),
+            "verdict": "pending",
+        }
+        if (actual is None
+                and getattr(self._args, "use_vacuum", False)
+                and not self._args.plan_only):
+            trial.extras["verify"]["verdict"] = "PLACE_VERIFY_XY"
+            return self._abort(trial, "PLACE_VERIFY_XY", False, extra=extras)
+        if actual is not None:
+            gate = self._evaluate_place_verify(
+                trial, expected, actual, pose_release, pose_drift)
+            if gate is not None:
+                trial.extras["verify"]["verdict"] = gate
+                return self._abort(trial, gate, False, extra=extras)
+        # Success completes the shared evidence record (same path the
+        # failures already wrote; only the verdict flips).
+        trial.extras["verify"].update({
             "roll": trial.roll, "pitch": trial.pitch,
             "support_rest": list(expected) if expected is not None else None,
-        }
+            "verdict": "ok",
+        })
         trial.extras["follow_skipped_delta"] = (
             self._follow_skipped() - self._follow_skipped0)
 
+        if not self._args.plan_only and not self._prepare_return_observe(trial):
+            return self._abort(trial, "COMMIT_FAILED", False, extra=extras)
+        trial.extras["return_boundary_timings"] = {"debug_start_monotonic": time.monotonic()}
         debug = self._capture_success_debug(
             trial, slot, slot_meta, pose_drift or pose_release)
+        trial.extras["return_boundary_timings"]["debug_end_monotonic"] = time.monotonic()
         trial.extras.setdefault("place_debug", {})["gt_ply"] = "gt_interior_box.ply"
 
-        self._set_state("HOME")
-        if not self._args.plan_only:
-            goto_ok, goto_msg, _ = self._home_arm()
-            trial.extras["return_observe"] = goto_msg
-            trial.extras["exit_yaw"] = dict(self._exit_yaw or {})
-            if not goto_ok:
-                trial.fail_code = self.home_arm_code()
+        self._return_observe_with_evidence(trial, extras, debug)
         trial.place_state = self._place_state
         self._dump_place(trial, extra=extras, debug=debug)
         if (not self._args.plan_only) and getattr(self._args, "use_vacuum", False):
@@ -2893,6 +3966,23 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             observation_gate_name=gate, selected_frame=selected,
             scene_size=scene_size)
 
+    def _capture_pick_readiness_failure(self, trial, decision):
+        """Save the gated frame, not a later image after a failed YOLO wait."""
+        bundle = self.freeze_failure_bundle(decision)
+        dump_dir = str(getattr(self._args, 'dump_dir', '') or '')
+        if not dump_dir:
+            return
+        images, metadata, arrays = self.decoded_dump()
+        metadata.update(capture_complete=bool(bundle.get('capture_complete')),
+                        missing=list(bundle.get('missing') or []),
+                        decision_record=decision,
+                        replay_possible=bool(bundle.get('replay_possible')))
+        dest = write_trial_dump(os.path.join(dump_dir, 'perception'),
+            trial_to_dict(trial), images=images, extras=metadata, arrays=arrays)
+        trial.extras['perception_failure_capture'] = {
+            'directory': dest, 'capture_complete': metadata['capture_complete'],
+            'missing': metadata['missing'], 'replay_possible': metadata['replay_possible']}
+
     def _pick_carry(self, index, trial, already_spawned=False):
         """Pick through vacuum-follow. Returns (pick_msg, box_msg) or None."""
         self._join_trace.clear()
@@ -2961,6 +4051,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 self._seg_stats["payload"])
             trial.extras["seg_stats"] = decision
             trial.extras["decision_record"] = decision
+            self._capture_pick_readiness_failure(trial, decision)
             return None
         if not self.wait_tracked_cargo(
                 generation, self._args.geometry_timeout, spawn.box.id):
@@ -3061,8 +4152,6 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 # the previous cycle's exit proof is void from here —
                 # it must never carry across a new carrying phase.
                 self._start_new_cycle()
-                if self._typed is not None:
-                    self._frame_capture_grasp(pick_msg)
         if self._args.use_vacuum:
             state = dict(self._vacuum_state or {})
             if not (state.get("attached") and not state.get("fail_reason")):
@@ -3073,11 +4162,21 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
 
 def parse_args(argv):
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--diagnostic-selection-only", action="store_true",
+        help="Capture the real post-pick selection response and stop before "
+             "carry execution; diagnostic result is never a packing pass.")
     parser.add_argument("--n", type=int, default=3)
     parser.add_argument("--out", default=DEFAULT_OUT)
     parser.add_argument("--dump-dir", default="")
     parser.add_argument("--observe-pose", default="pickup_observe")
     parser.add_argument("--plan-timeout", type=float, default=60.0)
+    parser.add_argument(
+        "--select-budget-s", type=float, default=0.0,
+        help="Functional-diagnostic Select budget override (s). 0 keeps "
+             "the frozen n*60s service budget; >0 must equal the "
+             "selector's diagnostic_route_budget_s so the client wait "
+             "(budget + 30 s comm overhead) covers the real search.")
     parser.add_argument("--goto-timeout", type=float, default=30.0)
     parser.add_argument("--detect-timeout", type=float, default=15.0)
     parser.add_argument("--geometry-timeout", type=float, default=15.0)
@@ -3101,6 +4200,32 @@ def parse_args(argv):
     parser.add_argument("--on-place-fail", default="stop")
     parser.add_argument("--release-gap", type=float, default=0.0)
     parser.add_argument("--drift-wait", type=float, default=1.0)
+    parser.add_argument(
+        "--placement-prior", action="store_true",
+        help="[opt-in 2026-10-19] Measured placement-prior adoption "
+             "(read-only sidecar; launch start_placement_prior:=true "
+             "must match). OFF = the original flow with ZERO prior "
+             "calls. The prior only reorders Select candidates and "
+             "narrows the measured suction candidate BEFORE the grasp; "
+             "full route certification is unchanged; failures fall "
+             "back by name (never a stale prior).")
+    parser.add_argument(
+        "--release-mode", choices=("kinematic", "dynamic"),
+        default="kinematic",
+        help="[planning-verification 2026-10-19] kinematic: keep the "
+             "carried body as a static obstacle at the DECLARED "
+             "release end-state (no delete, no dynamic respawn, no "
+             "free fall) — proves planning+state-chain feasibility, "
+             "NOT contact physics/suction/landing accuracy. dynamic: "
+             "the full physics release (r5 behavior, future "
+             "contact-validation track).")
+    parser.add_argument(
+        "--release-dwell-s", type=float, default=2.0,
+        help="Hold the certified retreat knot this long after the "
+             "dynamic swap so the box falls clear of the panel before "
+             "the retreat's first stroke (gate3_aprime_r5: 20 ms panel "
+             "graze at 102.84-102.86 s, verify margin eroded to "
+             "3.5 mm). 0 disables the dwell.")
     parser.add_argument("--scene-tf-config", default="")
     parser.add_argument(
         "--synthetic-size", default="",
@@ -3134,7 +4259,23 @@ def main(argv=None):
     driver = PlaceSmokeDriver(args)
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(driver)
-    spinner = threading.Thread(target=executor.spin, daemon=True)
+
+    def _spin_with_crash_log():
+        # [n3 functional, 2026-10-22] An exception escaping a callback kills
+        # this thread (and the executor); as a daemon thread its traceback
+        # gets truncated by interpreter teardown (n3_functional_20261022_
+        # 130429 lost the frames exactly that way while the handoff settle
+        # gate went evidence-blind). Persist the full traceback FIRST, then
+        # re-raise. Observability only — no behavior change.
+        try:
+            executor.spin()
+        except BaseException:
+            with open(os.path.join(args.out, "executor_crash.txt"), "w",
+                      encoding="utf-8") as handle:
+                handle.write(traceback.format_exc())
+            raise
+
+    spinner = threading.Thread(target=_spin_with_crash_log, daemon=True)
     spinner.start()
 
     records = []

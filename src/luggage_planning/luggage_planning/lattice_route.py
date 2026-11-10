@@ -79,15 +79,18 @@ class LatticeStateChecker(object):
 
     def __init__(self, node, scene_client, scene_states: Mapping,
                  start_q, service_timeout_s=SERVICE_TIMEOUT_S,
-                 distance_stride=10 ** 9):
+                 distance_stride=10 ** 9, service_budget_s=SERVICE_BUDGET_S):
         self._node = node
         self._scene_client = scene_client
         self._scene_states = dict(scene_states)
         self._start_q = tuple(float(v) for v in start_q)
         self._timeout_s = float(service_timeout_s)
+        self._service_budget_s = float(service_budget_s)
         self._distance_stride = max(1, int(distance_stride))
         self._client = None
         self._scenes = None
+        self._pending_live = None
+        self.prepared_digest = None
         self._indices = None
         self._distances = []
         self.collision_rejected = 0
@@ -96,6 +99,24 @@ class LatticeStateChecker(object):
         self.first_block = None
         self.stats = {"service_calls": 0, "service_time_s": 0.0,
                       "states": 0}
+
+    def live_scene_digest(self):
+        """Digest of the live scene this checker will judge against.
+
+        The scene read for the digest is kept and is the one ``_prepare``
+        composes from, so digest and judged scene are the same object. A
+        checker that already prepared against another scene reports
+        ``prepared_digest`` so the caller can build a new one.
+        """
+        from luggage_planning.anchor_payload_gate import live_scene_digest
+        from luggage_planning.moveit_state_validity import FrozenSceneComposer
+
+        live = FrozenSceneComposer(self._scene_client).read_live()
+        digest = live_scene_digest(live)
+        if self._scenes is None:
+            self._pending_live = live
+            self.prepared_digest = digest
+        return digest
 
     def _prepare(self):
         if self._scenes is not None:
@@ -112,7 +133,7 @@ class LatticeStateChecker(object):
                 self.edge_id = edge_id
 
         composer = FrozenSceneComposer(self._scene_client)
-        live = composer.read_live()
+        live = getattr(self, "_pending_live", None) or composer.read_live()
         legs = [_Leg("lattice-%s" % load) for load in self._scene_states]
         states = {
             "lattice-%s" % load: state
@@ -157,7 +178,7 @@ class LatticeStateChecker(object):
         request.max_sample_dt_ns = 0.0
         request.max_sample_step_m = 0.0
         request.distance_stride = int(self._distance_stride)
-        request.budget_s = SERVICE_BUDGET_S
+        request.budget_s = self._service_budget_s
         request.legs = [leg]
         event = threading.Event()
         future = self._client.call_async(request)
@@ -210,14 +231,16 @@ class LatticeStateChecker(object):
             self.min_collision_distance_m = min(self._distances)
         return leg
 
-    def validate(self, states):
+    def validate(self, states, expired=lambda: False):
         """``[(joints, load), ...]`` -> ``{(joints, load): bool}``."""
+        if expired():
+            return {}
         self._prepare()
         verdicts = {}
         for load in ("carrying", "unloaded"):
             pending = [[joints for joints, state_load in states
                         if state_load == load]]
-            while pending and pending[-1]:
+            while pending and pending[-1] and not expired():
                 group = pending.pop()
                 result = self._call(group, load)
                 if result.valid:

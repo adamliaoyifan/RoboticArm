@@ -1,0 +1,60 @@
+{
+  "verdict": {
+    "pass": true,
+    "status": "pass",
+    "reasons": [],
+    "injected_faults": [],
+    "performance_certified": true,
+    "gate": "o9",
+    "capture_certified": false
+  },
+  "ratios": {
+    "roi": 1.0007700033478406,
+    "integrate_30k": 0.9959667471663929,
+    "surface_first": 0.9551624793742002
+  },
+  "lock_wait_s": 2.88570299744606e-06,
+  "failures": [],
+  "environment": {
+    "governor": "powersave",
+    "cpu_pinning": "none",
+    "logical_cpus": 32,
+    "client_executor_threads": 4,
+    "integrate_threads": 1,
+    "rmw": "rmw_fastrtps_cpp",
+    "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+    "python": "3.10.12",
+    "loadavg": [
+      "0.41",
+      "0.20",
+      "0.14"
+    ],
+    "cpu_freq_khz": "600000",
+    "context_switches": "141021696808",
+    "logical_cpus_are_utilization": false
+  },
+  "frame_sha256": "2548ec3ec47233c976a724d2ee1eee01f153d5d2a9d395f5b5b09e4bc5579e34",
+  "frame_points": 30000,
+  "cli_sha256": "19703076fb0c2fca86e5ee1b2ee6ee87423b528f633a24ac94f5cfac75388146",
+  "geometry_sha256": "c2912984be7de04c10ba1ec26a29cfb2d509d9fab2e4f7d27ba13183f99f5972",
+  "config_sha256": "c5c58ffc0f32ee73d15356fd074f722b8395dca4a8438e0f233f50c411fc9a6b",
+  "peak_rss_kib": 95624,
+  "fabricated_replay_possible": false,
+  "fabricated_executed": false,
+  "epoch_replay": {
+    "replay_possible": true,
+    "executed": true,
+    "file_reread_is_replay": false,
+    "mismatches": [],
+    "observed": {
+      "status": "EPOCH_MISMATCH",
+      "observation_id": "epoch-reject",
+      "epoch": 1,
+      "tree_nodes": 0
+    }
+  },
+  "latency_gate": true,
+  "capture_gate": true,
+  "performance_certified": false,
+  "qualification": "pass"
+}

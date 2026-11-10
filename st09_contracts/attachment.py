@@ -39,6 +39,7 @@ from st09_contracts._base import (
     unit_quaternion,
 )
 from st09_contracts.reasons import Reason
+from st09_contracts.payload_envelope import PayloadEnvelope
 
 ATTACHMENT_SCHEMA_VERSION = 2
 
@@ -125,6 +126,7 @@ class AttachmentRecord:
     evidence_digest: str
     validity: AttachmentValidity
     invalidation_reason: Optional[str] = None
+    collision_envelope: Optional[PayloadEnvelope] = None
 
     def __post_init__(self) -> None:
         if self.schema_version != ATTACHMENT_SCHEMA_VERSION:
@@ -161,6 +163,13 @@ class AttachmentRecord:
         if self.validity is not AttachmentValidity.VALID and not self.invalidation_reason:
             raise ContractViolation("invalidation_reason required when not valid")
 
+        if self.collision_envelope is not None:
+            env = self.collision_envelope
+            if not isinstance(env, PayloadEnvelope) or env.nominal_digest != digest_of(
+                    self.dimensions_wdh, self.t_tcp_box_translation,
+                    self.t_tcp_box_quaternion_xyzw):
+                raise ContractViolation("PAYLOAD_ENVELOPE_BINDING_MISMATCH")
+
     @property
     def usable_for_route(self) -> bool:
         return (
@@ -175,7 +184,8 @@ class AttachmentRecord:
             self.t_tcp_box_translation, self.t_tcp_box_quaternion_xyzw,
             self.acquisition_stamp_ns, self.scene_revision, self.calibration_id,
             str(self.source), self.source_method, self.evidence_digest,
-            str(self.validity), self.invalidation_reason)
+            str(self.validity), self.invalidation_reason,
+            self.collision_envelope.digest() if self.collision_envelope else None)
 
     def to_dict(self) -> Mapping[str, Any]:
         return {
@@ -199,6 +209,7 @@ class AttachmentRecord:
             "evidence_digest": self.evidence_digest,
             "validity": str(self.validity),
             "invalidation_reason": self.invalidation_reason,
+            "collision_envelope": self.collision_envelope.to_dict() if self.collision_envelope else None,
         }
 
 

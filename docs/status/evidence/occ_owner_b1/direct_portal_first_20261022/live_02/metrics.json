@@ -1,0 +1,141 @@
+{
+  "revision": "b7ebea8cdf30d691a009b7ac5b4aa74b67e9af97",
+  "dirty": [
+    "?? pydeps-frozen"
+  ],
+  "boxes_attempted": 1,
+  "boxes_packed": 0,
+  "termination": "KINEMATIC_RELEASE(kinematic presence refused (no_message))",
+  "wall_s": 253.1,
+  "cycle": {
+    "max": null,
+    "mean": null,
+    "n": 0,
+    "p50": null
+  },
+  "selections": [
+    {
+      "request": "place-v2-2",
+      "success": true,
+      "motion_segments": 8,
+      "stage_timings": {
+        "total_ms": 12731.0,
+        "budget_ms": 180000.0,
+        "prep_ms": 71.0,
+        "search_ms": 11485.3,
+        "certify_ms": 1124.0,
+        "revalidate_ms": 50.7,
+        "by_reason_ms": {
+          "OK": 12651.0
+        },
+        "accounted_ms": 12651.0,
+        "outside_rows_ms": 80.0
+      },
+      "selected_topologies": [
+        "direct"
+      ],
+      "candidate_count": 1,
+      "reason_histogram": {
+        "OK": 1
+      },
+      "attempts": [
+        {
+          "slot_index": 13,
+          "topology": "direct",
+          "budget_ns": 104822400000,
+          "outcome": "planned",
+          "elapsed_ns": 11177000000
+        }
+      ],
+      "segment_durations_s": [
+        {
+          "name": "transit",
+          "seconds": 196.436015219
+        },
+        {
+          "name": "traverse",
+          "seconds": 7.539677072
+        },
+        {
+          "name": "insert",
+          "seconds": 1.107461287
+        },
+        {
+          "name": "descend",
+          "seconds": 1.044325629
+        },
+        {
+          "name": "retreat",
+          "seconds": 1.044324872
+        },
+        {
+          "name": "retreat",
+          "seconds": 1.107466089
+        },
+        {
+          "name": "retreat",
+          "seconds": 7.290945062
+        },
+        {
+          "name": "return",
+          "seconds": 82.498525413
+        }
+      ]
+    }
+  ],
+  "trials": [
+    {
+      "case": "box_00_KINEMATIC_RELEASE(kinematic presence refused (no_message))",
+      "fail_code": "KINEMATIC_RELEASE(kinematic presence refused (no_message))",
+      "place_state": "ABORT_RELEASED",
+      "vac_attach": true,
+      "segments_planned": 8,
+      "segments_succeeded": 4,
+      "descend_fraction": 1.0,
+      "release_kinematic": {
+        "declared_pose_rpy6": [
+          -2.03,
+          0.534996,
+          0.665525,
+          0.0,
+          0.0,
+          1.1e-05
+        ],
+        "mode": "kinematic",
+        "presence_evidence": {
+          "epoch_floor_ns": 255384000000,
+          "model": "pickup_box_0001_inch20",
+          "reason": "no_message",
+          "verdict": "refused"
+        },
+        "set_pose": "ok"
+      },
+      "replay": {
+        "artifacts": {
+          "joint_ring": "replay/joint_ring.jsonl",
+          "last_boundary": "replay/last_boundary.json",
+          "perception_refs": "replay/perception_refs.json",
+          "planning_scene": "replay/planning_scene.json",
+          "surface_2d": "replay/surface_2d.json"
+        },
+        "capture_complete": true,
+        "case_id": "trial_00",
+        "fail_code": "KINEMATIC_RELEASE(kinematic presence refused (no_message))",
+        "missing": [],
+        "replay_possible": true,
+        "stage": "descend"
+      }
+    }
+  ],
+  "startup": {
+    "success": true,
+    "stage": "startup",
+    "clock_publishers": 1,
+    "camera_samples": 70,
+    "urdf_saved": true,
+    "wall_s": 5.184142506681383,
+    "camera_hz": 13.74858628513854,
+    "criteria": "one clock publisher; saved URDF; >=30 camera samples over >=5s; camera >=3Hz"
+  },
+  "suite_pass": false
+}

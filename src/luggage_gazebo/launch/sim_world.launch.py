@@ -43,6 +43,7 @@ from launch.substitutions import Command, EnvironmentVariable, LaunchConfigurati
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from moveit_configs_utils import MoveItConfigsBuilder
+from luggage_planning.diagnostic_capture_routes import action_remappings, EXECUTE, FJT
 
 from luggage_description.scene_tf_config_utils import (
     gazebo_container_model,
@@ -52,8 +53,12 @@ from luggage_description.scene_tf_config_utils import (
     load_scene_tf_config,
     pedestal_enabled,
     pickup_platform_enabled,
+    pickup_platform_config,
 )
+from luggage_gazebo.platform_model import platform_sdf
 from luggage_description.xacro_robot_with_scene_base import expand_and_patch
+
+from luggage_description.cargo_grid_parameters import resolve_resolution
 
 WORLD_NAME = "airport_loading"
 _PROFILE_SENTINEL = "__profile__"
@@ -75,14 +80,39 @@ def _default_launch_values():
         "gui": "true",
         "use_rviz": "true",
         "use_perception": "true",
+        "top_surface_mode": "legacy",
         "hull_margin": "0.0",
+        "structural_search": "false",
+        "structural_budget_s": "20.0",
         "min_support_ratio": "0.6",
         "last_result_max_candidates": "24",
         "use_cargo_map": "false",
         "require_confirmed_map": "false",
+        # [Volume evidence backend, 2026-11-10] explicit selection for
+        # the sim planner: "" keeps the historical topic-surface path
+        # (the sim's pre-default-change behavior; NOTE the PRODUCT
+        # default is "observer" — the sim passes this through so the
+        # observer default cannot silently break a sim without an
+        # observer node), "grid_g" = this sim's own cargo map (run
+        # with use_cargo_map:=true), "observer" = the observer stack.
+        "volume_evidence_source": "",
+        # Acceptance-frozen full-ray budget (run09-run16): the node's
+        # 2000 default subsamples large fans and thins observed support.
+        "cargo_map_max_raycast_points": "20000",
         "use_packing": "false",
         "use_vacuum": "false",
         "use_motion": "false",
+        "diagnostic_capture": "false",
+        # [joint command boundary capture 2026-10-21] opt-in per-cycle
+        # plugin instrumentation (off = zero wiring, zero perturbation).
+        "joint_capture_mode": "off",
+        "joint_capture_run_dir": "",
+        # [placement-prior opt-in 2026-10-19] Read-only prior sidecar
+        # (place_prior + grasp/tool local check nodes). OFF = the
+        # original flow with zero prior processes; the pack driver's
+        # --placement-prior must be set to the SAME value for an actual
+        # adoption path.
+        "start_placement_prior": "false",
         # Reachability-atlas runtime wiring (placement gate + motion IK
         # seeds). Empty = the nodes pick the atlas whose stored scene hash
         # matches scene_tf_config. atlas_runtime_config overrides that.
@@ -93,6 +123,11 @@ def _default_launch_values():
         "corridor_planner": "graph",
         # Route budget is 60 s times this count.
         "box_count": "1",
+        # [Functional diagnostic] Per-Select route budget override that
+        # reaches the searcher; 0.0 keeps the frozen n*60s contract.
+        "diagnostic_route_budget_s": "0.0",
+        "attachment_geometry_config": "",
+        "cargo_map_resolution_m": "",
         "named_pose_duration": "4.0",
         "named_pose_max_vel": "1.0",
         "velocity_scaling": "0.3",
@@ -104,6 +139,7 @@ def _default_launch_values():
         "semantic_pydeps_dir": "",
         "visual_kind": "mesh",
         "size_mode": "catalog",
+        "box_catalog_config": "",
         "yaw_mode": "",
         "yaw_range": "0.0,0.0",
         "xy_jitter_range": "0.0,0.0",
@@ -140,6 +176,37 @@ def _resolved_launch_config(context):
 
 def _as_bool(value):
     return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _joint_capture_env(context):
+    """[joint command boundary capture] env wiring, opt-in via launch args.
+
+    mode=off (default) wires nothing. Otherwise the run dir must be fresh
+    (the recorder creates it plus ctl/ itself; a non-empty existing dir is
+    a loud refusal), and JOINT_CAPTURE_* is set for all children — only the
+    instrumented plugin and the vacuum follow-trace hook read them.
+    ELFIN_FOLLOW_TRACE lands in the same run dir (context layer).
+    """
+    cfg = _resolved_launch_config(context)
+    mode = str(cfg.get("joint_capture_mode", "off")).strip()
+    if mode == "off" or not mode:
+        return []
+    if mode not in ("armed", "window"):
+        raise RuntimeError(
+            f"joint_capture_mode must be off|armed|window, got {mode!r}")
+    run_dir = str(cfg.get("joint_capture_run_dir", "")).strip()
+    if not run_dir:
+        raise RuntimeError(
+            "joint_capture_run_dir is required when joint_capture_mode != off")
+    if os.path.isdir(run_dir) and os.listdir(run_dir):
+        raise RuntimeError(
+            f"joint_capture_run_dir must be fresh, {run_dir} is not empty")
+    follow_trace = os.path.join(run_dir, "follow_trace.jsonl")
+    return [
+        SetEnvironmentVariable("JOINT_CAPTURE_MODE", mode),
+        SetEnvironmentVariable("JOINT_CAPTURE_DIR", run_dir),
+        SetEnvironmentVariable("ELFIN_FOLLOW_TRACE", follow_trace),
+    ]
 
 
 def _semantic_asset_paths(cfg):
@@ -370,7 +437,7 @@ def _gazebo_semantic_description():
     return {"robot_description_semantic": xml}
 
 
-def _move_group_node(robot_description, use_moveit):
+def _move_group_node(robot_description, use_moveit, diagnostic_capture=False):
     """MoveIt 2 move_group with sim time and the gazebo robot_description."""
     moveit_config = (
         MoveItConfigsBuilder("S20", package_name="elfin_moveit_config")
@@ -387,6 +454,8 @@ def _move_group_node(robot_description, use_moveit):
         executable="move_group",
         name="move_group",
         output="screen",
+        remappings=action_remappings(FJT)
+        if diagnostic_capture else [],
         parameters=[
             moveit_config.to_dict(),
             _gazebo_semantic_description(),
@@ -400,7 +469,7 @@ def _move_group_node(robot_description, use_moveit):
     )
 
 
-def _create_node(model_name: str, sdf_path: str, spawn: dict):
+def _create_node(model_name: str, sdf_path: str, spawn: dict, *, sdf_xml=None):
     """One ros_gz_sim create process per scene model.
 
     A single persistent service bridge for /world/<w>/create would die with
@@ -413,7 +482,7 @@ def _create_node(model_name: str, sdf_path: str, spawn: dict):
         output="screen",
         arguments=[
             "-world", WORLD_NAME,
-            "-file", sdf_path,
+            *(["-string", sdf_xml] if sdf_xml is not None else ["-file", sdf_path]),
             "-name", model_name,
             "-x", "%.6f" % float(spawn["x"]),
             "-y", "%.6f" % float(spawn["y"]),
@@ -436,14 +505,16 @@ def _scene_model_actions(scene_tf_config: str):
         spawns.append(("pickup_platform", gazebo_pickup_platform_spawn_pose(config)))
     container_model = gazebo_container_model(config)
     spawns.append((container_model, gazebo_container_spawn_pose(config)))
-    return [
-        _create_node(
-            model,
-            os.path.join(gz_share, "models", model, "model.sdf"),
-            spawn,
-        )
-        for model, spawn in spawns
-    ]
+    actions = []
+    for model, spawn in spawns:
+        sdf_path = os.path.join(gz_share, "models", model, "model.sdf")
+        sdf_xml = None
+        if model == "pickup_platform":
+            with open(sdf_path, encoding="utf-8") as template:
+                sdf_xml = platform_sdf(
+                    template.read(), pickup_platform_config(config)["size"])
+        actions.append(_create_node(model, sdf_path, spawn, sdf_xml=sdf_xml))
+    return actions
 
 
 def _robot_create_node(scene_tf_config, initial_joint_args):
@@ -641,6 +712,73 @@ def _frame_runtime_params(cfg, scene_tf_config, initial_joint_args):
     }
 
 
+def _placement_prior_actions(cfg, frame_scene_revision):
+    """The read-only prior sidecar, explicitly opt-in.
+
+    Same node set and parameters as placement_prior.launch.py; the
+    frame revision comes from the running frame runtime so the prior
+    joins the same scene identity Compute/Select use. OFF by default:
+    no prior processes exist unless start_placement_prior:=true.
+    """
+    # NOTE: _bool_text returns a "true"/"false" STRING (always truthy) —
+    # the original `not _bool_text(...)` guard could never return early,
+    # so any frame_runtime:=false boot raised below. Truthiness must use
+    # _as_bool; prior nodes were never started either way (IfCondition),
+    # so this fix does not change behaviour for existing boots.
+    if not _as_bool(cfg["start_placement_prior"]):
+        return []
+    import yaml as _yaml
+    from ament_index_python.packages import (
+        get_package_share_directory as _share)
+    from luggage_description.scene_tf_config_utils import (
+        load_scene_tf_config as _load_scene, origin_in_world as _origin)
+    from luggage_description.scene_tf_publisher import (
+        rpy_to_quaternion as _rpy_q)
+    from luggage_description.xacro_robot_with_scene_base import (
+        expand_and_patch as _expand)
+    scene_path = str(cfg["scene_tf_config"])
+    if not frame_scene_revision:
+        raise RuntimeError(
+            "start_placement_prior requires frame_runtime:=true (the "
+            "sidecar joins the running scene identity)")
+    share = _share("luggage_description")
+    xml, _ = _expand(
+        os.path.join(share, "urdf", "elfin_s20_with_camera.urdf.xacro"),
+        config_path=scene_path, xacro_args=[])
+    with open(os.path.join(share, "config", "S20_with_camera.srdf")) as fh:
+        semantic = fh.read().replace(
+            'name="elfin_s20_with_camera"', 'name="S20"', 1)
+    with open(os.path.join(_share("elfin_moveit_config"),
+                           "config", "kinematics.yaml")) as fh:
+        kinematics = _yaml.safe_load(fh)
+    translation, rpy = _origin(_load_scene(scene_path))
+    model = {"robot_description": xml,
+             "robot_description_semantic": semantic}
+    common = {"use_sim_time": True}
+    return [
+        Node(package="luggage_planning",
+             executable="grasp_local_check_node", name="grasp_local_check",
+             output="screen",
+             parameters=[model, common,
+                         {"robot_description_kinematics": kinematics}]),
+        Node(package="luggage_planning",
+             executable="placement_tool_check_node",
+             name="placement_tool_check", output="screen",
+             parameters=[model, common]),
+        Node(package="luggage_planning",
+             executable="place_prior_node.py", name="place_prior",
+             output="screen",
+             parameters=[model, common, {
+                 "frame_scene_revision": frame_scene_revision,
+                 "evidence_dir": "",
+                 "container_translation": [float(v) for v in translation],
+                 "container_quaternion_xyzw": [
+                     float(v) for v in _rpy_q(rpy)],
+                 "collision_margin_m": 0.05,
+             }]),
+    ]
+
+
 def _launch_setup(context):
     _check_renderer()
     cfg = _resolved_launch_config(context)
@@ -792,6 +930,7 @@ def _launch_setup(context):
             "scene_tf_config": scene_tf_config,
             "visual_kind": cfg["visual_kind"],
             "size_mode": cfg["size_mode"],
+            "box_catalog_config": cfg["box_catalog_config"],
             "visual_settle_sec": 2.0,
             "yaw_mode": cfg["yaw_mode"],
             "yaw_range": _csv_floats(cfg["yaw_range"], (0.0, 0.0)),
@@ -818,6 +957,7 @@ def _launch_setup(context):
         parameters=[{
             "scene_tf_config": scene_tf_config,
             "use_semantic": use_semantic,
+            "top_surface_mode": cfg["top_surface_mode"],
             "use_sim_time": True,
             "depth_topic": "/luggage/preprocessed/camera/depth/image",
             # The semantic chain (preprocessor 4-6 Hz + YOLO + point filter)
@@ -880,18 +1020,11 @@ def _launch_setup(context):
             "use_sim_time": True,
             "require_backend": require_backend,
             "model_name": semantic_model_path,
-            # Sim vocabulary for the textured suitcase mesh. The earlier
-            # "without texture" prompts described the untextured STL and
-            # are not the query for this asset. Thresholds stay at 0.2.
-            "prompts": [
-                "suitcase",
-                "luggage",
-                "box",
-                "container",
-                "floor",
-                "robot arm",
-            ],
-            "class_mapping_labels": [2, 2, 2, 1, 0, 3],
+            # Bare class names score below 0.2 on the textured top-down
+            # mesh (diagnostic frame: 0 detections). The yaml's
+            # scene-descriptive prompts are the query that fires
+            # (same frame: luggage-from-above at 0.61). Do not override
+            # them here.
         }],
     )
     point_filter = Node(
@@ -981,6 +1114,8 @@ def _launch_setup(context):
             executable="motion_planner_node.py",
             name="motion_planner",
             output="screen",
+            remappings=action_remappings(EXECUTE)
+            if _as_bool(cfg["diagnostic_capture"]) else [],
             parameters=[{
                 "use_sim_time": True,
                 "scene_tf_config": scene_tf_config,
@@ -1001,6 +1136,8 @@ def _launch_setup(context):
             executable="trajectory_selector_node.py",
             name="trajectory_selector",
             output="screen",
+            remappings=[("/validate_route_v2", "/diagnostic_capture/validate_route_v2")]
+            if _as_bool(cfg["diagnostic_capture"]) else [],
             parameters=[{
                 "use_sim_time": True,
                 "scene_tf_config": scene_tf_config,
@@ -1010,6 +1147,8 @@ def _launch_setup(context):
                 "robot_poses_config": poses_path,
                 "corridor_planner": str(cfg["corridor_planner"]),
                 "box_count": int(cfg["box_count"]),
+                "diagnostic_route_budget_s": float(
+                    cfg["diagnostic_route_budget_s"]),
                 **frame_params,
             }, atlas_params],
             condition=IfCondition(_bool_text(cfg["use_motion"])),
@@ -1031,7 +1170,8 @@ def _launch_setup(context):
     )
 
     robot_description = _robot_description_param(scene_tf_config, initial_joint_args)
-    move_group = _move_group_node(robot_description, cfg["use_moveit"])
+    move_group = _move_group_node(robot_description, cfg["use_moveit"],
+                                  _as_bool(cfg["diagnostic_capture"]))
     # Same URDF/SRDF move_group plans with. Pick certification calls
     # /validate_route_v2; without this node the first authorized detect
     # dies as BUILD_FAILED / CERT_SERVICE_UNAVAILABLE.
@@ -1082,9 +1222,12 @@ def _launch_setup(context):
             parameters=[{
                 "use_sim_time": True,
                 "cargo_cloud_topic": "/luggage/semantic/cargo_points_untracked",
+                "resolution": resolve_resolution(cfg["cargo_map_resolution_m"]),
                 "base_frame": "container_link",
                 "cloud_buffer_size": 12,
                 "freshness_window_sec": 0.20,
+                "max_raycast_points": int(
+                    float(cfg["cargo_map_max_raycast_points"])),
                 "require_confirmed_map": _as_bool(
                     cfg["require_confirmed_map"]),
                 **frame_params,
@@ -1101,10 +1244,31 @@ def _launch_setup(context):
                 "scene_tf_config": scene_tf_config,
                 # 0 keeps the historical flush-wall hull gate; the
                 # place-only profile configures 0.01 (>=10 mm clearance).
+                "floor_prior_resolution": resolve_resolution(cfg["cargo_map_resolution_m"]),
                 "hull_margin": float(cfg["hull_margin"]),
                 "min_support_ratio": float(cfg["min_support_ratio"]),
                 "last_result_max_candidates": int(
                     float(cfg["last_result_max_candidates"])),
+                # G3 structural-first chain (session batches + snug
+                # ranking, same hard gates). Default keeps the legacy
+                # exhaustive path.
+                "structural_search": _as_bool(cfg.get(
+                    "structural_search", "false")),
+                "structural_budget_s": float(
+                    cfg.get("structural_budget_s", "20.0")),
+                # [Volume evidence backend, 2026-11-10] explicit
+                # passthrough + validity wiring derived from the same
+                # selection (grid_g -> /cargo_map/*, observer -> the
+                # node's observer_o defaults) — interface-consistent
+                # with active_loading.launch. "" keeps the historical
+                # topic path AND the node's default validity wiring.
+                "volume_evidence_source": str(
+                    cfg.get("volume_evidence_source", "") or ""),
+                **({"validity_backend": "grid_g",
+                    "validity_topic": "/cargo_map/validity",
+                    "validity_status_service": "/cargo_map/get_validity"}
+                   if str(cfg.get("volume_evidence_source", "") or "")
+                   == "grid_g" else {}),
                 **frame_params,
             }, atlas_params],
             condition=IfCondition(_bool_text(cfg["use_packing"])),
@@ -1114,13 +1278,15 @@ def _launch_setup(context):
             executable="vacuum_controller_node.py",
             name="vacuum_controller",
             output="screen",
-            parameters=[{"use_sim_time": True, **frame_params}],
+            parameters=[{"use_sim_time": True, "attachment_geometry_config": str(cfg["attachment_geometry_config"]), **frame_params}],
             condition=IfCondition(_bool_text(cfg["use_vacuum"])),
         ),
         *_robot_state_publisher_actions(
             scene_tf_config, robot_description,
             frame_scene_revision=frame_params.get("frame_scene_revision",
                                                   "")),
+        *_placement_prior_actions(
+            cfg, frame_params.get("frame_scene_revision", "")),
         *_spawn_scene_and_robot(
             scene_tf_config, initial_joint_args,
             watchdog_sec=float(cfg["startup_watchdog_sec"]),
@@ -1161,7 +1327,15 @@ def generate_launch_description():
                 "use_moveit",
                 "Start move_group after the arm controller (needed for IK / pose targets).",
             ),
+            profile_arg("top_surface_mode", "Detector top surface mode: legacy or dynamic measured suction candidates."),
+            profile_arg("diagnostic_capture", "Opt-in diagnostic action/service boundary routing; requires capture node."),
+            profile_arg("joint_capture_mode", "Joint-command boundary capture: off | armed | window (requires instrumented gz_ros2_control overlay)."),
+            profile_arg("joint_capture_run_dir", "Fresh run directory for joint-command capture streams."),
             profile_arg("gui", "Start Gazebo GUI."),
+            profile_arg(
+                "start_placement_prior",
+                "Read-only placement-prior sidecar (explicit opt-in; "
+                "default false = zero prior processes)."),
             profile_arg(
                 "startup_watchdog_sec",
                 "Seconds to wait for /controller_manager after the S20 create "
@@ -1224,6 +1398,15 @@ def generate_launch_description():
                 "Placement planner inward hull clearance in metres "
                 "(default 0 = flush-wall, historical behavior)."),
             profile_arg(
+                "structural_search",
+                "G3 structural-first placement chain (session batches "
+                "+ snug ranking, same hard gates; default false keeps "
+                "the legacy exhaustive chain)."),
+            profile_arg(
+                "structural_budget_s",
+                "Structural search session budget in seconds "
+                "(default 20)."),
+            profile_arg(
                 "min_support_ratio",
                 "Placement planner stacking support ratio "
                 "(default 0.6)."),
@@ -1268,6 +1451,10 @@ def generate_launch_description():
                 "size_mode",
                 "Pickup size: catalog (small/medium/large) or "
                 "continuous (box visual only)."),
+            profile_arg(
+                "box_catalog_config",
+                "Optional spawn-only box catalog path; empty uses the installed catalog. "
+                "Perception and planning still use measured geometry."),
             profile_arg(
                 "yaw_mode",
                 "Override catalog yaw_mode (discrete/continuous)."),
@@ -1317,6 +1504,17 @@ def generate_launch_description():
                 "Route budget scale: 60 s times this box count "
                 "(1 box 60 s, 3 boxes 180 s).",
             ),
+            profile_arg("cargo_map_resolution_m",
+                        "Shared OCC/surface grid metres; empty uses cargo_grid.yaml."),
+            profile_arg("attachment_geometry_config",
+                        "Attachment-owned diagnostic geometry policy YAML."),
+            profile_arg(
+                "diagnostic_route_budget_s",
+                "Functional-diagnostic per-Select route budget override "
+                "(s). 0 keeps the frozen n*60s contract (production "
+                "default); the driver must mirror it via "
+                "--select-budget-s so the client wait covers the search.",
+            ),
             profile_arg(
                 "frame_runtime",
                 "Start the typed v2 runtime chain (identity heartbeats + "
@@ -1334,6 +1532,7 @@ def generate_launch_description():
             ),
             SetEnvironmentVariable("GZ_SIM_RESOURCE_PATH", _resource_path()),
             SetEnvironmentVariable("IGN_GAZEBO_RESOURCE_PATH", _resource_path()),
+            OpaqueFunction(function=_joint_capture_env),
             OpaqueFunction(function=_launch_setup),
         ]
     )

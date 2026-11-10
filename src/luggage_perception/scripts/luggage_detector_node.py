@@ -113,7 +113,6 @@ from luggage_perception.dynamic_top_surface import (
 # model is a versioned hardware config (B0); the evaluator is ROS-free.
 from luggage_perception.suction_patch_evaluator import (
     SuctionPatchEvaluator,
-    center_suction_evaluation,
 )
 from luggage_description._share import description_config_path
 from luggage_description.suction_contact_model import (
@@ -264,16 +263,35 @@ _cap_loaded_blas(1)
 class LatestEstimateQueue(object):
     """One in-flight estimate, and at most one newer pair waiting.
 
-    Callbacks only submit. A later pair replaces the one still waiting, and
+    Callbacks only submit. A later pair normally replaces the one waiting.
+    An optional policy retains fresh measured work across held-only updates, and
     an older stamp cannot overwrite a newer one. ``take`` blocks until a
     pair is waiting or ``close`` is called.
     """
 
-    def __init__(self):
+    def __init__(self, trace_enabled=False, retain_pending=None):
+        self._retain_pending = retain_pending
         self._cond = threading.Condition()
         self._pending = None
         self._stop = False
         self._coalesced = 0
+        self._trace = deque(maxlen=256) if trace_enabled else None
+
+    def _record(self, event, key, cloud_msg, replaced=None):
+        # Called under the queue lock; retain metadata only, never cloud bytes.
+        if self._trace is None:
+            return
+        try:
+            source = adapters.source_from_cloud_msg(cloud_msg)
+        except (AttributeError, TypeError, ValueError):
+            source = None
+        self._trace.append(dict(event=event, stamp_key=key, source=source,
+                                replaced_stamp_key=replaced,
+                                monotonic_sec=time.monotonic()))
+
+    def trace_snapshot(self):
+        with self._cond:
+            return [dict(row) for row in (self._trace or ())]
 
     @property
     def coalesced(self):
@@ -284,11 +302,18 @@ class LatestEstimateQueue(object):
         header = getattr(cloud_msg, "header", None)
         key = stamp_key(getattr(header, "stamp", None))
         with self._cond:
+            old_key = None
             if self._pending is not None:
                 old_key = self._pending[0]
                 self._coalesced += 1
                 if (key is not None and old_key is not None and key < old_key):
+                    self._record('discard_older', key, cloud_msg)
                     return
+                if (self._retain_pending is not None and
+                        self._retain_pending(self._pending[1:], (yolo_msg, cloud_msg))):
+                    self._record('retain_measure', key, cloud_msg, old_key)
+                    return
+            self._record('submit', key, cloud_msg, old_key)
             self._pending = (key, yolo_msg, cloud_msg)
             self._cond.notify()
 
@@ -300,6 +325,7 @@ class LatestEstimateQueue(object):
                 return None
             _key, yolo_msg, cloud_msg = self._pending
             self._pending = None
+            self._record('take', _key, cloud_msg)
             return yolo_msg, cloud_msg
 
     def close(self):
@@ -576,7 +602,9 @@ class LuggageDetector(Node):
         self._pending_joins = OrderedDict()
         self._ready_joins = deque()
         self._join_emit_lock = threading.Lock()
-        self._estimates = LatestEstimateQueue()
+        self._estimates = LatestEstimateQueue(
+            trace_enabled=bool(os.environ.get("ELFIN_SUPPORT_CAPTURE")),
+            retain_pending=self._retain_measured_estimate)
         self._estimate_thread = None
         self._support_wait_timeout = float(
             self.get_parameter("support_wait_timeout_sec").value)
@@ -772,6 +800,32 @@ class LuggageDetector(Node):
         if thread is not None and thread.is_alive():
             thread.join(timeout=3.0)
         return super().destroy_node()
+
+    def _retain_measured_estimate(self, pending, incoming):
+        from luggage_perception.estimate_queue_policy import (
+            EstimateEvidence, retain_measured_pending)
+        from luggage_perception.semantic_segmenter import observation_source_for_detections
+
+        def evidence(pair):
+            yolo, cloud = pair
+            key = stamp_key(cloud.header.stamp)
+            if key is None:
+                return None
+            source = observation_source_for_detections(
+                yolo.detections, adapters.source_from_cloud_msg(cloud))
+            return EstimateEvidence(
+                key[0]*1_000_000_000+key[1], int(yolo.generation),
+                str(yolo.instance_id), source,
+                sum(int(det.label) == 2 for det in yolo.detections))
+
+        old = evidence(pending)
+        if old is None or (old.generation, old.instance_id) != (
+                int(self._box_generation), str(self._box_id)):
+            return False
+        return retain_measured_pending(
+            old, evidence(incoming),
+            now_ns=self.get_clock().now().nanoseconds,
+            max_age_ns=int(self._cloud_max_age*1_000_000_000))
 
     def _estimate_worker(self):
         while True:
@@ -1031,21 +1085,29 @@ class LuggageDetector(Node):
                 "luggage_detector: %s: %s"
                 % (result.reason, self._last_plane_detail))
             return result.reason, None
-        # Centre only. The footprint grid is not run; one candidate is
-        # the fitted top centre so a pick is not blocked on seal gates.
-        model = (self._suction_evaluator.contact_model
-                 if self._suction_evaluator is not None else None)
-        suction = center_suction_evaluation(
-            result,
-            stamp=cloud_stamp_sec,
-            frame_id=self._world_frame,
+        # Evaluate real seal patches from this exact depth acquisition. A
+        # fitted top centre alone is not a validated suction footprint.
+        self._suction_evaluator.update(
+            depth, intr, mat4, result, instance_region=instance_region,
+            stamp=cloud_stamp_sec, frame_id=self._world_frame,
             instance_id=str(getattr(yolo_msg, "instance_id", "") or ""),
             generation=int(getattr(yolo_msg, "generation", 0) or 0),
-            model_version=int(getattr(model, "model_version", 0) or 0),
-            model_hash=str(getattr(model, "identity_hash", "") or ""),
-        )
+            timing=self._timing)
+        suction = self._suction_evaluator.copy_output()
+        capture_root = os.environ.get('ELFIN_SUCTION_INPUT_CAPTURE', '').strip()
+        if capture_root:
+            try:
+                from luggage_perception.suction_input_capture import SuctionInputCapture
+                if not hasattr(self, '_suction_input_capture'):
+                    self._suction_input_capture = SuctionInputCapture(capture_root)
+                self._suction_input_capture.stage(
+                    depth, intr, mat4, result, instance_region,
+                    self._suction_evaluator.contact_model, suction,
+                    stamp_ns=int(key[0])*1000000000+int(key[1]))
+            except Exception as error:
+                self._warn_throttled('suction input capture failed: %s' % error)
         self._last_plane_detail = ""
-        self._timing["suction_mode"] = "center"
+        self._timing["suction_mode"] = "validated_footprint"
         self._timing["dynamic_top_ms"] = (time.monotonic() - _t0) * 1000.0
         return result, suction
 
@@ -1089,12 +1151,6 @@ class LuggageDetector(Node):
         if examples:
             text += "; e.g. " + "; ".join(examples)
         return text
-
-    def _failure_message(self, reason):
-        detail = str(getattr(self, "_last_plane_detail", "") or "")
-        if detail:
-            return "%s: %s" % (reason, detail)
-        return str(reason)
 
     def _support_info_cb(self, msg):
         """Latest aligned-depth camera info (colour-grid intrinsics)."""
@@ -1676,6 +1732,36 @@ class LuggageDetector(Node):
             top_surface=dynamic_top)
         self._timing["geometry_ms"] = (time.monotonic() - _t0) * 1000.0
         self._timing["pipeline"] = dict(result.timing)
+        # Bounded opt-in diagnosis; never changes fitted geometry.
+        import os
+        support_capture_root=os.environ.get('ELFIN_SUPPORT_CAPTURE','')
+        if support_capture_root and result.height_valid:
+            try:
+                from luggage_perception.support_geometry_capture import SupportGeometryCapture
+                if not hasattr(self,'_support_geometry_capture'):
+                    self._support_geometry_capture=SupportGeometryCapture(support_capture_root)
+                self._support_geometry_capture.capture(
+                    (str(self._box_id),int(self._box_generation)),
+                    int(stamp.sec)*1_000_000_000+int(stamp.nanosec),
+                    pts_world,raw_world,self._pipeline.config,result,
+                    self._pipeline._stability._history)
+            except Exception as error:
+                self._warn_throttled('support geometry capture failed: %s'%error)
+        if (support_capture_root and source == "measure" and result.top_valid
+                and not result.height_valid and raw_world is not None):
+            try:
+                from luggage_perception.support_geometry_capture import SupportGeometryCapture
+                if not hasattr(self, '_support_failure_capture'):
+                    self._support_failure_capture = SupportGeometryCapture(
+                        os.path.join(support_capture_root, 'failures'),
+                        max_cases=8, max_case_bytes=16*1024*1024)
+                acquisition_ns = int(stamp.sec)*1_000_000_000+int(stamp.nanosec)
+                self._support_failure_capture.capture(
+                    (str(self._box_id), int(self._box_generation), acquisition_ns),
+                    acquisition_ns, pts_world, raw_world, self._pipeline.config,
+                    result, self._pipeline._stability._history, allow_invalid=True)
+            except Exception as error:
+                self._warn_throttled('failed support geometry capture failed: %s'%error)
         support_fields = self._support_fields(result)
 
         if not result.top_valid:
@@ -2078,12 +2164,14 @@ class LuggageDetector(Node):
             "luggage_detector: cloud too old (%.2fs, max %.1fs)"
             % (age, self._cloud_max_age))
 
-    def _failure_message(self):
-        reason = str(self._last_failure_reason or "DETECT_FAILED")
+    def _failure_message(self, reason=None):
+        """Format explicit or latest failure without shadowing either caller."""
+        reason = str(reason or self._last_failure_reason or "DETECT_FAILED")
         if reason == "DETECT_STALE_CLOUD" and self._last_cloud_age_sec is not None:
             return "DETECT_STALE_CLOUD (age=%.2fs max=%.1fs)" % (
                 self._last_cloud_age_sec, self._cloud_max_age)
-        return reason
+        detail = str(getattr(self, "_last_plane_detail", "") or "")
+        return "%s: %s" % (reason, detail) if detail else reason
 
     def _frame_to_detect(self, frame):
         age = self._stamp_age_sec(frame.header.stamp)
@@ -2111,6 +2199,15 @@ class LuggageDetector(Node):
             self._last_failure_reason = "geometry_not_settled"
             return None, float(frame.pca_confidence)
         self._last_failure_reason = "ok"
+        capture = getattr(self, '_suction_input_capture', None)
+        if capture is not None:
+            try:
+                outcome = capture.pin(frame.instance_id, frame.generation,
+                    int(frame.header.stamp.sec)*1000000000+int(frame.header.stamp.nanosec))
+                if outcome['status'] not in ('saved', 'already_saved'):
+                    self._warn_throttled('selected suction input capture: %s' % outcome['status'])
+            except Exception as error:
+                self._warn_throttled('selected suction input capture failed: %s' % error)
         return frame.box, float(frame.pca_confidence)
 
     def _detect_from_window_with_retries(self):
@@ -2263,6 +2360,9 @@ class LuggageDetector(Node):
         record["support_mode"] = self._support_mode
         record["selected_stamp"] = self._last_selected_stamp
         record["auth_reads"] = list(self._auth_reads)
+        estimates = getattr(self, "_estimates", None)
+        if estimates is not None:
+            record["estimate_queue_trace"] = estimates.trace_snapshot()
         if detected is not None:
             record["detected"] = {
                 "id": detected.id,

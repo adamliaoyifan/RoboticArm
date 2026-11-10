@@ -375,6 +375,9 @@ def surface_map_from_contract(surface: Mapping, request: Mapping) -> dict:
         "inner_size": [float(v) for v in request["inner_size"]],
         "occupancy_confirmed": bool(surface.get("occupancy_confirmed", True)),
         "change_event": str(surface.get("change_event") or ""),
+        # [B1] Snapshot identity the request's surface declares.
+        "epoch": str(surface.get("epoch") or ""),
+        "content_digest": str(surface.get("content_digest") or ""),
     }
     heights = surface.get("height_above_floor")
     if heights is None:
@@ -439,6 +442,7 @@ class RegionAnchorPlan(object):
     #: stays). Seeded above the portal so the payload clears the
     #: pedestal on the approach and only descends past its footprint.
     staging: "Tuple[float, float, float] | None" = None
+    corridor_height_evidence: "dict | None" = None
 
 
 #: Payload-bottom margin kept above the transit clearance (pedestal top)
@@ -454,6 +458,16 @@ STAGING_PULLBACK_M = 0.35
 #: sampling inside the frozen budget; the certifier is still the only
 #: authority — a rebuild that still collides is still a refusal).
 CERT_COLLISION_REBUILDS = 2
+
+#: Budget-bound diversified redraws after an UNNAMED planning failure
+#: (sampler miss / path-validation reject). Edge-level diagnosis
+#: (2026-10-15, wave4/portal_edge_attached): the same portal edge yields a
+#: fully valid route on ~8/10 fresh RRTConnect draws and a mm-scale
+#: payload-grazing invalid path on the rest — a per-solution sporadic
+#: failure, so redraws diversify naturally and pay for themselves inside
+#: the existing budget. Named failures (IK / fraction / excursion /
+#: collision / missing exit) never redraw: those belong to the candidate.
+SAMPLER_MISS_REBUILDS = 5
 
 
 def anchor_plan(contact_world: Sequence[float], container_quaternion,
@@ -591,7 +605,10 @@ def _same_admitted_map(admitted, latest):
     """True when latest is still the snapshot frozen at admission.
 
     A different stamp or a different column-height digest is a new
-    observation and is judged on the live clock.
+    observation and is judged on the live clock. [B1] When either side
+    declares the publishing map's epoch or content digest, those must
+    match too — an epoch rotation (reset/restart) or any planning-content
+    change invalidates the admitted route even at equal stamps.
     """
     if int(getattr(admitted, "acquisition_stamp_ns", 0) or 0) != int(
             getattr(latest, "acquisition_stamp_ns", 0) or 0):
@@ -603,6 +620,11 @@ def _same_admitted_map(admitted, latest):
     right = str(getattr(latest, "column_height_digest", "") or "")
     if left and right and left != right:
         return False
+    for field in ("epoch", "content_digest"):
+        left = str(getattr(admitted, field, "") or "")
+        right = str(getattr(latest, field, "") or "")
+        if (left or right) and left != right:
+            return False
     return True
 
 
@@ -840,7 +862,7 @@ class RouteProducer(object):
             q_frame_container=transform["quaternion_xyzw"])
 
     def _prepare_candidate(self, base_candidate, attachment, request,
-                           start_q, tcp_orientation, tcp_position):
+                           start_q, tcp_orientation, tcp_position, expired=lambda: False):
         """Depth-annotate the candidate and seed the region ladder.
 
         Anchor nodes are graph NODES ONLY: their poses seed the portal /
@@ -865,6 +887,32 @@ class RouteProducer(object):
             opening=(self.opening_info or {}).get("point"),
             inward_normal=self._inward_normal(),
             transit_clearance_z=self.transit_clearance_z)
+        from luggage_planning.corridor_height import required_corridor_height
+        from luggage_planning.moveit_edge_adapter import occupancy_boxes_from_surface
+        columns = occupancy_boxes_from_surface(
+            request.get("surface") or {}, request["container_transform"])
+        height_evidence = required_corridor_height(
+            plan.portal, plan.slot_approach, orientation, attachment,
+            columns, DEFAULT_CORRIDOR_MARGIN)
+        if height_evidence is not None:
+            up = rotate_vector(request["container_transform"]["quaternion_xyzw"],
+                               (0.0, 0.0, 1.0))
+            # Existing anchor ladder lifts along container Z. Requiring a
+            # positive world-Z component avoids lowering a tilted corridor.
+            rise = height_evidence["required_tcp_world_z"] - plan.slot_approach[2]
+            if rise > 0.0 and up[2] > 1e-6:
+                old_lift = sum((plan.slot_approach[i] - plan.slot[i]) * up[i]
+                               for i in range(3))
+                plan = anchor_plan(
+                    tuple(float(v) for v in tcp_position),
+                    request["container_transform"]["quaternion_xyzw"],
+                    float(request["box_wdh"][2]),
+                    corridor_surface_max=self.corridor_surface_max,
+                    place_clearance_z=old_lift + rise / up[2],
+                    opening=(self.opening_info or {}).get("point"),
+                    inward_normal=self._inward_normal(),
+                    transit_clearance_z=self.transit_clearance_z)
+            plan = dataclasses.replace(plan, corridor_height_evidence=height_evidence)
         candidate = dataclasses.replace(base_candidate, depth_m=plan.depth_m)
 
         graph = self.graph
@@ -884,14 +932,6 @@ class RouteProducer(object):
             ("slot_upper", plan.slot_upper, LoadState.CARRYING),
             ("exit", plan.exit, LoadState.UNLOADED),
         ]
-        if plan.staging is not None:
-            # Carrying staging is the joint target of home -> staging.
-            # The unloaded twin is the joint target of the free-space
-            # return; Cartesian retreat stops at the portal.
-            anchor_rows.insert(0, ("staging", plan.staging,
-                                   LoadState.CARRYING))
-            anchor_rows.insert(1, ("staging", plan.staging,
-                                   LoadState.UNLOADED))
         if not has_opening:
             # The collapsed portal shares the approach pose; registering
             # it would steal the approach node's (load, q) key.
@@ -903,6 +943,8 @@ class RouteProducer(object):
             # collision awareness, and the per-hop search needs the
             # alternative when one branch's interpolated edge collides.
             for seed in self._seed_candidates(seed_q):
+                if expired():
+                    break
                 q, _info = self._refine_to(position, orientation, seed)
                 if q is not None:
                     node_ids.add(graph.register_node(
@@ -910,6 +952,80 @@ class RouteProducer(object):
                         "anchor").node_id)
             seeded.append(region)
         return candidate, box_target, plan, seeded, node_ids
+
+    def _screen_carrying_anchors(self, scope_ids, candidate, snapshot,
+                                 attachment, request, start_q, slot_index):
+        """Drop carrying anchors whose joints hit the carried payload.
+
+        Graph planner only (the lattice already judges every state). The
+        verdict comes from the certifier's scene for the carrying load, so
+        a refusal here is the same judgement the route would meet later,
+        reached without a MoveGroup call. See ``anchor_payload_gate``.
+        """
+        from luggage_planning.anchor_payload_gate import AnchorPayloadGate
+        from luggage_planning.moveit_state_validity import FrozenSceneComposer
+
+        self._payload_screen_fn = None
+        if self.corridor_planner != "graph" or attachment is None \
+                or self.lattice_checker_factory is None:
+            return scope_ids, []
+
+        class _LoadEdge(object):
+            edge_id = "anchor-carrying"
+            load_state = "carrying"
+
+        state = self.edge_scene_states(
+            None, [_LoadEdge()], snapshot, attachment, candidate,
+            request)["anchor-carrying"]
+        state_key = FrozenSceneComposer._state_key(state)  # noqa: SLF001
+        checkers = self._anchor_checkers
+        try:
+            # The checker judges the scene it prepared. A different live
+            # scene gets a new checker; the verdict key carries the digest
+            # of the scene that was actually judged.
+            checker = checkers.get(state_key)
+            digest = None
+            if checker is not None:
+                digest = checker.live_scene_digest()
+                if checker.prepared_digest != digest:
+                    checker = None
+            if checker is None:
+                checker = self.lattice_checker_factory(
+                    scene_states={"carrying": state}, start_q=start_q)
+                digest = checker.live_scene_digest()
+                checkers[state_key] = checker
+            full_key = (state_key, digest)
+        except Exception as error:  # noqa: BLE001 - checker boundary
+            self._log("route: anchor gate digest unavailable %r" % (error,))
+            return scope_ids, []
+        if self._anchor_gate is None:
+            self._anchor_gate = AnchorPayloadGate(
+                lambda key: self._anchor_checkers_by_full.get(key))
+        self._anchor_checkers_by_full[full_key] = checker
+        nodes = [
+            self.graph.nodes[node_id] for node_id in scope_ids
+            if str(self.graph.nodes[node_id].load_state) == "carrying"
+            and self.graph.nodes[node_id].region in (
+                "staging", "portal", "slot_approach", "slot_upper")]
+        result = self._anchor_gate.screen(nodes, full_key, slot_index)
+        self.anchor_provenance.extend(result.rows)
+        rejected = {row["node_id"] for row in result.rows
+                    if row["verdict"] == "rejected"}
+        for row in result.rows:
+            if row["verdict"] == "rejected":
+                self._log(
+                    "route: %s %s region=%s q=%s (no MoveGroup call)" % (
+                        row["reason"], row["node_id"], row["region"],
+                        [round(v, 3) for v in row["q"]]))
+        gate = self._anchor_gate
+
+        def payload_hits_arm(node, _gate=gate, _key=full_key, _slot=slot_index):
+            rows = _gate.screen([node], _key, _slot).rows
+            self.anchor_provenance.extend(rows)
+            return rows[0]["verdict"] == "rejected"
+
+        self._payload_screen_fn = payload_hits_arm
+        return set(scope_ids) - rejected, result.rows
 
     def _lattice_planner(self, candidate, plan, scope_ids, start_q,
                          atlas_seeds, attachment, snapshot, request,
@@ -983,6 +1099,159 @@ class RouteProducer(object):
             wrist_margin=getattr(self, "lattice_wrist_margin_rad", None),
             anchor_sets=anchor_sets)
 
+    def _candidate_topology_planner(self, *, use_staging, deadline_ns,
+                                    candidate, plan, scope_ids, start_q,
+                                    atlas_seeds, attachment, snapshot, request,
+                                    prior_targets, row, slot_index):
+        from luggage_planning.reachable_graph import GraphRoutePlanner
+        scope_ids = set(scope_ids)
+        if use_staging:
+            if self.lattice_checker_factory is None:
+                raise RoutePlanningError("EDGE_BUILD_FAILED", {
+                    "stage": "staging_endpoint", "reason": "checker_unavailable"})
+            from luggage_planning.staging_candidates import staging_positions
+            for position in staging_positions(
+                    plan.staging, request["container_transform"]["quaternion_xyzw"]):
+                for seed in self._seed_candidates(start_q):
+                    if self._clock_ns() >= deadline_ns:
+                        break
+                    q, _info = self._refine_to(
+                        position, prior_targets[0].quaternion_xyzw, seed)
+                    if q is not None:
+                        for load in (LoadState.CARRYING, LoadState.UNLOADED):
+                            scope_ids.add(self.graph.register_node(
+                                q, position, prior_targets[0].quaternion_xyzw,
+                                "staging", load, "anchor").node_id)
+            scope_ids, gate_rows = self._screen_carrying_anchors(
+                scope_ids, candidate, snapshot, attachment, request, start_q,
+                slot_index)
+            row["staging_anchor_gate"] = gate_rows
+            if not any(node.node_id in scope_ids and str(node.load_state) == "carrying"
+                       for node in self.graph.nodes_by_region("staging")):
+                raise RoutePlanningError("EDGE_BUILD_FAILED", {
+                    "stage": "staging_endpoint", "reason": "no_valid_staging"})
+        staging_nodes = [
+            node for node in self.graph.nodes_by_region("staging")
+            if node.node_id in scope_ids]
+        if staging_nodes and self.lattice_checker_factory is not None:
+            from luggage_planning.lattice_route import LatticeCheckError
+            from types import SimpleNamespace
+            endpoint_edges = [SimpleNamespace(
+                edge_id="staging-" + load, load_state=load)
+                for load in ("carrying", "unloaded")]
+            endpoint_states = self.edge_scene_states(
+                None, endpoint_edges, snapshot, attachment,
+                candidate, request)
+            checker = self.lattice_checker_factory(
+                scene_states={load: endpoint_states["staging-" + load]
+                              for load in ("carrying", "unloaded")},
+                start_q=start_q, service_budget_s=2.0)
+            try:
+                verdicts = checker.validate(
+                    [(tuple(n.q), str(n.load_state)) for n in staging_nodes],
+                    expired=lambda: self._clock_ns() >= deadline_ns)
+            except LatticeCheckError as exc:
+                raise RoutePlanningError("EDGE_BUILD_FAILED", {
+                    "stage": "staging_endpoint", "error": str(exc)})
+            row["staging_endpoints"] = [{
+                "node_id": n.node_id, "position": list(n.tcp_position),
+                "q": list(n.q), "load": str(n.load_state),
+                "valid": verdicts.get((tuple(n.q), str(n.load_state)))}
+                for n in staging_nodes]
+            for node in staging_nodes:
+                if verdicts.get((tuple(node.q), str(node.load_state))) is not True:
+                    scope_ids.discard(node.node_id)
+            if any(not any(n.node_id in scope_ids and str(n.load_state) == load
+                           for n in staging_nodes)
+                   for load in ("carrying", "unloaded")):
+                raise RoutePlanningError("EDGE_BUILD_FAILED", {
+                    "stage": "staging_endpoint", "reason": "no_valid_staging"})
+        # Without an opening datum the portal collapses onto the
+        # approach anchor, so the portal hop is dropped rather
+        # than seeded with a duplicated node.
+        has_opening = (self.opening_info or {}).get("point") \
+            is not None
+        entry_table = DEFAULT_ENTRY_HOPS if has_opening else tuple(
+            hop for hop in DEFAULT_ENTRY_HOPS
+            if hop[0] != "portal")
+        # The entry hops are carrying hops, so only a carrying
+        # staging anchor that survived the payload gate counts.
+        has_staging = any(
+            node.node_id in scope_ids
+            and str(node.load_state) == "carrying"
+            for node in self.graph.nodes_by_region("staging"))
+        if has_staging:
+            # Free space outside the portal may detour. Both
+            # home -> staging and staging -> portal are joint
+            # PORTAL_TRANSIT. The fixed corridor starts at the
+            # portal: portal -> slot_approach stays TRAVERSE.
+            # This is the region boundary, not a fallback for
+            # every failed TRAVERSE.
+            entry_table = (
+                ("staging", "PORTAL_TRANSIT"),
+                ("portal", "PORTAL_TRANSIT"),
+            ) + tuple(hop for hop in entry_table
+                      if hop[0] != "portal")
+        entry_hops = hops_from_table(entry_table, "carrying")
+        # Reverse egress stays Cartesian back to the portal.
+        # Outside the portal (staging, then home) the return is
+        # joint RETURN. The geometric exit is not a hop target.
+        retreat_regions = [
+            region for region, _edge_class in reversed(
+                entry_table[:-1])
+            if region != "slot"] + ["home"]
+        retreat_table = tuple(
+            (region, "RETURN" if region in ("staging", "home")
+             else "RETREAT")
+            for region in retreat_regions)
+        retreat_hops = hops_from_table(retreat_table, "unloaded")
+        if self.corridor_planner == "lattice":
+            planner = self._lattice_planner(
+                candidate, plan, scope_ids, start_q, atlas_seeds,
+                attachment, snapshot, request,
+                prior_targets[0].quaternion_xyzw)
+        else:
+            from luggage_planning.moveit_edge_adapter import (
+                occupancy_boxes_from_surface,
+            )
+            _occupancy = occupancy_boxes_from_surface(
+                request.get("surface") or {},
+                request.get("container_transform"))
+            planner = GraphRoutePlanner(
+                self.graph, self.edge_builder,
+                home_node_id=self.graph.node_for_q(
+                    LoadState.CARRYING, start_q).node_id,
+                entry_hops=entry_hops,
+                retreat_hops=retreat_hops,
+                t_frame_container=tuple(float(v) for v in
+                                        request["container_transform"]
+                                        ["translation"]),
+                q_frame_container=tuple(float(v) for v in
+                                        request["container_transform"]
+                                        ["quaternion_xyzw"]),
+                occupancy_boxes=_occupancy,
+                refine=self.refine, urdf=self.urdf,
+                goal_seeds=self._goal_seed_fn(
+                    start_q,
+                    anchor_qs=[
+                        node.q for node in
+                        self.graph.nodes_by_region("slot_upper")
+                        if str(node.load_state) == "carrying"
+                        and node.node_id in scope_ids],
+                    atlas_seeds=atlas_seeds),
+                tcp_path=self.tcp_path,
+                region_poses={
+                    region: position for region, position in (
+                        ("staging", plan.staging),
+                        ("portal", plan.portal),
+                        ("slot_approach", plan.slot_approach),
+                        ("slot_upper", plan.slot_upper),
+                        ("exit", plan.exit))
+                    if position is not None},
+                scope_node_ids=scope_ids,
+                payload_screen=self._payload_screen_fn)
+        return planner
+
     def _inward_normal(self):
         info = self.opening_info or {}
         normal = info.get("normal")
@@ -1044,6 +1313,12 @@ class RouteProducer(object):
         purge = getattr(self.graph, "clear_request_scoped", None)
         if callable(purge):
             purge()
+        # Request scope: the payload gate cache and its provenance start empty.
+        self._anchor_gate = None
+        self._anchor_checkers = {}
+        self._anchor_checkers_by_full = {}
+        self._payload_screen_fn = None
+        self.anchor_provenance = []
         # Admission order:
         #   hard_reject_safe unreachable is the only pre-route atlas drop
         #   -> reachable seeded
@@ -1166,6 +1441,11 @@ class RouteProducer(object):
         self._log("route: select %s slots=%d hash=%s" % (
             request["request_id"], len(request["slots"]),
             str(request.get("geometry_hash") or "")[:12]))
+        # [Functional diagnostic, 2026-10-22] Explicit preparation stage:
+        # started_ns (request entry) through candidate-loop entry. The
+        # search stage in _stage_timings is the residue AFTER this,
+        # certify, and revalidate — no stage borrows another's time.
+        self._stage_ns["prep"] = self._clock_ns() - started_ns
         tried_indices = []
         for index, slot, atlas_seeds, opening_depth, verdict in ordered_slots:
             if index and index % 100 == 0:
@@ -1177,7 +1457,9 @@ class RouteProducer(object):
             remaining = self.budget_ns - elapsed
             if remaining <= int(CERTIFICATION_RESERVE_S * 1e9):
                 rows.append(self._attempt_summary(ordered_slots, tried_indices))
-                return self._fail("PLANNING_BUDGET_EXHAUSTED", rows)
+                failed = self._fail("PLANNING_BUDGET_EXHAUSTED", rows)
+                failed["stage_timings"] = self._stage_timings(started_ns, rows)
+                return failed
             # A deterministic short-hop refusal ends this candidate.
             # While another candidate is waiting, leave one complete
             # route (COMPLETE_ROUTE_RESERVE_S) unspent so that refusal
@@ -1192,6 +1474,7 @@ class RouteProducer(object):
                 candidate_budget_ns = int(remaining - reserve_ns)
             else:
                 candidate_budget_ns = int(remaining)
+            candidate_started_ns = self._clock_ns()
             cert_rebuilds_left = CERT_COLLISION_REBUILDS
             tried_indices.append(index)
             note = (getattr(self, "_slot_notes", None) or {}).get(index) or {}
@@ -1254,95 +1537,57 @@ class RouteProducer(object):
                         ordered_slots,
                         (index, slot, [], opening_depth, "seed_miss"))
                     continue
-            candidate, _box_target, plan, _seeded, scope_ids = \
-                self._prepare_candidate(
-                base_candidate, attachment, request, start_q,
-                tcp_orientation=prior_targets[0].quaternion_xyzw,
-                tcp_position=prior_targets[0].position)
+            from luggage_planning.target_ladder import prepare_target_ladder
+            anchor_expired = lambda: self._clock_ns() - candidate_started_ns \
+                >= candidate_budget_ns - int(CERTIFICATION_RESERVE_S * 1e9)
+            required_regions = {'slot_approach', 'slot_upper'}
+            if (self.opening_info or {}).get('point') is not None:
+                required_regions.add('portal')
+            prepared, prior_targets, ladder_attempts = prepare_target_ladder(
+                prior_targets,
+                lambda target: self._prepare_candidate(
+                    base_candidate, attachment, request, start_q,
+                    tcp_orientation=target.quaternion_xyzw,
+                    tcp_position=target.position, expired=anchor_expired),
+                lambda prepared: {node.region for node in self.graph.nodes.values()
+                    if node.node_id in prepared[4] and str(node.load_state) == 'carrying'},
+                required=required_regions, expired=anchor_expired)
+            candidate, _box_target, plan, _seeded, scope_ids = prepared
+            row['target_ladders'] = ladder_attempts
             self._log("route: anchors %s home %s" % (
                 [(n.region, [round(v, 3) for v in n.q])
                  for n in self.graph.nodes.values()
                  if n.region in ("portal", "slot_approach", "slot_upper")],
                 [round(v, 3) for v in start_q]))
+            scope_ids, gate_rows = self._screen_carrying_anchors(
+                scope_ids, candidate, snapshot, attachment, request,
+                start_q, index)
+            row["anchor_gate"] = {
+                "rejected": [g["node_id"] for g in gate_rows
+                             if g["verdict"] == "rejected"],
+                "not_evaluated": [g["node_id"] for g in gate_rows
+                                  if g["verdict"] == "not_evaluated"],
+            }
             row["candidate_id"] = candidate.candidate_id
             row["depth_m"] = candidate.depth_m
+            row["corridor_height"] = plan.corridor_height_evidence
             row["_scope_ids"] = scope_ids
+            targets = prior_targets
+            planner = None
             try:
-                # Without an opening datum the portal collapses onto the
-                # approach anchor, so the portal hop is dropped rather
-                # than seeded with a duplicated node.
-                has_opening = (self.opening_info or {}).get("point") \
-                    is not None
-                entry_table = DEFAULT_ENTRY_HOPS if has_opening else tuple(
-                    hop for hop in DEFAULT_ENTRY_HOPS
-                    if hop[0] != "portal")
-                has_staging = bool(
-                    self.graph.nodes_by_region("staging"))
-                if has_staging:
-                    # Free space outside the portal may detour. Both
-                    # home -> staging and staging -> portal are joint
-                    # PORTAL_TRANSIT. The fixed corridor starts at the
-                    # portal: portal -> slot_approach stays TRAVERSE.
-                    # This is the region boundary, not a fallback for
-                    # every failed TRAVERSE.
-                    entry_table = (
-                        ("staging", "PORTAL_TRANSIT"),
-                        ("portal", "PORTAL_TRANSIT"),
-                    ) + tuple(hop for hop in entry_table
-                              if hop[0] != "portal")
-                entry_hops = hops_from_table(entry_table, "carrying")
-                # Reverse egress stays Cartesian back to the portal.
-                # Outside the portal (staging, then home) the return is
-                # joint RETURN. The geometric exit is not a hop target.
-                retreat_regions = [
-                    region for region, _edge_class in reversed(
-                        entry_table[:-1])
-                    if region != "slot"] + ["home"]
-                retreat_table = tuple(
-                    (region, "RETURN" if region in ("staging", "home")
-                     else "RETREAT")
-                    for region in retreat_regions)
-                retreat_hops = hops_from_table(retreat_table, "unloaded")
-                if self.corridor_planner == "lattice":
-                    planner = self._lattice_planner(
-                        candidate, plan, scope_ids, start_q, atlas_seeds,
-                        attachment, snapshot, request,
-                        prior_targets[0].quaternion_xyzw)
-                else:
-                    planner = GraphRoutePlanner(
-                        self.graph, self.edge_builder,
-                        home_node_id=self.graph.node_for_q(
-                            LoadState.CARRYING, start_q).node_id,
-                        entry_hops=entry_hops,
-                        retreat_hops=retreat_hops,
-                        t_frame_container=tuple(float(v) for v in
-                                                request["container_transform"]
-                                                ["translation"]),
-                        q_frame_container=tuple(float(v) for v in
-                                                request["container_transform"]
-                                                ["quaternion_xyzw"]),
-                        refine=self.refine, urdf=self.urdf,
-                        goal_seeds=self._goal_seed_fn(
-                            start_q,
-                            anchor_qs=[
-                                node.q for node in
-                                self.graph.nodes_by_region("slot_upper")
-                                if str(node.load_state) == "carrying"
-                                and node.node_id in scope_ids],
-                            atlas_seeds=atlas_seeds),
-                        tcp_path=self.tcp_path,
-                        region_poses={
-                            region: position for region, position in (
-                                ("staging", plan.staging),
-                                ("portal", plan.portal),
-                                ("slot_approach", plan.slot_approach),
-                                ("slot_upper", plan.slot_upper),
-                                ("exit", plan.exit))
-                            if position is not None},
-                        scope_node_ids=scope_ids)
+                from luggage_planning.direct_first_route import DirectFirstRoutePlanner
+                row["topology_attempts"] = []
+                planner = DirectFirstRoutePlanner(
+                    lambda use_staging, deadline_ns: self._candidate_topology_planner(
+                        use_staging=use_staging, deadline_ns=deadline_ns,
+                        candidate=candidate, plan=plan, scope_ids=scope_ids,
+                        start_q=start_q, atlas_seeds=atlas_seeds, attachment=attachment,
+                        snapshot=snapshot, request=request, prior_targets=prior_targets,
+                        row=row, slot_index=index),
+                    self._clock_ns, has_staging=plan.staging is not None,
+                    attempts=row["topology_attempts"])
                 planner.trace = getattr(self, "search_trace", None)
-                targets = self._expand_targets(
-                    candidate, attachment, request)
+                targets = prior_targets
                 if not targets:
                     row["reason"] = "TARGET_SYNTHESIS_EMPTY"
                     self._close_row(rows, row)
@@ -1354,10 +1599,13 @@ class RouteProducer(object):
                     row.get("route_build_count") or 0) + 1
                 route = planner.plan_route(
                     snapshot, attachment, candidate, targets,
-                    budget_ns=candidate_budget_ns)
+                    budget_ns=max(0, candidate_budget_ns -
+                                  (self._clock_ns() - candidate_started_ns)))
                 self._log("route: candidate %d planned %s"
                           % (index, route.route_id))
             except RoutePlanningError as exc:
+                row["continuation_diagnostics"] = list(
+                    getattr(planner, "continuation_diagnostics", ()))
                 # Keep structured TCP targets. A truncated JSON string cannot
                 # be replayed and was mistaken for a missing candidate.
                 row["targets"] = target_pairs(targets)
@@ -1385,22 +1633,42 @@ class RouteProducer(object):
                 row["atlas"] = getattr(self, "last_atlas_diag", None)
                 self._close_row(rows, row)
                 last_reason = row["reason"]
-                # One OMPL redraw after a sampler miss. A named candidate
-                # failure (IK, fraction, excursion, collision, missing
-                # exit) does not get that redraw.
+                # Budget-bound diversified redraws after a sampler miss
+                # (unnamed NO_FEASIBLE_ROUTE). A named candidate failure
+                # (IK, fraction, excursion, collision, missing exit) does
+                # not get redraws: those are properties of the candidate.
                 remaining = self.budget_ns - (self._clock_ns() - started_ns)
                 route = None
-                if exc.code == "NO_FEASIBLE_ROUTE" and not named_failure \
-                        and cert_rebuilds_left > 0 and remaining > 0:
-                    cert_rebuilds_left -= 1
-                    self._log("route: sampler miss — re-planning "
-                              "candidate %d" % index)
-                    try:
-                        route = planner.plan_route(
-                            snapshot, attachment, candidate, targets,
-                            budget_ns=int(remaining))
-                    except RoutePlanningError:
-                        route = None
+                # [G3 optimization] A -2 (INVALID_MOTION_PLAN) in the
+                # edge detail means MoveIt computed a path that failed
+                # validation — a fresh OMPL draw of the same start/goal
+                # against the same obstacles rarely fixes the geometry.
+                # Skip the redraw and advance to the next candidate; only
+                # failures without a -2 (sampler miss, timeout) redraw.
+                _mg_codes = [
+                    e.get("error_code") for e in (
+                        (exc.detail or {}).get("edge_failures") or [])
+                    if isinstance(e, dict)]
+                _has_invalid_path = -2 in [c for c in _mg_codes
+                                           if c is not None]
+                if (exc.code == "NO_FEASIBLE_ROUTE" and not named_failure
+                        and not _has_invalid_path):
+                    for retry in range(1, SAMPLER_MISS_REBUILDS + 1):
+                        remaining = (self.budget_ns
+                                     - (self._clock_ns() - started_ns))
+                        if remaining <= 0:
+                            break
+                        self._log("route: sampler miss — re-planning "
+                                  "candidate %d (retry %d/%d)" % (
+                                      index, retry, SAMPLER_MISS_REBUILDS))
+                        try:
+                            route = planner.plan_route(
+                                snapshot, attachment, candidate, targets,
+                                budget_ns=int(remaining))
+                        except RoutePlanningError:
+                            route = None
+                        if route is not None:
+                            break
                 if route is None:
                     continue
                 row = {
@@ -1443,6 +1711,7 @@ class RouteProducer(object):
                 continue
             self.last_budget_snapshot = planner.last_budget_snapshot
 
+            row["selected_topology"] = planner.attempts[-1]["topology"]
             row["route_id"] = route.route_id
             if self.corridor_planner == "lattice":
                 row["lattice"] = dict(getattr(planner, "last_stats", {}))
@@ -1457,11 +1726,15 @@ class RouteProducer(object):
                     "pass" if certification is not None
                     and certification.passed else "fail"))
                 if certification is not None and certification.passed:
+                    row.pop("cert_detail", None)
                     break
                 reason = certify_failure if certification is None \
                     else certification.reason.value
                 if certification is not None:
                     row["cert_detail"] = {
+                        "failed_edge_id": certification.failed_edge_id,
+                        "failed_sample_index": certification.failed_sample_index,
+                        "failed_sample_is_knot": certification.failed_sample_is_knot,
                         "min_clearance_m": certification.min_clearance_m,
                         "contacts": [
                             dict(contact) if isinstance(contact, Mapping)
@@ -1472,9 +1745,49 @@ class RouteProducer(object):
                     self._log("route: cert fail %s clearance=%s" % (
                         certification.reason.value,
                         certification.min_clearance_m))
-                # Collision, like a short Cartesian refusal, finishes
-                # this candidate. Another sample of the same slot does
-                # not clear a placed box or a swept payload.
+                # An interior collision on an OMPL connection is a rejected
+                # path, not proof that the fixed placement goal is blocked.
+                # Redraw only that graph connection, retaining the same target,
+                # attachment and snapshot; every rebuilt route is certified.
+                failed_edge = self.graph.edges.get(
+                    getattr(certification, "failed_edge_id", ""))
+                now_ns = self._clock_ns()
+                remaining = min(
+                    self.budget_ns - (now_ns - started_ns),
+                    candidate_budget_ns - (now_ns - candidate_started_ns))
+                if reason == "CERT_COLLISION" and failed_edge is not None:
+                    self.graph.discard_edge(failed_edge.edge_id)
+                if (reason == "CERT_COLLISION"
+                        and getattr(certification, "failed_sample_is_knot", None) is False
+                        and failed_edge is not None
+                        and failed_edge.attributes.get("edge_class") in (
+                            "PORTAL_TRANSIT", "RETURN")
+                        and self.corridor_planner == "graph"
+                        and cert_rebuilds_left > 0 and remaining > 0):
+                    cert_rebuilds_left -= 1
+                    retry = dict(row["cert_detail"])
+                    row.setdefault("certification_rebuilds", []).append(retry)
+                    try:
+                        route = planner.plan_route(
+                            snapshot, attachment, candidate, targets,
+                            budget_ns=int(remaining))
+                    except (RoutePlanningError, ContractViolation) as exc:
+                        retry["outcome"] = "failed"
+                        retry["failure_code"] = getattr(exc, "code", str(exc))
+                        retry["failure_detail"] = getattr(exc, "detail", None)
+                        retry["continuations"] = list(getattr(
+                            planner, "continuation_diagnostics", ()))
+                        self._log("route: certification rebuild failed %s" %
+                                  retry["failure_code"])
+                    else:
+                        retry["outcome"] = "rebuilt"
+                        row["route_build_count"] += 1
+                        row["selected_topology"] = planner.attempts[-1]["topology"]
+                        row["route_id"] = route.route_id
+                        self.last_budget_snapshot = planner.last_budget_snapshot
+                        continue
+                # Endpoint collisions and Cartesian failures still finish the
+                # candidate; retry exhaustion never admits the rejected route.
                 if reason == "CERT_COLLISION":
                     row["detail"] = {"candidate_failure": "CERT_COLLISION"}
                 row["reason"] = reason
@@ -1628,11 +1941,13 @@ class RouteProducer(object):
                 + float(row.get("elapsed_ms") or 0.0), 1)
         total_ms = round(total_ns / 1e6, 1)
         accounted_ms = round(sum(by_reason.values()), 1)
+        prep_ns = stages.get("prep", 0)
         return {
             "total_ms": total_ms,
             "budget_ms": round(self.budget_ns / 1e6, 1),
+            "prep_ms": round(prep_ns / 1e6, 1),
             "search_ms": round(max(
-                0, total_ns - stages["certify"]
+                0, total_ns - prep_ns - stages["certify"]
                 - stages["revalidate"]) / 1e6, 1),
             "certify_ms": round(stages["certify"] / 1e6, 1),
             "revalidate_ms": round(stages["revalidate"] / 1e6, 1),
@@ -1743,6 +2058,19 @@ class RouteProducer(object):
         if not bool(state.get("attached")):
             return False, "PAYLOAD_LOST", {"attached": False}
         return True, "", {"age_s": round(age_s, 3), "attached": True}
+
+    def _live_vacuum_unloaded(self):
+        """An unloaded certificate cannot hide an attached or unknown payload."""
+        fetch = getattr(self, "vacuum_state_fn", None)
+        state = fetch() if callable(fetch) else None
+        if not state:
+            return False, "VACUUM_STATE_UNAVAILABLE", {}
+        age_s = max(0.0, (self._clock_ns() - int(state.get("received_ns") or 0)) / 1e9)
+        if age_s > VACUUM_STATE_FRESHNESS_S:
+            return False, "VACUUM_STATE_STALE", {"age_s": age_s}
+        if bool(state.get("attached")):
+            return False, "PAYLOAD_STILL_ATTACHED", {"attached": True}
+        return True, "OK", {"age_s": age_s, "attached": False}
 
     def ensure_cycle_start_state(self, *, joints, request_scene_revision,
                                  vacuum_state=None):
@@ -2061,6 +2389,10 @@ class RouteProducer(object):
             elif claimed_state == "unloaded" and phase != "unloaded":
                 return False, "PHASE_TRANSITION_REQUIRED", {
                     "phase": phase}
+            elif claimed_state == "unloaded":
+                live_ok, live_reason, live_detail = self._live_vacuum_unloaded()
+                if not live_ok:
+                    return False, live_reason, live_detail
         snapshot = selection["snapshot"]
         if str(scene_revision) != str(
                 getattr(snapshot, "scene_revision", "")):
@@ -2162,105 +2494,112 @@ class RouteProducer(object):
                 start_node = self.graph.register_node(
                     current, tuple(start_fk[0]), tuple(start_fk[1]),
                     "observation_home", LoadState.UNLOADED, "observation")
-                q, _info = self._refine_to(
-                    tcp_position, tcp_quaternion, list(current))
-                if q is None:
-                    row["reason"] = "IK_UNAVAILABLE"
-                    self._close_row(rows, row)
-                    last_reason = row["reason"]
-                    continue
-                goal_node = self.graph.register_node(
-                    tuple(q), tuple(tcp_position), tuple(tcp_quaternion),
-                    "observation_goal_%d" % index, LoadState.UNLOADED,
-                    "observation")
-                try:
-                    edge = self.edge_builder(
-                        start_node, goal_node, "PORTAL_TRANSIT")
-                except Exception as error:  # noqa: BLE001 - named row
-                    code = getattr(
-                        getattr(error, "reason", None), "value", None) \
-                        or "EDGE_BUILD_FAILED"
-                    row["reason"] = code
-                    row["detail"] = repr(error)[:200]
-                    rows.append(row)
-                    last_reason = code
-                    continue
-                edges = (edge,)
-                route = PlannedRoute(
-                    route_id="route-obs-%s-%d" % (str(request_id)[:12],
-                                                  index),
-                    request_id=str(request_id),
-                    snapshot_digest=snapshot.digest(),
-                    payload_digest=UNLOADED_ATTACHMENT_DIGEST,
-                    attachment_digest=UNLOADED_ATTACHMENT_DIGEST,
-                    candidate_id="observation-%s" % str(purpose),
-                    entry_edge_ids=(edge.edge_id,),
-                    retreat_edge_ids=(),
-                    edge_digests=(edge.digest(),),
-                    trajectory_digest=edge.trajectory.digest(),
-                    planning_revision="observation")
-                # Unloaded observation move: it is what confirms a pending
-                # occupancy change, so a pending change does not refuse it.
-                revalidation = self._revalidate(
-                    route, snapshot, edges, allow_unconfirmed=True)
-                if revalidation is None:
-                    row["reason"] = "MAP_REVALIDATION_UNAVAILABLE"
-                    self._close_row(rows, row)
-                    last_reason = row["reason"]
-                    continue
-                from st09_contracts.certification import MapDecision
+                from luggage_planning.observation_ik_search import observation_goals
+                refine = getattr(self, "refine", None) or self._refine_to
+                expired = lambda: self._clock_ns() - started_ns >= self.budget_ns
+                for q, _info in observation_goals(
+                        refine, tcp_position, tcp_quaternion, current,
+                        TOOL_DOWN_SEED_Q, expired):
+                    row = {"target_index": index, "ik": _info}
+                    if expired():
+                        return self._fail("PLANNING_BUDGET_EXHAUSTED", rows + [row])
+                    if q is None:
+                        row["reason"] = _info.get("reason", "IK_UNAVAILABLE")
+                        self._close_row(rows, row)
+                        last_reason = row["reason"]
+                        continue
+                    goal_node = self.graph.register_node(
+                        tuple(q), tuple(tcp_position), tuple(tcp_quaternion),
+                        "observation_goal_%d_%s" % (index, _info["seed"]), LoadState.UNLOADED,
+                        "observation")
+                    try:
+                        edge = self.edge_builder(
+                            start_node, goal_node, "PORTAL_TRANSIT")
+                    except Exception as error:  # noqa: BLE001 - named row
+                        code = getattr(
+                            getattr(error, "reason", None), "value", None) \
+                            or "EDGE_BUILD_FAILED"
+                        row["reason"] = code
+                        row["detail"] = repr(error)[:200]
+                        rows.append(row)
+                        last_reason = code
+                        continue
+                    edges = (edge,)
+                    route = PlannedRoute(
+                        route_id="route-obs-%s-%d" % (str(request_id)[:12],
+                                                      index),
+                        request_id=str(request_id),
+                        snapshot_digest=snapshot.digest(),
+                        payload_digest=UNLOADED_ATTACHMENT_DIGEST,
+                        attachment_digest=UNLOADED_ATTACHMENT_DIGEST,
+                        candidate_id="observation-%s" % str(purpose),
+                        entry_edge_ids=(edge.edge_id,),
+                        retreat_edge_ids=(),
+                        edge_digests=(edge.digest(),),
+                        trajectory_digest=edge.trajectory.digest(),
+                        planning_revision="observation")
+                    # Unloaded observation move: it is what confirms a pending
+                    # occupancy change, so a pending change does not refuse it.
+                    revalidation = self._revalidate(
+                        route, snapshot, edges, allow_unconfirmed=True)
+                    if revalidation is None:
+                        row["reason"] = "MAP_REVALIDATION_UNAVAILABLE"
+                        self._close_row(rows, row)
+                        last_reason = row["reason"]
+                        continue
+                    from st09_contracts.certification import MapDecision
 
-                if revalidation.decision is not MapDecision.CONTINUE:
-                    row["reason"] = getattr(
-                        revalidation.reason, "value",
-                        "MAP_REVISION_MISMATCH")
-                    self._close_row(rows, row)
-                    last_reason = row["reason"]
-                    continue
-                certification, failure = self._certify(
-                    route, snapshot, None, edges, None, None,
-                    load_state=LoadState.UNLOADED)
-                if certification is None or not certification.passed:
-                    row["reason"] = failure if certification is None \
-                        else certification.reason.value
-                    row["recertified"] = False
-                    self._close_row(rows, row)
-                    last_reason = row["reason"]
-                    continue
-                legs = leg_records(route, edges, request)
-                row["reason"] = "OK"
-                row["certified"] = True
-                rows.append(row)
-                self.last_route = route
-                self.last_certification = certification
-                self.last_revalidation = revalidation
-                self.last_rows = rows
-                self._promote_selection({
-                    "path_hash": route.digest(),
-                    "route": route,
-                    "edges": edges,
-                    "snapshot": snapshot,
-                    "attachment": None,
-                    "candidate": None,
-                    "request": request,
-                    "certification_id": certification.digest(),
-                    "load_state": LoadState.UNLOADED,
-                    "purpose": str(purpose),
-                })
-                return {
-                    "success": True,
-                    "reason_code": "OK",
-                    "selection_id": route.route_id,
-                    "path_source": "route-graph",
-                    "path_hash": route.digest(),
-                    "rows": rows,
-                    "route": route,
-                    "edges": edges,
-                    "legs": legs,
-                    "certification": certification,
-                    "revalidation": revalidation,
-                    "stage_timings": self._stage_timings(started_ns),
-                }
+                    if revalidation.decision is not MapDecision.CONTINUE:
+                        row["reason"] = getattr(
+                            revalidation.reason, "value",
+                            "MAP_REVISION_MISMATCH")
+                        self._close_row(rows, row)
+                        last_reason = row["reason"]
+                        continue
+                    certification, failure = self._certify(
+                        route, snapshot, None, edges, None, None,
+                        load_state=LoadState.UNLOADED)
+                    if certification is None or not certification.passed:
+                        row["reason"] = failure if certification is None \
+                            else certification.reason.value
+                        row["recertified"] = False
+                        self._close_row(rows, row)
+                        last_reason = row["reason"]
+                        continue
+                    legs = leg_records(route, edges, request)
+                    row["reason"] = "OK"
+                    row["certified"] = True
+                    rows.append(row)
+                    self.last_route = route
+                    self.last_certification = certification
+                    self.last_revalidation = revalidation
+                    self.last_rows = rows
+                    self._promote_selection({
+                        "path_hash": route.digest(),
+                        "route": route,
+                        "edges": edges,
+                        "snapshot": snapshot,
+                        "attachment": None,
+                        "candidate": None,
+                        "request": request,
+                        "certification_id": certification.digest(),
+                        "load_state": LoadState.UNLOADED,
+                        "purpose": str(purpose),
+                    })
+                    return {
+                        "success": True,
+                        "reason_code": "OK",
+                        "selection_id": route.route_id,
+                        "path_source": "route-graph",
+                        "path_hash": route.digest(),
+                        "rows": rows,
+                        "route": route,
+                        "edges": edges,
+                        "legs": legs,
+                        "certification": certification,
+                        "revalidation": revalidation,
+                        "stage_timings": self._stage_timings(started_ns),
+                    }
         finally:
             if callable(reset_scene):
                 reset_scene()
@@ -2373,6 +2712,16 @@ class RouteProducer(object):
                 return self._fail("MAP_STALE",
                                   [{"snapshot": int(snapshot.map_revision),
                                     "caller_latest": latest_map_revision}])
+        # This return is a new planning phase over the post-commit map.
+        # Stable admitted content retains its age basis through execution;
+        # a different epoch/revision/content is still revalidated live.
+        self._admitted_snapshot = snapshot
+        self._admission_now_ns = self._clock_ns()
+        request["frozen_map"] = {
+            "map_revision": int(snapshot.map_revision),
+            "snapshot_digest": str(snapshot.digest()),
+            "scene_revision": str(scene_revision),
+        }
         reset_scene = getattr(self.edge_builder, "reset_scene", None)
         row = {"pose_name": pose_name}
         rows = []
@@ -2472,6 +2821,7 @@ class RouteProducer(object):
                 "certification": certification,
                 "revalidation": revalidation,
                 "stage_timings": self._stage_timings(started_ns),
+                "request": request,
             }
         finally:
             if callable(reset_scene):
@@ -2612,13 +2962,15 @@ class RouteProducer(object):
         # boxes remain the obstacle set.
         payload = None
         if attachment is not None:
+            from st09_contracts.payload_envelope import collision_payload
+            geometry = collision_payload(attachment)
             payload = PayloadSpec(
                 dimensions_wdh=tuple(
-                    float(v) for v in attachment.dimensions_wdh),
+                    float(v) for v in geometry.dimensions_wdh),
                 t_tcp_box_translation=tuple(
-                    float(v) for v in attachment.t_tcp_box_translation),
+                    float(v) for v in geometry.t_tcp_box_translation),
                 t_tcp_box_quaternion_xyzw=tuple(
-                    float(v) for v in attachment.t_tcp_box_quaternion_xyzw))
+                    float(v) for v in geometry.t_tcp_box_quaternion_xyzw))
         released = None
         container_transform = (request or {}).get("container_transform")
         if container_transform and candidate is not None:
@@ -2630,11 +2982,14 @@ class RouteProducer(object):
                 tuple(float(v) for v in candidate.position_container),
                 tuple(float(v) for v in
                       candidate.quaternion_xyzw_container))
+            from luggage_planning.payload_envelope_geometry import geometry_at_box_pose
+            released_center, released_quaternion, released_dimensions = geometry_at_box_pose(
+                attachment, released_center, released_quaternion)
             released = BoxSpec(
                 object_id="route-released-box",
                 center=tuple(float(v) for v in released_center),
                 size_whd=tuple(
-                    float(v) for v in attachment.dimensions_wdh),
+                    float(v) for v in released_dimensions),
                 quaternion_xyzw=tuple(
                     float(v) for v in released_quaternion))
         occupancy = occupancy_boxes_from_surface(
@@ -2821,6 +3176,14 @@ class RouteProducer(object):
             scene_rows = list(scenes()[int(scene_at):])
             if scene_rows:
                 row["scene"] = scene_rows
+        stage_times = getattr(builder, "stage_timings", None)  # [G1]
+        if callable(stage_times):
+            row["stage_timings_s"] = {
+                key: {"n": len(vals),
+                      "total": round(sum(vals), 4),
+                      "mean": round(sum(vals) / len(vals), 6)
+                      if vals else None}
+                for key, vals in stage_times().items() if vals}
         params = getattr(builder, "planner_parameters", None)
         if callable(params) and "planner_parameters" not in row:
             row["planner_parameters"] = params()
@@ -3379,6 +3742,7 @@ def register_attach_from_request(provider, request: Mapping,
         source_kind=AttachmentSourceKind.MEASURED_ATTACH_CONFIRMED,
         source_method=str(source_method),
         dimensions_wdh=[float(v) for v in box_wdh],
+        conservative_geometry=request.get('conservative_geometry'),
         cargo_id=str(cargo_id or request["request_id"]),
         box_id=str(box_id or request["request_id"]),
         cycle_id=str(cycle_id or request["request_id"]),

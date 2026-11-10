@@ -1,0 +1,27 @@
+{
+  "baseline": "/tmp/elfin-master-pack-baseline-g3/src/luggage_description/config/scene_tf_deploy_update.yaml",
+  "release_input": {
+    "center_container": [
+      0.48001000000000005,
+      0.13999699999999998,
+      0.691353
+    ],
+    "half_extents": [
+      0.2585,
+      0.164,
+      0.1045
+    ],
+    "yaw": -1.5707963267948966,
+    "corners_valid": true
+  },
+  "retreat": {
+    "samples": 4601,
+    "clearance": {
+      "in_cavity_min_wall_mm": 0.73,
+      "aperture_transit_ok": true
+    },
+    "pass": true,
+    "note": "positive wall distance inside the container and a clean aperture transit mean the fixed retreat applies under baseline (hence A'/B); A0 is strictly wider."
+  },
+  "pass": true
+}

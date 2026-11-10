@@ -14,7 +14,6 @@ high_z_gain: 8.0
 diversity_penalty: 3.0
 overlap_max: 0.7
 probe_budget: 3
-hash_policy: "off"
 inflate_m: 0.05
 arm_radius_m: 0.08
 max_candidates: 5

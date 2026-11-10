@@ -21,9 +21,22 @@ PIDFILE="${ELFIN_SIM_PIDFILE:-/tmp/elfin_humble_sim.pid}"
 WAIT_INT="${WAIT_INT:-12}"
 WAIT_TERM="${WAIT_TERM:-4}"
 ALL=0
+OWNED_PGID=""
+
+# A rehearsal command may mention installed resource paths in its launch
+# arguments. It is an ancestor of this stopper, not an orphan stack process.
+# Never let fallback command-line matching terminate our caller/supervisor.
+STOPPER_ANCESTORS=" $$ "
+stopper_parent="$PPID"
+while [[ "$stopper_parent" =~ ^[0-9]+$ ]] && (( stopper_parent > 1 )); do
+  STOPPER_ANCESTORS+="$stopper_parent "
+  stopper_parent="$(ps -o ppid= -p "$stopper_parent" 2>/dev/null || true)"
+  stopper_parent="${stopper_parent// /}"
+done
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --owned-pgid) OWNED_PGID="$2"; shift 2 ;;
     --all) ALL=1; shift ;;
     --pidfile) PIDFILE="$2"; shift 2 ;;
     --wait) WAIT_INT="$2"; shift 2 ;;
@@ -37,6 +50,28 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Isolated callers create a new session for their launch. Never fall back to
+# another launch when that session's leader has exited or its pidfile vanished.
+if [[ -n "$OWNED_PGID" ]]; then
+  self_group="$(ps -o pgid= -p $$ | tr -d ' ')"
+  [[ "$OWNED_PGID" =~ ^[0-9]+$ ]] && (( OWNED_PGID > 1 )) &&
+    [[ "$OWNED_PGID" != "$self_group" ]] || exit 2
+  for spec in "INT:$WAIT_INT" "TERM:$WAIT_TERM" "KILL:2"; do
+    kill -0 -- "-$OWNED_PGID" 2>/dev/null || break
+    kill -"${spec%%:*}" -- "-$OWNED_PGID" 2>/dev/null || true
+    deadline=$((SECONDS + ${spec##*:}))
+    while (( SECONDS < deadline )); do
+      kill -0 -- "-$OWNED_PGID" 2>/dev/null || break
+      sleep 0.2
+    done
+  done
+  if [[ -f "$PIDFILE" ]] && [[ "$(cat "$PIDFILE")" == "$OWNED_PGID" ]]; then
+    rm -f "$PIDFILE"
+  fi
+  echo "stop_sim: owned process group $OWNED_PGID stopped; no global fallback"
+  exit 0
+fi
 
 alive() {
   local pid
@@ -110,6 +145,7 @@ stack_pids() {
   local pid cmd
   while read -r pid cmd; do
     [[ -n "${pid:-}" ]] || continue
+    [[ "$STOPPER_ANCESTORS" == *" $pid "* ]] && continue
     case "$cmd" in
       *stop_sim.sh*) continue ;;
     esac
@@ -119,7 +155,7 @@ stack_pids() {
     pgrep -a -f 'ros2 launch luggage_gazebo' 2>/dev/null || true
     pgrep -a -f 'luggage_gazebo/rviz/sim_full\.rviz' 2>/dev/null || true
     pgrep -a -f 'ign gazeb[o]' 2>/dev/null || true
-    pgrep -a -f '/install/luggage_(gazebo|perception|planning|description|packing)/' 2>/dev/null || true
+    pgrep -a -f '/install[^/]*/luggage_(gazebo|perception|planning|description|packing)/lib/' 2>/dev/null || true
   ) | awk 'NF && !seen[$1]++'
 }
 

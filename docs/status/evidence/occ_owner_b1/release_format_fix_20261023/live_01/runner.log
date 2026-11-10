@@ -1,0 +1,5 @@
+[10:29:36] launch pid=758023 out=/tmp/elfin-master-pack-baseline-g3/docs/status/evidence/occ_owner_b1/release_format_fix_20261023/live_01 run_id=n3func_102934
+[10:29:41] gain verify OK (0.8)
+[10:29:47] driver start (n=3)
+[10:41:56] driver rc=1
+[10:41:57] runner exit=1

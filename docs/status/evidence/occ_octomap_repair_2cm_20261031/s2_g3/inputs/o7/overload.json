@@ -1,0 +1,12 @@
+{
+  "drain_s": 30.0,
+  "duration_s": 60,
+  "generator_version": "o6-load-v1",
+  "group_id": "r02_b20_chamfer_c30000_o50_x00",
+  "id": "overload",
+  "input_hz": 10,
+  "inputs": 600,
+  "kind": "overload",
+  "point_bytes": "not_emitted",
+  "query_hz": 1
+}

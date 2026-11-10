@@ -25,12 +25,15 @@ from __future__ import division
 
 import json
 import math
+import os
+import sys
 import threading
+import time
 from collections import OrderedDict
 
 import numpy as np
 import rclpy
-from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
@@ -45,10 +48,14 @@ from luggage_msgs.srv import (
     AddPlacedBox,
     AddPlacedBoxV2,
     GetCargoMapStats,
+    GetCargoValidity,
+    GetCargoVolumeV2,
     IntegrateCargoView,
+    NotifyOccupancyEvent,
     RemovePlacedBox,
     RemovePlacedBoxV2,
     ResetCargoMap,
+    ResetCargoMapV2,
 )
 
 from luggage_description.frame_contracts import ContractError
@@ -57,7 +64,6 @@ from luggage_description.frame_diagnostics import (
 )
 from luggage_description.ros_frame_bindings.poses import pose_from_message
 from luggage_description.scene_tf_config_utils import (
-    container_hull_local_inside_fn,
     container_inner_ceiling_z,
     container_inner_dimensions,
     container_inner_floor_z,
@@ -76,29 +82,30 @@ from luggage_perception.cargo_volume_mapper import (
 )
 from luggage_perception.frame_message_adapters import measured_surface_to_message
 from luggage_perception.cargo_view_integration import (
-    MAP_MEASURED,
-    MAP_RELEASE_INTEGRATED,
-    MAP_STATIC_EMPTY,
     REASON_TF_MISSING,
-    REASON_VIEW_EMPTY,
     SCHEMA_VERSION,
-    apply_integrate,
     measured_identity,
-    release_identity,
     select_fresh_record,
     stamp_key,
     stamp_to_sec,
     validate_integrate_request,
 )
-from luggage_perception.occupancy_confirmation import PendingConfirmation
+from luggage_perception.occupancy_map_store import (
+    MapUpdate,
+    OccupancyMapStore,
+    SnapshotIdentity,
+    UpdateKind,
+    UpdateStatus,
+)
 
 
-#: Declared measured-commit provenance vocabulary for AddPlacedBoxV2 (F19).
-#: A v2 ledger commit is a *measured* statement — the box was placed and
-#: measured back. ``verify_placed_box`` is the VerifyPlacedBox readback
-#: producer; anything else (notably ``planned``) is an intent, not a
-#: measurement, and must never enter the ledger as verified geometry.
-V2_MEASURED_SOURCES = ("verify_placed_box",)
+#: [B1] These two constants moved into occupancy_map_store (the server-side
+#: gate); re-exported here so existing references resolve unchanged.
+from luggage_perception.occupancy_map_store import (  # noqa: E402,F401
+    MAP_STATIC_EMPTY,
+    V2_MEASURED_SOURCES,
+    VERIFY_ANCHOR_TOLERANCE_MAX_M,
+)
 
 #: Correlation identity the mapper stamps on every v2 surface publication
 #: (one per map revision); v2 subscribers can verify it without latest-TF.
@@ -115,12 +122,16 @@ class CargoVolumeMapperNode(Node):
     def __init__(self):
         super().__init__("cargo_volume_mapper")
         group = ReentrantCallbackGroup()
+        # All map services serialize mutations and snapshot export together.
+        map_group = MutuallyExclusiveCallbackGroup()
 
         self.declare_parameter("scene_tf_config", "")
-        self.declare_parameter("resolution", 0.05)
+        from luggage_description.cargo_grid_parameters import declare_resolution
+        grid_resolution = declare_resolution(self)
         self.declare_parameter("occupancy_params_yaml", "")
         self.declare_parameter(
             "cargo_cloud_topic", "/luggage/semantic/cargo_points_untracked")
+        self.declare_parameter("container_depth_topic", "/luggage/perception/container_depth_points")
         self.declare_parameter("base_frame", "container_link")
         self.declare_parameter("cloud_buffer_size", 12)
         self.declare_parameter("freshness_window_sec", 0.20)
@@ -137,6 +148,13 @@ class CargoVolumeMapperNode(Node):
         # byte-identical to its v1 behavior.
         self.declare_parameter("frame_scene_revision", "")
         self.declare_parameter("surface_v2_topic", "/luggage/cargo_map/surface_v2")
+        # [Reset validity] Lifecycle publication (I1): state/status come
+        # from the store's own transaction state, never from this node's
+        # guess; transient_local depth 64 replays recent transitions to
+        # late subscribers (mirrors the observer's validity topic).
+        self.declare_parameter(
+            "validity_topic", "/luggage/cargo_map/validity")
+        self.declare_parameter("validity_max_age_ms", 1000)
 
         config_path = str(self.get_parameter("scene_tf_config").value)
         if not config_path:
@@ -156,8 +174,7 @@ class CargoVolumeMapperNode(Node):
             (inner_l, inner_w, inner_h),
             (0.0, 0.0, volume_center_z),
             0.0,
-            resolution=float(self.get_parameter("resolution").value),
-            hull_local_inside=container_hull_local_inside_fn(scene),
+            resolution=grid_resolution,
             geometry_descriptor=descriptor,
             max_raycast_points=int(
                 self.get_parameter("max_raycast_points").value),
@@ -173,15 +190,33 @@ class CargoVolumeMapperNode(Node):
             self.get_parameter("freshness_window_sec").value)
         self._lock = threading.Lock()
         self._clouds = OrderedDict()
-        self._integrated = set()
-        #: Empty-container identity until a settled view or a placed-box
-        #: commit. Stamp 0 is legal only while this stays static_empty,
-        #: placed_count is 0, and no view has been integrated.
-        self._last_acquisition_ns = 0
+        # [B1] The store is the sole transactional owner of the map: the
+        # service handlers below are adapters that build MapUpdate records
+        # and call apply_update. ``_pending`` bookkeeping, the integrated
+        # stamp set, and the acquisition identity moved under its
+        # transaction lock (they used to be split across this node).
+        self._store = OccupancyMapStore(
+            self._mapper,
+            require_confirmation=self._require_confirmed_map,
+            clock_ns=self._node_clock_ns,
+            validity_max_age_ns=int(
+                self.get_parameter("validity_max_age_ms").value) * 1_000_000)
+        self._pending = self._store.pending
+        # [integration-prior-g1 merge] Node-side I/O state the merged
+        # body still uses: view serialization + the acquisition identity
+        # mirrors (the STORE stays the sole map-state authority).
+        self._view_integration_lock = threading.Lock()
         self._map_source = MAP_STATIC_EMPTY
-        self._cargo_observed = False
-        self._pending = PendingConfirmation(self._require_confirmed_map)
-        self._pose_at_confirm = None
+        self._last_acquisition_ns = 0
+
+        def _sync_acquisition_identity(_snapshot=None):
+            stats = self._store.v1_surface_dict()
+            self._map_source = str(stats.get("map_source")
+                                   or MAP_STATIC_EMPTY)
+            self._last_acquisition_ns = int(
+                stats.get("acquisition_stamp_ns") or 0)
+        self._sync_acquisition_identity = _sync_acquisition_identity
+        _sync_acquisition_identity()
 
         self._tf_buffer = Buffer()
         self._tf_node = Node(
@@ -198,26 +233,55 @@ class CargoVolumeMapperNode(Node):
             String, "/luggage/cargo_map/surface_2d", transient)
         self._ledger_pub = self.create_publisher(
             String, "/luggage/cargo_map/committed", transient)
+        validity_qos = QoSProfile(
+            depth=64, reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self._validity_pub = self.create_publisher(
+            String,
+            str(self.get_parameter("validity_topic").value),
+            validity_qos)
         self.create_subscription(
             PointCloud2,
             str(self.get_parameter("cargo_cloud_topic").value),
             self._on_cloud, sensor_qos, callback_group=group)
 
+        # [integration-prior-g1 merge] The prior branch's depth-view
+        # acquisition channel (/cargo_map/integrate_container_depth_view
+        # + container_depth_topic buffer) is PARKED: it wrote the mapper
+        # directly (integrate_depth_acquisition), bypassing the
+        # OccupancyMapStore. Re-entering requires an apply_update
+        # INTEGRATE wrapper; until then single-authority wins.
+
         self.create_service(
             AddPlacedBox, "/cargo_map/add_placed_box",
-            self._on_add, callback_group=group)
+            self._on_add, callback_group=map_group)
         self.create_service(
             RemovePlacedBox, "/cargo_map/remove_placed_box",
-            self._on_remove, callback_group=group)
+            self._on_remove, callback_group=map_group)
         self.create_service(
             ResetCargoMap, "/cargo_map/reset",
-            self._on_reset, callback_group=group)
+            self._on_reset, callback_group=map_group)
+        # [Reset validity] Idempotent reset (I1) + lifecycle status
+        # query. Legacy /cargo_map/reset keeps its premise-less
+        # semantics untouched.
+        self.create_service(
+            ResetCargoMapV2, "/cargo_map/reset_v2",
+            self._on_reset_v2, callback_group=map_group)
+        self.create_service(
+            GetCargoValidity, "/cargo_map/get_validity",
+            self._on_get_validity, callback_group=map_group)
         self.create_service(
             GetCargoMapStats, "/cargo_map/get_stats",
-            self._on_stats, callback_group=group)
+            self._on_stats, callback_group=map_group)
         self.create_service(
             IntegrateCargoView, "/cargo_map/integrate_cargo_view",
             self._on_integrate, callback_group=group)
+        # [release-failure contract] World-side occupancy facts (the
+        # place driver's vacuum-off box_released) enter the map here —
+        # before any acceptance decision.
+        self.create_service(
+            NotifyOccupancyEvent, "/cargo_map/note_occupancy_event",
+            self._on_note_event, callback_group=group)
 
         self._frame_scene_revision = str(
             self.get_parameter("frame_scene_revision").value or "")
@@ -228,10 +292,19 @@ class CargoVolumeMapperNode(Node):
                 str(self.get_parameter("surface_v2_topic").value), transient)
             self.create_service(
                 AddPlacedBoxV2, "/cargo_map/add_placed_box_v2",
-                self._on_add_v2, callback_group=group)
+                self._on_add_v2, callback_group=map_group)
             self.create_service(
                 RemovePlacedBoxV2, "/cargo_map/remove_placed_box_v2",
-                self._on_remove_v2, callback_group=group)
+                self._on_remove_v2, callback_group=map_group)
+
+        self.create_service(
+            GetCargoVolumeV2, "/cargo_map/get_volume_v2",
+            self._on_volume, callback_group=map_group)
+
+        # Read-only snapshots use the existing reentrant group. They never
+        # take the Store transaction lock or renew a runtime/map lease.
+        from luggage_perception.cargo_map_query_service import MapQueryService
+        self._query_services = MapQueryService(self, self._store, group)
 
         # ST09 F21: identity heartbeat + peer readiness. Map commits (v1
         # and v2) and surface publications are gated; off = legacy.
@@ -320,9 +393,10 @@ class CargoVolumeMapperNode(Node):
             "n_points": int(finite.shape[0]),
         }
         with self._lock:
-            self._clouds[key] = record
-            while len(self._clouds) > self._buffer_size:
-                self._clouds.popitem(last=False)
+            buffer = self._clouds  # depth_view channel parked (see note above)
+            buffer[key] = record
+            while len(buffer) > self._buffer_size:
+                buffer.popitem(last=False)
 
     def _lookup_rt(self, target, source, stamp):
         if not source:
@@ -361,7 +435,9 @@ class CargoVolumeMapperNode(Node):
                 runtime.authorize_legacy_effect()
             else:
                 admission = runtime.admit_request(
-                    request_id, endpoint=endpoint)
+                    request_id, endpoint=endpoint,
+                    scope=("occupancy_commit" if endpoint == "/cargo_map/add_placed_box_v2"
+                           else None))
                 runtime.authorize_effect(admission, request_id)
         except ContractError as error:
             response.success = False
@@ -370,11 +446,17 @@ class CargoVolumeMapperNode(Node):
         return True
 
     def _on_integrate(self, request, response):
+        with self._view_integration_lock:
+            return self._integrate_view(request, response)
+
+    def _integrate_view(self, request, response):
         _gate = getattr(self, "_gate_mutation", None)
         if _gate is not None and not _gate(response):
             return response
-        stats = self._mapper.stats()
+        stats = self._mapper.occupancy_summary()
         current_rev = int(stats["map_revision"])
+        # Early-out on doomed requests (the store re-validates
+        # authoritatively inside the transaction).
         reason = validate_integrate_request(
             request.settled, request.schema_version, request.geometry_hash,
             request.expected_map_revision, self._geometry_hash, current_rev)
@@ -382,15 +464,11 @@ class CargoVolumeMapperNode(Node):
             return self._fail_integrate(
                 response, reason, reason, stats)
 
-        # The integration answers only for changes it began after: a box
-        # placed while this view is being integrated stays pending.
-        token_at_start = self._pending.begin()
         with self._lock:
             records = list(self._clouds.values())
-            integrated = set(self._integrated)
         record, reason = select_fresh_record(
             records, stamp_to_sec(request.source_acquisition_stamp),
-            self._freshness_window_sec, integrated)
+            self._freshness_window_sec, set())
         if reason:
             return self._fail_integrate(response, reason, reason, stats)
 
@@ -405,45 +483,89 @@ class CargoVolumeMapperNode(Node):
         rot, trans = rt
         points_base = transform_points(record["points"], rot, trans)
         zmin = self._floor_z + max(0.0, self._min_z_above_floor)
-        if points_base is not None and getattr(points_base, "shape", (0,))[0]:
-            points_base = points_base[points_base[:, 2] >= zmin]
-        result = apply_integrate(
-            self._mapper, points_base, origin=trans,
-            voxel_size=self._mapper.resolution)
-        if not result["ok"]:
-            return self._fail_integrate(
-                response, result["reason_code"] or REASON_VIEW_EMPTY,
-                "n_finite=%d n_kept=%d" % (
-                    result["n_finite"], result["n_kept"]),
-                self._mapper.stats())
-
         sensor_ns = (
             int(record["stamp"].sec) * 1_000_000_000
             + int(record["stamp"].nanosec))
-        stamp_ns, source = measured_identity(sensor_ns)
-        with self._lock:
-            self._integrated.add(tuple(record["stamp_key"]))
-            self._last_acquisition_ns = int(stamp_ns)
-            self._map_source = source
-            self._cargo_observed = True
-            self._pending.settle(
-                token_at_start, stamp_ns, result["observed_points"],
-                bool(request.settled))
-            self._pose_at_confirm = dict(self._world_from_container)
-        self._publish_all()
-        stats = self._mapper.stats()
+        acquisition_ns, _source = measured_identity(sensor_ns)
+        result = self._store.apply_update(MapUpdate(
+            operation_id=str(request.operation_id or "")
+            or "integrate:%s:%r" % (request.view_request_id,
+                                    tuple(record["stamp_key"])),
+            kind=UpdateKind.INTEGRATE_VIEW,
+            expected_snapshot=SnapshotIdentity(
+                str(request.expected_epoch or ""),
+                int(request.expected_map_revision),
+                str(request.expected_content_digest or "")),
+            geometry_hash=str(request.geometry_hash or ""),
+            points=points_base, origin=trans, minimum_z=zmin,
+            stamp_key=tuple(record["stamp_key"]),
+            acquisition_stamp_ns=int(acquisition_ns),
+            settled=bool(request.settled),
+            schema_version=int(request.schema_version),
+            pose_at_confirm=dict(self._world_from_container),
+        ))
+        response.status = result.status.value
+        response.epoch = result.identity.epoch
+        response.content_digest = result.identity.content_digest
+        if not result.accepted:
+            reason = result.reason or (
+                "ALREADY_PROCESSED"
+                if result.status is UpdateStatus.ALREADY_PROCESSED
+                else result.status.value)
+            return self._fail_integrate(
+                response, reason,
+                str(result.details.get("message") or reason),
+                self._mapper.occupancy_summary())
+        details = result.details
+        snapshot = result.snapshot
+        self._publish_all(snapshot)
+        stats = self._mapper.occupancy_summary()
         response.schema_version = SCHEMA_VERSION
         response.success = True
         response.reason_code = ""
         response.message = (
-            "integrated n_finite=%d n_kept=%d latency_ms=%.1f view=%s"
-            % (result["n_finite"], result["n_kept"],
-               1000.0 * result["latency_sec"],
+            "integrated n_finite=%s n_kept=%s latency_ms=%.1f view=%s"
+            % (details.get("n_finite"), details.get("n_kept"),
+               1000.0 * float(details.get("latency_sec") or 0.0),
                request.view_request_id))
+        self.get_logger().info("OCC_PREPROCESS " + json.dumps({
+            "view": request.view_request_id,
+            "counts": details.get("preprocess_counts", {}),
+            "timings": details.get("preprocess_timings", {}),
+        }, sort_keys=True))
         response.unknown_ratio = float(stats["unknown_ratio"])
         response.occupancy_ratio = float(stats["occupancy_ratio"])
-        response.resulting_map_revision = int(stats["map_revision"])
+        response.resulting_map_revision = int(snapshot.identity.revision)
         response.integrated_acquisition_stamp = record["stamp"]
+        return response
+
+    def _on_note_event(self, request, response):
+        """[release-failure contract] Adapter for world-side occupancy
+        facts: build a NOTE_EVENT MapUpdate (footprint-carrying when the
+        caller supplies box geometry) and run it through the one
+        transaction. ``box_released`` at vacuum-off is the primary
+        producer."""
+        event = str(request.event or "")
+        center = [float(v) for v in request.box_center_container]
+        size = [float(v) for v in request.box_size_wdh]
+        has_box = bool(event) and all(
+            v == v and abs(v) != float("inf") for v in center + size) \
+            and all(v > 0.0 for v in size)
+        result = self._store.apply_update(MapUpdate(
+            operation_id="event:%s:%s:%d" % (
+                event, str(request.source or "external"), self._node_clock_ns()),
+            kind=UpdateKind.NOTE_EVENT,
+            event=event,
+            box_id=str(getattr(request, "box_id", "") or ""),
+            box=((center, size, float(request.box_yaw))
+                 if has_box else None)))
+        response.status = result.status.value
+        response.reason = result.reason or (
+            "" if result.accepted else result.status.value)
+        response.epoch = result.identity.epoch
+        response.content_digest = result.identity.content_digest
+        response.occupancy_confirmed = bool(
+            result.snapshot.occupancy_confirmed)
         return response
 
     def _on_add(self, request, response):
@@ -466,18 +588,25 @@ class CargoVolumeMapperNode(Node):
                 container_yaw=float(
                     self._world_from_container["rotation_rpy"][2]),
                 container_translation=self._world_from_container["translation"])
-            added = self._mapper.mark_placed_box(center, size, yaw=yaw_c)
         except Exception as exc:  # noqa: BLE001 - service boundary
             response.success = False
             response.message = "mark failed: %s" % exc
             return response
-        self._adopt_release(
-            committed_now=bool(added), footprint=(center, size, yaw_c))
-        self._publish_all()
-        response.success = True
+        result = self._store.apply_update(MapUpdate(
+            operation_id=self._v1_operation_id(
+                "add_placed_box", center, size, yaw_c),
+            kind=UpdateKind.ADD_BOX_V1,
+            box=(list(center), list(size), float(yaw_c))))
+        self._publish_all(result.snapshot)
+        # v1 semantics: a retried add reports success while the box is in
+        # the ledger (the map, not the call count, is the contract).
+        response.success = (result.accepted or result.status
+                            is UpdateStatus.ALREADY_PROCESSED)
         response.message = "%s %d boxes (rev %d)" % (
-            "committed" if added else "already committed",
-            len(self._mapper.commit_ledger()), self._mapper._revision)
+            "committed" if result.details.get("committed_now")
+            else "already committed",
+            len(self._mapper.commit_ledger()),
+            result.identity.revision)
         return response
 
     def _on_remove(self, request, response):
@@ -497,39 +626,187 @@ class CargoVolumeMapperNode(Node):
                 container_yaw=float(
                     self._world_from_container["rotation_rpy"][2]),
                 container_translation=self._world_from_container["translation"])
-            removed = self._mapper.unmark_placed_box(center, size, yaw=yaw_c)
         except Exception as exc:  # noqa: BLE001 - service boundary
             response.success = False
             response.message = "unmark failed: %s" % exc
             return response
-        if removed:
-            self._adopt_after_removal()
-        self._publish_all()
-        response.success = bool(removed)
+        result = self._store.apply_update(MapUpdate(
+            operation_id=self._v1_operation_id(
+                "remove_placed_box", center, size, yaw_c),
+            kind=UpdateKind.REMOVE_BOX_V1,
+            box=(list(center), list(size), float(yaw_c))))
+        self._publish_all(result.snapshot)
+        response.success = result.accepted
         response.message = (
-            "removed" if removed else "no matching committed box")
+            "removed" if result.details.get("removed")
+            else "no matching committed box")
         return response
+
+    @staticmethod
+    def _v1_operation_id(endpoint, center, size, yaw):
+        """v1 calls carry no idempotency key: derive one from the
+        normalized content so a literal retry maps to one transaction."""
+        from st09_contracts._base import digest_of
+        return "v1:%s:%s" % (endpoint, digest_of(
+            tuple(float(v) for v in center),
+            tuple(float(v) for v in size), float(yaw)))
 
     def _on_reset(self, _request, response):
         _gate = getattr(self, "_gate_mutation", None)
         if _gate is not None and not _gate(response):
             return response
-        self._mapper.reset(preserve_placed=False)
+        result = self._store.apply_update(
+            MapUpdate(operation_id="reset:%d" % self._node_clock_ns(),
+                      kind=UpdateKind.RESET))
         with self._lock:
             self._clouds.clear()
-            self._integrated.clear()
-            self._last_acquisition_ns = 0
-            self._map_source = MAP_STATIC_EMPTY
-            self._cargo_observed = False
-            self._pending.clear()
-            self._pose_at_confirm = None
-        self._publish_all()
-        response.success = True
+        self._publish_all(result.snapshot)
+        response.success = result.accepted
         response.message = "reset"
+        response.resulting_map_revision = int(result.identity.revision)
+        response.status = result.status.value
+        response.epoch = result.identity.epoch
+        response.content_digest = result.identity.content_digest
+        return response
+
+    def _on_reset_v2(self, request, response):
+        """Idempotent reset (I1): reset_id + optional expected_epoch.
+
+        Rides the store's bounded reset ledger: same id + same content
+        replays (ALREADY_PROCESSED), same id + different reason/content
+        is refused (OPERATION_ID_CONFLICT), a declared stale epoch is
+        refused (EPOCH_MISMATCH). A reset linearization rotates the
+        epoch and moves the lifecycle INVALID->BUILDING inside the one
+        transaction. No reply here fabricates validity: the lifecycle
+        generation after the transaction is reported verbatim.
+        """
+        _gate = getattr(self, "_gate_mutation", None)
+        if _gate is not None and not _gate(response):
+            return response
+        reset_id = str(request.reset_id or "").strip()
+        if not reset_id:
+            response.status = "RESET_ID_REQUIRED"
+            response.message = "reset_id is required"
+            return response
+        expected = str(request.expected_epoch or "").strip()
+        update = MapUpdate(
+            operation_id="reset-v2:" + reset_id,
+            kind=UpdateKind.RESET,
+            expected_snapshot=(SnapshotIdentity(expected, 0, "")
+                               if expected else None),
+            event=str(request.reason or "explicit"))
+        result = self._store.apply_update(update)
+        with self._lock:
+            self._clouds.clear()
+        self._publish_all(result.snapshot)
+        response.status = (result.status.value if result.accepted
+                           else result.reason)
+        response.epoch = result.identity.epoch
+        response.generation = int(self._store.lifecycle.generation)
+        response.resulting_map_revision = int(result.identity.revision)
+        response.content_digest = result.identity.content_digest
+        return response
+
+    def _on_get_validity(self, _request, response):
+        """Lifecycle status from the SAME transaction state as the map.
+
+        events_json replays the latched transition log so a consumer
+        seeing an unfamiliar epoch can confirm the producer's current
+        identity (I2 controlled confirmation) instead of guessing.
+        """
+        record, _identity, _events = self._store.validity_bundle()
+        response.state = record.state
+        response.epoch = record.epoch
+        response.generation = record.generation
+        response.reason = record.reason
+        response.reset_id = record.reset_id
+        response.transition_mono_ns = record.transition_mono_ns
+        response.transition_stamp_ns = record.transition_stamp_ns
+        response.map_revision = record.map_revision
+        response.observed_revision = record.observed_revision
+        response.last_integrated_stamp_ns = record.last_integrated_stamp_ns
+        response.geometry_hash = record.geometry_hash
+        response.config_digest = record.config_digest
+        response.clock_domain = record.clock_domain
+        response.backend = record.backend
+        response.events_json = self._store.lifecycle.events_json()
+        return response
+
+    def _on_volume(self, request, response):
+        """Read only; same callback group as every owner map mutation.
+
+        [integration-prior-g1 2026-10-19] The snapshot identity is the
+        STORE's (epoch + revision + content_digest) — the same pair
+        Select's admission pins. Raw mapper revision reads and init-only
+        acquisition mirrors are gone: the identity and the acquisition
+        provenance come from the store's own projection on EVERY read,
+        so a volume can never be served across a snapshot boundary.
+        """
+        from luggage_perception.cargo_volume_snapshot import copy_volume
+        response.success = False
+        snapshot = self._store.snapshot()
+        identity = snapshot.identity
+        self._sync_acquisition_identity()
+        if (not self._frame_scene_revision or
+                request.scene_revision != self._frame_scene_revision or
+                request.geometry_hash != self._geometry_hash or
+                request.expected_map_revision != identity.revision):
+            response.reason = "SNAPSHOT_IDENTITY_MISMATCH"
+            return response
+        if ((request.expected_epoch and
+                request.expected_epoch != identity.epoch) or
+                (request.expected_content_digest and
+                 request.expected_content_digest != identity.content_digest)):
+            response.reason = "SNAPSHOT_IDENTITY_MISMATCH"
+            return response
+        confirmation = self._pending.surface_fields()
+        if (self._frame != "container_link" or self._map_source != "measured" or
+                self._last_acquisition_ns <= 0 or
+                not confirmation["occupancy_confirmed"] or
+                confirmation["pending_changes"] or
+                (self._mapper.commit_ledger() and not self._require_confirmed_map)):
+            response.reason = "NO_CONFIRMED_MEASURED_VOLUME"
+            return response
+        try:
+            volume = copy_volume(self._mapper)
+            for name, value in volume.items():
+                setattr(response, name, list(value) if name in (
+                    "states", "active", "dimensions_xyz", "origin_container") else value)
+        except ValueError as error:
+            response.reason = str(error)
+            return response
+        response.scene_revision = self._frame_scene_revision
+        response.geometry_hash = self._geometry_hash
+        response.map_revision = identity.revision
+        response.epoch = identity.epoch
+        response.content_digest = identity.content_digest
+        response.frame_id = self._frame
+        response.acquisition_stamp_ns = self._last_acquisition_ns
+        response.map_source = self._map_source
+        response.occupancy_confirmed = True
+        response.has_pending_changes = False
+        response.success = True
+        response.reason = "OK"
         return response
 
     def _on_stats(self, _request, response):
-        stats = self._mapper.stats()
+        # [ADMISSION-DIAG 2026-10-25, env-gated] recv/compute-end times on
+        # this process's monotonic clock. Zero effect unless
+        # ELFIN_MAP_STATS_TRACE is set.
+        _trace = bool(os.environ.get("ELFIN_MAP_STATS_TRACE"))
+        _t_recv = time.monotonic() if _trace else None
+        snapshot, summary = self._store.status_bundle()
+        if summary is None:
+            response.success = False
+            response.message = "QUERY_INDEX_UNAVAILABLE"
+            return response
+        stats = summary.as_dict()
+        if _trace:
+            print("[map-stats-trace] recv=%.6f compute_end=%.6f "
+                  "compute_s=%.6f" % (
+                      _t_recv, time.monotonic(),
+                      time.monotonic() - _t_recv), file=sys.stderr,
+                  flush=True)
         response.success = True
         response.unknown_ratio = float(stats["unknown_ratio"])
         response.occupancy_ratio = float(stats["occupancy_ratio"])
@@ -542,10 +819,15 @@ class CargoVolumeMapperNode(Node):
         response.total_voxels = int(stats["total_voxels"])
         response.map_revision = int(stats["map_revision"])
         response.geometry_hash = self._geometry_hash
-        response.last_acquisition_stamp_ns = int(self._last_acquisition_ns)
-        response.map_source = str(self._map_source)
+        response.last_acquisition_stamp_ns = int(
+            snapshot.acquisition_stamp_ns)
+        response.map_source = str(snapshot.map_source)
         response.placed_count = int(stats["committed_box_count"])
-        response.cargo_observed = bool(self._cargo_observed)
+        response.cargo_observed = bool(snapshot.cargo_observed)
+        response.epoch = snapshot.identity.epoch
+        response.content_digest = snapshot.identity.content_digest
+        response.occupancy_confirmed = bool(snapshot.occupancy_confirmed)
+        response.change_event = str(snapshot.change_event)
         response.message = "committed=%d" % stats["committed_box_count"]
         return response
 
@@ -561,53 +843,16 @@ class CargoVolumeMapperNode(Node):
         stamp = self.get_clock().now().to_msg()
         return int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
 
-    def _adopt_release(self, committed_now, footprint):
-        """A placed box leaves the static-empty identity.
-
-        ``require_confirmed_map`` on: a new commit records a pending change
-        whose ``stamp_ns`` is the commit clock. It does not write that clock
-        into the acquisition stamp. A map with no sensor acquisition yet
-        keeps stamp <= 0; placement stays closed, and an unloaded observation
-        move is admitted separately without a forged acquisition time. Off:
-        a new commit stamps the node clock and a duplicate commit keeps the
-        existing release stamp.
-        """
-        if len(self._mapper.commit_ledger()) <= 0:
-            return
-        previous_source = self._map_source
-        now_ns = self._node_clock_ns()
-        stamp, source = release_identity(now_ns)
-        self._map_source = source
-        if self._require_confirmed_map:
-            if committed_now:
-                self._pending.record("box_placed", now_ns, footprint)
-            return
-        if committed_now or int(self._last_acquisition_ns) <= 0 \
-                or previous_source != MAP_RELEASE_INTEGRATED:
-            self._last_acquisition_ns = int(stamp)
-
-    def _adopt_after_removal(self):
-        placed = len(self._mapper.commit_ledger())
-        self._pending.record("box_removed", self._node_clock_ns())
-        if placed > 0:
-            self._map_source = MAP_RELEASE_INTEGRATED
-            return
-        if self._cargo_observed:
-            self._map_source = MAP_MEASURED
-            return
-        self._map_source = MAP_STATIC_EMPTY
-        self._last_acquisition_ns = 0
-        self._pending.clear()
-
     def update_container_pose(self, pose):
         """Invalidate when the container itself has moved since confirmation."""
         from luggage_perception.cargo_view_integration import (
             container_pose_moved,
         )
 
-        if container_pose_moved(self._pose_at_confirm, pose):
-            self._pending.record(
-                "container_pose_changed", self._node_clock_ns())
+        if container_pose_moved(self._store.pose_at_confirm, pose):
+            self._store.apply_update(MapUpdate(
+                operation_id="pose:%d" % self._node_clock_ns(),
+                kind=UpdateKind.CONTAINER_POSE))
         self._world_from_container = {
             "translation": list(pose.get("translation") or []),
             "rotation_rpy": list(pose.get("rotation_rpy") or []),
@@ -620,30 +865,40 @@ class CargoVolumeMapperNode(Node):
         Callers that see them use this. Return, pickup spawn, grasp, and
         planning are ignored.
         """
-        self._pending.record(event, self._node_clock_ns())
+        self._store.apply_update(MapUpdate(
+            operation_id="note:%s:%d" % (event, self._node_clock_ns()),
+            kind=UpdateKind.NOTE_EVENT, event=str(event)))
 
-    def _publish_all(self):
-        surface = self._mapper.surface_map_2d()
-        surface["acquisition_stamp_ns"] = int(self._last_acquisition_ns)
-        surface["map_source"] = str(self._map_source)
-        surface["placed_count"] = len(self._mapper.commit_ledger())
-        surface["cargo_observed"] = bool(self._cargo_observed)
-        surface.update(self._pending.surface_fields())
+    def _publish_all(self, snapshot=None):
+        # [B1] Single-snapshot publish: v1 JSON, committed ledger, and the
+        # v2 contract are deterministic projections of ONE immutable
+        # snapshot handed in by the transaction that just ran (or the
+        # current one on read-only paths) — the SAME object is passed to
+        # every projector, so a concurrent transaction between two
+        # projections cannot produce a mixed-revision publication set.
+        snapshot = snapshot if snapshot is not None \
+            else self._store.snapshot()
         self._surface_pub.publish(String(data=json.dumps(
-            surface, sort_keys=True)))
-        self._ledger_pub.publish(String(data=json.dumps({
-            "frame": self._frame,
-            "container_in_world": self._world_from_container,
-            "boxes": self._mapper.commit_ledger(),
-            "map_revision": self._mapper._revision,
-            "geometry_hash": self._geometry_hash,
-        }, sort_keys=True)))
+            self._store.v1_surface_dict(snapshot), sort_keys=True)))
+        self._ledger_pub.publish(String(data=json.dumps(
+            self._store.committed_dict(
+                self._frame, self._world_from_container, snapshot),
+            sort_keys=True)))
+        # [Reset validity] Published from the store's transaction state in
+        # the same single-snapshot publication set (I1: status and map
+        # come from one consistent state; this node never guesses).
+        try:
+            record, _identity, _events = self._store.validity_bundle()
+            self._validity_pub.publish(String(data=record.as_json()))
+        except Exception as error:  # noqa: BLE001 - never break the map
+            self.get_logger().warning("validity publish failed: %s" % error)
         # ST04 F06: scene-bound v2 surface beside the byte-stable v1 JSON.
         if self._surface_v2_pub is not None:
             try:
-                record = self._mapper.surface_contract_v2(
+                record = self._store.v2_record(
                     self._frame_scene_revision,
-                    SURFACE_V2_REQUEST_TEMPLATE % int(self._mapper._revision))
+                    SURFACE_V2_REQUEST_TEMPLATE % snapshot.identity.revision,
+                    snapshot)
                 self._surface_v2_pub.publish(
                     measured_surface_to_message(record, self._surface_context()))
             except BoundaryContractError as error:
@@ -654,12 +909,13 @@ class CargoVolumeMapperNode(Node):
                     "surface v2 emit failed: %s" % error)
 
     def _surface_context(self):
+        revision = self._store.map_revision
         return BoundaryContext(
             "F06", "cargo_volume_mapper_node", "surface_v2_subscribers",
-            SURFACE_V2_REQUEST_TEMPLATE % int(self._mapper._revision),
+            SURFACE_V2_REQUEST_TEMPLATE % int(revision),
             self._frame_scene_revision, "container_link", "",
             "scene", geometry_hash=self._geometry_hash,
-            map_revision=int(self._mapper._revision))
+            map_revision=int(revision))
 
     def _decode_slot_v2(self, slot_pose, request_id):
         """Decode one v2 slot record (F19) with explicit consumer identity."""
@@ -670,35 +926,6 @@ class CargoVolumeMapperNode(Node):
             geometry_hash=self._geometry_hash,
             map_revision=None)
         return pose_from_message(slot_pose, "slot", context)
-
-    def _ledger_guard(self, expected_map_revision, geometry_hash,
-                      response=None):
-        """Reject stale revision / absent or foreign hull before any mutation.
-
-        The v2 boundary is measured-commit-only: the hull identity is a
-        required, nonempty field — an absent ``geometry_hash`` is a missing
-        identity, not an unconstrained commit. (v1 callbacks do not pass
-        through this guard; their legacy semantics are unchanged.)
-        """
-        stats = self._mapper.stats()
-        if int(expected_map_revision) != int(stats["map_revision"]):
-            if response is not None:
-                response.success = False
-                response.message = "stale map revision %s != %s" % (
-                    expected_map_revision, stats["map_revision"])
-            return False
-        incoming = str(geometry_hash or "")
-        if not incoming:
-            if response is not None:
-                response.success = False
-                response.message = "geometry_hash required for v2 commits"
-            return False
-        if incoming != self._geometry_hash:
-            if response is not None:
-                response.success = False
-                response.message = "geometry hash mismatch"
-            return False
-        return True
 
     def _on_add_v2(self, request, response):
         _gate = getattr(self, "_gate_mutation", None)
@@ -715,18 +942,12 @@ class CargoVolumeMapperNode(Node):
             response.message = "slot rejected (%s %s)" % (
                 error.code, error.field)
             return response
-        if not self._ledger_guard(
-                request.expected_map_revision, request.geometry_hash,
-                response):
-            return response
-        measured_source = str(request.measured_source or "")
-        if measured_source not in V2_MEASURED_SOURCES:
-            # The v2 ledger records measured commits only: an unmeasured
-            # intent ("planned") must not become verified geometry.
+        if not str(request.geometry_hash or ""):
+            # The v2 boundary is measured-commit-only: the hull identity is
+            # a required, nonempty field (equality is checked inside the
+            # transaction against the store's premise).
             response.success = False
-            response.message = (
-                "measured_source %r is not a declared measured provenance "
-                "(one of %s)" % (measured_source, list(V2_MEASURED_SOURCES)))
+            response.message = "geometry_hash required for v2 commits"
             return response
         yaw = 2.0 * math.atan2(slot["quaternion_xyzw"][2],
                                 slot["quaternion_xyzw"][3])
@@ -736,20 +957,35 @@ class CargoVolumeMapperNode(Node):
             center, yaw_c, size = normalize_ledger_slot(
                 slot["position"], yaw, list(request.size_wdh),
                 source_frame="container_link")
-            added = self._mapper.mark_placed_box(
-                center, size, yaw=yaw_c, measured_source=measured_source)
         except Exception as exc:  # noqa: BLE001 - service boundary
             response.success = False
             response.message = "mark failed: %s" % exc
             return response
-        self._adopt_release(
-            committed_now=bool(added), footprint=(center, size, yaw_c))
-        self._publish_all()
-        response.success = True
-        response.message = "%s %d boxes (rev %d)" % (
-            "committed" if added else "already committed",
-            len(self._mapper.commit_ledger()), self._mapper._revision)
-        response.resulting_map_revision = int(self._mapper._revision)
+        # [B1 adapter] Everything below — premise (revision/epoch/digest/
+        # hull), the verify-anchor evidence gate (finite/non-negative/
+        # ceiling tolerance, slot-vs-measured delta, measured provenance),
+        # the commit itself, and the pending-change adoption — runs inside
+        # the store's one transaction.
+        result = self._store.apply_update(MapUpdate(
+            operation_id=str(request.operation_id or "")
+            or "addv2:%s" % request.slot_pose.identity.request_id,
+            kind=UpdateKind.ADD_BOX_V2,
+            expected_snapshot=SnapshotIdentity(
+                str(request.expected_epoch or ""),
+                int(request.expected_map_revision),
+                str(request.expected_content_digest or "")),
+            geometry_hash=str(request.geometry_hash or ""),
+            box=(list(center), list(size), float(yaw_c)),
+            box_id=str(getattr(request, "box_id", "") or ""),
+            measured_source=str(request.measured_source or ""),
+            verified_center=(
+                None if float(request.verify_tolerance_m or 0.0) <= 0.0
+                else [float(v) for v in
+                      request.verified_center_container]),
+            verify_tolerance_m=float(request.verify_tolerance_m or 0.0),
+            verify_source=str(getattr(request, "verify_source", "")
+                              or "")))
+        self._finish_v2(response, result, expect="committed")
         return response
 
     def _on_remove_v2(self, request, response):
@@ -767,9 +1003,9 @@ class CargoVolumeMapperNode(Node):
             response.message = "slot rejected (%s %s)" % (
                 error.code, error.field)
             return response
-        if not self._ledger_guard(
-                request.expected_map_revision, request.geometry_hash,
-                response):
+        if not str(request.geometry_hash or ""):
+            response.success = False
+            response.message = "geometry_hash required for v2 commits"
             return response
         yaw = 2.0 * math.atan2(slot["quaternion_xyzw"][2],
                                 slot["quaternion_xyzw"][3])
@@ -777,19 +1013,63 @@ class CargoVolumeMapperNode(Node):
             center, yaw_c, size = normalize_ledger_slot(
                 slot["position"], yaw, list(request.size_wdh),
                 source_frame="container_link")
-            removed = self._mapper.unmark_placed_box(center, size, yaw=yaw_c)
         except Exception as exc:  # noqa: BLE001 - service boundary
             response.success = False
             response.message = "unmark failed: %s" % exc
             return response
-        if removed:
-            self._adopt_after_removal()
-        self._publish_all()
-        response.success = bool(removed)
-        response.message = (
-            "removed" if removed else "no matching committed box")
-        response.resulting_map_revision = int(self._mapper._revision)
+        result = self._store.apply_update(MapUpdate(
+            operation_id=str(request.operation_id or "")
+            or "removev2:%s" % request.slot_pose.identity.request_id,
+            kind=UpdateKind.REMOVE_BOX_V2,
+            expected_snapshot=SnapshotIdentity(
+                str(request.expected_epoch or ""),
+                int(request.expected_map_revision),
+                str(request.expected_content_digest or "")),
+            geometry_hash=str(request.geometry_hash or ""),
+            box=(list(center), list(size), float(yaw_c))))
+        self._finish_v2(response, result, expect="removed")
         return response
+
+    def _finish_v2(self, response, result, expect):
+        """Map one transaction result onto a v2 service response."""
+        response.status = result.status.value
+        response.reason = result.reason
+        response.epoch = result.identity.epoch
+        response.content_digest = result.identity.content_digest
+        response.resulting_map_revision = int(result.identity.revision)
+        if result.status is UpdateStatus.RECORDED_PENDING:
+            response.success = False
+            response.message = (
+                "late fact recorded pending (%s); re-read identity %s"
+                % (result.reason, result.identity))
+            self._publish_all(result.snapshot)
+            return
+        if not result.accepted and result.status is not (
+                UpdateStatus.ALREADY_PROCESSED):
+            response.success = False
+            response.message = str(
+                result.details.get("message") or result.reason)
+            return
+        if result.status is UpdateStatus.ALREADY_PROCESSED:
+            # Literal retry: the map already reflects this write; report
+            # the same headline the original call produced.
+            response.success = True
+            response.message = "already %s (replayed)" % expect
+            self._publish_all(result.snapshot)
+            return
+        response.success = True
+        if expect == "committed":
+            response.message = "%s %d boxes (rev %d)" % (
+                "committed" if result.details.get("committed_now")
+                else "already committed",
+                len(self._mapper.commit_ledger()),
+                result.identity.revision)
+        else:
+            response.message = (
+                "removed" if result.details.get("removed")
+                else "no matching committed box")
+            response.success = bool(result.details.get("removed"))
+        self._publish_all(result.snapshot)
 
 
 def main(argv=None):

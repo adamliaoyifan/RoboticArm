@@ -1,0 +1,52 @@
+{
+ "verdict": "graph_ok",
+ "last_error": null,
+ "required_nodes": [
+  "camera_bridge",
+  "sensor_preprocessor",
+  "pickup_box_spawner",
+  "luggage_detector",
+  "waypoint_generator",
+  "motion_planner",
+  "move_group",
+  "vacuum_controller"
+ ],
+ "dds_env": {
+  "ROS_VERSION": "2",
+  "ROS_PYTHON_VERSION": "3",
+  "ROS_DOMAIN_ID": "7",
+  "ROS_LOCALHOST_ONLY": "0",
+  "ROS_DISTRO": "humble"
+ },
+ "executor_thread_alive": null,
+ "samples": [
+  {
+   "elapsed_s": 0.06,
+   "n_nodes": 20,
+   "nodes_namespaced": [
+    "/camera_bridge",
+    "/container_tf_publisher",
+    "/luggage_detector",
+    "/move_group",
+    "/move_group",
+    "/move_group_private_104804687902256",
+    "/pick_eval_tf",
+    "/pick_retreat_eval_driver",
+    "/pickup_box_spawner",
+    "/placement_planner",
+    "/scene_manager",
+    "/semantic_point_filter",
+    "/semantic_point_filter_tf",
+    "/semantic_segmenter",
+    "/transform_listener_impl_5f51be3342b0",
+    "/vacuum_controller",
+    "/vacuum_controller_tf",
+    "/validate_route_v2",
+    "/waypoint_generator",
+    "/waypoint_generator_tf"
+   ],
+   "self_visible": true,
+   "vacuum_command_service_ready": false
+  }
+ ]
+}

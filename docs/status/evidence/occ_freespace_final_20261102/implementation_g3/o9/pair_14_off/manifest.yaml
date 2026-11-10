@@ -1,0 +1,16 @@
+case_id: o9-14-off
+mode: 'off'
+surface: true
+state_digest: true
+freespace:
+  box:
+  - 0.3
+  - 0.2
+  - 0.2
+  yaw_mode: 2
+  page_limit: 65536
+frames:
+- path: ../emitted/frames/f000.yaml
+  sha256: 2548ec3ec47233c976a724d2ee1eee01f153d5d2a9d395f5b5b09e4bc5579e34
+  warmup: false
+  expect_status: INTEGRATED

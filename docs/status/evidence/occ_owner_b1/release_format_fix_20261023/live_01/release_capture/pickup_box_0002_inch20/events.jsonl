@@ -1,0 +1,3 @@
+{"event": "before_vacuum_off", "wall": 1792723311.6466608, "monotonic": 3335789.793212428, "ros": 729.554, "model": "pickup_box_0002_inch20", "details": {}}
+{"event": "vacuum_off_response", "wall": 1792723311.6683328, "monotonic": 3335789.814884811, "ros": 729.576, "model": "pickup_box_0002_inch20", "details": {"success": true}}
+{"event": "abort", "wall": 1792723311.686843, "monotonic": 3335789.833394285, "ros": 729.594, "model": "pickup_box_0002_inch20", "details": {"code": "KINEMATIC_RELEASE(kinematic pose mismatch 0.0520 m)"}}

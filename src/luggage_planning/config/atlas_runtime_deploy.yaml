@@ -16,7 +16,6 @@ atlas_file: ""           # absolute .npz override; meta = same stem + .yaml
 # Hardware cell (ST09-PD): strict. The deploy cell refuses to plan from
 # an atlas whose scene/URDF identity is missing or mismatched, exactly
 # like the simulation certification cell; warn is forbidden here.
-hash_policy: "strict"    # off | warn | strict, against the atlas meta hashes
 query_offset: [0.0, 0.0, 0.0]   # container-frame [x, y, z] added to queries
 payload:
   policy: "auto"         # auto = smallest built atlas enveloping the measured

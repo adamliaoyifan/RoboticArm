@@ -57,6 +57,7 @@ class _Node(object):
             "box_count": 3,
             "corridor_planner": "lattice",
             "frame_scene_revision": "scene-runtime",
+            "diagnostic_route_budget_s": 0.0,
         }
         self._vacuum_state = None
 
@@ -158,6 +159,36 @@ class FactoryCollaborators(unittest.TestCase):
         self.assertEqual(calls["stats"], 0)
         self.assertIsNone(producer.atlas_prior([], {}))
 
+    def test_diagnostic_budget_override_reaches_searcher(self):
+        """[Functional diagnostic] override > 0 replaces the frozen
+        n*60s budget IN THE SEARCHER (producer.budget_ns); the default
+        (0.0) leaves the frozen contract untouched."""
+        from luggage_planning.route_producer_factory import (
+            build_production_route_producer,
+        )
+        from luggage_description.scene_tf_config_utils import (
+            load_scene_tf_config,
+        )
+
+        node = _Node()
+        node._scene = load_scene_tf_config(SCENE)
+        producer = build_production_route_producer(
+            node, SCENE, lambda: {}, lambda: None,
+            route_budget_override_s=180.0)
+        self.assertEqual(producer.budget_ns, int(180.0 * 1e9))
+        # Non-positive override keeps the frozen formula (box_count=3).
+        producer_default = build_production_route_producer(
+            node, SCENE, lambda: {}, lambda: None,
+            route_budget_override_s=0.0)
+        from luggage_planning.grid_path_search import route_budget_ns
+        self.assertEqual(producer_default.budget_ns, route_budget_ns(3))
+        # Node-param path: the factory reads the declared param when the
+        # kwarg is absent (production wiring).
+        node._params["diagnostic_route_budget_s"] = 180.0
+        producer_param = build_production_route_producer(
+            node, SCENE, lambda: {}, lambda: None)
+        self.assertEqual(producer_param.budget_ns, int(180.0 * 1e9))
+
     def test_selector_caches_one_factory_result(self):
         import trajectory_selector_node as selector
         from luggage_planning import route_producer_factory as factory
@@ -189,6 +220,46 @@ class FactoryCollaborators(unittest.TestCase):
         self.assertEqual(calls[0][1], SCENE)
         self.assertEqual(calls[0][2], {"height": [1]})
         self.assertEqual(calls[0][3], {"success": True})
+
+
+class StageTimingsTests(unittest.TestCase):
+    """[Functional diagnostic, 2026-10-22] prep is its own stage; the
+    search residue never borrows prep/certify/revalidate time."""
+
+    def test_prep_is_separate_from_search_residue(self):
+        from luggage_planning.route_producer import RouteProducer
+
+        producer = RouteProducer.__new__(RouteProducer)
+        producer.budget_ns = 60_000_000_000
+        producer._clock_ns = lambda: 30_000_000_000
+        producer._stage_ns = {
+            "prep": 2_000_000_000,
+            "certify": 3_000_000_000,
+            "revalidate": 1_000_000_000,
+        }
+        rows = [
+            {"reason": "IK_SEED_MISS", "elapsed_ms": 4000.0},
+            {"reason": "ATTEMPT_SUMMARY", "elapsed_ms": 99.0},
+        ]
+        timings = producer._stage_timings(0, rows)
+        self.assertEqual(timings["prep_ms"], 2000.0)
+        self.assertEqual(timings["certify_ms"], 3000.0)
+        self.assertEqual(timings["revalidate_ms"], 1000.0)
+        # 30 s total - 2 prep - 3 certify - 1 revalidate = 24 s search.
+        self.assertEqual(timings["search_ms"], 24000.0)
+        self.assertEqual(timings["total_ms"], 30000.0)
+        self.assertEqual(timings["by_reason_ms"], {"IK_SEED_MISS": 4000.0})
+
+    def test_prep_missing_counts_as_zero(self):
+        from luggage_planning.route_producer import RouteProducer
+
+        producer = RouteProducer.__new__(RouteProducer)
+        producer.budget_ns = 60_000_000_000
+        producer._clock_ns = lambda: 10_000_000_000
+        producer._stage_ns = {"certify": 0, "revalidate": 0}
+        timings = producer._stage_timings(0, [])
+        self.assertEqual(timings["prep_ms"], 0.0)
+        self.assertEqual(timings["search_ms"], 10000.0)
 
 
 if __name__ == "__main__":

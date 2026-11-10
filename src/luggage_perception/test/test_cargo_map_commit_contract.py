@@ -71,3 +71,33 @@ def test_commit_raises_known_geometry_support_surface():
     assert max(heights) >= size[2] - 1e-9
     assert set(confidences) == {"geometry"}
     assert surface["map_revision"] == mapper.stats()["map_revision"]
+
+
+def test_map_revision_property_and_note_external_change():
+    """B1 revision discipline: the counter is publicly readable, and a
+    confirmation-only transition (no voxel mutated) still advances it so a
+    rebuilt snapshot can never be mistaken for a stale one at the same
+    revision."""
+    mapper = _mapper()
+    assert mapper.map_revision == mapper.stats()["map_revision"]
+    before = mapper.map_revision
+    assert mapper.note_external_change() == before + 1
+    assert mapper.map_revision == before + 1
+    assert mapper.stats()["map_revision"] == before + 1
+    # No voxel state changed: occupancy accounting is untouched.
+    stats = mapper.stats()
+    assert stats["occupied_count"] == 0
+    assert stats["unknown_count"] + stats["free_count"] == stats["total_voxels"]
+
+
+def test_fill_unoccupied_as_free_advances_revision():
+    """The GT free-fill mutates voxel state and must be revision-metered."""
+    mapper = _mapper()
+    before = mapper.map_revision
+    mapper.fill_unoccupied_as_free()
+    assert mapper.map_revision == before + 1
+    assert mapper.stats()["free_count"] > 0
+    # Idempotent re-fill mutates nothing already-FREE: no second bump.
+    again = mapper.map_revision
+    mapper.fill_unoccupied_as_free()
+    assert mapper.map_revision == again

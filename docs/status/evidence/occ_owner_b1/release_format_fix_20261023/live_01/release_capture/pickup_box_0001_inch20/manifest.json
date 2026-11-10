@@ -1,0 +1,24 @@
+{
+  "start_wall": 1792722972.535843,
+  "start_monotonic": 3335450.682393973,
+  "duration_limit_s": 90.0,
+  "per_stream_byte_limit": 8388608,
+  "streams": {
+    "poses": {
+      "bytes": 8388608,
+      "limited": true,
+      "eof": false,
+      "returncode": 0
+    },
+    "contacts": {
+      "bytes": 0,
+      "limited": false,
+      "eof": false,
+      "returncode": 0
+    }
+  },
+  "contact_absence_proven": false,
+  "end_reason": "duration",
+  "end_wall": 1792723062.5688376,
+  "end_monotonic": 3335540.715389014
+}

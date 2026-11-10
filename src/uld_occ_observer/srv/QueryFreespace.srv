@@ -1,0 +1,51 @@
+# Full-volume known-free placement candidate query over one snapshot lease.
+# One request names exactly one box size; yaw_mode selects yaw 0, yaw 90, or
+# both. The response pages the FEASIBLE candidates of the deterministic
+# (yaw, cx, cy, cz) ascending enumeration; identity is the snapshot the page
+# was computed against, so pages from different revisions never mix.
+string handle
+float64 box_length
+float64 box_width
+float64 box_height
+uint8 yaw_mode
+uint64 cursor
+uint32 limit
+---
+string status
+uld_occ_observer/SnapshotIdentity identity
+int64 age_ns
+uint64 next_cursor
+bool done
+int32[] cell_x
+int32[] cell_y
+int32[] cell_z
+float64[] origin_x
+float64[] origin_y
+float64[] origin_z
+uint32[] yaw_deg
+float32[] support_ratio
+# 1 = observed occupied support, 2 = floor prior only (never conflated).
+uint8[] support_kind
+int32[] verify_begin
+int32[] verify_end
+uint64 grid_total
+uint64 feasible_total
+uint64 rejected_out_of_domain
+uint64 rejected_collision
+uint64 rejected_clearance
+uint64 rejected_unknown
+uint64 rejected_support
+# Frozen policy echo; the judge verifies these exact contract values.
+float64 support_tol_m
+float64 min_support_ratio
+float64 clearance_margin_m
+float64 same_layer_clearance_m
+float64 resolution
+int32[3] region_begin
+int32[3] region_end
+float64 repository_wait_ms
+float64 enumerate_ms
+float64 response_fill_ms
+float64 server_total_ms
+
+uld_occ_observer/ValidityStamp validity

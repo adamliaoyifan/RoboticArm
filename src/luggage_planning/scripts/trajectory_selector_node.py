@@ -27,7 +27,6 @@ from luggage_description.scene_tf_config_utils import (
     resolve_scene_tf_config_path,
 )
 from luggage_planning.atlas_runtime import (
-    certification_block_reason,
     compute_reachability_scene_hash,
     compute_scene_tf_hash,
     load_atlas_runtime_for_scene,
@@ -153,6 +152,12 @@ class TrajectorySelectorNode(Node):
         # Route wall budget is 60 s times this count (1 box 60 s,
         # 3 boxes 180 s). Default 1 keeps a single select at 60 s.
         self.declare_parameter("box_count", 1)
+        # [Functional diagnostic, 2026-10-22] Explicit per-Select wall
+        # budget override that reaches the searcher. 0.0 (default) keeps
+        # the frozen n*60s contract — production behavior is unchanged.
+        # Non-scoring diagnostics only; per-edge budgets and every safety
+        # gate stay frozen.
+        self.declare_parameter("diagnostic_route_budget_s", 0.0)
         self.declare_parameter("frame_scene_revision", "")
         # [ST09-I S5.7-6] site-pose file for GoToRobotPoseV2 (empty =
         # the service refuses POSE_FILE_MISSING — never a default).
@@ -543,7 +548,8 @@ class TrajectorySelectorNode(Node):
             try:
                 admission = self._frame_runtime.admit_request(
                     str(getattr(request, "request_id", "") or ""),
-                    endpoint="/trajectory_selector/goto_robot_pose_v2")
+                    endpoint="/trajectory_selector/goto_robot_pose_v2",
+                    scope="unloaded_motion")
             except ContractError as error:
                 response.success = False
                 response.reason_code = error.code
@@ -599,6 +605,7 @@ class TrajectorySelectorNode(Node):
         response.route_digest = str(result.get("path_hash") or "")
         if response.already_there:
             return response
+        response.detail = json.dumps({"frozen_map": result.get("request", {}).get("frozen_map")})
         response.certification_id = str(
             result["certification"].digest())
         response.admission_map_revision = int(
@@ -664,9 +671,33 @@ class TrajectorySelectorNode(Node):
         response.detail = json.dumps(detail, default=str)[:2000]
         return response
 
+    @staticmethod
+    def _surface_validity(request, latched):
+        """[B2 single-source] Confirmation verdict source for one select.
+
+        The request's embedded v2 surface carries its own confirmation
+        fields when the publishing map declared a snapshot identity (B1:
+        non-empty epoch) — overriding them from this node's v1 latch was a
+        second verdict source (the two latches can disagree across a
+        commit between them; the req-2b freshness race). The latch is the
+        fallback for pre-B1 surfaces only.
+        """
+        request_surface = getattr(request, "surface", None)
+        if str(getattr(request_surface, "epoch", "") or ""):
+            return None
+        latched = latched or {}
+        return {
+            "occupancy_confirmed": latched.get("occupancy_confirmed", True),
+            "change_event": latched.get("change_event") or "",
+        }
+
     def _select_v2(self, request, response):
         # World poses come from transform_pose. v1 keeps _segments.
         # This callback does not execute motion.
+        from luggage_planning.boundary_capture import capture_service_request
+        capture_service_request(
+            request, os.environ.get("ST09_SELECT_REQUEST_CAPTURE_DIR", ""),
+            "select_place_path_v2")
         if getattr(self, "_frame_runtime", None) is not None:
             from luggage_description.frame_contracts import ContractError
             try:
@@ -695,11 +726,7 @@ class TrajectorySelectorNode(Node):
             latched = getattr(self, "_surface", None) or {}
             response = fill_select_response_route(
                 request, response, producer=producer,
-                surface_validity={
-                    "occupancy_confirmed": latched.get(
-                        "occupancy_confirmed", True),
-                    "change_event": latched.get("change_event") or "",
-                })
+                surface_validity=self._surface_validity(request, latched))
         except Exception as error:  # noqa: BLE001 - service boundary
             # A refused request carries its own named reason; an
             # UNEXPECTED exception must still never kill the node (an

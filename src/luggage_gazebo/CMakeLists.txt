@@ -19,6 +19,7 @@ install(PROGRAMS
   scripts/pick_retreat_eval_driver.py
   scripts/place_smoke_driver.py
   scripts/pack_eval_driver.py
+  scripts/diagnostic_transit_driver.py
   scripts/place_only_eval_driver.py
   scripts/cargo_map_integrate_eval_driver.py
   scripts/motion_occ_eval_driver.py
@@ -29,6 +30,10 @@ install(PROGRAMS
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(pose_text_pytest test/test_pose_text.py)
+  ament_add_pytest_test(driver_executor_pytest test/test_driver_executor.py)
+  ament_add_pytest_test(handoff_failure_capture_pytest test/test_handoff_failure_capture.py)
+  ament_add_pytest_test(selection_capture_pytest test/test_selection_capture.py)
   ament_add_pytest_test(frame_migration_tools_pytest test/test_frame_migration_tools.py)
   ament_add_pytest_test(rehearsal_evidence_pytest test/test_rehearsal_evidence.py)
   ament_add_pytest_test(eval_metrics_pytest test/test_eval_metrics.py)

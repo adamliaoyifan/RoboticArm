@@ -1,0 +1,11 @@
+{"event": "before_vacuum_off", "wall": 1792725158.3344402, "monotonic": 3337636.480991942, "ros": 198.712, "model": "pickup_box_0001_inch20", "details": {}}
+{"event": "vacuum_off_response", "wall": 1792725158.3553967, "monotonic": 3337636.501948393, "ros": 198.733, "model": "pickup_box_0001_inch20", "details": {"success": true}}
+{"event": "post_release_segment_start", "wall": 1792725158.467648, "monotonic": 3337636.614199409, "ros": 198.845, "model": "pickup_box_0001_inch20", "details": {}}
+{"event": "post_release_segment_end", "wall": 1792725159.6589382, "monotonic": 3337637.80548951, "ros": 200.036, "model": "pickup_box_0001_inch20", "details": {"success": true, "code": "", "name": "retreat"}}
+{"event": "post_release_segment_start", "wall": 1792725159.6594222, "monotonic": 3337637.805973618, "ros": 200.037, "model": "pickup_box_0001_inch20", "details": {}}
+{"event": "post_release_segment_end", "wall": 1792725161.2104127, "monotonic": 3337639.35696427, "ros": 201.586, "model": "pickup_box_0001_inch20", "details": {"success": true, "code": "", "name": "retreat"}}
+{"event": "post_release_segment_start", "wall": 1792725161.2106893, "monotonic": 3337639.357240614, "ros": 201.586, "model": "pickup_box_0001_inch20", "details": {}}
+{"event": "post_release_segment_end", "wall": 1792725168.659507, "monotonic": 3337646.806058429, "ros": 209.03, "model": "pickup_box_0001_inch20", "details": {"success": true, "code": "", "name": "retreat"}}
+{"event": "post_release_segment_start", "wall": 1792725168.6600277, "monotonic": 3337646.806579297, "ros": 209.031, "model": "pickup_box_0001_inch20", "details": {}}
+{"event": "post_release_segment_end", "wall": 1792725253.6340692, "monotonic": 3337731.780620778, "ros": 293.939, "model": "pickup_box_0001_inch20", "details": {"success": true, "code": "", "name": "return"}}
+{"event": "settle_complete", "wall": 1792725256.153358, "monotonic": 3337734.299909586, "ros": 296.157, "model": "pickup_box_0001_inch20", "details": {"pose": [-2.03, 0.584996, 0.665525, 0.0, -0.0, 1.1e-05], "verdict": {"settled": true, "pose": [-2.03, 0.584996, 0.665525], "window_move_m": 0.0}}}

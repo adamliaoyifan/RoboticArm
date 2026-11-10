@@ -14,14 +14,10 @@
       <visual name="suitcase_loafbrr_inch20_visual">
         <geometry>
           <mesh>
-            <uri>model://suitcase_loafbrr_inch20/meshes/suitcase.stl</uri>
+            <uri>model://suitcase_loafbrr_inch20/meshes/suitcase.dae</uri>
             <scale>1.000000 1.000000 1.000000</scale>
           </mesh>
         </geometry>
-        <material>
-          <ambient>0.12 0.12 0.15 1</ambient>
-          <diffuse>0.20 0.20 0.24 1</diffuse>
-        </material>
       </visual>
       <collision name="body_collision">
         <geometry>
@@ -31,6 +27,7 @@
           </mesh>
         </geometry>
         <surface>
+          <contact><collide_bitmask>255</collide_bitmask></contact>
           <friction><ode><mu>0.6</mu><mu2>0.6</mu2></ode></friction>
         </surface>
       </collision>

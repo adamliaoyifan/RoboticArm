@@ -22,6 +22,20 @@ target_link_libraries(validate_route_node OpenSSL::Crypto)
 target_compile_options(validate_route_node PRIVATE -Wall -Wextra)
 install(TARGETS validate_route_node DESTINATION lib/${PROJECT_NAME})
 
+add_executable(placement_tool_check_node src/placement_tool_check_node.cpp)
+target_include_directories(placement_tool_check_node PRIVATE include)
+ament_target_dependencies(placement_tool_check_node rclcpp moveit_core moveit_msgs geometry_msgs urdf srdfdom luggage_msgs)
+target_link_libraries(placement_tool_check_node OpenSSL::Crypto)
+target_compile_options(placement_tool_check_node PRIVATE -Wall -Wextra)
+install(TARGETS placement_tool_check_node DESTINATION lib/${PROJECT_NAME})
+
+find_package(moveit_ros_planning REQUIRED)
+add_executable(grasp_local_check_node src/grasp_local_check_node.cpp)
+ament_target_dependencies(grasp_local_check_node rclcpp moveit_core moveit_ros_planning moveit_msgs geometry_msgs luggage_msgs)
+target_link_libraries(grasp_local_check_node OpenSSL::Crypto)
+target_compile_options(grasp_local_check_node PRIVATE -Wall -Wextra)
+install(TARGETS grasp_local_check_node DESTINATION lib/${PROJECT_NAME})
+
 ament_python_install_package(${PROJECT_NAME})
 
 install(DIRECTORY data
@@ -38,11 +52,13 @@ install(DIRECTORY config
 
 install(PROGRAMS
   scripts/waypoint_generator_node.py
+  scripts/diagnostic_capture_node.py
   scripts/motion_planner_node.py
   scripts/trajectory_selector_node.py
   scripts/vacuum_controller_node.py
   scripts/scene_manager_node.py
   scripts/hardware_pick_driver.py
+  scripts/place_prior_node.py
   scripts/static_joint_state_publisher.py
   DESTINATION lib/${PROJECT_NAME}
 )

@@ -51,7 +51,9 @@ container-local 2.5D height map:
 - `peak` is the maximum `height` under the footprint.
 - The box rests on that surface: `z = peak + box_height / 2` in
   floor-relative coordinates.
-- Default map resolution is 0.05 m with `stride_cells=1`.
+- Default map resolution is 0.01 m with `stride_cells=1`; see
+  [cargo-grid ownership and startup configuration](cargo_grid.md). OCC XYZ,
+  surface XY and the startup floor prior share one configuration source.
 
 `floor_prior` is a synthetic all-unknown, height-zero grid used when the
 planner has no accepted `surface_2d`. The floor's **existence** is geometric
@@ -84,6 +86,29 @@ Wall and corridor margins stay on the hull and are not added again here.
 A box whose bottom rests on a placed box's top may cover that support
 parent; it still keeps the gap against every other box on its own layer,
 and positive-volume overlap is still rejected.
+
+### Hull gate and rectangle order (G3 HULL-GATES, 2026-10-25)
+
+Final-placement hull legality is full closed-hull containment of the
+conservative envelope — all eight corners, the -X aperture face included —
+with `hull_margin` charged to walls, ceiling and the chamfer only. A
+floor-resting box touches the floor by design, so the floor keeps zero
+margin (`contains_oriented_box(floor_margin=0)`); charging it there rejects
+every floor slot. Route transit through the aperture keeps
+`contains_oriented_box_through_aperture` at the corridor/waypoint call
+sites; it never judges a final placement.
+
+A surface map that carries a `geometry_descriptor` which does not normalize
+is a named error (`HULL_DESCRIPTOR_INVALID`); only descriptor-less legacy
+cuboid fixtures run without a hull kernel (then hull legality stays with
+the injected validator).
+
+The footprint rectangle used by the same-layer and overlap gates is emitted
+in convex corner order. The historical crossed order fed SAT a
+self-intersecting contour whose edge normals lose the footprint's width
+axis, reporting overlap for diagonally separated rectangles (false-positive
+only; counterexamples under evidence
+`occ_owner_b1/placement_hull_gates_g3_20261024`).
 
 ## Scoring (flatten first)
 

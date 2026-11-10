@@ -1,0 +1,62 @@
+{
+  "ros_parseable": true,
+  "terminal": {
+    "disposition": "integrated",
+    "status_query": "COMPLETED",
+    "receipt_status": "INTEGRATED",
+    "identity_ok": true,
+    "receipt_received": true
+  },
+  "chain": {
+    "wait_status": "OK",
+    "wait_reason": "",
+    "age_ns": 12473579,
+    "wait_handle": "",
+    "identity": [
+      1,
+      1,
+      "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+      "8983ea7ae6c6383a531b28ef04306429069ec70b247b768b648456f20dfed821"
+    ],
+    "covered_stamp_ns": 1793460667051423435,
+    "snapshot_status": "OK",
+    "snapshot_age_ns": 23198771,
+    "snapshot_identity": [
+      1,
+      1,
+      "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+      "8983ea7ae6c6383a531b28ef04306429069ec70b247b768b648456f20dfed821"
+    ],
+    "handle": "1:1",
+    "pages": 15,
+    "surface_done": true,
+    "roi": {
+      "status": "OK",
+      "identity": [
+        1,
+        1,
+        "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+        "8983ea7ae6c6383a531b28ef04306429069ec70b247b768b648456f20dfed821"
+      ],
+      "count": 4096
+    },
+    "identity_stable": true,
+    "release_status": "OK",
+    "age_within_2s": true
+  },
+  "judge_pass": false,
+  "resource_certification": "NOT_EVALUATED",
+  "planned_s": 4073145.198027501,
+  "actual_s": 4073145.198397491,
+  "profile_processes": 1,
+  "surfaces": {
+    "surface_first_ms": 4.578498,
+    "surface_repeat_ms": 0.0001,
+    "surface_after_update_ms": 2.36358
+  },
+  "profile_judge_pass": false,
+  "o9_rejudge": {
+    "traces": 30,
+    "capture_complete": 30
+  }
+}

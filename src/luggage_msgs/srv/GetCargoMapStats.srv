@@ -26,3 +26,9 @@ int64 last_acquisition_stamp_ns
 string map_source
 int32 placed_count
 bool cargo_observed
+
+# [B1] Current snapshot identity + confirmation headline.
+string epoch
+string content_digest
+bool occupancy_confirmed
+string change_event

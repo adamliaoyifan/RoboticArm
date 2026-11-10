@@ -1,0 +1,228 @@
+{
+  "baseline_source": "/tmp/elfin-master-pack-baseline-g3/src/luggage_description/config/scene_tf_deploy_update.yaml",
+  "baseline": {
+    "source": "/tmp/elfin-master-pack-baseline-g3/src/luggage_description/config/scene_tf_deploy_update.yaml",
+    "x_lo": -0.745,
+    "x_hi": 0.745,
+    "y_lo": -0.985,
+    "y_hi": 0.985,
+    "floor_z": 0.53,
+    "ceiling_z": 2.01,
+    "chamfer_floor_y": 0.55,
+    "chamfer_wall_z": 0.9,
+    "aperture": {
+      "x": -0.745,
+      "y_lo": -0.928,
+      "y_hi": 0.398,
+      "z_lo": 0.597,
+      "z_hi": 2.009
+    },
+    "o_x_lo": -0.785,
+    "o_x_hi": 0.785,
+    "o_y_lo": -1.035,
+    "o_y_hi": 1.035,
+    "o_z_lo": 0.0,
+    "o_z_hi": 2.12
+  },
+  "baseline_yaml_sha256": "989225a14e7de881247865ca5813cbbc703e425cd5bb91433402c6e306449b5f",
+  "a_model_dir": "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/share/luggage_gazebo/models/airport_container_real",
+  "a0_stl_sha256": "331e981ab0ad3f0fd5223c2feb290f8d65c3e51a146eedbb2b0e61f4880a0700",
+  "aprime": {
+    "tris": 148,
+    "watertight": true,
+    "volume_m3": 2.7187,
+    "stl_sha256": "7a09582cd5135997329e859785596322ec12b842feae3a7f112f926cad83943e"
+  },
+  "bprim": {
+    "boxes": [
+      {
+        "name": "floor",
+        "center": [
+          0.0,
+          0.0,
+          0.265
+        ],
+        "size": [
+          1.57,
+          2.07,
+          0.53
+        ],
+        "roll": 0.0
+      },
+      {
+        "name": "ceiling",
+        "center": [
+          0.0,
+          0.0,
+          2.065
+        ],
+        "size": [
+          1.57,
+          2.07,
+          0.11000000000000032
+        ],
+        "roll": 0.0
+      },
+      {
+        "name": "wall_neg_y",
+        "center": [
+          0.0,
+          -1.01,
+          1.06
+        ],
+        "size": [
+          1.57,
+          0.04999999999999993,
+          2.12
+        ],
+        "roll": 0.0
+      },
+      {
+        "name": "wall_pos_y_vertical",
+        "center": [
+          0.0,
+          1.01,
+          1.51
+        ],
+        "size": [
+          1.57,
+          0.04999999999999993,
+          1.2200000000000002
+        ],
+        "roll": 0.0
+      },
+      {
+        "name": "sill",
+        "center": [
+          -0.765,
+          0.0,
+          0.2985
+        ],
+        "size": [
+          0.040000000000000036,
+          2.07,
+          0.597
+        ],
+        "roll": 0.0
+      },
+      {
+        "name": "lintel",
+        "center": [
+          -0.765,
+          0.053499999999999936,
+          2.0645
+        ],
+        "size": [
+          0.040000000000000036,
+          1.963,
+          0.11100000000000021
+        ],
+        "roll": 0.0
+      },
+      {
+        "name": "pillar_neg_y",
+        "center": [
+          -0.765,
+          -0.9815,
+          1.303
+        ],
+        "size": [
+          0.040000000000000036,
+          0.10699999999999987,
+          1.412
+        ],
+        "roll": 0.0
+      },
+      {
+        "name": "pillar_pos_y",
+        "center": [
+          -0.765,
+          0.6915,
+          1.4545
+        ],
+        "size": [
+          0.040000000000000036,
+          0.587,
+          1.109
+        ],
+        "roll": 0.0
+      },
+      {
+        "name": "end_pos_x_band",
+        "center": [
+          0.765,
+          -0.24249999999999994,
+          0.7150000000000001
+        ],
+        "size": [
+          0.040000000000000036,
+          1.585,
+          0.37
+        ],
+        "roll": 0.0
+      },
+      {
+        "name": "end_pos_x_upper",
+        "center": [
+          0.765,
+          0.0,
+          1.51
+        ],
+        "size": [
+          0.040000000000000036,
+          2.07,
+          1.2200000000000002
+        ],
+        "roll": 0.0
+      },
+      {
+        "name": "chamfer_wedge_box",
+        "center": [
+          0.0,
+          0.7966556139966239,
+          0.6807224538147802
+        ],
+        "size": [
+          1.57,
+          0.09,
+          0.5710735504293645
+        ],
+        "roll": -0.8659687068612467
+      },
+      {
+        "name": "end_wedge_neg_x_box",
+        "center": [
+          0.0,
+          0.7966556139966239,
+          0.6807224538147802
+        ],
+        "size": [
+          0.040000000000000036,
+          0.09,
+          0.5710735504293645
+        ],
+        "roll": -0.8659687068612467
+      },
+      {
+        "name": "end_wedge_pos_x_box",
+        "center": [
+          0.0,
+          0.7966556139966239,
+          0.6807224538147802
+        ],
+        "size": [
+          0.040000000000000036,
+          0.09,
+          0.5710735504293645
+        ],
+        "roll": -0.8659687068612467
+      }
+    ],
+    "sdf_sha256": "074b26db3e1c33c8c14348ea2a91bfa84e10be0364a9e83672b0ab37e75380ef"
+  },
+  "runtime": {
+    "resource_share": "install/luggage_gazebo/share/luggage_gazebo/models",
+    "a0_loads": "model://airport_container_real (container_collision_physics.stl) \u2014 untouched",
+    "note": "A'/B load their model:// dirs after colcon install; the experiment swaps the spawned model name only."
+  }
+}

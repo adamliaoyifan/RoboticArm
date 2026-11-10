@@ -1,0 +1,7 @@
+# Attachment-owned diagnostic bounds; no statistical coverage claim.
+# W/D growth is symmetric; height grows away from suction, contact face fixed.
+# Yaw rotates about suction contact normal; roll/pitch assumed exact.
+yaw_half_range_deg: 5.0
+size_growth_fraction_wdh: [0.10, 0.10, 0.10]
+position_half_range_tool_xy_m: [0.0, 0.0]
+away_from_contact_position_error_m: 0.005

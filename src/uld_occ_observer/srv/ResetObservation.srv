@@ -1,0 +1,7 @@
+uint64 expected_epoch
+string reset_id
+# Why the reset fired (detected inconsistency, identity change, explicit).
+string reason
+---
+string status
+uint64 epoch

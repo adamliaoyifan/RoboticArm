@@ -16,6 +16,7 @@ from luggage_description.suitcase_visual import (
     DEFAULT_MODEL_VISUAL,
     INCH_SIZE_TIERS,
     SIZE_TIERS,
+    INCH_SIZE_TIERS,
     VISUAL_LOAFBRR,
     VISUAL_VINTAGE,
     cuboid_inertia,
@@ -276,10 +277,10 @@ class TestPickupVisualSdf(unittest.TestCase):
 
 
 class TestSizedPickupAssets(unittest.TestCase):
-    def test_six_models_exist_with_matching_visual_collision(self):
+    def test_all_supported_models_exist_with_matching_visual_collision(self):
         uris = set()
         for visual in (VISUAL_LOAFBRR, VISUAL_VINTAGE):
-            for tier, size, _mass, _cid in SIZE_TIERS:
+            for tier, size, _mass, _cid in SIZE_TIERS + INCH_SIZE_TIERS:
                 name = sized_model_name(visual, tier)
                 stl = sized_stl_path(visual, tier, GAZEBO_MODELS)
                 sdf_path = os.path.join(GAZEBO_MODELS, name, "model.sdf")
@@ -316,7 +317,7 @@ class TestSizedPickupAssets(unittest.TestCase):
                 self.assertIn("<up_axis>Z_UP</up_axis>", dae)
                 self.assertNotIn(vis_uri, uris)
                 uris.add(vis_uri)
-        self.assertEqual(len(uris), 6)
+        self.assertEqual(len(uris), 2 * (len(SIZE_TIERS) + len(INCH_SIZE_TIERS)))
 
     def test_top_footprint_uses_lid_band_not_full_aabb(self):
         """Vintage GT is the lid XY, not the handle/body vertex AABB."""
@@ -348,7 +349,9 @@ class TestSizedPickupAssets(unittest.TestCase):
 
     def test_manifest_measure_size_matches_stl(self):
         manifest = load_sized_suitcases_manifest(GAZEBO_MODELS)
-        self.assertEqual(len(manifest), 6)
+        # G3 wave3: the manifest covers every registered tier
+        # (catalog + inch, both visual families) via the pipeline.
+        self.assertEqual(len(manifest), 14)
         rec = manifest[sized_model_name(VISUAL_LOAFBRR, "small")]
         stl = sized_stl_path(VISUAL_LOAFBRR, "small", GAZEBO_MODELS)
         measure = mesh_top_footprint(stl)
@@ -357,6 +360,7 @@ class TestSizedPickupAssets(unittest.TestCase):
                 rec["measure_size"][axis], measure[axis], places=5)
 
     def test_size_tier_name_round_trip(self):
+        self.assertEqual(size_tier_name([0.35, 0.53, 0.22]), "inch20")
         self.assertEqual(size_tier_name([0.55, 0.40, 0.25]), "small")
         self.assertEqual(size_tier_name([0.70, 0.45, 0.28]), "medium")
         self.assertEqual(size_tier_name([0.80, 0.50, 0.32]), "large")
@@ -429,3 +433,56 @@ class TestMeshObservableReference(unittest.TestCase):
         stl = sized_stl_path(VISUAL_LOAFBRR, "medium", GAZEBO_MODELS)
         self.assertEqual(mesh_observable_reference(stl),
                          mesh_observable_reference(stl))
+
+
+class TestPlacedBoxPrimitiveCollision(unittest.TestCase):
+    """Placed bodies carry a box-primitive collision (authorized 2026-10-15).
+
+    Carry/pick keeps the mesh STL collision; only the release respawn
+    swaps collision to a primitive so a resting suitcase no longer drives
+    ODE trimesh-trimesh contact pathological against the container. The
+    textured mesh VISUAL is unchanged for perception/depth.
+    """
+
+    SIZE = (0.55, 0.40, 0.25)  # inch20-sized small tier catalog WDH
+
+    def _sdf(self, **kwargs):
+        return pickup_visual_sdf(
+            "placed_box", self.SIZE, 4.2, VISUAL_LOAFBRR,
+            static=False, **kwargs)
+
+    def test_box_collision_swaps_only_the_collision_block(self):
+        sdf = self._sdf(collision_kind="box")
+        root = ET.fromstring(sdf)
+        link = root.find("model/link")
+        visual_geom = link.find("visual/geometry/mesh")
+        collision_geom = link.find("collision/geometry")
+        self.assertIsNotNone(visual_geom)
+        self.assertIn("dae", str(visual_geom.find("uri").text))
+        self.assertIsNotNone(collision_geom.find("box"))
+        self.assertIsNone(collision_geom.find("mesh"))
+        size = [float(v) for v in
+                collision_geom.find("box/size").text.split()]
+        self.assertEqual(size, list(self.SIZE))
+
+    def test_default_collision_stays_mesh_for_carry(self):
+        sdf = self._sdf()
+        root = ET.fromstring(sdf)
+        collision_geom = root.find("model/link/collision/geometry")
+        self.assertIsNotNone(collision_geom.find("mesh"))
+        self.assertIsNone(collision_geom.find("box"))
+        visual_geom = root.find("model/link/visual/geometry/mesh")
+        self.assertIsNotNone(visual_geom)
+
+    def test_contact_sensor_survives_the_primitive_swap(self):
+        sdf = self._sdf(collision_kind="box", contact_topic="/box/contact")
+        root = ET.fromstring(sdf)
+        sensor = root.find("model/link/sensor")
+        self.assertIsNotNone(sensor)
+        self.assertEqual(sensor.get("type"), "contact")
+        self.assertEqual(sensor.find("contact/collision").text,
+                         "body_collision")
+
+    def test_unknown_collision_kind_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self._sdf(collision_kind="sphere")

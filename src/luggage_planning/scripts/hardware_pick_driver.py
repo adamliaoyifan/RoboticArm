@@ -261,6 +261,15 @@ class HardwarePickDriver(Node):
         self._group = ReentrantCallbackGroup()
         self._vacuum_state = {}
         self._scene_box = None
+        self._placement_prior_client = None
+        self._planning_recorder = None
+        self._placement_prior_result = None
+        self._placement_prior_choice = None
+        self._measured_attachment = None
+        self._place_planner = None
+        if bool(getattr(args, 'placement_prior', False)):
+            from luggage_planning.placement_prior_client import PlacementPriorClient
+            self._placement_prior_client = PlacementPriorClient(self, group=self._group)
         self.create_subscription(
             VacuumState, "/vacuum/state", self._on_vacuum, 10,
             callback_group=self._group)
@@ -302,6 +311,16 @@ class HardwarePickDriver(Node):
                 runtime.identity["scene_revision"])
             self._typed = TypedDriverAdapter(self, runtime,
                                              group=self._group)
+            evidence_dir = str(getattr(args, 'planning_evidence_dir', '') or '')
+            if evidence_dir:
+                from pathlib import Path
+                from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+                root = Path(evidence_dir)
+                root.mkdir(parents=True, exist_ok=False)
+                (root / 'runtime_identity.json').write_text(
+                    json.dumps(runtime.identity, indent=2) + '\n')
+                self._planning_recorder = PriorEvidenceRecorder(root / 'boundaries')
+                self._typed.set_boundary_recorder(self._planning_recorder)
             self._current_box_identity = None
             self.create_subscription(
                 String, "/luggage/current_box", self._on_current_box,
@@ -311,6 +330,11 @@ class HardwarePickDriver(Node):
             self.get_logger().info(
                 "frame runtime adopted (peer=%s, scene=%s)"
                 % (peer, self._frame_scene_revision[:10]))
+        if bool(getattr(args, 'plan_place_after_pick', False)):
+            if self._typed is None or not args.use_vacuum or args.release:
+                raise ValueError('place planning requires frame-runtime, vacuum, and retained payload')
+            from luggage_planning.hardware_place_planning import HardwarePlacePlanner
+            self._place_planner = HardwarePlacePlanner(self, self._typed, group=self._group)
 
     def _on_current_box(self, msg):
         try:
@@ -372,6 +396,10 @@ class HardwarePickDriver(Node):
         return ok, str(result.message), result
 
     def vacuum(self, enable, timeout=20.0):
+        if enable:
+            self._measured_attachment = None
+        if not enable and getattr(self, "_typed", None) is not None:
+            self._typed.set_placement_prior(None)
         pick_msg = getattr(self, "_frame_pick_msg", None)
         if getattr(self, "_typed", None) is not None and pick_msg is not None:
             from luggage_planning.typed_driver_adapter import (
@@ -391,6 +419,19 @@ class HardwarePickDriver(Node):
                 return False, "%s: %s" % (error.code, error.field)
             if response is None:
                 return False, "vacuum timeout"
+            if response.success:
+                if enable:
+                    from luggage_planning.hardware_place_planning import attachment_from_response
+                    try:
+                        self._measured_attachment = attachment_from_response(response,
+                            request_id=request_id, box_id=box_id, generation=generation,
+                            scene_revision=self._frame_scene_revision)
+                    except ValueError as exc:
+                        # Physical attach already succeeded. Keep that fact;
+                        # subsequent place planning will refuse missing proof.
+                        self.get_logger().error('place attachment unavailable: %s' % exc)
+                else:
+                    self._measured_attachment = None
             return bool(response.success), str(response.message)
         req = VacuumCommand.Request()
         req.enable = bool(enable)
@@ -704,6 +745,26 @@ class HardwarePickDriver(Node):
             finally:
                 ports.close()
 
+        if getattr(self, "_placement_prior_client", None) is not None:
+            try:
+                prior = self._placement_prior_client.prepare(
+                    box, 'hardware-prior-%d' % detection.stamp_ns)
+                if self._planning_recorder is not None and prior is not None:
+                    self._planning_recorder('/placement_prior/prepare:response', prior)
+                detection, choice = self._placement_prior_client.bind(
+                    prior, detection, str(getattr(self, "_frame_scene_revision", "")
+                                          or self._args.frame_scene_revision))
+                self._placement_prior_result = prior
+                self._placement_prior_choice = choice
+                if getattr(self, "_typed", None) is not None:
+                    self._typed.set_placement_prior(prior)
+                self.get_logger().info('placement prior selected slot=%s candidate=%s' %
+                                       (choice.slot_id, choice.candidate_id))
+            except Exception as exc:
+                # Optional optimization: keep the measured observation and
+                # ordinary candidate selection if prior cannot be adopted.
+                self.get_logger().warning('placement prior fallback: %s' % exc)
+
         if self._args.plan_only:
             if not detection.candidates:
                 self.get_logger().error(
@@ -729,6 +790,26 @@ class HardwarePickDriver(Node):
                 "pick session: exit=%d reason=%s detail=%s candidate=%s"
                 % (result.exit_code, result.reason_code, result.detail,
                    result.selected_candidate_id))
+            if result.completed and self._place_planner is not None:
+                try:
+                    if self._measured_attachment is None:
+                        raise ValueError('controller-confirmed attachment missing')
+                    if self._frame_box_identity() != (self._measured_attachment.box_id,
+                                                      self._measured_attachment.generation):
+                        raise ValueError('attached box identity changed')
+                    selected = self._placement_prior_choice
+                    if selected is not None and selected.candidate_id != result.selected_candidate_id:
+                        raise ValueError('pickup retry changed the prior binding')
+                    selection = self._place_planner.plan(self._measured_attachment,
+                        request_id=self._frame_request_id('place'),
+                        prior=self._placement_prior_result, selected_choice=selected)
+                    if selection is None or not selection.success:
+                        raise ValueError(getattr(selection, 'reason_code', 'place planning timeout'))
+                    self.get_logger().info('place route planned: %s; execution remains separate' %
+                                           selection.selection_id)
+                except Exception as exc:
+                    self.get_logger().error('CARRY FAULT: place planning failed; vacuum retained: %s' % exc)
+                    return 10
             if result.completed and self._args.use_vacuum and self._args.release:
                 vac_ok, vac_msg = self.vacuum(False)
                 self.get_logger().info(
@@ -792,6 +873,12 @@ def main(argv=None):
     parser.add_argument("--auth-wait-period-sec", type=float, default=0.5)
     parser.add_argument("--plan-timeout", type=float, default=90.0)
     parser.add_argument("--ready-timeout", type=float, default=90.0)
+    parser.add_argument("--placement-prior", action="store_true",
+                        help="Use read-only placement prior to choose the measured pickup candidate.")
+    parser.add_argument("--planning-evidence-dir", default="",
+        help="New directory for exact typed request/response CDR and runtime identity; requires --frame-runtime.")
+    parser.add_argument("--plan-place-after-pick", action="store_true",
+                        help="After successful pickup, plan a complete place route from measured attachment; do not execute it.")
     parser.add_argument("--max-candidates", type=int, default=3)
     parser.add_argument("--release-low-hold-sec", type=float, default=0.5)
     parser.add_argument("--release-deadline-sec", type=float, default=2.0)
@@ -819,6 +906,8 @@ def main(argv=None):
         help="Driver node name registered in the v2 graph.")
     parser.set_defaults(use_vacuum=True)
     args = parser.parse_args(args=argv)
+    if args.planning_evidence_dir and not args.frame_runtime:
+        parser.error('--planning-evidence-dir requires --frame-runtime')
 
     rclpy.init()
     node = HardwarePickDriver(args)

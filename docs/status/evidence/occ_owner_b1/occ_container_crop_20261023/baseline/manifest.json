@@ -1,0 +1,8 @@
+{
+  "revision": "86565812",
+  "hashes": {
+    "mapper.py": "6f7d97f9d8c36e90927a047ca0452a2a38ddc25f7f91283dece965ea15b79194",
+    "integration.py": "e2fb8b640865095e3cb308f776e5427260f5b172f6e9b7924bd408090b15a305",
+    "store.py": "7b7ff452277f636c007e506bc97a9b0d2b68990f6adcec6f243a5713d6412768"
+  }
+}

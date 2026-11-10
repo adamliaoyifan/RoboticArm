@@ -242,6 +242,13 @@ class RouteGraph(object):
     def drop_candidate(self, edge_id):
         self._candidates.pop(str(edge_id), None)
 
+    def discard_edge(self, edge_id):
+        """Remove an in-session edge rejected by final certification."""
+        edge = self._edges.pop(str(edge_id))
+        self._out[edge.source_node_id].remove(edge.edge_id)
+        self._incoming[edge.destination_node_id].remove(edge.edge_id)
+        return edge
+
     def outgoing(self, node_id):
         return tuple(self._edges[eid] for eid in self._out.get(str(node_id), ())
                      if eid in self._edges)
@@ -465,6 +472,12 @@ class GraphStore(object):
         return graph
 
 
+def _same_rotation(first, second, tol=1e-3):
+    """True when two xyzw quaternions are the same rotation (q == -q)."""
+    dot = sum(float(a) * float(b) for a, b in zip(first, second))
+    return abs(dot) >= 1.0 - tol
+
+
 class GraphRoutePlanner(object):
     """ST09-B implementation of the frozen ``RoutePlanner`` protocol.
 
@@ -480,16 +493,26 @@ class GraphRoutePlanner(object):
     st09_contracts.fixtures and never constructs a CertificationResult.
     """
 
+    #: Existing entry-region nodes offered as retreat targets per hop.
+    RETREAT_TWIN_LIMIT = 2
+
     def __init__(self, graph, edge_builder, *, home_node_id,
                  goal_seeds=None, budget_policy=None,
                  entry_hops=None, retreat_hops=None,
                  t_frame_container=(0.0, 0.0, 0.0),
                  q_frame_container=(0.0, 0.0, 0.0, 1.0),
                  certifier=None, refine=None, urdf=None, tcp_path=None,
-                 region_poses=None, scope_node_ids=None):
+                 region_poses=None, scope_node_ids=None, payload_screen=None,
+                 occupancy_boxes=(), scene_states=None):
         from luggage_planning.grid_path_search import RouteBudgetPolicy
+        #: Optional ``node -> bool`` (True = the carried payload hits the
+        #: arm at this node's q). Nodes this planner registers while
+        #: carrying are screened with it before they can join the scope.
+        self.payload_screen = payload_screen
         #: region -> world TCP position from the anchor plan.
+        self.scene_states = None if scene_states is None else dict(scene_states)
         self.region_poses = dict(region_poses or {})
+        self.continuation_diagnostics = []
         #: Node ids of the current candidate (None = whole graph). Nodes
         #: this planner registers join it; earlier candidates' do not.
         self.scope = None if scope_node_ids is None \
@@ -504,6 +527,15 @@ class GraphRoutePlanner(object):
         self.t_frame_container = tuple(float(v) for v in t_frame_container)
         self.q_frame_container = tuple(float(v) for v in q_frame_container)
         self.certifier = certifier  # advisory only; see class docstring
+        #: [G3 wave5 fix, user 2026-10-15] World-frame occupancy columns
+        #: from the confirmed cargo map (occupancy_boxes_from_surface,
+        #: producer-built). The legacy scene_boxes_from_snapshot path
+        #: produced container-local XY at a fixed 0.30 m slab submitted
+        #: as world coords — wrong position AND wrong height — and the
+        #: carrying state had no placed boxes at all. Both load states
+        #: now share the same correctly-transformed columns the cert
+        #: composer uses.
+        self.occupancy_boxes = tuple(occupancy_boxes)
         self.refine = refine  # production default: offline_ik refine
         self.urdf = urdf
         self.tcp_path = tcp_path
@@ -517,6 +549,8 @@ class GraphRoutePlanner(object):
 
     def _payload_identity(self, attachment):
         from st09_contracts.planning import PayloadIdentity, PayloadSymmetry
+        from st09_contracts.payload_envelope import collision_payload
+        geometry = collision_payload(attachment)
         symmetry = (PayloadSymmetry.PI if attachment.symmetry == "pi"
                     else PayloadSymmetry.NONE)
         return PayloadIdentity(
@@ -524,10 +558,10 @@ class GraphRoutePlanner(object):
             box_id=attachment.box_id,
             request_id=attachment.request_id,
             cycle_id=attachment.cycle_id,
-            dimensions_wdh=attachment.dimensions_wdh,
+            dimensions_wdh=geometry.dimensions_wdh,
             symmetry=symmetry,
-            t_tcp_box_translation=attachment.t_tcp_box_translation,
-            t_tcp_box_quaternion_xyzw=attachment.t_tcp_box_quaternion_xyzw,
+            t_tcp_box_translation=geometry.t_tcp_box_translation,
+            t_tcp_box_quaternion_xyzw=geometry.t_tcp_box_quaternion_xyzw,
             attachment_incarnation=attachment.attachment_incarnation,
             acquisition_stamp_ns=attachment.acquisition_stamp_ns)
 
@@ -577,6 +611,14 @@ class GraphRoutePlanner(object):
         if node is None:
             node = self.graph.register_node(q, position, quaternion, region,
                                             load_state, ik_family=family)
+        if self.payload_screen is not None \
+                and str(load_state) == "carrying" \
+                and region in ("staging", "portal", "slot_approach",
+                               "slot_upper") \
+                and self.payload_screen(node):
+            # Same judgement the anchor gate applies: no MoveGroup call is
+            # spent on a goal the certifier would refuse. Not in scope.
+            return None
         if self.scope is not None:
             self.scope.add(node.node_id)
         return node
@@ -640,7 +682,7 @@ class GraphRoutePlanner(object):
                     break
         return registered
 
-    def _frontier_continuation(self):
+    def _frontier_continuation(self, expired=lambda: False):
         """Short cartesian hops (INSERT, DESCEND, RETREAT) solved from
         the frontier's own q. A region with no registered node falls back
         to its anchor-plan pose (RETREAT holds the frontier orientation)."""
@@ -664,16 +706,19 @@ class GraphRoutePlanner(object):
                 return ()
             quaternion = tuple(float(v) for v in frontier.tcp_quaternion_xyzw)
             q = self._refine_one(position, quaternion, frontier.q)
-            if q is None:
-                return ()
             from luggage_planning.grid_path_search import descend_pair_rank
             # A Newton step that leaves the wrist/elbow branch is not a
             # continuous successor. Do not hand that q to Cartesian.
-            if descend_pair_rank(frontier.q, q)[0] != 0:
+            if q is None or descend_pair_rank(frontier.q, q)[0] != 0:
+                if hop.edge_class == "RETREAT":
+                    return self._retreat_twins(
+                        frontier, hop, position, load_state)
                 return ()
             node = self._register(
                 q, position, quaternion, hop.to_region,
                 load_state(hop.load_state), "frontier")
+            if node is None:
+                return ()
             if hop.edge_class == "DESCEND":
                 self._register(
                     q, position, quaternion, hop.to_region,
@@ -681,6 +726,54 @@ class GraphRoutePlanner(object):
             return (node,)
 
         return solve
+
+    def _retreat_twins(self, frontier, hop, position, load_state):
+        """Reverse of an entry corridor hop: reuse a same-branch entry q.
+
+        The entry reached ``hop.to_region`` on some branch and then ran
+        Cartesian to the next region, so the way back along that corridor
+        is continuous on the same branch. A fresh Newton step from the
+        frontier can land on another elbow branch for a pose near the base
+        and would leave the retreat without a target. The unloaded twin of
+        an existing carrying node at the same pose is the target; the edge
+        is still built and certified like any other RETREAT edge.
+        """
+        from luggage_planning.grid_path_search import descend_pair_rank
+        entry_ids = set(getattr(
+            getattr(self, "last_search", None), "entry_node_ids", ()) or ())
+        twins = []
+        for node in self.graph.nodes_by_region(hop.to_region):
+            if str(node.load_state) != "carrying":
+                continue
+            # Only the node the current entry chain arrived at. The chain
+            # belongs to this candidate, so it already carries the scope; an
+            # Cartesian arrival ("endpoint") node is a legitimate member.
+            if node.node_id not in entry_ids:
+                continue
+            if max(abs(float(a) - float(b)) for a, b in
+                   zip(node.tcp_position, position)) > 1e-3:
+                continue
+            if not _same_rotation(node.tcp_quaternion_xyzw,
+                                  frontier.tcp_quaternion_xyzw):
+                continue
+            twins.append((descend_pair_rank(frontier.q, node.q), node))
+        # Nearest first. The rank is an ordering, not a filter: the entry
+        # corridor itself ran between these two joint branches, and the
+        # reverse edge is built and certified like the forward one.
+        twins.sort(key=lambda item: item[0])
+        registered = []
+        seen = set()
+        for _rank, node in twins:
+            key = tuple(round(float(v), 4) for v in node.q)
+            if key in seen:
+                continue
+            seen.add(key)
+            registered.append(self._register(
+                node.q, node.tcp_position, node.tcp_quaternion_xyzw,
+                hop.to_region, load_state.UNLOADED, "retreat_twin"))
+            if len(registered) >= self.RETREAT_TWIN_LIMIT:
+                break
+        return tuple(twin for twin in registered if twin is not None)
 
     def _released_box(self, attachment, candidate):
         """World-frame box at the candidate's placed pose, composed
@@ -690,29 +783,34 @@ class GraphRoutePlanner(object):
         position, quaternion = compose_transform(
             self.t_frame_container, self.q_frame_container,
             candidate.position_container, candidate.quaternion_xyzw_container)
+        from luggage_planning.payload_envelope_geometry import geometry_at_box_pose
+        position, quaternion, dimensions = geometry_at_box_pose(attachment, position, quaternion)
         return BoxSpec(
             object_id="released-%s" % attachment.box_id,
             center=position,
-            size_whd=attachment.dimensions_wdh,
+            size_whd=dimensions,
             quaternion_xyzw=quaternion)
 
     def _scenes(self, attachment, candidate, snapshot):
+        if self.scene_states is not None:
+            return self.scene_states["carrying"], self.scene_states["unloaded"]
         from luggage_planning.moveit_edge_adapter import (
             PayloadSpec,
             SceneState,
-            scene_boxes_from_snapshot,
         )
+        from st09_contracts.payload_envelope import collision_payload
+        geometry = collision_payload(attachment)
         carrying = SceneState(
             load_state="carrying",
             payload=PayloadSpec(
-                dimensions_wdh=attachment.dimensions_wdh,
-                t_tcp_box_translation=attachment.t_tcp_box_translation,
-                t_tcp_box_quaternion_xyzw=attachment.t_tcp_box_quaternion_xyzw))
+                dimensions_wdh=geometry.dimensions_wdh,
+                t_tcp_box_translation=geometry.t_tcp_box_translation,
+                t_tcp_box_quaternion_xyzw=geometry.t_tcp_box_quaternion_xyzw),
+            placed_boxes=self.occupancy_boxes)
         unloaded = SceneState(
             load_state="unloaded",
             released_box=self._released_box(attachment, candidate),
-            placed_boxes=scene_boxes_from_snapshot(snapshot)
-            if snapshot is not None else ())
+            placed_boxes=self.occupancy_boxes)
         return carrying, unloaded
 
     # -- protocol -----------------------------------------------------------
@@ -754,7 +852,7 @@ class GraphRoutePlanner(object):
         if self.urdf is not None and self.tcp_path is not None:
             fk = make_offline_fk(self.urdf, self.tcp_path)
         search = RouteSearch(self.graph, self.edge_builder, budget,
-                             continuation=self._frontier_continuation(),
+                             continuation=self._frontier_continuation(budget.exhausted),
                              scope=self.scope,
                              trace=getattr(self, "trace", None),
                              fk=fk)

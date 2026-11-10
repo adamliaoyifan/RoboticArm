@@ -40,7 +40,6 @@ DEFAULT_ATLAS_RUNTIME = {
     "atlas_dir": "",
     "basename": "s20_container_collision_aware",
     "atlas_file": "",
-    "hash_policy": "strict",    # off | warn | strict
     "query_offset": [0.0, 0.0, 0.0],
     "payload": {"policy": "auto", "explicit_size": [0.0, 0.0, 0.0]},
     "query_semantics": {
@@ -67,7 +66,6 @@ PARAM_SPEC = (
     ("atlas_basename", ("basename",), str),
     ("atlas_dir", ("atlas_dir",), str),
     ("atlas_file", ("atlas_file",), str),
-    ("atlas_hash_policy", ("hash_policy",), str),
     ("atlas_query_offset", ("query_offset",), lambda v: [float(x) for x in v]),
     ("atlas_payload_policy", ("payload", "policy"), str),
     ("atlas_payload_size", ("payload", "explicit_size"),
@@ -381,102 +379,57 @@ def directed_yaw_candidates(atlas, yaw):
     return [first, second]
 
 
-def identity_verdict(dependencies, scene_tf_hash=None, urdf_hash=None,
-                     policy="warn", reachability_scene_hash=None):
-    """Return ``(ok, message, scene_ok, urdf_ok)``.
+def identity_verdict(dependencies, scene_tf_hash=None,
+                     reachability_scene_hash=None):
+    """Return ``(ok, message, scene_ok)`` for the single identity rule.
 
-    ``off`` skips the check. The scene gate is
-    ``reachability_scene_hash`` when the atlas carries one: that is the
-    arm-to-container fingerprint. The whole-file ``scene_tf_hash`` stays
-    in the message when it differs, and it does not retire the atlas.
-    Atlases built before that field still gate on the file hash.
-    ``strict`` fails when the active scene hash or the URDF hash is
-    missing: an unverified atlas must not be used.
+    User decision 2026-10-15: the atlas is usable when its
+    arm-to-container geometry matches the scene loaded from the live
+    ``scene_tf_*.yaml``; a full URDF text-hash verification is not
+    wanted. The gate is the ``reachability_scene_hash`` when the atlas
+    publishes one (canonical base->container transform, opening frame,
+    inner dimensions, collision-mesh sha256); atlases built before that
+    field fall back to the whole-file ``scene_tf`` hash. A missing or
+    mismatched scene fingerprint refuses the atlas. The URDF hash stays
+    in the artifact metadata but is never compared here: the live URDF
+    embeds workspace-absolute plugin paths, so its byte hash cannot be
+    stable across worktrees while the arm-to-container geometry is
+    identical.
     """
-    mode = str(policy or "warn")
-    if mode == "off":
-        return True, "ok", True, True
     deps = dependencies or {}
     stored_file = str(deps.get("scene_tf_hash") or "")
     stored_reach = str(deps.get("reachability_scene_hash") or "")
-    stored_urdf = str(deps.get("urdf_hash") or "")
     current_file = str(scene_tf_hash or "")
     current_reach = str(reachability_scene_hash or "")
-    current_urdf = str(urdf_hash or "")
-    # Only artifacts that publish a reachability fingerprint use it as
-    # the scene gate. Older atlases still compare the whole-file hash.
     use_reachability = bool(stored_reach)
     scene_ok = True
-    urdf_ok = True
     messages = []
-    if mode == "strict":
-        if not current_urdf:
-            urdf_ok = False
-            messages.append("urdf hash missing")
-        if not stored_urdf:
-            urdf_ok = False
-            messages.append("atlas urdf hash missing")
-        if use_reachability:
-            if not current_reach:
-                scene_ok = False
-                messages.append("reachability_scene hash missing")
-            if not stored_reach:
-                scene_ok = False
-                messages.append("atlas reachability_scene hash missing")
-        else:
-            if not current_file:
-                scene_ok = False
-                messages.append("scene_tf hash missing")
-            if not stored_file:
-                scene_ok = False
-                messages.append("atlas scene_tf hash missing")
     if use_reachability:
-        if current_reach and stored_reach and stored_reach != current_reach:
+        if not current_reach:
+            scene_ok = False
+            messages.append("reachability_scene hash missing")
+        if stored_reach != current_reach:
             scene_ok = False
             messages.append(
                 "reachability_scene hash mismatch (atlas=%s, current=%s)" % (
                     stored_reach[:8], current_reach[:8]))
         if current_file and stored_file and stored_file != current_file:
             messages.append(
-                "scene_tf file hash differs (diagnostic, atlas=%s, current=%s)"
-                % (stored_file[:8], current_file[:8]))
-    elif current_file and stored_file and stored_file != current_file:
-        scene_ok = False
-        messages.append(
-            "scene_tf hash mismatch (atlas=%s, current=%s)" % (
-                stored_file[:8], current_file[:8]))
-    if current_urdf and stored_urdf and stored_urdf != current_urdf:
-        urdf_ok = False
-        messages.append(
-            "urdf hash mismatch (atlas=%s, current=%s)" % (
-                stored_urdf[:8], current_urdf[:8]))
-    ok = scene_ok and urdf_ok
-    return ok, ("; ".join(messages) if messages else "ok"), scene_ok, urdf_ok
-
-
-def certification_block_reason(cfg, diagnostics):
-    """Placement/selector reason when a strict atlas must not rank or reject.
-
-    Empty means the caller may use the loaded atlas, or the policy is not
-    the fail-closed certification policy. ``dump_only`` records without
-    deciding, so a missing atlas does not fail the request. A semantics
-    refusal (v1 artifact under strict, ST06) reports
-    ``ATLAS_SEMANTICS_MISMATCH`` instead of the identity reason.
-    """
-    cfg = cfg or {}
-    if not cfg.get("enabled"):
-        return ""
-    if str(cfg.get("hash_policy") or "") != "strict":
-        return ""
-    placement = cfg.get("placement") or {}
-    if placement.get("dump_only"):
-        return ""
-    semantics = str((diagnostics or {}).get("semantics") or "")
-    if semantics:
-        return semantics
-    if (diagnostics or {}).get("loaded"):
-        return ""
-    return ATLAS_IDENTITY_UNVERIFIED
+                "scene_tf file hash differs (diagnostic, atlas=%s, "
+                "current=%s)" % (stored_file[:8], current_file[:8]))
+    else:
+        if not current_file:
+            scene_ok = False
+            messages.append("scene_tf hash missing")
+        if not stored_file:
+            scene_ok = False
+            messages.append("atlas scene_tf hash missing")
+        if current_file and stored_file and stored_file != current_file:
+            scene_ok = False
+            messages.append(
+                "scene_tf hash mismatch (atlas=%s, current=%s)" % (
+                    stored_file[:8], current_file[:8]))
+    return scene_ok, ("; ".join(messages) if messages else "ok"), scene_ok
 
 
 def _payload_suffix(box_size):
@@ -614,17 +567,18 @@ def load_atlas_runtime_for_scene(scene_path, explicit_path=None):
 
 def load_runtime_atlas(cfg, box_size=None, scene_tf_hash=None,
                        urdf_hash=None, reachability_scene_hash=None):
-    """Load the atlas under hash_policy.
+    """Load the atlas under the single scene-consistency identity rule.
 
-    Returns (atlas_or_None, diagnostics). warn keeps the atlas loaded and
-    notes a supplied-hash mismatch. strict refuses to load when either
-    hash is missing or does not match the atlas metadata, when the artifact
-    is pi-folded v1 (ST06: strict never runs old semantics), or when the v2
-    contract block does not validate against the identity reproduced from
-    the artifact's own geometry/payload sections (a relabelled v1 cannot).
+    Returns (atlas_or_None, diagnostics). The atlas refuses to load when
+    its arm-to-container fingerprint does not match the live scene_tf
+    config (2026-10-15: the full URDF hash verification was removed by
+    design), when the artifact is pi-folded v1 (ST06: never relabelled
+    to pass), or when the v2 contract block does not validate against
+    the identity reproduced from the artifact's own geometry/payload
+    sections (a relabelled v1 cannot).
     """
     diagnostics = {
-        "npz": None, "meta": None, "hash_policy": cfg.get("hash_policy"),
+        "npz": None, "meta": None,
         "scene_tf_ok": True, "urdf_ok": True, "hash_message": "ok",
         "loaded": False, "reason": "", "semantics": "",
     }
@@ -640,49 +594,35 @@ def load_runtime_atlas(cfg, box_size=None, scene_tf_hash=None,
     diagnostics["npz"] = npz_path
     diagnostics["meta"] = meta_path
     atlas = ReachabilityAtlas.load(npz_path, meta_path)
-    policy = str(cfg.get("hash_policy") or "warn")
-    if policy != "off":
-        contract = atlas.contract_record
-        if policy == "strict" and contract is None:
-            # ST06: strict certification requires directed 2pi concrete-tool
-            # semantics. A v1 artifact is never relabelled to pass; it is
-            # refused before any query or seed use.
-            diagnostics["reason"] = "atlas_semantics_v1_strict"
-            diagnostics["semantics"] = ATLAS_SEMANTICS_MISMATCH
-            return None, diagnostics
-        ok, message, scene_ok, urdf_ok = identity_verdict(
-            atlas.meta.get("dependencies") or {},
-            scene_tf_hash, urdf_hash, policy=policy,
-            reachability_scene_hash=reachability_scene_hash)
-        diagnostics["scene_tf_hash"] = str(scene_tf_hash or "")
-        diagnostics["reachability_scene_hash"] = str(
-            reachability_scene_hash or "")
-        diagnostics["scene_tf_ok"] = scene_ok
-        diagnostics["urdf_ok"] = urdf_ok
-        diagnostics["hash_message"] = message
-        if not ok:
-            if policy == "strict":
-                diagnostics["reason"] = (
-                    "hash_mismatch_strict" if "mismatch" in message
-                    else "hash_unverified_strict")
-                return None, diagnostics
-            sys.stderr.write(
-                "luggage_planning: atlas %s (%s); continuing (warn)\n"
-                % (message, os.path.basename(npz_path)))
-        if contract is not None:
-            verdict, contract_message = verify_atlas_contract(
-                atlas, scene_tf_hash, urdf_hash, policy=policy,
-                reachability_scene_hash=reachability_scene_hash)
-            diagnostics["contract_ok"] = verdict
-            diagnostics["contract_message"] = contract_message
-            if not verdict:
-                if policy == "strict":
-                    diagnostics["reason"] = "atlas_contract_strict"
-                    diagnostics["semantics"] = ATLAS_IDENTITY_UNVERIFIED
-                    return None, diagnostics
-                sys.stderr.write(
-                    "luggage_planning: atlas contract %s (%s); continuing "
-                    "(warn)\n" % (contract_message, os.path.basename(npz_path)))
+    contract = atlas.contract_record
+    if contract is None:
+        # ST06: certification requires directed 2pi concrete-tool
+        # semantics. A v1 artifact is never relabelled to pass; it is
+        # refused before any query or seed use.
+        diagnostics["reason"] = "atlas_semantics_v1"
+        diagnostics["semantics"] = ATLAS_SEMANTICS_MISMATCH
+        return None, diagnostics
+    ok, message, scene_ok = identity_verdict(
+        atlas.meta.get("dependencies") or {},
+        scene_tf_hash, reachability_scene_hash=reachability_scene_hash)
+    diagnostics["scene_tf_hash"] = str(scene_tf_hash or "")
+    diagnostics["reachability_scene_hash"] = str(
+        reachability_scene_hash or "")
+    diagnostics["scene_tf_ok"] = scene_ok
+    diagnostics["hash_message"] = message
+    if not ok:
+        diagnostics["reason"] = (
+            "atlas_scene_mismatch" if "mismatch" in message
+            else "atlas_scene_unverified")
+        return None, diagnostics
+    verdict, contract_message = verify_atlas_contract(
+        atlas, scene_tf_hash, reachability_scene_hash=reachability_scene_hash)
+    diagnostics["contract_ok"] = verdict
+    diagnostics["contract_message"] = contract_message
+    if not verdict:
+        diagnostics["reason"] = "atlas_contract_invalid"
+        diagnostics["semantics"] = ATLAS_IDENTITY_UNVERIFIED
+        return None, diagnostics
     diagnostics["loaded"] = True
     diagnostics["reason"] = "ok"
     return atlas, diagnostics
@@ -696,8 +636,8 @@ def _is_directed_yaw_axis(bins):
                for a, b in zip(bins, DIRECTED_YAW_BINS))
 
 
-def verify_atlas_contract(atlas, scene_tf_hash=None, urdf_hash=None,
-                          policy="warn", reachability_scene_hash=None):
+def verify_atlas_contract(atlas, scene_tf_hash=None,
+                          reachability_scene_hash=None):
     """Validate the artifact contract against its own identity blocks.
 
     The expected identity is reproduced from the artifact's geometry and
@@ -755,8 +695,10 @@ def verify_atlas_contract(atlas, scene_tf_hash=None, urdf_hash=None,
             return False, "reachability scene identity differs from the live scene"
     elif scene_tf_hash and expected["scene_revision"] != str(scene_tf_hash):
         return False, "scene identity differs from the live scene"
-    if urdf_hash and expected["urdf_hash"] != str(urdf_hash):
-        return False, "urdf identity differs from the live model"
+    # 2026-10-15: no live-URDF comparison. The expected urdf_hash above
+    # still pins the contract block to the artifact's own dependencies
+    # (relabel detection); the live URDF is never compared (workspace
+    # paths differ across worktrees).
     return True, "ok"
 
 

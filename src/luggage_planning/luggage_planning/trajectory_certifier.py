@@ -98,6 +98,9 @@ class TrajectoryCertifier:
             sampling_motion_bound_m=sampling_bound,
             contact_reports=tuple(detail.get("contacts", ())),
             method_note=detail.get("method_note", "adaptive <=10ms and spatial subdivision"),
+            failed_edge_id=detail.get("failed_edge_id", ""),
+            failed_sample_index=detail.get("failed_sample_index"),
+            failed_sample_is_knot=detail.get("failed_sample_is_knot"),
         )
 
     def classify_attachment_rejection(
@@ -269,9 +272,14 @@ class TrajectoryCertifier:
             if max_delta > policy.max_joint_step_rad * max(1, dt // MAX_CERT_SAMPLE_DT_NS + 1):
                 return Reason.CERT_SAMPLING_UNBOUNDED, {"method_note": "joint-space motion bound too coarse"}
             subdivisions = max(1, int((dt + MAX_CERT_SAMPLE_DT_NS - 1) // MAX_CERT_SAMPLE_DT_NS))
-            for _ in range(subdivisions + 1):
+            for subdivision_index in range(subdivisions + 1):
                 validity = context.validity_adapter.validate_sample(edge.edge_id, sample_index)
                 sample_index += 1
+                failure_location = {
+                    "failed_edge_id": edge.edge_id,
+                    "failed_sample_index": sample_index - 1,
+                    "failed_sample_is_knot": subdivision_index in (0, subdivisions),
+                }
                 if not validity.valid:
                     if self._only_intended_support_contact(validity.contacts, policy.intended_support_id):
                         contacts.extend(validity.contacts)
@@ -280,9 +288,13 @@ class TrajectoryCertifier:
                             "min_clearance_m": validity.min_clearance_m,
                             "contacts": tuple(validity.contacts),
                             "method_note": "MoveIt validity collision",
+                            **failure_location,
                         }
                 if validity.min_clearance_m <= 0.0:
-                    return Reason.CERT_COLLISION, {"min_clearance_m": validity.min_clearance_m}
+                    return Reason.CERT_COLLISION, {
+                        "min_clearance_m": validity.min_clearance_m,
+                        **failure_location,
+                    }
                 min_clearance = validity.min_clearance_m if min_clearance is None else min(
                     min_clearance, validity.min_clearance_m)
         occ = self._occupancy_failure(edge, context.snapshot)

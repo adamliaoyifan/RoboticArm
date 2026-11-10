@@ -20,6 +20,8 @@ from __future__ import division
 
 import math
 
+import numpy as np
+
 from luggage_packing.placement_legacy_v1 import v1_candidate_view
 
 
@@ -31,10 +33,25 @@ REASON_CORRIDOR_BLOCKED = "corridor_blocked"
 REASON_UNKNOWN_ABOVE_FLOOR = "unknown_above_floor"
 REASON_INSUFFICIENT_CLEARANCE = "insufficient_clearance"
 REASON_INSUFFICIENT_SUPPORT = "insufficient_support"
+# Adjudication 2026-11-08 (edge-occupancy miss): the candidate's ACTUAL
+# footprint (continuous extent, grid-anchored) overlaps an occupied cell
+# whose top stands above the support-contact band — e.g. the 5mm sliver
+# of a near-wall box over the conservatively-occupied wall column that
+# the ceil-sized window cells never read.
+REASON_EDGE_OCCUPIED = "edge_occupied_overlap"
 # ST09-A S1: a support surface whose contact heights ramp across the
 # footprint (gentle slope within ``support_tol`` per cell, so support_ratio
 # alone cannot see it) does not hold a placed box flat.
 REASON_SUPPORT_TILT_UNSUPPORTED = "support_tilt_unsupported"
+# Reviews 2026-11-08_1751 (same-snapshot volume authorization): a
+# sensor-supported candidate may only be authorized when its OWN box
+# volume is observed known-free on the SAME snapshot the surface was
+# built from — an observed support face does not authorize unobserved
+# space above it. The volume_verifier hook in generate_candidates is
+# the product-side gate; these reasons record its verdicts.
+REASON_VOLUME_UNKNOWN = "volume_unknown"
+REASON_VOLUME_OCCUPIED = "volume_occupied"
+REASON_VOLUME_UNVERIFIED = "volume_evidence_unavailable"
 
 # A capacity gate answers "does this box physically fit here, given the
 # container hull and what is already inside?". Everything else (aperture,
@@ -48,7 +65,8 @@ CAPACITY_REASONS = frozenset((
 POLICY_REASONS = frozenset((
     REASON_OUTSIDE_APERTURE, REASON_CORRIDOR_BLOCKED,
     REASON_UNKNOWN_ABOVE_FLOOR, REASON_INSUFFICIENT_SUPPORT,
-    REASON_SUPPORT_TILT_UNSUPPORTED))
+    REASON_SUPPORT_TILT_UNSUPPORTED, REASON_VOLUME_UNKNOWN,
+    REASON_VOLUME_OCCUPIED, REASON_VOLUME_UNVERIFIED))
 
 # Frozen st09_contracts GeometryVerdict values, mirrored as strings so the
 # plain-dict candidate contract stays ROS-free and import-cheap.
@@ -72,7 +90,36 @@ _REASON_TO_VERDICT = {
     REASON_OVERLAP: VERDICT_OVERLAP,
     REASON_SAME_LAYER_CLEARANCE: VERDICT_SAME_LAYER_CLEARANCE,
     REASON_INSUFFICIENT_CLEARANCE: VERDICT_TOP_CLEARANCE,
+    # Volume-verifier verdicts (reviews 2026-11-08_1751): occupied
+    # volume is a collision; unknown/unavailable evidence is the same
+    # "cannot claim this placement" family as unknown_above_floor.
+    REASON_VOLUME_OCCUPIED: VERDICT_OVERLAP,
+    REASON_VOLUME_UNKNOWN: VERDICT_SUPPORT_MISSING,
+    REASON_VOLUME_UNVERIFIED: VERDICT_SUPPORT_MISSING,
 }
+
+#: Frozen geometric tolerances for the adjudication-2026-11-08 checks.
+#: MUST equal the independent oracle (scripts/occ_compat/oracle.py:
+#: ``POLICY["float_tolerance_m"]`` and ``_OVERLAP_MIN_M``) — unification
+#: ruling reviews 2026-11-08_1751 finding 3. ``PENETRATION_EPS_M`` judges
+#: the z-penetration side of the support-contact band (the support
+#: tolerance governs the GAP side only; 1cm positive-volume penetration
+#: rejects at ANY depth). ``OVERLAP_MIN_M`` is the per-axis sliver floor
+#: for footprint cell selection — yaw-REPRESENTATION artifacts (~1e-4 m
+#: from the 4-decimal yaw encoding) are not positive-area coverage; the
+#: discrete-yaw error itself is handled at decode, never by tolerating
+#: real volume.
+PENETRATION_EPS_M = 1e-9
+OVERLAP_MIN_M = 1e-4
+#: OCC occupied-overlap tolerance (user ruling 2026-11-08 night): the
+#: placement box may clip up to ONE MAP CELL into OCC occupied cells —
+#: cell-granularity conservatism (a cell marked occupied may be only
+#: partially occupied in reality; boxes may touch/settle). Default
+#: None = AUTO = the map's resolution; an explicit float overrides.
+#: The EXACT hull geometry (chamfer faces, walls) keeps ZERO tolerance
+#: (the hull gate), and UNKNOWN space is not loosened at all — this
+#: tolerance governs collisions with OBSERVED occupancy only.
+OCC_OVERLAP_TOL_M = None
 
 # Stable placement failure taxonomy (docs/architecture/container_geometry.md).
 # The solver emits the first four. The node adds cargo-map identity,
@@ -146,7 +193,19 @@ SAME_LAYER_CLEARANCE_M = 0.05
 
 
 def _rect_corners(cx, cy, yaw, length, width):
-    """Corners of a yawed footprint. length follows yaw, width is across."""
+    """Corners of a yawed footprint in CONVEX order.
+
+    G3 HULL-GATES (evidence 2026-10-25): the historical crossed order
+    ((hl,hw),(hl,-hw),(-hl,hw),(-hl,-hw)) walks a self-intersecting
+    bowtie, so the edge normals this feeds to ``_polygon_overlaps`` lose
+    the footprint's width axis -- diagonally separated rectangles read as
+    overlapping (sampled false positives at 0/5/45/90 deg, evidence
+    ``placement_hull_gates_g3_20261024``). Convex order restores the
+    exact rectangle axis set; ``_polygon_overlaps`` itself is unchanged
+    and stays exact for convex inputs. Only false-positive overlaps are
+    removed (true overlaps project identically), so same-layer clearance
+    can only gain legal gaps, never lose a detected penetration.
+    """
     cosine = math.cos(float(yaw))
     sine = math.sin(float(yaw))
     half_l = 0.5 * float(length)
@@ -154,7 +213,7 @@ def _rect_corners(cx, cy, yaw, length, width):
     corners = []
     for local_x, local_y in (
             (half_l, half_w), (half_l, -half_w),
-            (-half_l, half_w), (-half_l, -half_w)):
+            (-half_l, -half_w), (-half_l, half_w)):
         corners.append((
             float(cx) + cosine * local_x - sine * local_y,
             float(cy) + sine * local_x + cosine * local_y,
@@ -379,6 +438,20 @@ def placement_constraint_reason(
     return reason
 
 
+def _resolved_hull_margin(cfg, resolution):
+    """Resolve the hull margin: None (the default) = one map cell.
+
+    The map's conservative boundary column reaches up to one cell inside
+    the exact wall face, so a margin of one resolution guarantees the
+    footprint never overlaps a map-occupied ring column regardless of
+    the hull-vs-grid anchoring offset. An explicit float (0.0 = exact
+    face) overrides."""
+    margin = cfg.get("hull_margin")
+    if margin is None:
+        return float(resolution)
+    return float(margin)
+
+
 def _default_params():
     return {
         "clearance_margin": 0.03,   # required free space above the placed box [m]
@@ -394,9 +467,18 @@ def _default_params():
         "top_n": 8,
         "keep_rejected": 6,         # rejected candidates kept for visualization
         # --- ST09-A (S1) additions -------------------------------------------
-        # Wall margin handed to the hull kernel's closed faces (mirrors the
-        # node's hull_margin ROS parameter; 0.0 keeps the kernel exact).
-        "hull_margin": 0.0,
+        # Wall margin handed to the hull kernel's closed faces. Default
+        # None = AUTO: one map cell (the surface's resolution) — the
+        # map's conservative boundary column reaches up to one cell
+        # INSIDE the exact wall face, so an exact-face (0.0) margin can
+        # still slide a footprint into map-occupied ring cells (the 5 mm
+        # anchoring-offset miss, K01 run04/07). Default changed 2026-11-08
+        # (user directive margin=resolution); 0.0 restores exact-face.
+        "hull_margin": None,
+        # OCC occupied-overlap tolerance; None = AUTO = one map cell
+        # (see OCC_OVERLAP_TOL_M). An explicit float overrides (0.0
+        # restores the strict positive-volume rule).
+        "occ_overlap_tolerance": None,
         # Gentle support ramps: a contact plane that ramps across the
         # footprint keeps every cell within support_tol of the peak, so
         # support_ratio alone reads it as full contact — yet the box would
@@ -416,11 +498,13 @@ def _default_params():
 def _surface_hull(surface_map):
     """Rehydrate the chamfered hull kernel from the map's descriptor.
 
-    Returns ``None`` when the map carries no usable descriptor (legacy
-    fixtures); hull legality then stays with the injected validator, exactly
-    as before ST09-A. A descriptor that fails normalization is foreign — the
-    node's fail-closed identity gates own that case, so here it also degrades
-    to ``None`` without raising.
+    Returns ``None`` only when the map carries no descriptor at all
+    (legacy cuboid fixtures; hull legality then stays with the injected
+    validator, exactly as before ST09-A). A map that CARRIES a descriptor
+    which fails normalization is foreign, not legacy: silently answering
+    from rectangle semantics would be a fail-open degrade, so G3
+    HULL-GATES makes it a named error (the node path already fails
+    closed on geometry-hash mismatch before reaching here).
     """
     descriptor = surface_map.get("geometry_descriptor")
     if not descriptor:
@@ -428,8 +512,11 @@ def _surface_hull(surface_map):
     try:
         from luggage_description.container_geometry import normalize_descriptor
         return normalize_descriptor(descriptor)
-    except Exception:
-        return None
+    except Exception as error:
+        raise ValueError(
+            "HULL_DESCRIPTOR_INVALID: the surface map carries a geometry "
+            "descriptor that does not normalize (%s); refusing rectangle "
+            "fallback" % error) from error
 
 
 def _depth_datum(surface_map, hull):
@@ -492,19 +579,30 @@ def _support_tilt_ratio(cell_heights, peak, tol):
 
 
 def _hull_legal(center_container, footprint, box_h, hull, margin):
-    """Exact seven-face oriented-box legality through the aperture door.
+    """Exact seven-face oriented-box legality for a FINAL placement.
+
+    G3 HULL-GATES (evidence 2026-10-25): final containment is full
+    closed-hull containment -- the -X aperture face included -- with the
+    caller's ``hull_margin`` charged to walls, ceiling and the chamfer
+    only. The floor keeps its by-design contact (``floor_margin`` 0): a
+    floor-resting box touches the floor, and charging the margin there
+    rejects every floor slot (an empty container answered BIN_FULL under
+    ``hull_margin=0.01`` -- counterexample saved under evidence
+    ``placement_hull_gates_g3_20261024``). Route transit through the
+    aperture keeps its own predicate
+    (``contains_oriented_box_through_aperture``) at the corridor and
+    waypoint call sites; it never comes through here.
 
     Returns ``(legal, margin_detail)``; ``margin_detail`` names each margin
     class separately (static walls incl. the chamfered face share the hull
     kernel's inset, top clearance and support contact keep their own
     parameters) so consumers can audit which bound moved.
     """
-    from luggage_description.container_geometry import (
-        contains_oriented_box_through_aperture,
-    )
+    from luggage_description.container_geometry import contains_oriented_box
     size = (float(footprint[0]), float(footprint[1]), float(box_h))
-    legal = contains_oriented_box_through_aperture(
-        hull, center_container, size, yaw=0.0, margin=float(margin))
+    legal = contains_oriented_box(
+        hull, center_container, size, yaw=0.0, margin=float(margin),
+        floor_margin=0.0)
     return bool(legal), {
         "hull_static_wall_and_chamfer_m": float(margin),
     }
@@ -536,6 +634,9 @@ def _hypothetical_floor_windows(surface_map, box_size, allowed_yaws, cfg, hull,
     """
     box_l, box_w, box_h = [float(v) for v in box_size]
     resolution = float(surface_map["resolution"])
+    cfg["hull_margin"] = _resolved_hull_margin(cfg, resolution)
+    if cfg.get("occ_overlap_tolerance") is None:
+        cfg["occ_overlap_tolerance"] = resolution
     nx = int(surface_map["nx"])
     ny = int(surface_map["ny"])
     inner_l, inner_w, inner_h = [float(v) for v in surface_map["inner_size"]]
@@ -682,6 +783,121 @@ def _footprint_cells(footprint_l, footprint_w, resolution):
     return cells_x, cells_y
 
 
+def _grid_arrays(surface_map):
+    """Numpy views of one surface map (built once per enumeration).
+
+    Exact-parity contract with the per-window Python scans: heights are
+    float64 copies of the map's lists; the state masks are boolean and
+    the one-cell False/0 padding reproduces the scans' bounds clamping
+    (cells outside the grid were skipped, never read)."""
+    heights = np.array(surface_map["height"], dtype=float)
+    states = surface_map["state"]
+    unknown = np.array(
+        [[c == "unknown" for c in row] for row in states], dtype=bool)
+    occupied = np.array(
+        [[c == "occupied" for c in row] for row in states], dtype=bool)
+    confidences = surface_map.get("confidence")
+    if confidences:
+        sensor = np.array(
+            [[c == "sensor" for c in row] for row in confidences],
+            dtype=bool)
+    else:
+        sensor = np.zeros_like(unknown)
+    pad_f = lambda a: np.pad(a, 1, mode="constant", constant_values=False)  # noqa: E731
+    return {
+        "heights": heights,
+        "heights_p": np.pad(heights, 1, mode="constant",
+                            constant_values=0.0),
+        "unknown_p": pad_f(unknown),
+        "occupied_p": pad_f(occupied),
+        "sensor": sensor, "unknown": unknown, "occupied": occupied,
+    }
+
+
+def _sliding(window, shape, stride):
+    """Stride-sliced sliding-window view of `window` with shape `shape`."""
+    from numpy.lib.stride_tricks import sliding_window_view
+    return sliding_window_view(window, shape)[::stride, ::stride]
+
+
+def _rel_cells(edge, span, cells, resolution):
+    """Relative window-cell indices [lo, hi) whose squares overlap
+    [edge, edge + span] with more than the sliver floor.
+
+    Evaluates the SAME min/max overlap expression the scalar scan used,
+    over the tiny candidate range — exact float parity, no off-by-one
+    derivations. The kept set is contiguous (unimodal overlap)."""
+    keep = [r for r in range(-1, cells + 2)
+            if min(edge + span, (r + 1) * resolution)
+            - max(edge, r * resolution) > OVERLAP_MIN_M]
+    if not keep:
+        return 0, 0
+    return keep[0], keep[-1] + 1
+
+
+def _edge_scan_grid(arrays, peak, nx, ny, resolution, half_l, half_w,
+                    footprint_l, footprint_w, cells_x, cells_y, stride,
+                    occ_tol):
+    """Vectorized _footprint_edge_state over ALL window positions of one
+    yaw — exact parity with the per-window scalar scan.
+
+    Geometry identity: lx = -half_l + (ix0 + cells_x/2)*res, so as ix0
+    advances by one the footprint shifts by exactly one cell — its
+    position relative to the grid lines is CONSTANT per yaw. The cells
+    the continuous footprint overlaps (unknown judgment) and the cells
+    its tolerance-eroded core reaches (occupied judgment) are therefore
+    two constant relative rectangles around the window block, computed
+    once with the scalar overlap expression. Inside the window block
+    every height <= the window's peak by definition, so occupied
+    PENETRATION can only trigger where the eroded core reaches; the
+    padding stands in for the clamped out-of-grid skip.
+
+    ``peak`` is the per-window peak array (strided window grid). Returns
+    (pen_any, unknown_any) boolean arrays on the same grid."""
+    from numpy.lib.stride_tricks import sliding_window_view
+    ox, oy = -nx * resolution * 0.5, -ny * resolution * 0.5
+    # footprint left edges relative to the window's first grid line
+    a_x = (-half_l - ox) + (cells_x * resolution - footprint_l) * 0.5
+    a_y = (-half_w - oy) + (cells_y * resolution - footprint_w) * 0.5
+    tol_x = min(occ_tol, footprint_l * 0.5)
+    tol_y = min(occ_tol, footprint_w * 0.5)
+
+    ulo_x, uhi_x = _rel_cells(a_x, footprint_l, cells_x, resolution)
+    ulo_y, uhi_y = _rel_cells(a_y, footprint_w, cells_y, resolution)
+    elo_x, ehi_x = _rel_cells(a_x + tol_x, footprint_l - 2.0 * tol_x,
+                              cells_x, resolution)
+    elo_y, ehi_y = _rel_cells(a_y + tol_y, footprint_w - 2.0 * tol_y,
+                              cells_y, resolution)
+
+    def windows(mask, lo_x, hi_x, lo_y, hi_y):
+        """Sliding windows of `mask` whose top-left sits at the window
+        origin plus the constant relative offset (padded indexing). The
+        base is cropped so the LAST window origin equals the
+        enumeration's (nx - cells_x, ny - cells_y) — without the crop
+        the padding lets the view slide one position past it."""
+        if hi_x <= lo_x or hi_y <= lo_y:
+            return None
+        wx, wy = hi_x - lo_x, hi_y - lo_y
+        base = mask[1 + lo_x: 1 + lo_x + (nx - cells_x) + wx,
+                    1 + lo_y: 1 + lo_y + (ny - cells_y) + wy]
+        return sliding_window_view(base, (wx, wy))[::stride, ::stride]
+
+    shape = (max(0, (nx - cells_x) // stride + 1),
+             max(0, (ny - cells_y) // stride + 1))
+    unknown_win = windows(arrays["unknown_p"], ulo_x, uhi_x, ulo_y, uhi_y)
+    unknown_any = (unknown_win.any(axis=(2, 3))
+                   if unknown_win is not None
+                   else np.zeros(shape, dtype=bool))
+
+    pen_any = np.zeros(shape, dtype=bool)
+    occ_win = windows(arrays["occupied_p"], elo_x, ehi_x, elo_y, ehi_y)
+    if occ_win is not None:
+        h_win = windows(arrays["heights_p"], elo_x, ehi_x, elo_y, ehi_y)
+        pen_any = (occ_win & (h_win > peak[:, :, None, None]
+                              + occ_tol)).any(axis=(2, 3))
+    return pen_any, unknown_any
+
+
 def _window_stats(surface_map, ix0, iy0, cells_x, cells_y):
     heights = surface_map["height"]
     states = surface_map["state"]
@@ -713,6 +929,233 @@ def _support_ratio(cell_heights, peak, tol):
     return float(contact) / float(len(cell_heights))
 
 
+def _footprint_edge_state(surface_map, cx, cy, footprint_l, footprint_w,
+                          box_bottom, overlap_tol=None):
+    """Footprint-coverage occupancy/unknown scan (adjudication
+    2026-11-08).
+
+    The ceil-sized window cells are anchored to the HULL edge while the
+    map grid is anchored at -(nx/2)*resolution — on a grid wider than
+    the hull (75 cells * 0.02 = 1.50 m vs inner 1.49 m) the box's real
+    extent spills past the last window cell into the adjacent column.
+    This scans every grid cell the CONTINUOUS footprint overlaps with
+    positive area:
+
+    - occupied cell whose top stands above the box bottom by more than
+      the numeric tolerance is a collision at ANY depth (reviews
+      2026-11-08 penetration control: the support tolerance governs the
+      GAP side only — 1cm positive-volume penetration must reject);
+      an occupied top AT/BELOW the box bottom is support contact and
+      stays legal;
+    - unknown cell -> the footprint holds unobserved volume; the caller
+      routes it through the same unknown/floor-prior policy as unknown
+      window cells (unknown is never free).
+    """
+    resolution = float(surface_map["resolution"])
+    nx = int(surface_map["nx"])
+    ny = int(surface_map["ny"])
+    heights = surface_map["height"]
+    states = surface_map["state"]
+    origin_x = -nx * resolution * 0.5
+    origin_y = -ny * resolution * 0.5
+    x0, x1 = cx - footprint_l * 0.5, cx + footprint_l * 0.5
+    y0, y1 = cy - footprint_w * 0.5, cy + footprint_w * 0.5
+    tol = resolution if overlap_tol is None else float(overlap_tol)
+    # OCC overlap tolerance (user ruling 2026-11-08 night): the occupied
+    # scan runs on the footprint ERODED by one tolerance — a clip up to
+    # tol deep into an occupied cell is acceptable; deeper is a
+    # collision. UNKNOWN stays on the FULL footprint: missing evidence
+    # is an authorization question, never loosened by a collision
+    # tolerance.
+    ex0 = x0 + min(tol, footprint_l * 0.5)
+    ex1 = x1 - min(tol, footprint_l * 0.5)
+    ey0 = y0 + min(tol, footprint_w * 0.5)
+    ey1 = y1 - min(tol, footprint_w * 0.5)
+    overlaps_occupied = False
+    overlaps_unknown = False
+    ix_lo = max(0, int(math.floor((x0 - origin_x) / resolution)))
+    ix_hi = min(nx - 1, int(math.floor(
+        (x1 - origin_x - OVERLAP_MIN_M) / resolution)))
+    iy_lo = max(0, int(math.floor((y0 - origin_y) / resolution)))
+    iy_hi = min(ny - 1, int(math.floor(
+        (y1 - origin_y - OVERLAP_MIN_M) / resolution)))
+    for ix in range(ix_lo, ix_hi + 1):
+        cx0 = origin_x + ix * resolution
+        if min(x1, cx0 + resolution) - max(x0, cx0) <= OVERLAP_MIN_M:
+            continue
+        for iy in range(iy_lo, iy_hi + 1):
+            cy0 = origin_y + iy * resolution
+            if min(y1, cy0 + resolution) - max(y0, cy0) <= OVERLAP_MIN_M:
+                continue
+            state = states[ix][iy]
+            if state == "occupied":
+                # eroded footprint must actually reach this cell
+                if (min(ex1, cx0 + resolution) - max(ex0, cx0)
+                        > OVERLAP_MIN_M
+                        and min(ey1, cy0 + resolution) - max(ey0, cy0)
+                        > OVERLAP_MIN_M
+                        and float(heights[ix][iy]) > box_bottom + tol):
+                    overlaps_occupied = True
+            elif state == "unknown":
+                overlaps_unknown = True
+    return overlaps_occupied, overlaps_unknown
+
+
+def volume_state_in_evidence(evidence, center, footprint, box_bottom,
+                             box_top):
+    """Complete-XYZ known-free check of one candidate's OWN box volume
+    against same-snapshot voxel evidence (reviews 2026-11-08_1751).
+
+    ``evidence`` is the backend-normalized same-snapshot voxel grid::
+
+        {"resolution": r, "nx": nx, "ny": ny, "nz": nz,
+         "origin_xy": [ox, oy],   # container coords of cell (0, 0)
+         "floor_z": fz,           # container z of voxel layer 0
+         "states": flat list, x-fastest: idx = ix + nx*(iy + ny*iz)}
+
+    State 1 = observed free. 0 (unknown) / 2 (occupied) / 3
+    (out-of-domain) / absent are NOT known-free. Every voxel whose cell
+    has POSITIVE intersection with the continuous box is checked —
+    complete ranges, no boundary shrink: a box at floor-relative
+    [0.20, 0.40) on a 2cm grid reads layers 10..19, both boundary
+    layers included (each carries 2cm of real thickness; face contact
+    with the support below is NOT volume overlap and layer 9 stays
+    unchecked). The frozen sliver/penetration floors
+    (``OVERLAP_MIN_M`` / ``PENETRATION_EPS_M``) apply per axis. An
+    empty range, a range outside the evidence, or short evidence
+    rejects fail-closed. Returns None (known-free) or a
+    ``REASON_VOLUME_*`` string.
+    """
+    resolution = float(evidence["resolution"])
+    nx = int(evidence["nx"])
+    ny = int(evidence["ny"])
+    nz = int(evidence["nz"])
+    ox, oy = [float(v) for v in evidence["origin_xy"]]
+    floor_z = float(evidence["floor_z"])
+    states = evidence["states"]
+    fw, fd = float(footprint[0]), float(footprint[1])
+    x0, x1 = float(center[0]) - fw * 0.5, float(center[0]) + fw * 0.5
+    y0, y1 = float(center[1]) - fd * 0.5, float(center[1]) + fd * 0.5
+    z0 = float(box_bottom) - floor_z
+    z1 = float(box_top) - floor_z
+    if (x0 < ox - OVERLAP_MIN_M or x1 > ox + nx * resolution + OVERLAP_MIN_M
+            or y0 < oy - OVERLAP_MIN_M
+            or y1 > oy + ny * resolution + OVERLAP_MIN_M):
+        return REASON_VOLUME_UNVERIFIED   # volume not covered by evidence
+    iz_lo = int(math.floor(z0 / resolution + PENETRATION_EPS_M))
+    iz_hi = int(math.floor(z1 / resolution - PENETRATION_EPS_M))
+    if iz_lo > iz_hi:
+        return REASON_VOLUME_UNVERIFIED   # empty range is not a proof
+    if iz_lo < 0 or iz_hi >= nz:
+        return REASON_VOLUME_UNVERIFIED   # volume not covered by evidence
+    ix_lo = max(0, int(math.floor((x0 - ox) / resolution)))
+    ix_hi = min(nx - 1, int(math.floor(
+        (x1 - ox - OVERLAP_MIN_M) / resolution)))
+    iy_lo = max(0, int(math.floor((y0 - oy) / resolution)))
+    iy_hi = min(ny - 1, int(math.floor(
+        (y1 - oy - OVERLAP_MIN_M) / resolution)))
+    expected = nx * ny * nz
+    if len(states) < expected:
+        return REASON_VOLUME_UNVERIFIED   # short evidence
+    # OCC occupied-overlap tolerance: OCCUPIED voxels are judged on the
+    # box volume eroded by one tolerance per axis (a clip up to tol deep
+    # is acceptable — user ruling 2026-11-08 night). UNKNOWN is judged
+    # on the COMPLETE volume: missing evidence is an authorization
+    # question and is never loosened by a collision tolerance.
+    tol = resolution if evidence.get("overlap_tol") is None else float(
+        evidence["overlap_tol"])
+    ex0, ex1 = x0 + min(tol, fw * 0.5), x1 - min(tol, fw * 0.5)
+    ey0, ey1 = y0 + min(tol, fd * 0.5), y1 - min(tol, fd * 0.5)
+    ez0, ez1 = z0 + min(tol, (z1 - z0) * 0.5), z1 - min(
+        tol, (z1 - z0) * 0.5)
+    for iz in range(iz_lo, iz_hi + 1):
+        z_base = iz * resolution
+        if min(z1, z_base + resolution) - max(z0, z_base) <= (
+                PENETRATION_EPS_M):
+            continue
+        z_touch = min(ez1, z_base + resolution) - max(ez0, z_base) > (
+            PENETRATION_EPS_M)
+        for ix in range(ix_lo, ix_hi + 1):
+            cx0 = ox + ix * resolution
+            if min(x1, cx0 + resolution) - max(x0, cx0) <= OVERLAP_MIN_M:
+                continue
+            x_touch = (min(ex1, cx0 + resolution) - max(ex0, cx0)
+                       > OVERLAP_MIN_M)
+            for iy in range(iy_lo, iy_hi + 1):
+                cy0 = oy + iy * resolution
+                if min(y1, cy0 + resolution) - max(y0, cy0) <= OVERLAP_MIN_M:
+                    continue
+                state = int(states[ix + nx * (iy + ny * iz)])
+                if state == 2:
+                    if z_touch and x_touch and (
+                            min(ey1, cy0 + resolution) - max(ey0, cy0)
+                            > OVERLAP_MIN_M):
+                        return REASON_VOLUME_OCCUPIED
+                    continue
+                if state != 1:
+                    return REASON_VOLUME_UNKNOWN
+    return None
+
+
+def volume_evidence_from_pages(pages, *, resolution, nx, ny, nz,
+                               origin_xy, floor_z, identity):
+    """Assemble paged same-snapshot cell reads into volume evidence.
+
+    ``pages``: ordered raw page mappings with at least
+    ``{"status", "states", "identity"}`` (a ReadCells response view; the
+    caller owns the transport). ``identity`` is the snapshot identity the
+    surface was built from — every page must carry the SAME identity
+    (same-snapshot binding: geometry_hash, map_revision, epoch, and
+    observed_revision when the backend declares it). Fail-closed: a
+    non-OK status, an identity mismatch, or an assembled length !=
+    ``nx * ny * nz`` returns ``{"error": ...}`` instead of evidence.
+    """
+    assembled = []
+    for page in pages:
+        if str(page.get("status")) != "OK":
+            return {"error": "cells_status_%s" % page.get("status")}
+        page_identity = page.get("identity") or {}
+        for field in ("geometry_hash", "map_revision", "epoch",
+                      "observed_revision"):
+            if field in identity and field in page_identity:
+                if str(page_identity[field]) != str(identity[field]):
+                    return {"error": "cells_identity_mismatch_%s" % field}
+        assembled.extend(int(state) for state in page.get("states") or ())
+    if len(assembled) != nx * ny * nz:
+        return {"error": "cells_short_%d_of_%d" % (
+            len(assembled), nx * ny * nz)}
+    return {
+        "resolution": float(resolution),
+        "nx": int(nx), "ny": int(ny), "nz": int(nz),
+        "origin_xy": [float(origin_xy[0]), float(origin_xy[1])],
+        "floor_z": float(floor_z),
+        "states": assembled,
+    }
+
+
+def make_volume_verifier(evidence):
+    """volume_verifier adapter over volume_state_in_evidence.
+
+    Returns a ``generate_candidates(volume_verifier=...)`` callable; a
+    missing/short evidence dict yields a fail-closed rejector instead
+    (no evidence, no known-free authorization)."""
+    if not evidence or "error" in evidence or "states" not in evidence:
+        reason = (evidence or {}).get("error", "volume_evidence_missing")
+
+        def broken(candidate):
+            return "%s:%s" % (REASON_VOLUME_UNVERIFIED, reason)
+        return broken
+
+    def verifier(candidate):
+        center = candidate["center_container"]
+        height = float(candidate["size"][2])
+        return volume_state_in_evidence(
+            evidence, center, candidate["footprint"],
+            float(center[2]) - height * 0.5,
+            float(center[2]) + height * 0.5)
+    return verifier
+
+
 def _validator_verdict(candidate_validator, candidate):
     """Normalize a validator result to ``(reason, capacity_ok)``.
 
@@ -732,11 +1175,20 @@ def _validator_verdict(candidate_validator, candidate):
 
 
 def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
-                        candidate_validator=None, totals=None):
+                        candidate_validator=None, totals=None,
+                        volume_verifier=None):
     """Return scored placement candidates sorted feasible-first by score.
 
     ``surface_map`` is the ``surface_map_2d`` dict. ``box_size`` is
     ``[length, width, height]`` in meters.
+
+    ``volume_verifier`` (reviews 2026-11-08_1751) is the same-snapshot
+    volume authorization gate: a callable ``(candidate) -> None |
+    reason`` consulted for every sensor-supported candidate that passed
+    all other gates. None (or a falsy return) authorizes — the candidate
+    then carries ``volume_verified: True``; a reason string rejects the
+    candidate with that reason. A raising verifier rejects fail-closed.
+    ``None`` (default) keeps the legacy surface-only path.
 
     Each candidate also carries ``capacity_feasible``: True when no capacity
     gate rejected it, so a caller can tell "the container is full" from
@@ -753,6 +1205,9 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
 
     box_l, box_w, box_h = [float(v) for v in box_size]
     resolution = float(surface_map["resolution"])
+    cfg["hull_margin"] = _resolved_hull_margin(cfg, resolution)
+    if cfg.get("occ_overlap_tolerance") is None:
+        cfg["occ_overlap_tolerance"] = resolution
     nx = int(surface_map["nx"])
     ny = int(surface_map["ny"])
     inner_l, inner_w, inner_h = [float(v) for v in surface_map["inner_size"]]
@@ -768,6 +1223,7 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
     hull = _surface_hull(surface_map)
     datum_point, datum_normal = _depth_datum(surface_map, hull)
     expand_headings = str(cfg.get("payload_symmetry", "none")).lower() == "pi"
+    arrays = _grid_arrays(surface_map)
     for box_yaw, rotated in _snap_yaws(allowed_yaws):
         footprint_l, footprint_w = (box_w, box_l) if rotated else (box_l, box_w)
         if footprint_l > inner_l + 1e-6 or footprint_w > inner_w + 1e-6:
@@ -784,12 +1240,32 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
             # stage, never merged here.
             headings.append(base_heading + math.pi)
 
-        for ix0 in range(0, nx - cells_x + 1, stride):
-            for iy0 in range(0, ny - cells_y + 1, stride):
-                peak, has_unknown, cell_heights, confidence_ratio = _window_stats(
-                    surface_map, ix0, iy0, cells_x, cells_y
-                )
-                support_ratio = _support_ratio(cell_heights, peak, cfg["support_tol"])
+        # Vectorized aggregates for EVERY window of this yaw (exact
+        # parity with _window_stats/_support_ratio/_footprint_edge_state;
+        # the scalar helpers remain for the legacy enumeration path).
+        hw = _sliding(arrays["heights"], (cells_x, cells_y), stride)
+        peak_g = np.maximum(hw.max(axis=(2, 3)), 0.0)
+        unknown_g = _sliding(
+            arrays["unknown"], (cells_x, cells_y), stride).any(axis=(2, 3))
+        total_cells = cells_x * cells_y
+        sensor_g = _sliding(
+            arrays["sensor"], (cells_x, cells_y), stride).sum(axis=(2, 3))
+        confidence_g = sensor_g / float(total_cells)
+        contact_g = (hw >= peak_g[:, :, None, None]
+                     - cfg["support_tol"]).sum(axis=(2, 3))
+        support_g = contact_g / float(total_cells)
+        pen_g, spill_unknown_g = _edge_scan_grid(
+            arrays, peak_g, nx, ny, resolution, half_l, half_w,
+            footprint_l, footprint_w, cells_x, cells_y, stride,
+            float(cfg["occ_overlap_tolerance"]))
+        for i in range(peak_g.shape[0]):
+            ix0 = i * stride
+            for j in range(peak_g.shape[1]):
+                iy0 = j * stride
+                peak = float(peak_g[i, j])
+                has_unknown = bool(unknown_g[i, j])
+                confidence_ratio = float(confidence_g[i, j])
+                support_ratio = float(support_g[i, j])
                 top_of_box = peak + box_h
                 clearance_top = inner_h - top_of_box
 
@@ -807,11 +1283,30 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                 feasible = True
                 reason = "ok"
                 support_source = "sensor"
+                # Footprint-coverage scan (adjudication 2026-11-08):
+                # the continuous footprint is checked against the grid
+                # cells it actually overlaps — the ceil-sized window can
+                # miss a 5mm sliver over an adjacent occupied column.
+                edge_occupied = bool(pen_g[i, j])
+                edge_unknown = bool(spill_unknown_g[i, j])
+                if edge_occupied:
+                    feasible = False
+                    reason = REASON_EDGE_OCCUPIED
+                if edge_unknown:
+                    has_unknown = True
+                if has_unknown:
+                    # The footprint holds unobserved volume (window cell
+                    # or edge sliver): the claim must not present it as
+                    # known — confidence 0 keeps the floor-prior answer
+                    # below observed placements (§4.2.2) and matches the
+                    # oracle's class check (claim >= 0.5 requires zero
+                    # unknown under the footprint).
+                    confidence_ratio = 0.0
                 # Clearance is a capacity gate, so it is evaluated for every
                 # candidate rather than only for the ones that survive the
                 # observation gates above it.
                 clearance_ok = clearance_top >= cfg["clearance_margin"]
-                if has_unknown:
+                if feasible and has_unknown:
                     if abs(peak - floor_z) > cfg["support_tol"]:
                         # Stacking on an unobserved support surface -> reject.
                         # "floor exists" is geometric prior, but "something
@@ -840,9 +1335,12 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                 elif feasible:
                     # ST09-A S1: a support ramp within support_tol per cell
                     # reads as full support by ratio; the span across the
-                    # contact cells exposes the tilt.
+                    # contact cells exposes the tilt. (lazy: only windows
+                    # that reach this gate pay for the slice)
                     tilt_span = _support_tilt_ratio(
-                        cell_heights, peak, cfg["support_tol"])
+                        arrays["heights"][ix0:ix0 + cells_x,
+                                          iy0:iy0 + cells_y].ravel().tolist(),
+                        peak, cfg["support_tol"])
                     tilt_ratio = tilt_span / max(footprint_l, footprint_w, 1e-6)
                     if tilt_ratio > float(cfg["max_support_tilt_ratio"]):
                         feasible = False
@@ -935,6 +1433,24 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                         # and the exact hull rejects the pose.
                         candidate["feasible"] = False
                         candidate["reason"] = REASON_OUTSIDE_HULL
+                    if (feasible and candidate["feasible"]
+                            and support_source == "sensor"
+                            and volume_verifier is not None):
+                        # Reviews 2026-11-08_1751: the authorization gate.
+                        # The candidate's OWN box volume must be observed
+                        # known-free on the SAME snapshot the surface was
+                        # built from — an observed support face never
+                        # authorizes unobserved space above it. A verifier
+                        # error is fail-closed: no evidence, no claim.
+                        try:
+                            volume_reason = volume_verifier(candidate)
+                        except Exception:  # noqa: BLE001 - fail closed
+                            volume_reason = REASON_VOLUME_UNVERIFIED
+                        if volume_reason:
+                            candidate["feasible"] = False
+                            candidate["reason"] = str(volume_reason)
+                        else:
+                            candidate["volume_verified"] = True
                     candidate["verdict"] = _REASON_TO_VERDICT.get(
                         candidate["reason"]
                         if candidate["reason"] != "ok" else None,
@@ -957,7 +1473,8 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
 
 
 def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
-                    candidate_validator=None, atlas_annotate=None):
+                    candidate_validator=None, atlas_annotate=None,
+                    volume_verifier=None):
     """ROS-free ComputePlacement core with a stable failure taxonomy.
 
     On failure ``reason_code`` is one of ``INVALID_BOX_SIZE``,
@@ -988,7 +1505,8 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
     totals = {}
     candidates = generate_candidates(
         surface_map, size, allowed_yaws=allowed_yaws, params=params,
-        candidate_validator=candidate_validator, totals=totals)
+        candidate_validator=candidate_validator, totals=totals,
+        volume_verifier=volume_verifier)
     atlas_report = None
     if atlas_annotate is not None:
         candidates, atlas_report = atlas_annotate(candidates)
@@ -1010,6 +1528,8 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
     cfg = _default_params()
     if params:
         cfg.update(params)
+    cfg["hull_margin"] = _resolved_hull_margin(
+        cfg, float(surface_map["resolution"]))
     hull = _surface_hull(surface_map)
     selected = None
     observation_requirement = None

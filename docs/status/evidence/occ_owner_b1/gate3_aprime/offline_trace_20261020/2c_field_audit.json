@@ -1,0 +1,51 @@
+{
+  "source": "/tmp/elfin-master-pack-baseline-g3/docs/status/evidence/occ_owner_b1/gate3_aprime/offline_trace_20261020/inputs_2c/last_boundary.json",
+  "source_sha256": "5a9a4803103cb752348b4331a1e83eeb4275489ab31112b387131da195fa5d25",
+  "n_points": 257,
+  "declared_n_points": 257,
+  "truncated": false,
+  "joint_names": [
+    "elfin_joint1",
+    "elfin_joint2",
+    "elfin_joint3",
+    "elfin_joint4",
+    "elfin_joint5",
+    "elfin_joint6"
+  ],
+  "canonical_order": true,
+  "finite_six_joint_q_v_every_point": true,
+  "point_field_counts": {
+    "a": 0,
+    "accelerations": 0,
+    "positions": 0,
+    "q": 257,
+    "t": 257,
+    "time_from_start": 0,
+    "v": 257,
+    "velocities": 0
+  },
+  "finite_strictly_increasing_time": true,
+  "first_time_s": 0.0,
+  "last_time_s": 111.137935,
+  "time_storage": "seconds rounded to 6 decimal places by trajectory_dump",
+  "header_present": false,
+  "accelerations_present_every_point": false,
+  "terminal_velocity": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "complete_for_requested_full_field_replay": false,
+  "dispatch_ready": false,
+  "missing": [
+    "historical acceleration-array semantics not recorded (empty or populated unknown)",
+    "original trajectory header",
+    "original integer nanosecond precision"
+  ],
+  "decision": "Historical replay not admitted because actual input evidence is unresolved, not because an empty acceleration array is invalid. Do not infer old data; prepare a new bounded production capture.",
+  "historical_acceleration_array_state": "unknown_due_to_export_omission",
+  "explicit_empty_array_valid": true
+}

@@ -814,6 +814,7 @@ class RouteSearch(object):
         last_error = None
         ordered = list(self._order_goals_for_descend(goal_nodes))
         self._goals_tried = []
+        self.entry_node_ids = ()
         self._goals_open = [goal.node_id for goal in ordered]
         for goal in ordered:
             self._goal_scope = goal.node_id
@@ -831,6 +832,9 @@ class RouteSearch(object):
                     self._note_path_not_robust(err)
                     raise self._classified(err)
                 continue
+            #: Nodes of the entry chain being retreated from; retreat
+            #: twins may only reuse these.
+            self.entry_node_ids = tuple(entry.node_ids)
             if self.budget.exhausted():
                 err = RoutePlanningError(
                     "PLANNING_BUDGET_EXHAUSTED", {

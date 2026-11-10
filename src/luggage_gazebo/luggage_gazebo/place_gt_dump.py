@@ -62,6 +62,15 @@ BOX_PALETTE = (
 def mapper_from_scene(config, resolution=DEFAULT_RESOLUTION):
     inner = container_usable_dimensions(config)
     descriptor = container_inner_geometry_descriptor(config)
+    # The scene is fixed for this reference dump. Normalize the hull once;
+    # rebuilding/hashing it for every voxel stalls runtime callback processing.
+    from luggage_description.container_geometry import contains_point, normalize_descriptor
+    geometry = normalize_descriptor(descriptor)
+    mid_z = 0.5 * (geometry.floor_z + geometry.ceiling_z)
+
+    def inside(local_x, local_y, local_z):
+        return contains_point(geometry, (local_x, local_y, local_z + mid_z))
+
     return CargoVolumeMapper(
         inner_size=inner,
         # The migrated mapper rasterizer consumes container coordinates.
@@ -69,7 +78,7 @@ def mapper_from_scene(config, resolution=DEFAULT_RESOLUTION):
                                     container_inner_ceiling_z(config))],
         yaw=0.0,
         resolution=float(resolution),
-        hull_local_inside=container_hull_local_inside_fn(config),
+        hull_local_inside=inside,
         geometry_descriptor=descriptor,
     )
 

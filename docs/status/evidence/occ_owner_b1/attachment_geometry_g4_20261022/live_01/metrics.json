@@ -1,0 +1,84 @@
+{
+  "revision": "d9050946e67e3567a78798a15cd7fdc991d0738c",
+  "dirty": [
+    "?? pydeps-frozen"
+  ],
+  "boxes_attempted": 1,
+  "boxes_picked": 1,
+  "boxes_packed": 0,
+  "boxes_verified": 0,
+  "boxes_committed": 0,
+  "end_reason": "PLANNING_BUDGET_EXHAUSTED",
+  "wall_s": 205.5,
+  "stage_timings_ms": {
+    "total_ms": 178258.0,
+    "budget_ms": 180000.0,
+    "prep_ms": 40.0,
+    "search_ms": 178218.0,
+    "certify_ms": 0.0,
+    "revalidate_ms": 0.0,
+    "by_reason_ms": {
+      "EDGE_BUILD_FAILED": 35018.0,
+      "NO_FEASIBLE_ROUTE": 59235.0,
+      "ATTACHMENT_EXPIRED": 21752.0
+    },
+    "accounted_ms": 116005.0,
+    "outside_rows_ms": 62253.0
+  },
+  "candidates": 650,
+  "tried": 119,
+  "untried": 531,
+  "rejection_histogram": {
+    "EDGE_BUILD_FAILED": 70,
+    "NO_FEASIBLE_ROUTE": 43,
+    "ATTACHMENT_EXPIRED": 6
+  },
+  "route_builds": 49,
+  "certified_routes": 0,
+  "carrying_segments": 0,
+  "measured_dimensions": [
+    0.5143269596827336,
+    0.3325262888606958,
+    0.21754086462522926
+  ],
+  "conservative_dimensions": [
+    0.595486502630957,
+    0.4136962216357301,
+    0.24429495109901478
+  ],
+  "attachment_geometry_digest": "9181a3b23f1256a75fb07f2058fc5f437745e387e158074eadaddc85903f001c",
+  "request_reencoded_and_admitted": true,
+  "scene_dimensions_match": null,
+  "full_scene_captured": false,
+  "replay_manifest": {
+    "artifacts": {
+      "joint_ring": "replay/joint_ring.jsonl",
+      "perception_refs": "replay/perception_refs.json",
+      "planning_scene": "replay/planning_scene.json",
+      "surface_2d": "replay/surface_2d.json"
+    },
+    "capture_complete": false,
+    "case_id": "trial_00",
+    "fail_code": "PLANNING_BUDGET_EXHAUSTED",
+    "missing": [
+      "last_boundary"
+    ],
+    "replay_possible": false,
+    "stage": "motion"
+  },
+  "functional_suite_pass": false,
+  "closed_loop_cycle_latency": {
+    "n": 0,
+    "status": "not_evaluated"
+  },
+  "startup": {
+    "success": true,
+    "stage": "startup",
+    "clock_publishers": 1,
+    "camera_samples": 52,
+    "urdf_saved": true,
+    "wall_s": 5.1360754068009555,
+    "camera_hz": 10.153996022938665,
+    "criteria": "one clock publisher; saved URDF; >=30 camera samples over >=5s; camera >=3Hz"
+  }
+}

@@ -72,15 +72,40 @@ class TestGeometryIdentityLive(unittest.TestCase):
 
     def setUp(self):
         import rclpy
-        from rclpy.executors import SingleThreadedExecutor
+        from rclpy.executors import MultiThreadedExecutor
 
         self.rclpy = rclpy
-        rclpy.init()
-        self.executor = SingleThreadedExecutor()
+        # TEST-ONLY wiring (the real machine needs none of this): the
+        # planner's producer in this harness is the G cargo mapper, so
+        # the planner runs the grid_g validity backend — the production
+        # observer deployments use the observer_o defaults instead.
+        rclpy.init(args=[
+            "--ros-args", "-p", "validity_backend:=grid_g",
+            "-p", "validity_topic:=/cargo_map/validity",
+            "-p", "validity_status_service:=/cargo_map/get_validity",
+            # the topic cargo-map path is the subject under test here —
+            # the product default became "observer" (user ruling
+            # 2026-11-10), so opt back into the legacy path explicitly
+            "-p", 'volume_evidence_source:=""',
+            "-p", "frame_scene_revision:=gil-test-scene",
+            # no reachability atlas in the unit env: identity would
+            # hard-reject before the geometry assertions (same as e2e)
+            "-p", "atlas_enabled:=false",
+            # chain-aligned robot window: real computes take ~0.3-0.5 s
+            "-p", "robot_state_max_age_ms:=2000"]
+            + list(getattr(type(self), "_EXTRA_INIT_ARGS", ())))
+        # MultiThreaded (production-shaped), created AFTER rclpy.init: a
+        # single-threaded executor starves the planner's service handler
+        # behind the mapper's cloud/republish callbacks and the robot
+        # sample ages out
+        self.executor = MultiThreadedExecutor()
         self.nodes = []
         self.addCleanup(self._shutdown)
 
     def _shutdown(self):
+        self._stop_joints = True
+        if getattr(self, "_joints_thread", None) is not None:
+            self._joints_thread.join(timeout=2.0)
         for node in self.nodes:
             self.executor.remove_node(node)
             node.destroy_node()
@@ -97,6 +122,12 @@ class TestGeometryIdentityLive(unittest.TestCase):
         for node in (mapper, planner):
             self.nodes.append(node)
             self.executor.add_node(node)
+        # joints publisher EARLY: a publisher created at compute time
+        # loses its own first message to DDS discovery (volatile QoS)
+        from sensor_msgs.msg import JointState as _JointState
+        self._joints_pub = planner.create_publisher(
+            _JointState, "/joint_states", 10)
+        self._fresh_joints(planner)
         return mapper, planner
 
     def _spin(self, seconds=1.0):
@@ -126,14 +157,140 @@ class TestGeometryIdentityLive(unittest.TestCase):
         request.geometry_hash = geometry_hash
         return request
 
+    def _feed_observation(self, planner):
+        """Drive the REAL G intake (what the campaign client does): a
+        static TF optical_frame<-container_link, a small cloud on the
+        production topic, then the production IntegrateCargoView service
+        with geometry+revision pinned from the mapper's own stats. The
+        mapper's lifecycle then goes VALID by itself and publishes the
+        validity + map streams the planner's mandatory gate requires —
+        no stubs."""
+        from sensor_msgs.msg import PointCloud2, PointField
+        from geometry_msgs.msg import TransformStamped
+        from luggage_msgs.srv import GetCargoMapStats, IntegrateCargoView
+        import struct as _struct
+        import tf2_ros as _tf2
+
+        static_broadcaster = _tf2.StaticTransformBroadcaster(planner)
+        tf = TransformStamped()
+        now = planner.get_clock().now()
+        tf.header.stamp = now.to_msg()
+        tf.header.frame_id = "container_link"
+        tf.child_frame_id = "optical_frame"
+        static_broadcaster.sendTransform(tf)
+        self._spin(0.5)
+
+        cloud_pub = planner.create_publisher(
+            PointCloud2, "/luggage/semantic/cargo_points_untracked", 10)
+        stamp = planner.get_clock().now().nanoseconds
+        points = []
+        for dx in range(-3, 4):
+            for dy in range(-3, 4):
+                points.append((0.10 + dx * 0.01, -0.30 + dy * 0.01, 0.80))
+        fields = []
+        for index, name in enumerate(("x", "y", "z")):
+            field = PointField()
+            field.name = name
+            field.offset = index * 4
+            field.datatype = PointField.FLOAT32
+            field.count = 1
+            fields.append(field)
+        cloud = PointCloud2()
+        cloud.header.frame_id = "optical_frame"
+        cloud.header.stamp.sec = int(stamp // 1_000_000_000)
+        cloud.header.stamp.nanosec = int(stamp % 1_000_000_000)
+        cloud.height, cloud.width = 1, len(points)
+        cloud.point_step, cloud.row_step = 12, 12 * len(points)
+        cloud.is_bigendian = False
+        cloud.fields = fields
+        cloud.data = b"".join(
+            _struct.pack("<fff", *point) for point in points)
+        cloud_pub.publish(cloud)
+        self._spin(0.3)
+
+        stats_client = planner.create_client(
+            GetCargoMapStats, "/cargo_map/get_stats")
+        integrate = planner.create_client(
+            IntegrateCargoView, "/cargo_map/integrate_cargo_view")
+        self.assertTrue(self._spin_until(
+            stats_client.service_is_ready, 10.0), "mapper stats service")
+        self.assertTrue(self._spin_until(
+            integrate.service_is_ready, 10.0), "mapper integrate service")
+        future = stats_client.call_async(GetCargoMapStats.Request())
+        self.assertTrue(self._spin_until(future.done, 10.0))
+        stats = future.result()
+        request = IntegrateCargoView.Request()
+        request.schema_version = 1
+        request.view_request_id = "gil-obs-1"
+        request.source_acquisition_stamp.sec = int(stamp // 1_000_000_000)
+        request.source_acquisition_stamp.nanosec = int(
+            stamp % 1_000_000_000)
+        request.settled = True
+        request.frame_count = 1
+        request.geometry_hash = str(getattr(stats, "geometry_hash", ""))
+        request.expected_map_revision = int(
+            getattr(stats, "map_revision", 0) or 0)
+        future = integrate.call_async(request)
+        self.assertTrue(self._spin_until(future.done, 30.0))
+        # The gen-N map publishes while the lifecycle still reads
+        # BUILDING and is finally rejected; once the planner's validity
+        # state is VALID, a SECOND observation's map revision arrives
+        # under the settled generation and is admitted.
+        self.assertTrue(self._spin_until(
+            lambda: str(getattr(
+                planner._admission.validity, "state", "")) == "VALID",
+            15.0), "mapper validity never reached VALID")
+        request.view_request_id = "gil-obs-2"
+        stamp2 = planner.get_clock().now().nanoseconds
+        cloud.data = b"".join(
+            _struct.pack("<fff", p[0], p[1], p[2] + 0.02) for p in points)
+        cloud.header.stamp.sec = int(stamp2 // 1_000_000_000)
+        cloud.header.stamp.nanosec = int(stamp2 % 1_000_000_000)
+        cloud_pub.publish(cloud)
+        self._spin(0.3)
+        request.source_acquisition_stamp.sec = int(stamp2 // 1_000_000_000)
+        request.source_acquisition_stamp.nanosec = int(
+            stamp2 % 1_000_000_000)
+        request.expected_map_revision = int(
+            getattr(stats, "map_revision", 0) or 0) + 1
+        future = integrate.call_async(request)
+        self.assertTrue(self._spin_until(future.done, 30.0))
+        result = future.result()
+        return result
+
+    def _fresh_joints(self, planner):
+        """TEST STUB (real machines stream real joint states): a 10 Hz
+        joints publisher for the life of the test — a single sample
+        ages out whenever the service handler queues behind mapper
+        callbacks, exactly like the production chain where /joint_states
+        is continuous."""
+        if getattr(self, "_joints_thread", None) is not None:
+            return
+        import threading as _threading
+        from sensor_msgs.msg import JointState as _JointState
+
+        def _stream():
+            import time as _time
+            while self.rclpy.ok() and not getattr(self, "_stop_joints", False):
+                msg = _JointState()
+                msg.header.stamp = planner.get_clock().now().to_msg()
+                msg.name = ["elfin_joint%d" % i for i in range(1, 7)]
+                msg.position = [0.0] * 6
+                self._joints_pub.publish(msg)
+                _time.sleep(0.1)
+
+        self._joints_thread = _threading.Thread(target=_stream, daemon=True)
+        self._joints_thread.start()
+        self._spin(0.3)   # let the first samples deliver
+
     def _compute(self, planner, request):
         from luggage_msgs.srv import ComputePlacement
-
         client = planner.create_client(
             ComputePlacement, "/placement_planner/compute_placement")
         self.assertTrue(
             self._spin_until(client.service_is_ready, 10.0),
             "compute_placement service never came up")
+        self._fresh_joints(planner)
         future = client.call_async(request)
         self.assertTrue(
             self._spin_until(future.done, 30.0), "ComputePlacement timed out")
@@ -145,6 +302,7 @@ class TestGeometryIdentityLive(unittest.TestCase):
         expected = str(container_inner_geometry_descriptor(
             load_scene_tf_config(self.scene_path))["geometry_hash"])
         mapper, planner = self._start(self.scene_path, self.scene_path)
+        self._feed_observation(planner)
         self.assertEqual(mapper._geometry_hash, expected)
         self.assertTrue(
             self._spin_until(lambda: planner._surface is not None, 10.0),
@@ -156,10 +314,15 @@ class TestGeometryIdentityLive(unittest.TestCase):
         self.assertTrue(response.success, response.message)
         self.assertEqual(response.geometry_hash, expected)
         self.assertEqual(response.reason_code, "")
-        self.assertEqual(planner._rejected_maps, 0)
+        # identity contract: ZERO geometry rejections in the matching
+        # case. Total rejections may be nonzero: the mapper's FIRST
+        # publication legitimately races the validity binding (lifecycle
+        # admission rejection — startup behavior, not an identity fault).
+        self.assertEqual(planner._geometry_rejected_maps, 0)
 
     def test_foreign_cargo_map_fails_closed_without_floor_prior(self):
         mapper, planner = self._start(self.mutated_path, self.scene_path)
+        self._feed_observation(planner)
         self.assertNotEqual(mapper._geometry_hash, planner._geometry_hash)
         self.assertTrue(
             self._spin_until(lambda: planner._rejected_maps > 0, 10.0),
@@ -177,7 +340,10 @@ class TestGeometryIdentityLive(unittest.TestCase):
 
     def test_request_hash_pin_is_enforced(self):
         _mapper, planner = self._start(self.scene_path, self.scene_path)
-        self._spin(0.5)
+        self._feed_observation(planner)
+        self.assertTrue(self._spin_until(
+            lambda: planner._surface is not None, 10.0),
+            "planner never accepted the cargo map")
         response = self._compute(planner, self._request("not-this-hull"))
         self.assertFalse(response.success)
         self.assertEqual(response.reason_code, "CARGO_MAP_GEOMETRY_MISMATCH")

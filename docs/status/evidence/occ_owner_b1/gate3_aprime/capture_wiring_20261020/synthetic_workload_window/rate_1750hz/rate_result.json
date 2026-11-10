@@ -1,0 +1,38 @@
+{
+  "synthetic_only": true,
+  "published": 7000,
+  "per_topic_published": [
+    5000,
+    1000,
+    1000
+  ],
+  "elapsed_s": 4.000051696,
+  "offered_hz": 1749.9773832922983,
+  "target_hz": 1750,
+  "target_topic_hz": {
+    "/clock": 1250,
+    "/joint_states": 250,
+    "/elfin_arm_controller/controller_state": 250
+  },
+  "callback_p99_ms": 0.045115,
+  "callback_max_ms": 0.182205,
+  "execution_heartbeats": 799,
+  "probe_max_gap_ms": 5.414251,
+  "measurement_window": "publication workload only; excludes setup/drain",
+  "health": {
+    "received": 7000,
+    "enqueued": 7000,
+    "written": 7000,
+    "dropped": 0,
+    "failed": 0,
+    "written_bytes": 3232893,
+    "errors": [],
+    "closed": true,
+    "queued_bytes": 0,
+    "run_id": "synthetic-1750hz",
+    "worker_alive": false,
+    "pending": 0,
+    "recorder_io_complete": true,
+    "run_capture_complete": false
+  }
+}

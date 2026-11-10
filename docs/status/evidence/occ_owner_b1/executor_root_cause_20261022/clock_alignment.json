@@ -1,0 +1,16 @@
+{
+  "during_gate": {
+    "plugin_rows": 144,
+    "sim_first": 197.87,
+    "sim_last": 199.3,
+    "max_final_error_rad": 0.12738906879825018,
+    "last_rx_age_sec": 0.0172769189812243,
+    "max_receive_gap_sec": 0.10188393108546734
+  },
+  "first_postdeadline_tolerant_sample": {
+    "sim": 199.69000000000003,
+    "mono": 3258167.184602905,
+    "after_deadline_wall_s": 0.9068717150948942
+  },
+  "source_note": "postdeadline tolerance is not proof of loaded settling; launch log records current box deletion before it."
+}

@@ -2,3 +2,10 @@
 ---
 bool success
 string message
+
+# [B1 transaction] Reset rotates the map epoch; retried pre-reset writes
+# fail with EPOCH_MISMATCH.
+uint64 resulting_map_revision
+string status
+string epoch
+string content_digest

@@ -1,0 +1,12 @@
+{
+  "duration_s": 120.0,
+  "generator_version": "o6-load-v1",
+  "group_id": "r02_b00_chamfer_c30000_o50_x00",
+  "id": "normal_b00_r0",
+  "input_hz": 2,
+  "inputs": 240,
+  "kind": "normal",
+  "point_bytes": "not_emitted",
+  "queries": 120,
+  "query_hz": 1
+}

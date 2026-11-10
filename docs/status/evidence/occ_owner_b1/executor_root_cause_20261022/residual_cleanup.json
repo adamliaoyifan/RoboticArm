@@ -1,0 +1,10 @@
+{
+  "pids": [
+    602568,
+    602571,
+    602579
+  ],
+  "ownership": "attempt E launch.log exact process-start PID matches; cwd integration-prior-g1; ROS_DOMAIN_ID=7",
+  "signal": "SIGTERM",
+  "wall": 1792650938.0589688
+}

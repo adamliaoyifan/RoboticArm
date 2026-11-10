@@ -55,10 +55,14 @@ class PendingConfirmation(object):
     def require_confirmation(self):
         return self._require
 
-    def record(self, event, stamp_ns, footprint=None):
+    def record(self, event, stamp_ns, footprint=None, identity=None):
         """Register a change; return its token (0 when the gate is off).
 
         ``footprint`` is ``(center, size, yaw)`` in the container frame.
+        ``identity`` is the event's correlation key (e.g. the released
+        box_id): clearing a record later must match IDENTITY + ordering,
+        never footprint proximity alone (an old evidence at the same
+        location must not clear a new event).
         """
         if event in NON_INVALIDATING_EVENTS:
             return 0
@@ -72,6 +76,7 @@ class PendingConfirmation(object):
                 "token": self._token,
                 "event": str(event),
                 "stamp_ns": int(stamp_ns or 0),
+                "identity": str(identity or ""),
                 "footprint": None if footprint is None else (
                     [float(v) for v in footprint[0]],
                     [float(v) for v in footprint[1]],
@@ -123,6 +128,94 @@ class PendingConfirmation(object):
             }
         return cleared
 
+    def settle_observed_free(self, surface):
+        """Clear removal records whose footprint a fresh view observed FREE.
+
+        [B2] Positive free evidence only: every footprint column must be
+        state ``free`` in the post-integration grid (a miss raycast
+        through the region). Occluded or unknown columns keep the record
+        pending — "did not see" is not free-space evidence. Returns the
+        cleared tokens.
+        """
+        from luggage_perception.cargo_view_integration import (
+            footprint_free_coverage,
+            rotated_rect_aabb,
+        )
+        cleared = []
+        evidence = {}
+        with self._lock:
+            for change in list(self._changes):
+                if change["event"] != "box_removed":
+                    continue
+                footprint = change["footprint"]
+                if footprint is None:
+                    continue
+                center, size, yaw = footprint
+                aabb = rotated_rect_aabb(
+                    (center[0], center[1]),
+                    float(size[0]), float(size[1]), float(yaw))
+                fraction, free_count, total = footprint_free_coverage(
+                    surface, aabb)
+                evidence[change["token"]] = {
+                    "free_columns": free_count,
+                    "total_columns": total,
+                }
+                if total > 0 and free_count == total:
+                    self._changes.remove(change)
+                    cleared.append(change["token"])
+            if cleared or evidence:
+                record = dict(self._last_settle)
+                record["observed_free"] = {
+                    "evidence": evidence,
+                    "cleared": list(cleared),
+                }
+                self._last_settle = record
+        return cleared
+
+    def settle_matching(self, event, center, size, yaw, tolerance=0.10,
+                        identity="", before_stamp_ns=None, evidence=None):
+        """Clear pending records of ``event`` matching IDENTITY (+ an
+        ordering and proximity guard).
+
+        [release-failure contract] The confirming evidence must be bound
+        to the SAME event it confirms: ``identity`` (box_id) plus the
+        evidence being LATER than the event (``before_stamp_ns`` — only
+        records stamped strictly earlier may clear). Proximity is a guard,
+        never the key: an old same-location evidence must not clear a new
+        event. ``evidence`` rides into ``last_settle`` for the audit trail.
+        """
+        cleared = []
+        with self._lock:
+            for change in list(self._changes):
+                if change["event"] != str(event):
+                    continue
+                # No identity, no claim: proximity alone must never clear.
+                if not identity or change.get("identity") != str(identity):
+                    continue
+                if before_stamp_ns is not None \
+                        and int(change["stamp_ns"]) >= int(before_stamp_ns):
+                    continue
+                footprint = change["footprint"]
+                if footprint is None:
+                    continue
+                delta = sum(
+                    (float(center[axis]) - float(footprint[0][axis])) ** 2
+                    for axis in range(3)) ** 0.5
+                if delta > float(tolerance):
+                    continue
+                self._changes.remove(change)
+                cleared.append(change["token"])
+            if cleared:
+                record = dict(self._last_settle)
+                record["settle_matching"] = {
+                    "event": str(event),
+                    "identity": str(identity),
+                    "cleared": list(cleared),
+                    "evidence": dict(evidence or {}),
+                }
+                self._last_settle = record
+        return cleared
+
     def clear(self):
         with self._lock:
             self._changes = []
@@ -146,6 +239,7 @@ class PendingConfirmation(object):
             "pending_changes": [
                 {"token": c["token"], "event": c["event"],
                  "stamp_ns": c["stamp_ns"],
-                 "confirmable": c["footprint"] is not None}
+                 "confirmable": c["footprint"] is not None,
+                 "box_id": str(c.get("identity") or "")}
                 for c in pending],
         }

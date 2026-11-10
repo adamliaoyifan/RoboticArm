@@ -266,7 +266,7 @@ identity records. Sim and hardware launch profiles share that resolver.
 missing peers/endpoint graphs disable admission; restart, changed identity,
 expired lease, duplicate provider or mixed type revoke readiness. A v1 request
 cannot pass this primitive. Heartbeat metadata and readiness are excluded from
-immutable fingerprints. A heartbeat arriving after a lease gap revokes admission
+immutable fingerprints. Except for the explicitly renewable planning lease described below, a heartbeat arriving after a lease gap revokes admission
 even if no request was made during the gap. Explicit `readmit` increments the
 admission generation and requires fresh reports; old request tokens remain
 invalid. This operation does not authorize a cycle or release carried payload.
@@ -302,3 +302,120 @@ metrics separately from measured map acceptance. Its event schema is provisional
 until measured production events and capture windows are frozen after rehearsal.
 The ST09 verification runner reports missing graph/rehearsal obligations as
 `not_evaluated`; that result blocks release and is not a runtime certification.
+
+
+## Diagnostic attached payload envelope (2026-10-22)
+
+Nominal measured box dimensions and T_tool_box remain the target-synthesis
+contract, including eccentric grasps. Planning may bind a separate immutable
+collision_envelope to AttachmentRecord. Its digest participates in attachment
+identity and hence route/certificate/admission identity. It is never perception
+geometry or an online ground-truth input.
+
+The diagnostic profile in luggage_planning/config/payload_envelope.yaml uses
+suction_contact_frame origin/local Z as the pivot/axis for bounded post-attach
+yaw; known orientation stays in the nominal transform. Roll/pitch are exact;
+box Z must be parallel/antiparallel to contact Z. Unsupported tilt is refused.
+Size margins are outward on each box-axis face; translation half-ranges are
+in tool axes after yaw. Enumerate corner sinusoid extrema over the continuous
+interval, including interior stationary angles; preserve the resulting offset.
+This profile states assumed bounds, not calibrated statistical coverage.
+
+Slot closed-hull containment, corridor footprints, graph payload identity,
+carrying collision scenes, released obstacles and certification must consume
+this same envelope. Nominal grasp/placement targets remain unchanged. In
+particular, no floor/contact exemption is implied by a larger envelope:
+positive vertical margins can make a nominal floor-contact slot infeasible.
+Existing suction touch links are unchanged; link2 is not exempted.
+Configuration changes require a selector restart/new frozen attachment and
+new certification. Out-of-bound observed slip retains the existing invalidation
+and stop/reconfirmation behaviour; this change adds no slip sensor or claim
+that unobserved motion is detected.
+
+
+G2 diagnostic exception (user-directed 2026-10-22): tool-Z translation bound
+is now5mm (XY100mm and per-face50mm unchanged). Explicit
+`diagnostic_skip_slot_envelope_check=true` bypasses only the placement
+closed-hull prefilter. Defaultfalse retains it. Record this diagnostic mode in
+candidate rows/manifests; full-arm trajectory collision certification and
+actual post-place verification remain authoritative. The exception does not
+claim hull containment and does not authorize link2 collision.
+
+G3 diagnostic profile (user-directed 2026-10-22) replaces the fixed per-face
+size margins and XY100mm translation range. Width/depth grow by10 percent total
+and symmetrically. Height grows by10 percent only on the face away from the
+suction origin; the5mm Z attachment error is applied on that same face. For
+the supported tool-down, box-vertical carrying contract this face extends in
+world `-Z`. The contact-facing height face is unchanged. XY attachment error is
+zero in this diagnostic profile. Continuous yaw+/-5deg remains, so its exact
+union may exceed1.10 times nominal width/depth. An attachment for which the
+near/far height faces cannot be distinguished from the suction origin is
+refused instead of choosing a direction implicitly.
+
+
+## Attachment-owned conservative geometry (G4, supersedes G1-G3 ownership)
+
+VacuumCommandV2 freezes an AttachmentGeometry from admitted measured dimensions,
+actual tool/box relation and the single attachment_geometry.yaml policy before
+performing the attachment effect. Its response carries measured dimensions and
+an explicit AttachmentGeometryV2: conservative dimensions, tool-relative centre
+and orientation, policy provenance and digests. Nominal fields never become
+inflated fields. Missing or mismatched geometry is a named refusal at executable
+selection admission. No online physics/reference size enters this construction.
+
+The scene attach and route consumers use that frozen output. Selector/provider
+must not load tolerance configuration or rebuild envelopes. Capacity generation
+receives conservative dimensions; its conservative-centre targets are converted
+back to nominal box targets by an Attachment adapter. Inputs and shared message
+objects must not be mutated; each converted target is a fresh output. Envelope
++Z is represented parallel to nominal box +Z (equivalent cuboid axis signs), so
+an upright packing target cannot flip the nominal box. All geometry stays frozen
+until a new measured attachment is admitted. Existing nominal map verification
+and contact targets retain their measurement semantics.
+
+The old late slot-envelope hull filter and its diagnostic bypass are removed;
+capacity is handled upstream. Collision, edge and certification checks remain.
+Bounds remain diagnostic: 10% total size growth, height only away from contact,
+5mm away-position uncertainty, +/-5deg suction-pivot yaw, zero XY translation
+uncertainty, exact roll/pitch under the vertical box/contact-normal contract.
+
+### Action-scoped readiness (2026-10-23)
+
+The immutable wire identity still describes the full graph. Certified unloaded
+named-pose execution admits only selector, motion planner, vacuum, scene, cargo
+map and driver peers; placement and waypoint production are not dependencies of
+this action. Independent gates observe from startup, preserving relevant lease
+gaps, incarnation changes, endpoint ownership and token generation. The executor
+still verifies the full certificate, exact leg/load phase, fresh detached vacuum,
+scene and map immediately before submission. Empty/forged certificates do not
+authorize a smaller dependency set. Placement and next-box requests retain the
+full-graph check. Only placement-planner lease expiry is renewable for a new
+request: a late valid heartbeat advances its lease epoch and permanently voids
+any token issued in the prior epoch. Missing/stale heartbeats cannot admit a
+new request; restart/identity/provenance mismatch still latch closed.
+
+Return planning freezes the current post-commit occupancy snapshot as a value,
+records its digest/revision, and uses it throughout building and certification.
+The map already changes only via explicit mutation services; return performs no
+placement computation or integration. Physical occupancy events and revision
+changes remain visible to execution revalidation and can revoke the route.
+The next placement request reads the latest map rather than reusing return's
+snapshot. A frozen planning input never licenses ignoring a new obstacle.
+
+The pack evaluator commits a verify-anchored placed-box record before requesting
+return planning. The return snapshot must therefore include the just-released
+obstacle, not only boxes from prior completed cycles. Suite success is counted
+after HOME; return failure never rolls back a physically released obstacle.
+The suite reuses this commit receipt instead of submitting/appending it twice.
+
+Kinematic release confirmation is read-after-write: require both a pose stamp
+and receive timestamp later than the set-pose response, then confirm XY within
+the existing2s budget. A recent pre-command cache value is not confirmation.
+Persistent XY error still refuses at5mm, Z remains observational; rejected
+candidates and exact command/read boundaries are evidence, not planning input.
+
+The verify-anchored occupancy commit uses an independent `occupancy_commit`
+gate on cargo mapper and its registered driver at both client and server.
+Placement is not a dependency of committing a physically verified obstacle.
+This does not bypass slot/frame/geometry/revision/verify validation inside the
+mapper transaction; next placement retains full-graph readiness.

@@ -1,0 +1,75 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <world name="uld_occ_observer_sensor_only">
+    <plugin filename="ignition-gazebo-physics-system" name="ignition::gazebo::systems::Physics"/>
+    <plugin filename="ignition-gazebo-sensors-system" name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="ignition-gazebo-scene-broadcaster-system" name="ignition::gazebo::systems::SceneBroadcaster"/>
+    <plugin filename="ignition-gazebo-user-commands-system" name="ignition::gazebo::systems::UserCommands"/>
+    <gravity>0 0 -9.8</gravity>
+    <scene><ambient>1 1 1 1</ambient><background>0.7 0.7 0.7 1</background><shadows>false</shadows></scene>
+    <physics name="1ms" type="ignored"><max_step_size>0.001</max_step_size><real_time_factor>1</real_time_factor></physics>
+    <model name="container">
+      <static>true</static>
+      <pose>0 0 0 0 0 0</pose>
+      <link name="container_link">
+        <visual name="floor"><pose>0 0 0.53 0 0 0</pose>
+          <geometry><box><size>1.49 1.97 0.02</size></box></geometry>
+          <material><ambient>0.6 0.6 0.65 1</ambient><diffuse>0.6 0.6 0.65 1</diffuse></material>
+        </visual>
+        <collision name="floor_c"><pose>0 0 0.53 0 0 0</pose>
+          <geometry><box><size>1.49 1.97 0.02</size></box></geometry></collision>
+        <visual name="wall_y"><pose>0 0.985 0.9 0 0 0</pose>
+          <geometry><box><size>1.49 0.02 0.8</size></box></geometry></visual>
+        <collision name="wall_y_c"><pose>0 0.985 0.9 0 0 0</pose>
+          <geometry><box><size>1.49 0.02 0.8</size></box></geometry></collision>
+      </link>
+    </model>
+    <model name="box0"><static>true</static><pose>-0.45 -0.55 0.73 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.2 0.2 0.2</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.2 0.2 0.2</size></box></geometry>
+      <material><ambient>0.8 0.2 0.2 1</ambient><diffuse>0.8 0.2 0.2 1</diffuse></material></visual></link></model>
+    <model name="box1"><static>true</static><pose>-0.23 -0.55 0.73 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.2 0.2 0.2</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.2 0.2 0.2</size></box></geometry>
+      <material><ambient>0.2 0.8 0.2 1</ambient><diffuse>0.2 0.8 0.2 1</diffuse></material></visual></link></model>
+    <model name="box2"><static>true</static><pose>-0.01 -0.55 0.73 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.2 0.2 0.2</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.2 0.2 0.2</size></box></geometry>
+      <material><ambient>0.2 0.2 0.8 1</ambient><diffuse>0.2 0.2 0.8 1</diffuse></material></visual></link></model>
+    <model name="box3"><static>true</static><pose>0.21 -0.55 0.73 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.2 0.2 0.2</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.2 0.2 0.2</size></box></geometry>
+      <material><ambient>0.8 0.8 0.2 1</ambient><diffuse>0.8 0.8 0.2 1</diffuse></material></visual></link></model>
+    <model name="box4"><static>true</static><pose>0.43 -0.55 0.73 0 0 0</pose>
+      <link name="l"><collision name="c"><geometry><box><size>0.2 0.2 0.2</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>0.2 0.2 0.2</size></box></geometry>
+      <material><ambient>0.8 0.2 0.8 1</ambient><diffuse>0.8 0.2 0.8 1</diffuse></material></visual></link></model>
+    <model name="occluder">
+      <static>true</static>
+      <pose>0 0 -50 0 0 0</pose>
+      <link name="l">
+        <collision name="c"><geometry><box><size>1.2 1.6 0.05</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>1.2 1.6 0.05</size></box></geometry>
+          <material><ambient>0.1 0.1 0.1 1</ambient><diffuse>0.1 0.1 0.1 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="depth_cam">
+      <static>true</static>
+      <pose>-1.15 0 1.20 0 0 0</pose>
+      <link name="link">
+        <sensor name="camera" type="depth_camera">
+          <always_on>1</always_on>
+          <update_rate>2</update_rate>
+          <camera>
+            <horizontal_fov>1.047</horizontal_fov>
+            <image><width>160</width><height>120</height><format>R_FLOAT32</format></image>
+            <clip><near>0.2</near><far>8</far></clip>
+          </camera>
+          <topic>observer_depth</topic>
+        </sensor>
+      </link>
+    </model>
+  </world>
+</sdf>

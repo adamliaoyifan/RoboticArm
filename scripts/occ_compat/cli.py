@@ -1,0 +1,116 @@
+"""cli — subcommand dispatch for occ_consumer_compat (thin)."""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+from . import inventory as inventory_mod
+from .ledger import EventLedger
+
+
+def _write_result(out_dir, name, result):
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / (name + ".json")).write_text(json.dumps(result, indent=1,
+                                                   sort_keys=True))
+
+
+def cmd_inventory(args):
+    result = inventory_mod.run_inventory(args.manifest, args.out)
+    _write_result(args.out, "INVENTORY_RESULT", result)
+    print("inventory frozen: %d consumers, %d V1 cases, %d V2 cases"
+          % (result["consumers"], result["v1_cases"], result["v2_cases"]))
+    return 0
+
+
+def cmd_preflight(args):
+    from . import chains
+    result = chains.preflight(args.manifest, args.out,
+                              backend=getattr(args, 'backend', 'G'))
+    _write_result(args.out, "PREFLIGHT_RESULT", result)
+    print("preflight: %s (%.1fs real monotonic)"
+          % (result.get("verdict"), result.get("elapsed_s", -1)))
+    return 0 if result.get("verdict") == "PASS" else 1
+
+
+def cmd_selftest(args):
+    from . import judge as judge_mod
+    result = judge_mod.selftest(args.manifest, args.out)
+    _write_result(args.out, "SELFTEST_RESULT", result)
+    # judge.selftest reports ONE control verdict over every archive it
+    # judged ("control": PASS|FAIL) plus per-mutation REJECTED verdicts.
+    # Reading a wrong key here would make a FAILING control exit 0.
+    mutations = result.get("mutations", {})
+    control = result.get("control")
+    rejected = sum(1 for v in mutations.values() if v == "REJECTED")
+    wiring = result.get("gate_wiring", {})
+    rejections = [v for k, v in wiring.items()
+                  if k != "w09_base_control_passes"]
+    ok = (control == "PASS" and rejected == len(mutations) and mutations
+          and wiring
+          and all(v == "REJECTED" for v in rejections)
+          and wiring.get("w09_base_control_passes") == "PASS")
+    print("selftest: %d/%d mutations rejected, control=%s, wiring=%d/%d"
+          % (rejected, len(mutations), control,
+             sum(1 for v in wiring.values() if v == "REJECTED"),
+             len(wiring)))
+    if not mutations:
+        print("selftest: NO mutations ran — refusing vacuous pass")
+        ok = False
+    return 0 if ok else 1
+
+
+def cmd_freeze(args):
+    from . import freeze as freeze_mod
+    result = freeze_mod.run_freeze(args.manifest, args.out)
+    _write_result(args.out, "FREEZE_RESULT", result)
+    ok = not result.get("problems")
+    print("freeze: %s" % ("clean" if ok else "PROBLEMS: %s"
+                          % result["problems"]))
+    return 0 if ok else 1
+
+
+def cmd_verify(args):
+    from . import runner
+    result = runner.run_matrices(args.freeze, args.matrix.split(","),
+                                 args.out,
+                                 cases=[c for c in getattr(
+                                     args, "cases", "").split(",") if c]
+                                 or None,
+                                 groups=[g for g in getattr(
+                                     args, "groups", "").split(",") if g]
+                                 or None)
+    _write_result(args.out, "VERIFY_RESULT", result)
+    print("verify: %s" % result.get("verdict"))
+    return 0 if result.get("verdict") == "PASS" else 1
+
+
+def cmd_judge(args):
+    from . import judge as judge_mod
+    result = judge_mod.judge_archive(args.archive, args.out,
+                                     selftest_path=getattr(
+                                         args, "selftest", None),
+                                     freeze_path=getattr(
+                                         args, "freeze", None),
+                                     evidence_root=getattr(
+                                         args, "evidence_root", None),
+                                     a0_verify_path=getattr(
+                                         args, "a0_verify", None))
+    _write_result(args.out, "VERDICT", result)
+    gates = result.get("gates", {})
+    print("judge: " + " ".join("%s=%s" % (k, v)
+                               for k, v in sorted(gates.items())))
+    # Only the A0-A5 gate keys decide the exit code — gates carries
+    # pure verdict strings; any info detail lives in gates_detail
+    a_gates = ("A0", "A1", "A2", "A3", "A4", "A5")
+    ok = all(gates.get(k) == "PASS" for k in a_gates)
+    return 0 if ok else 1
+
+
+def cmd_replay(args):
+    from . import replaycmd
+    result = replaycmd.replay_case(args.archive, args.case, args.out)
+    _write_result(args.out, "REPLAY_RESULT", result)
+    print("replay %s: %s" % (args.case, result.get("verdict")))
+    return 0 if result.get("verdict") == "PASS" else 1

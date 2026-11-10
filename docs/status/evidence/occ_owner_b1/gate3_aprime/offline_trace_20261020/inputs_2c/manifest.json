@@ -1,0 +1,30 @@
+[
+  {
+    "source": "/tmp/hold_diag/run2c/pack/dumps/box_00_HANDOFF_SETTLE_TIMEOUT/replay/last_boundary.json",
+    "snapshot": "last_boundary.json",
+    "source_sha256": "5a9a4803103cb752348b4331a1e83eeb4275489ab31112b387131da195fa5d25",
+    "bytes": 120079,
+    "snapshot_bytes": 120079
+  },
+  {
+    "source": "/tmp/hold_diag/run2c/pack/dumps/box_00_HANDOFF_SETTLE_TIMEOUT/handoff.json",
+    "snapshot": "handoff.json",
+    "source_sha256": "287e805aea01095c04edced85dbdea2993d8a2838fd8f44024c765db761bc628",
+    "bytes": 138860,
+    "snapshot_bytes": 138860
+  },
+  {
+    "source": "/tmp/hold_diag/run2c/pack/dumps/box_00_HANDOFF_SETTLE_TIMEOUT/replay/joint_ring.jsonl",
+    "snapshot": "joint_ring.jsonl.gz",
+    "source_sha256": "fbcf47d8b9190d19a9d8f28f66619cf4431dc728b686e7e133f3dd85870ed028",
+    "bytes": 4942522,
+    "snapshot_bytes": 1192794
+  },
+  {
+    "source": "/tmp/hold_diag/run2c/controller_state.jsonl",
+    "snapshot": "controller_state.jsonl.gz",
+    "source_sha256": "5f561a03efaed1d44ebac3947110d237cda0249bec43d9edfe6265af480b1ebd",
+    "bytes": 430124,
+    "snapshot_bytes": 99512
+  }
+]

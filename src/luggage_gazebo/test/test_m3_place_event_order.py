@@ -130,7 +130,7 @@ class _Views(object):
         self.calls.append("aim")
         return [], {"index": 0, "suction_xyz": [-0.7, 0.6, 1.8]}
 
-    def _integrate_after_place(self, *_args, **_kwargs):
+    def _integrate_fresh_views(self, *_args, **_kwargs):
         self.calls.append("integrate")
         return {
             "success": True,

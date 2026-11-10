@@ -413,6 +413,10 @@ class MotionPlannerNode(Node):
         key = (tuple(round(float(v), 4) for v in wdh),
                self._reachability_scene_hash, self._scene_tf_hash, urdf_hash)
         if key not in self._atlas_cache:
+            # box_size is the payload wdh (key[0]); the whole cache key is
+            # not a size list. Passing it made resolve_atlas_files float()
+            # the size tuple and every seed query die as no_seeds
+            # (2026-10-12 yaw180 run, three identical traverse failures).
             self._atlas_cache[key] = load_runtime_atlas(
                 self._atlas_cfg, box_size=list(key[0]),
                 scene_tf_hash=self._scene_tf_hash,
@@ -732,11 +736,19 @@ class MotionPlannerNode(Node):
         if getattr(self, "_frame_runtime", None) is not None:
             # Motion effect: the v2 chain is admitted end to end or refused.
             from luggage_description.frame_contracts import ContractError
+            from luggage_description.runtime_action_readiness import certified_motion_scope
+            goal = goal_handle.request
+            scope = certified_motion_scope({
+                "route_digest": str(goal.route_digest or ""),
+                "certification_id": str(goal.certification_id or ""),
+                "leg_digest": str(goal.admission_leg_digest or ""),
+                "load_state": str(goal.admission_load_state or ""),
+            })
             try:
                 admission = self._frame_runtime.admit_request(
                     str(getattr(goal_handle.request.segment, "request_id", "")
                         or ""),
-                    endpoint="/motion_planner/plan_motion_v2")
+                    endpoint="/motion_planner/plan_motion_v2", scope=scope)
                 self._frame_runtime.authorize_effect(
                     admission, str(
                         getattr(goal_handle.request.segment, "request_id", "")
@@ -770,7 +782,8 @@ class MotionPlannerNode(Node):
         handle_plan_v2(
             self._executor_client, goal_handle.request.segment,
             self._scene_tf_hash, result, self._prepare_occupancy,
-            link=self._executor_client._link, current_joints=start)
+            link=self._executor_client._link, current_joints=start,
+            execute_timeout=float(self.get_parameter("execute_timeout").value))
         if not result.success:
             mismatch = (self._executor_client.last_boundary() or {}).get(
                 "qp_start_state_mismatch")

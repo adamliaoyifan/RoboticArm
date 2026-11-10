@@ -1,0 +1,21 @@
+{
+  "received": 3,
+  "enqueued": 2,
+  "written": 2,
+  "dropped": 1,
+  "failed": 0,
+  "written_bytes": 726,
+  "errors": [
+    {
+      "name": "CAPTURE_QUEUE_FULL",
+      "detail": "bounded queue capacity exceeded"
+    }
+  ],
+  "closed": true,
+  "queued_bytes": 0,
+  "run_id": "blocked",
+  "worker_alive": false,
+  "pending": 0,
+  "recorder_io_complete": false,
+  "run_capture_complete": false
+}

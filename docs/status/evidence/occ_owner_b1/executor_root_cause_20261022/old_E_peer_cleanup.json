@@ -1,0 +1,102 @@
+{
+  "wall": 1792651094.7404647,
+  "signal": "SIGTERM",
+  "source_launch": "/tmp/jcc_runs/n3_functional_20261022_140256/launch.log",
+  "processes": [
+    {
+      "pid": 602573,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/depth_image_republisher.py --ros-args -r __node:=depth_image_republisher --params-file /tmp/launch_params_yeun8eu1 ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602575,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/camera_info_alias.py --ros-args -r __node:=camera_info_alias --params-file /tmp/launch_params_5e2hd5gn ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602577,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/sensor_preprocessor_node.py --ros-args -r __node:=sensor_preprocessor --params-file /tmp/elfin-master-pack-baseline-g3/install/luggage_perception/share/luggage_perception/config/sensor_preprocessor.yaml --params-file /tmp/launch_params_jbmkxxcl --params-file /tmp/launch_params_lsinqwxt ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602581,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/pickup_box_spawner_node.py --ros-args --params-file /tmp/launch_params_73961say ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602583,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/scene_viz_node.py --ros-args -r __node:=scene_viz --params-file /tmp/launch_params_4jqtkhj3 ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602585,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py --ros-args --params-file /tmp/launch_params_58qsvyec ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602587,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_segmenter_node.py --ros-args -r __node:=semantic_segmenter --params-file /tmp/elfin-master-pack-baseline-g3/install/luggage_perception/share/luggage_perception/config/semantic_segmenter.yaml --params-file /tmp/launch_params_sm380eri ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602589,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_point_filter_node.py --ros-args -r __node:=semantic_point_filter --params-file /tmp/elfin-master-pack-baseline-g3/install/luggage_perception/share/luggage_perception/config/semantic_segmenter.yaml --params-file /tmp/launch_params_9pxqbj5w ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602591,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/scene_manager_node.py --ros-args -r __node:=scene_manager --params-file /tmp/launch_params_4_lky8kd ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602593,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/waypoint_generator_node.py --ros-args -r __node:=waypoint_generator --params-file /tmp/launch_params_v947m2ax ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602595,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/motion_planner_node.py --ros-args -r __node:=motion_planner --params-file /tmp/launch_params_qytlsrii --params-file /tmp/launch_params_tr6et5f8 ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602597,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/trajectory_selector_node.py --ros-args -r __node:=trajectory_selector --params-file /tmp/launch_params_0p7uptw4 --params-file /tmp/launch_params_go8k8tlp ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602599,
+      "cmd": "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/validate_route_node --ros-args -r __node:=validate_route_v2 --params-file /tmp/launch_params_bw59f2s0 --params-file /tmp/launch_params_xhqrjwna --params-file /tmp/launch_params_vl5xnz6z ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602616,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py --ros-args -r __node:=cargo_volume_mapper --params-file /tmp/launch_params_mjmq1yor ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602625,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_packing/lib/luggage_packing/placement_planner_node.py --ros-args -r __node:=placement_planner --params-file /tmp/launch_params_bscfu9lb --params-file /tmp/launch_params_n224pmkj ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602629,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/vacuum_controller_node.py --ros-args -r __node:=vacuum_controller --params-file /tmp/launch_params__s8x4xen ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602634,
+      "cmd": "python3 /tmp/elfin-master-pack-baseline-g3/install/luggage_description/lib/luggage_description/container_tf_publisher --ros-args -r __node:=container_tf_publisher --params-file /tmp/launch_params_ou8xan0e ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 602638,
+      "cmd": "/opt/ros/humble/lib/robot_state_publisher/robot_state_publisher --ros-args -r __node:=robot_state_publisher --params-file /tmp/launch_params_bpeo1frk ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    },
+    {
+      "pid": 603810,
+      "cmd": "/opt/ros/humble/lib/moveit_ros_move_group/move_group --ros-args -r __node:=move_group --params-file /tmp/launch_params_vykaf7wt --params-file /tmp/launch_params_m680y3pb --params-file /tmp/launch_params_e70zpa3_ ",
+      "cwd": "/tmp/elfin-master-pack-baseline-g3"
+    }
+  ]
+}

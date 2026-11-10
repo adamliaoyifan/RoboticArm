@@ -5,18 +5,17 @@ from __future__ import division
 
 import math
 
+import numpy as np
+from copy import deepcopy
+from array import array
+
 from luggage_description.container_geometry import (
-    contains_point,
     cuboid_from_inner_size,
-    hull_edges,
     normalize_descriptor,
 )
 from luggage_perception.voxel_log_odds import LogOddsGrid
-
-try:
-    import octomap
-except ImportError:
-    octomap = None
+from luggage_description.cargo_grid_contract import CargoGridSpec
+from luggage_perception.cargo_grid_projection import active_mask, surface_columns, occupancy_counts
 
 UNKNOWN = 0
 FREE = 1
@@ -26,10 +25,19 @@ SOURCE_NONE = 0
 SOURCE_SENSOR = 1
 SOURCE_GEOMETRY = 2
 
-MARKER_NS = "cargo_map"
-MAX_VOXEL_MARKERS = 5000
-# Slightly inflate voxel/wireframe markers for RViz readability.
-MARKER_VIZ_SCALE = 1.25
+
+def verify_anchor_delta_m(slot_center, verified_center):
+    """Euclidean distance between an asserted slot and a measured pose.
+
+    The AddPlacedBoxV2 anchor gate: both points are container_link box
+    centers. ``None`` (unmeasured anchor) is distinguished from a distance
+    by the caller — a missing measurement must not silently read as 0.
+    """
+    if slot_center is None or verified_center is None:
+        return None
+    return math.sqrt(sum(
+        (float(slot_center[axis]) - float(verified_center[axis])) ** 2
+        for axis in range(3)))
 
 
 def _clip_half_plane(polygon, origin, normal):
@@ -105,6 +113,149 @@ def normalize_ledger_slot(center_xyz, yaw, size, source_frame="world",
             yaw - float(container_yaw), size)
 
 
+# ---------------------------------------------------------------------------
+# Fusion kernels (module-level pure functions; @njit-ready for the B step).
+# Each takes ONLY numpy arrays / scalars -- no mapper state -- so numba
+# can compile them directly. The mapper's integrate_points calls these
+# with its own parameters unpacked.
+
+
+def _kernel_world_to_local(points, center, cos_neg_yaw, sin_neg_yaw,
+                           cos_yaw, sin_yaw):
+    """Batch world->local. Same formula as _world_to_local.
+
+    The caller must pass cos(-yaw), sin(-yaw), cos(yaw), sin(yaw) each
+    computed from the raw yaw exactly as the scalar path does."""
+    dx = points[:, 0] - center[0]
+    dy = points[:, 1] - center[1]
+    dz = points[:, 2] - center[2]
+    # Identical expression order to the scalar _world_to_local:
+    #   local_x = cos(-yaw) * dx - sin(-yaw) * dy
+    #   local_y = sin(-yaw) * dx + cos(-yaw) * dy
+    lx = cos_neg_yaw * dx - sin_neg_yaw * dy
+    ly = sin_neg_yaw * dx + cos_neg_yaw * dy
+    return np.column_stack((lx, ly, dz))
+
+
+def _kernel_local_to_voxel(local, resolution, half_l, half_w, half_h,
+                           nx, ny, nz, active):
+    """Batch local->voxel. Returns (valid_mask, flat_index).
+
+    Mirrors _local_to_voxel exactly: boundary check -> int() -> clamp ->
+    active check. int() on positive values == trunc.
+    """
+    inside = ((np.abs(local[:, 0]) <= half_l)
+              & (np.abs(local[:, 1]) <= half_w)
+              & (np.abs(local[:, 2]) <= half_h))
+    ix = np.trunc((local[:, 0] + half_l) / resolution).astype(np.int64)
+    iy = np.trunc((local[:, 1] + half_w) / resolution).astype(np.int64)
+    iz = np.trunc((local[:, 2] + half_h) / resolution).astype(np.int64)
+    ix = np.clip(ix, 0, nx - 1)
+    iy = np.clip(iy, 0, ny - 1)
+    iz = np.clip(iz, 0, nz - 1)
+    flat = ix + nx * (iy + ny * iz)
+    valid = inside.copy()
+    if active is not None:
+        if not isinstance(active, np.ndarray):
+            active = np.frombuffer(bytes(active), dtype=np.uint8)
+            active = active.astype(bool)
+        valid &= active[flat]
+    return valid, flat
+
+
+def _kernel_raycast(origins, ends, resolution, center,
+                    cos_neg_yaw, sin_neg_yaw, cos_yaw, sin_yaw,
+                    half_l, half_w, half_h, nx, ny, nz, active):
+    """Batch ray sampling. Returns concatenated flat indices (with dupes).
+
+    Hybrid approach: per-ray AABB clipping + step-range computation
+    (cheap Python loop, ~2000 iterations), then ONE batch coordinate
+    transform + voxel lookup for ALL samples concatenated (the
+    expensive part). Same math as the scalar _raycast_indices
+    (world-space interpolation, then world->local->voxel).
+    """
+    if len(ends) == 0:
+        return np.empty(0, dtype=np.int64), 0, 0
+    o = origins
+    o_local = _kernel_world_to_local(
+        origins.reshape(1, 3), center, cos_neg_yaw, sin_neg_yaw,
+        cos_yaw, sin_yaw)[0]
+    e_local = _kernel_world_to_local(
+        ends, center, cos_neg_yaw, sin_neg_yaw, cos_yaw, sin_yaw)
+    halves = (half_l, half_w, half_h)
+    all_t = []
+    all_ray = []
+    for i in range(len(ends)):
+        ol = o_local
+        el = e_local[i]
+        dist = math.sqrt(
+            (ends[i, 0] - o[0]) ** 2
+            + (ends[i, 1] - o[1]) ** 2
+            + (ends[i, 2] - o[2]) ** 2)
+        if dist < resolution:
+            continue
+        steps = int(dist / (resolution * 0.5))
+        if steps < 1:
+            continue
+        near, far = 0.0, 1.0
+        clipped = True
+        for axis in range(3):
+            start_a, end_a, half = ol[axis], el[axis], halves[axis]
+            delta = end_a - start_a
+            if delta == 0:
+                if abs(start_a) > half:
+                    clipped = False
+                    break
+                continue
+            enter, leave = sorted(
+                ((-half - start_a) / delta, (half - start_a) / delta))
+            near, far = max(near, enter), min(far, leave)
+            if near > far:
+                clipped = False
+                break
+        if not clipped:
+            continue
+        first = max(0, int(math.floor(near * steps)) - 1)
+        last = min(steps, int(math.ceil(far * steps)) + 2)
+        if last <= first:
+            continue
+        t = np.arange(first, last, dtype=np.float64) / steps
+        all_t.append(t)
+        all_ray.append(np.full(len(t), i, dtype=np.int64))
+    if not all_t:
+        return np.empty(0, dtype=np.int64), 0, 0
+    ray_intersecting = len(all_t)  # one entry per non-clipped ray
+    samples_visited = sum(len(t) for t in all_t)
+    t_all = np.concatenate(all_t)
+    ray_all = np.concatenate(all_ray)
+    # World-space interpolation for all samples at once
+    sel_ends = ends[ray_all]
+    wx = o[0] + (sel_ends[:, 0] - o[0]) * t_all
+    wy = o[1] + (sel_ends[:, 1] - o[1]) * t_all
+    wz = o[2] + (sel_ends[:, 2] - o[2]) * t_all
+    world_samples = np.column_stack((wx, wy, wz))
+    local_samples = _kernel_world_to_local(
+        world_samples, center, cos_neg_yaw, sin_neg_yaw,
+        cos_yaw, sin_yaw)
+    valid, flat = _kernel_local_to_voxel(
+        local_samples, resolution, half_l, half_w, half_h, nx, ny, nz,
+        active)
+    return flat[valid], ray_intersecting, samples_visited
+
+
+# JIT kernels (B round): used INSTEAD of the numpy versions above
+# when numba is available; graceful fallback keeps the numpy path.
+try:
+    from luggage_perception.fusion_kernels_jit import (
+        HAS_NUMBA, _jit_world_to_local, _jit_local_to_voxel)
+    if HAS_NUMBA:
+        _USE_JIT = True
+    else:
+        _USE_JIT = False
+except ImportError:
+    _USE_JIT = False
+
+
 class CargoVolumeMapper:
     """Axis-aligned voxel grid in container-local frame (yaw-aligned with base)."""
 
@@ -119,13 +270,11 @@ class CargoVolumeMapper:
         self.geometry_descriptor = dict(geometry_descriptor or {})
         self.geometry_hash = str(
             geometry_hash or self.geometry_descriptor.get("geometry_hash", ""))
-        self.resolution = float(resolution)
+        self._grid_spec = CargoGridSpec.create(inner_size, resolution)
         self.inner_l, self.inner_w, self.inner_h = [float(v) for v in inner_size]
         self.center = [float(v) for v in center_base]
         self.yaw = float(yaw)
-        self.nx = max(1, int(math.ceil(self.inner_l / self.resolution)))
-        self.ny = max(1, int(math.ceil(self.inner_w / self.resolution)))
-        self.nz = max(1, int(math.ceil(self.inner_h / self.resolution)))
+        self.nx, self.ny, self.nz = self._grid_spec.dimensions_xyz
         self.occupancy_params = dict(occupancy_params or {})
         # Cap on the number of points used for free-space raycasting (the
         # per-point ray walk is the integrate bottleneck). None = no cap.
@@ -137,13 +286,23 @@ class CargoVolumeMapper:
         stamped = self._hull.descriptor()
         self.geometry_descriptor = stamped
         self.geometry_hash = str(stamped["geometry_hash"])
+        self._voxel_delta = None
+        self._query_cache = None
+        self._query_read_owner = None
+        self._surface_cache = None
         self._active = None
         self._grid = None
         self._occupancy = None
         self._revision = 0
+        self._depth_ray_phase = 0
         self._placed_boxes = []
         self._build_active_mask()
         self.reset()
+
+    @property
+    def resolution(self):
+        """Frozen grid spacing; only construction may establish it."""
+        return self._grid_spec.resolution_m
 
     def _load_hull(self):
         if self.geometry_descriptor:
@@ -168,43 +327,56 @@ class CargoVolumeMapper:
                 placed["center"], placed["size"], placed["yaw"])
         self._revision += 1
 
+    @property
+    def map_revision(self):
+        """Public read of the single revision counter (B1 snapshot identity
+        reads this; nothing outside the mapper may keep a second counter)."""
+        return self._revision
+
+    def note_external_change(self):
+        """Advance the revision for a state change that mutated no voxel
+        (a confirmation transition: late fact event, container pose note).
+        Without this, a snapshot rebuilt after such a change would carry a
+        different confirmation state at an identical revision — readers
+        could not distinguish it from a stale snapshot."""
+        self._revision += 1
+        return self._revision
+
+    def _observe_voxels(self, indices):
+        """Read-only evidence notification; never changes mutation order."""
+        self._query_cache = None
+        self._query_read_owner = None
+        self._surface_cache = None
+        if self._voxel_delta is not None:
+            self._voxel_delta.record_before(indices)
+
     def _clear_grid(self):
         """Clear voxel state without changing the commit revision."""
+        self._query_cache = None
+        self._query_read_owner = None
+        self._surface_cache = None
+        if self._voxel_delta is not None:
+            self._voxel_delta.record_reset()
         total = self.nx * self.ny * self.nz
         self._occupancy = LogOddsGrid(total, **self.occupancy_params)
-        self._grid = self._occupancy.states()
-        self._source = [SOURCE_NONE] * total
-        self._labels = [0] * total
-        self._instance_ids = [0] * total
+        self._grid = bytearray(self._occupancy.states())
+        self._source = bytearray(total)
+        self._labels = array("q", [0]) * total
+        self._instance_ids = array("q", [0]) * total
         # Independent sensor evidence: a per-voxel shadow log-odds value
         # the sensor's own hits/misses accumulate, plus its latest label
         # and instance. The shadow is updated unconditionally — geometry
         # locks protect the live grid, never this ledger — so retracting a
         # committed box restores the sensor's *latest* word exactly as if
         # the geometry had never been there (control-equivalence).
-        self._sensor_seen = [False] * total
-        self._sensor_values = [0.0] * total
-        self._sensor_labels = [0] * total
-        self._sensor_instance_ids = [0] * total
+        self._sensor_seen = bytearray(total)
+        self._sensor_values = array("d", [0.0]) * total
+        self._sensor_labels = array("q", [0]) * total
+        self._sensor_instance_ids = array("q", [0]) * total
 
     def _build_active_mask(self):
         """Index the enclosing AABB; deactivate voxels outside the 7-face hull."""
-        total = self.nx * self.ny * self.nz
-        self._active = [True] * total
-        for iz in range(self.nz):
-            for iy in range(self.ny):
-                for ix in range(self.nx):
-                    local = self._voxel_center_local(ix, iy, iz)
-                    # Mapper-local origin is the usable-volume center; the
-                    # kernel hull is ``container_link``. Do not use mapper
-                    # world here: eval dumps may place the grid in base_link.
-                    mid_z = 0.5 * (self._hull.floor_z + self._hull.ceiling_z)
-                    inside = contains_point(
-                        self._hull, (local[0], local[1], local[2] + mid_z))
-                    if inside and self._hull_local_inside is not None:
-                        inside = self._hull_local_inside(*local)
-                    if not inside:
-                        self._active[self._index(ix, iy, iz)] = False
+        self._active = active_mask(self)
 
     def _index(self, ix, iy, iz):
         return ix + self.nx * (iy + self.ny * iz)
@@ -254,75 +426,6 @@ class CargoVolumeMapper:
         wz = self.center[2] + local_z
         return wx, wy, wz
 
-    def _edge_segments_local(self):
-        """Hull edges in mapper-local coordinates (volume-center origin)."""
-        mid_z = 0.5 * (self._hull.floor_z + self._hull.ceiling_z)
-        segments = []
-        for start, end in hull_edges(self._hull):
-            segments.append((
-                (start[0], start[1], start[2] - mid_z),
-                (end[0], end[1], end[2] - mid_z),
-            ))
-        return segments
-
-    def _sample_segment_local(self, start, end):
-        length = math.sqrt(
-            (end[0] - start[0]) ** 2
-            + (end[1] - start[1]) ** 2
-            + (end[2] - start[2]) ** 2
-        )
-        steps = max(1, int(math.ceil(length / self.resolution)))
-        samples = []
-        for step in range(steps + 1):
-            t = float(step) / float(steps)
-            samples.append((
-                start[0] + (end[0] - start[0]) * t,
-                start[1] + (end[1] - start[1]) * t,
-                start[2] + (end[2] - start[2]) * t,
-            ))
-        return samples
-
-    def edge_points_world(self):
-        """Geometry-prior Cargo edge samples in world/base coordinates."""
-        points = []
-        seen = set()
-        for start, end in self._edge_segments_local():
-            for local in self._sample_segment_local(start, end):
-                key = tuple(int(round(v / self.resolution)) for v in local)
-                if key in seen:
-                    continue
-                seen.add(key)
-                points.append(list(self._local_to_world(*local)))
-        return points
-
-    def edge_boxes_world(self):
-        return [
-            {
-                "center": point,
-                "size": [self.resolution] * 3,
-                "source": "container_geometry_edge",
-            }
-            for point in self.edge_points_world()
-        ]
-
-    def _is_near_edge_local(self, local_x, local_y, local_z):
-        """True near a hull vertex (same role as the old AABB corner test)."""
-        tol = self.resolution * 1.5
-        tol2 = tol * tol
-        seen = set()
-        for start, end in self._edge_segments_local():
-            for vertex in (start, end):
-                key = tuple(round(v, 6) for v in vertex)
-                if key in seen:
-                    continue
-                seen.add(key)
-                dx = local_x - vertex[0]
-                dy = local_y - vertex[1]
-                dz = local_z - vertex[2]
-                if dx * dx + dy * dy + dz * dz <= tol2:
-                    return True
-        return False
-
     def mark_occupied_world(self, x, y, z, source=SOURCE_SENSOR,
                             label=0, instance_id=0):
         local = self._world_to_local(x, y, z)
@@ -339,6 +442,7 @@ class CargoVolumeMapper:
                 and 0 <= iz < self.nz):
             return
         idx = self._index(ix, iy, iz)
+        self._observe_voxels((idx,))
         if source == SOURCE_GEOMETRY:
             self._grid[idx] = self._occupancy.force_occupied(
                 idx, lock_geometry=True
@@ -393,6 +497,7 @@ class CargoVolumeMapper:
         if vox is None:
             return
         idx = self._index(*vox)
+        self._observe_voxels((idx,))
         self._grid[idx] = self._occupancy.apply_miss(idx)
         self._record_sensor_miss(idx)
         if self._grid[idx] == FREE and self._source[idx] != SOURCE_GEOMETRY:
@@ -400,7 +505,7 @@ class CargoVolumeMapper:
             self._labels[idx] = 0
             self._instance_ids[idx] = 0
 
-    def _raycast_indices(self, origin, hit):
+    def _raycast_indices(self, origin, hit, diagnostics=None):
         ox, oy, oz = origin
         hx, hy, hz = hit
         dist = math.sqrt((hx - ox) ** 2 + (hy - oy) ** 2 + (hz - oz) ** 2)
@@ -409,8 +514,31 @@ class CargoVolumeMapper:
         steps = int(dist / (self.resolution * 0.5))
         if steps < 1:
             return set()
+        # Clip only the loop bounds, preserving the original t=step/steps.
+        # AABB is conservative for the legacy active-voxel hull semantics.
+        local_origin = self._world_to_local(ox, oy, oz)
+        local_end = self._world_to_local(hx, hy, hz)
+        near, far = 0.0, 1.0
+        for start, end, half in zip(local_origin, local_end,
+                                    (self.inner_l*.5, self.inner_w*.5, self.inner_h*.5)):
+            delta = end-start
+            if delta == 0:
+                if abs(start) > half:
+                    return set()
+                continue
+            enter, leave = sorted(((-half-start)/delta, (half-start)/delta))
+            near, far = max(near, enter), min(far, leave)
+            if near > far:
+                return set()
+        # One sample of padding absorbs roundoff near the slab intersection;
+        # the unchanged voxel predicate rejects padding outside the map.
+        first = max(0, int(math.floor(near*steps))-1)
+        last = min(steps, int(math.ceil(far*steps))+2)
+        if diagnostics is not None:
+            diagnostics["ray_intersecting"] += 1
+            diagnostics["samples_visited"] += max(0, last-first)
         indices = set()
-        for step in range(steps):
+        for step in range(first, last):
             t = float(step) / float(steps)
             px = ox + (hx - ox) * t
             py = oy + (hy - oy) * t
@@ -421,59 +549,333 @@ class CargoVolumeMapper:
                 indices.add(self._index(*vox))
         return indices
 
-    def integrate_points(self, points, origin=None, labels=None, instance_ids=None):
-        """Integrate observed points into the voxel grid.
+    def integrate_points(self, points, origin=None, labels=None, instance_ids=None,
+                         ray_points=None):
+        """Integrate observed points with the batch kernel.
 
-        Args:
-            points: list of (x, y, z) in base frame.
-            origin: optional camera position for free-space raycasting.
-            labels: optional parallel list of per-point semantic class labels.
-            instance_ids: optional parallel list of per-point instance IDs.
+        The scalar loop lives in test/scalar_integrate_reference.py and is
+        the independent reference. Misses are applied before hits.
         """
-        hit_records = {}
-        miss_indices = set()
-        for i, pt in enumerate(points):
-            x, y, z = pt[0], pt[1], pt[2]
-            if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
-                continue
-            lbl = int(labels[i]) if labels is not None else 0
-            iid = int(instance_ids[i]) if instance_ids is not None else 0
-            local = self._world_to_local(x, y, z)
-            vox = self._local_to_voxel(*local)
-            if vox is not None:
-                hit_records[self._index(*vox)] = (x, y, z, lbl, iid)
+        return self._integrate_points_vectorized(
+            points, origin, labels, instance_ids, ray_points)
 
+    def _integrate_points_vectorized(self, points, origin=None,
+                                     labels=None, instance_ids=None,
+                                     ray_points=None):
+        """Batch-numpy path: identical results to the original loop.
+
+        Kernels are module-level pure functions (numba-ready); this
+        method unpacks mapper state into scalar/array parameters,
+        calls the kernels, then applies grid/ledger updates in the
+        same order as the original (misses first, then hits).
+        """
+        diagnostics = dict(rays_selected=0, ray_intersecting=0,
+                           samples_visited=0)
+        resolution = self.resolution
+        half_l = self.inner_l * 0.5
+        half_w = self.inner_w * 0.5
+        half_h = self.inner_h * 0.5
+        cos_yaw = math.cos(self.yaw)
+        sin_yaw = math.sin(self.yaw)
+        cos_neg = math.cos(-self.yaw)
+        sin_neg = math.sin(-self.yaw)
+        active = self._active
+        nx, ny, nz = self.nx, self.ny, self.nz
+
+        # --- Hit marking (batch) ---
+        pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        finite = np.isfinite(pts).all(axis=1)
+        # JIT path: use compiled kernels with bool-array active mask
+        if _USE_JIT:
+            active_bool = (np.frombuffer(bytes(active), dtype=np.uint8)
+                           .astype(np.bool_) if active is not None
+                           else None)
+            local = _jit_world_to_local(
+                pts[finite], np.asarray(self.center, dtype=np.float64),
+                cos_neg, sin_neg)
+            valid_hit, hit_flat = _jit_local_to_voxel(
+                local, resolution, half_l, half_w, half_h,
+                nx, ny, nz, active_bool)
+        else:
+            local = _kernel_world_to_local(
+                pts[finite], self.center, cos_neg, sin_neg,
+                cos_yaw, sin_yaw)
+            valid_hit, hit_flat = _kernel_local_to_voxel(
+                local, resolution, half_l, half_w, half_h, nx, ny, nz,
+                active)
+
+        # Build hit_records: flat_index -> (x, y, z, label, instance)
+        # Later points overwrite earlier ones (same as dict assignment
+        # in the original loop's insertion order).
+        hit_records = {}
+        valid_indices = np.flatnonzero(finite)[valid_hit]
+        for i in range(len(valid_indices)):
+            src = valid_indices[i]
+            pt = points[src]
+            lbl = int(labels[src]) if labels is not None else 0
+            iid = int(instance_ids[src]) if instance_ids is not None else 0
+            hit_records[int(hit_flat[i])] = (pt[0], pt[1], pt[2], lbl, iid)
+
+        # --- Ray casting (batch) ---
+        miss_indices = set()
         if origin is not None:
-            ox, oy, oz = origin
-            # The free-space ray walk is O(points * ray_steps) in pure Python;
-            # subsample the rays (not the hit marks) when the cloud is large so
-            # integrate stays interactive. The coarse voxel grid tolerates
-            # fewer rays without losing free-space coverage.
-            ray_points = points
-            if self.max_raycast_points and len(points) > self.max_raycast_points:
-                stride = max(1, len(points) // self.max_raycast_points)
-                ray_points = points[::stride]
-            for pt in ray_points:
-                x, y, z = pt[0], pt[1], pt[2]
-                if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
-                    continue
-                miss_indices.update(
-                    self._raycast_indices((ox, oy, oz), (x, y, z))
-                )
+            ray_pts = ray_points if ray_points is not None else points
+            if self.max_raycast_points and \
+                    len(ray_pts) > self.max_raycast_points:
+                stride = max(1, len(ray_pts) // self.max_raycast_points)
+                ray_pts = ray_pts[::stride]
+            ray_arr = np.asarray(ray_pts, dtype=np.float64).reshape(-1, 3)
+            ray_finite = ray_arr[np.isfinite(ray_arr).all(axis=1)]
+            diagnostics["rays_selected"] = len(ray_finite)
+            origin_arr = np.asarray(origin, dtype=np.float64)
+            miss_flat, ri, sv = _kernel_raycast(
+                origin_arr, ray_finite, resolution, self.center,
+                cos_neg, sin_neg, cos_yaw, sin_yaw,
+                half_l, half_w, half_h, nx, ny, nz, active)
+            diagnostics['ray_intersecting'] = ri
+            diagnostics['samples_visited'] = sv
+            miss_indices = set(int(x) for x in miss_flat)
+
         miss_indices.difference_update(hit_records)
-        for idx in miss_indices:
-            self._grid[idx] = self._occupancy.apply_miss(idx)
-            self._record_sensor_miss(idx)
-            if self._grid[idx] == FREE and self._source[idx] != SOURCE_GEOMETRY:
-                self._source[idx] = SOURCE_NONE
-                self._labels[idx] = 0
-                self._instance_ids[idx] = 0
-        for x, y, z, lbl, iid in hit_records.values():
-            self.mark_occupied_world(
-                x, y, z, label=lbl, instance_id=iid
-            )
+
+        # --- Evidence notification BEFORE mutation (same contract as
+        # the scalar loop, lines above: _observe_voxels precedes the
+        # grid writes). The batch kernels used to notify AFTER the
+        # state change, so record_before captured the NEW evidence as
+        # "old" -> before==after -> empty voxel deltas -> every
+        # derived index/export/replica was blind to vectorized fusion
+        # writes (caught by test_500_mutations_per_seed on the merged
+        # tree 2026-10-27).
+        self._observe_voxels(miss_indices)
+        self._observe_voxels(hit_records)
+
+        # --- Batch grid updates: misses then hits, same order ---
+        # All bytearray/array fields support the buffer protocol ->
+        # np.frombuffer gives zero-copy WRITABLE views for vectorized
+        # ops. Only _occupancy.values is a Python list (read with
+        # fromiter, write with loop -- still far cheaper than 158k
+        # per-cell function calls).
+        self._batch_miss_update(miss_indices)
+        self._batch_hit_update(hit_records)
+
         if hit_records or miss_indices:
             self._revision += 1
+        return diagnostics
+
+    def _batch_miss_update(self, miss_indices):
+        """Vectorized miss update: log-odds + grid + sensor ledger.
+
+        Produces IDENTICAL results to the per-cell loop
+        (apply_miss + _record_sensor_miss + source/label reset).
+
+        Geometry-lock semantics (gen3 I3 fix, review_three_issues): the
+        scalar apply_miss BYPASSES locked cells entirely -- the live
+        occupancy value is protected while the sensor shadow ledger
+        still records the miss (so removing a placed box restores the
+        true sensor view). The batch kernel used to decrement every
+        index, so repeated free-space observations could erode a locked
+        box's occupancy to FREE -- a correctness defect, not rounding
+        noise (locked_miss_result.json: 3.5 -> FREE after 10 misses).
+        """
+        if not miss_indices:
+            return
+        occ = self._occupancy
+        # Sorted for deterministic write order (same as original loop).
+        idx_arr = np.fromiter(sorted(miss_indices), dtype=np.int64,
+                              count=len(miss_indices))
+        # -- geometry lock mask (protects the LIVE occupancy only).
+        # geometry_locked is a Python list -> gather per index.
+        locked = np.fromiter(
+            map(occ.geometry_locked.__getitem__, idx_arr),
+            dtype=np.bool_, count=len(idx_arr))
+        # -- occupancy values (Python list: read gen, compute numpy, write loop)
+        values = occ.values
+        if isinstance(values, list):
+            old_vals = np.fromiter(map(values.__getitem__, idx_arr),
+                                    dtype=np.float64, count=len(idx_arr))
+        else:
+            old_vals = np.frombuffer(values, dtype=np.float64)[idx_arr]
+        if occ.enabled:
+            candidate = np.maximum(
+                occ.minimum,
+                np.minimum(occ.maximum,
+                           old_vals + occ.miss_increment))
+        else:
+            # apply_miss disabled mode: unlocked cells go to minimum.
+            candidate = np.full(len(idx_arr), occ.minimum,
+                                dtype=np.float64)
+        new_vals = np.where(locked, old_vals, candidate)
+        if isinstance(values, list):
+            for j in range(len(idx_arr)):
+                values[int(idx_arr[j])] = float(new_vals[j])
+        else:
+            values_arr = np.frombuffer(values, dtype=np.float64)
+            values_arr[idx_arr] = new_vals
+        # -- grid classification (bytearray -> zero-copy view)
+        grid_view = np.frombuffer(self._grid, dtype=np.uint8)
+        grid_new = np.where(
+            new_vals >= occ.occupied_threshold, np.uint8(OCCUPIED),
+            np.where(new_vals <= occ.free_threshold, np.uint8(FREE),
+                     np.uint8(UNKNOWN)))
+        grid_view[idx_arr] = grid_new
+        # -- sensor values (array('d') -> zero-copy view)
+        sv_view = np.frombuffer(self._sensor_values, dtype=np.float64)
+        sv_old = sv_view[idx_arr]
+        sv_new = np.maximum(occ.minimum,
+                             np.minimum(occ.maximum,
+                                        sv_old + occ.miss_increment))
+        sv_view[idx_arr] = sv_new
+        # -- sensor seen (bytearray)
+        ss_view = np.frombuffer(self._sensor_seen, dtype=np.uint8)
+        ss_view[idx_arr] = 1
+        # -- conditional label/instance reset (sensor FREE)
+        sensor_free = sv_new <= occ.free_threshold
+        reset_idx = idx_arr[sensor_free]
+        if len(reset_idx):
+            sl_view = np.frombuffer(self._sensor_labels, dtype=np.int64)
+            si_view = np.frombuffer(self._sensor_instance_ids,
+                                    dtype=np.int64)
+            sl_view[reset_idx] = 0
+            si_view[reset_idx] = 0
+        # -- source/label/instance reset (grid FREE and not geometry)
+        grid_free = grid_new == FREE
+        src_view = np.frombuffer(self._source, dtype=np.uint8)
+        not_geom = src_view[idx_arr] != SOURCE_GEOMETRY
+        reset2 = idx_arr[grid_free & not_geom]
+        if len(reset2):
+            src_view[reset2] = SOURCE_NONE
+            lbl_view = np.frombuffer(self._labels, dtype=np.int64)
+            inst_view = np.frombuffer(self._instance_ids,
+                                      dtype=np.int64)
+            lbl_view[reset2] = 0
+            inst_view[reset2] = 0
+        # NOTE: no _observe_voxels here -- the orchestrator notifies
+        # the delta builder BEFORE mutation (record_before contract).
+
+    def _batch_hit_update(self, hit_records):
+        """Vectorized hit update: log-odds + grid + sensor + labels.
+
+        Produces IDENTICAL results to per-cell mark_occupied_world
+        (apply_hit + _record_sensor_hit + source/label/instance).
+        """
+        if not hit_records:
+            return
+        occ = self._occupancy
+        # hit_records: flat_idx -> (x, y, z, label, instance_id)
+        # Process in dict insertion order (same as original loop).
+        idx_list = list(hit_records.keys())
+        idx_arr = np.array(idx_list, dtype=np.int64)
+        labels_arr = np.array(
+            [hit_records[i][3] for i in idx_list], dtype=np.int64)
+        instances_arr = np.array(
+            [hit_records[i][4] for i in idx_list], dtype=np.int64)
+        # -- occupancy values (Python list)
+        values = occ.values
+        if isinstance(values, list):
+            old_vals = np.fromiter(map(values.__getitem__, idx_arr),
+                                    dtype=np.float64, count=len(idx_arr))
+        else:
+            old_vals = np.frombuffer(values, dtype=np.float64)[idx_arr]
+        new_vals = np.maximum(occ.minimum,
+                              np.minimum(occ.maximum,
+                                         old_vals + occ.hit_increment))
+        if isinstance(values, list):
+            for j in range(len(idx_arr)):
+                values[int(idx_arr[j])] = float(new_vals[j])
+        else:
+            values_arr = np.frombuffer(values, dtype=np.float64)
+            values_arr[idx_arr] = new_vals
+        # -- grid
+        grid_view = np.frombuffer(self._grid, dtype=np.uint8)
+        grid_new = np.where(
+            new_vals >= occ.occupied_threshold, np.uint8(OCCUPIED),
+            np.where(new_vals <= occ.free_threshold, np.uint8(FREE),
+                     np.uint8(UNKNOWN)))
+        grid_view[idx_arr] = grid_new
+        # -- sensor values
+        sv_view = np.frombuffer(self._sensor_values, dtype=np.float64)
+        sv_old = sv_view[idx_arr]
+        sv_new = np.minimum(occ.maximum,
+                             np.maximum(occ.minimum,
+                                        sv_old + occ.hit_increment))
+        sv_view[idx_arr] = sv_new
+        # -- sensor seen
+        ss_view = np.frombuffer(self._sensor_seen, dtype=np.uint8)
+        ss_view[idx_arr] = 1
+        # -- sensor labels / instances (unconditional for hits)
+        sl_view = np.frombuffer(self._sensor_labels, dtype=np.int64)
+        si_view = np.frombuffer(self._sensor_instance_ids,
+                                dtype=np.int64)
+        sl_view[idx_arr] = labels_arr
+        si_view[idx_arr] = instances_arr
+        # -- source: set if currently NONE
+        src_view = np.frombuffer(self._source, dtype=np.uint8)
+        is_none = src_view[idx_arr] == SOURCE_NONE
+        set_src = idx_arr[is_none]
+        if len(set_src):
+            src_view[set_src] = SOURCE_SENSOR
+        # -- labels: sensor source or label==0 -> write
+        lbl_view = np.frombuffer(self._labels, dtype=np.int64)
+        inst_view = np.frombuffer(self._instance_ids,
+                                  dtype=np.int64)
+        old_labels = lbl_view[idx_arr]
+        write_lbl = (old_labels == 0)  # source is SENSOR for all hits
+        set_lbl = idx_arr[write_lbl]
+        if len(set_lbl):
+            mask_positions = np.flatnonzero(write_lbl)
+            lbl_view[set_lbl] = labels_arr[mask_positions]
+            inst_view[set_lbl] = instances_arr[mask_positions]
+        # NOTE: no _observe_voxels here -- the orchestrator notifies
+        # the delta builder BEFORE mutation (record_before contract).
+
+    def integrate_depth_view(self, points, origin):
+        """Integrate full-depth returns, keeping model walls out of cargo hits.
+
+        This owner-side operation consumes measured points, never synthetic
+        floor/geometry rays. Rejected or terminal bands remain unobserved.
+        It does not stamp/confirm the map; the settled-view adapter owns that.
+        """
+        from luggage_perception.depth_view_rays import admit_depth_ray
+        mid_z=0.5*(self._hull.floor_z+self._hull.ceiling_z)
+        def hull_point(point):
+            x,y,z=self._world_to_local(*point)
+            return x,y,z+mid_z
+        def world_point(point):
+            return self._local_to_world(point[0],point[1],point[2]-mid_z)
+        camera=hull_point(origin)
+        rays=[];hits={};rejected=0
+        for point in points:
+            ray=admit_depth_ray(self._hull,camera,hull_point(point),math.sqrt(3.)*self.resolution)
+            if ray is None:
+                rejected+=1
+                continue
+            rays.append(world_point(ray.free_end))
+            if ray.obstacle is not None:
+                hit=world_point(ray.obstacle)
+                voxel=self._local_to_voxel(*self._world_to_local(*hit))
+                if voxel is not None:hits[self._index(*voxel)]=hit
+        rays_admitted = len(rays)
+        if self.max_raycast_points and len(rays)>self.max_raycast_points:
+            stride=int(math.ceil(len(rays)/self.max_raycast_points))
+            # A fixed prefix repeats the same blind spots in ordered depth
+            # clouds. Rotate across fresh admitted acquisitions, retaining the
+            # same per-frame ray budget and all terminal/hit safety rules.
+            phase = self._depth_ray_phase % stride
+            rays=rays[phase::stride]
+            self._depth_ray_phase += 1
+        misses=set()
+        for end in rays:misses.update(self._raycast_indices(origin,end))
+        misses.difference_update(hits)
+        self._observe_voxels(misses)
+        self._observe_voxels(hits)
+        self._batch_miss_update(misses)
+        for hit in hits.values():self.mark_occupied_world(*hit)
+        if hits or misses:self._revision+=1
+        return dict(rays=len(rays),hits=len(hits),free_voxels=len(misses),
+                    rays_admitted=rays_admitted,
+                    rays_sampled=(len(rays) if self.max_raycast_points
+                                  else rays_admitted),
+                    rejected=rejected,observed_points=list(hits.values()))
 
     def state_at(self, index):
         return self._occupancy.state_at(index)
@@ -560,7 +962,7 @@ class CargoVolumeMapper:
         return None
 
     def mark_placed_box(self, center, size, yaw=0.0, tolerance=0.05,
-                        measured_source=None):
+                        measured_source=None, verify_anchor=None):
         """Mark an axis/yaw-aligned box as occupied (size: width, depth, height).
 
         Samples at the voxel resolution so thin boxes are not skipped. ``center``
@@ -568,7 +970,10 @@ class CargoVolumeMapper:
         Uses SOURCE_GEOMETRY so the map can distinguish this from sensor data.
         ``measured_source`` records v2 commit provenance when supplied; it is
         absent (not defaulted) for v1 commits, so v1 ledger output is
-        unchanged.
+        unchanged. ``verify_anchor`` ({request_id, delta_m, tolerance_m})
+        records the accepted slot-vs-measurement agreement on the ledger so
+        the commit stays auditable against the request that carried the
+        anchor; absent for un-anchored commits.
         """
         center = [float(v) for v in center]
         size = [float(v) for v in size]
@@ -579,6 +984,9 @@ class CargoVolumeMapper:
             raise ValueError("placed box needs finite xyz and positive size")
         if self._matching_placed_box(center, size, yaw, tolerance) is not None:
             return False
+        if not any(self._iter_placed_box_voxels(center, size, float(yaw))):
+            raise ValueError(
+                "placed box rasterizes to zero voxels")
         record = {
             "center": center,
             "size": size,
@@ -586,6 +994,24 @@ class CargoVolumeMapper:
         }
         if measured_source is not None:
             record["measured_source"] = str(measured_source)
+        if verify_anchor is not None:
+            delta = float(verify_anchor["delta_m"])
+            tol = float(verify_anchor["tolerance_m"])
+            if not (math.isfinite(delta) and math.isfinite(tol)
+                    and tol > 0.0 and delta <= tol):
+                raise ValueError(
+                    "verify anchor needs a finite delta within tolerance")
+            record["verify_anchor"] = {
+                "request_id": str(verify_anchor.get("request_id") or ""),
+                "delta_m": delta,
+                "tolerance_m": tol,
+                # Declared measurement source ("sim_gt_pose" for the
+                # Gazebo readback; the deploy path declares its real
+                # observation source). Provenance only — never a
+                # substitute for a real observation in deployment.
+                "verify_source": str(verify_anchor.get("verify_source")
+                                     or "undeclared"),
+            }
         self._placed_boxes.append(record)
         self._rasterize_placed_box(
             record["center"], record["size"], record["yaw"])
@@ -626,6 +1052,8 @@ class CargoVolumeMapper:
         force) so the cell equals the no-geometry control exactly.
         """
         occupancy = self._occupancy
+        indices = tuple(indices)
+        self._observe_voxels(indices)
         for idx in indices:
             occupancy.clear(idx)
             if self._sensor_seen[idx]:
@@ -665,6 +1093,8 @@ class CargoVolumeMapper:
             }
             if "measured_source" in record:
                 entry["measured_source"] = str(record["measured_source"])
+            if "verify_anchor" in record:
+                entry["verify_anchor"] = dict(record["verify_anchor"])
             snapshot.append(entry)
         return snapshot
 
@@ -719,41 +1149,42 @@ class CargoVolumeMapper:
 
     def _rasterize_placed_box(self, center, size, yaw=0.0):
         """Rasterize a committed box without changing history/revision."""
-        for idx in self._iter_placed_box_voxels(center, size, yaw):
+        indices = tuple(self._iter_placed_box_voxels(center, size, yaw))
+        self._observe_voxels(indices)
+        if self._voxel_delta is not None:
+            self._voxel_delta.record_geometry(center, size, yaw, indices)
+        for idx in indices:
             self._grid[idx] = self._occupancy.force_occupied(
                 idx, lock_geometry=True)
             if self._source[idx] == SOURCE_NONE:
                 self._source[idx] = SOURCE_GEOMETRY
 
     def fill_unoccupied_as_free(self):
-        """Geometry GT: usable-hull empty cells are known-free."""
-        for i, cell in enumerate(self._grid):
-            if self._active is not None and not self._active[i]:
-                continue
-            if cell != OCCUPIED:
-                self._grid[i] = FREE
+        """Geometry GT: usable-hull empty cells are known-free.
 
-    def stats(self):
-        unknown = 0
-        free = 0
-        occupied = 0
-        total = 0
-        inactive = 0
-        label_dist = {}
+        Mutates voxel state, so it advances the revision like every other
+        grid mutation (B1: a revision-frozen snapshot contract cannot
+        tolerate unmetered writes; the GT dump path does not read the
+        revision afterwards)."""
+        changed = False
         for i, cell in enumerate(self._grid):
             if self._active is not None and not self._active[i]:
-                inactive += 1
                 continue
-            total += 1
             if cell == UNKNOWN:
-                unknown += 1
-            elif cell == FREE:
-                free += 1
-            elif cell == OCCUPIED:
-                occupied += 1
-                if self._labels[i] > 0:
-                    lbl = self._labels[i]
-                    label_dist[lbl] = label_dist.get(lbl, 0) + 1
+                self._observe_voxels((i,))
+                self._grid[i] = FREE
+                changed = True
+        if changed:
+            self._revision += 1
+
+    def occupancy_summary(self):
+        """Counts for integration responses; does not enumerate frontiers."""
+        if self._query_cache is not None:
+            result = self._query_cache.as_dict()
+            result.pop("frontier_count")
+            result["map_revision"] = self._revision
+            return result
+        total, inactive, unknown, free, occupied, label_dist = occupancy_counts(self)
         voxel_vol = self.resolution ** 3
         return {
             "total_voxels": total,
@@ -765,14 +1196,50 @@ class CargoVolumeMapper:
             "occupancy_ratio": float(occupied) / total if total else 0.0,
             "occupied_volume": float(occupied) * voxel_vol,
             "free_volume": float(free) * voxel_vol,
-            "frontier_count": len(self._frontier_indices()),
             "label_distribution": {str(k): v for k, v in label_dist.items()},
             "map_revision": self._revision,
             "committed_box_count": len(self._placed_boxes),
             "geometry_hash": self.geometry_hash,
         }
 
+    def stats(self):
+        return dict(self.occupancy_summary(), frontier_count=self.frontier_count())
+
+    def frontier_count(self):
+        """Count of unknown active cells with an observed 6-neighbour.
+
+        Vectorized twin of ``_frontier_indices`` (same predicate, count
+        only; oracle-tested equal). The pure-Python triple loop this
+        replaces took ~6.5 s per call on the 1cm grid (4.2M voxels) and,
+        by holding the GIL for that span, delayed this process's
+        identity-heartbeat RECEPTION past the 2 s readiness lease --
+        the PEER_LEASE_EXPIRED admission blockage (ADMISSION-DIAG
+        2026-10-25, evidence placement_structural_g3_20261024/sim).
+        """
+        if getattr(self, "_query_cache", None) is not None:
+            return self._query_cache.values["frontier_count"]
+        import numpy as np
+        from .cargo_grid_projection import _arrays
+        grid, active = _arrays(self)
+        observed = (grid == FREE) | (grid == OCCUPIED)
+        unknown = (grid == UNKNOWN) & active
+        padded = np.pad(observed, 1, constant_values=False)
+        neighbour_observed = np.zeros(observed.shape, dtype=bool)
+        neighbour_observed |= padded[:-2, 1:-1, 1:-1]
+        neighbour_observed |= padded[2:, 1:-1, 1:-1]
+        neighbour_observed |= padded[1:-1, :-2, 1:-1]
+        neighbour_observed |= padded[1:-1, 2:, 1:-1]
+        neighbour_observed |= padded[1:-1, 1:-1, :-2]
+        neighbour_observed |= padded[1:-1, 1:-1, 2:]
+        return int(np.count_nonzero(unknown & neighbour_observed))
+
     def _frontier_indices(self):
+        if self._query_read_owner is not None:
+            return self._query_read_owner.legacy_frontier_indices(self)
+        return self._frontier_indices_full()
+
+    def _frontier_indices_full(self):
+        """Preserved scalar oracle; never used by published stats."""
         frontier = []
         for ix in range(self.nx):
             for iy in range(self.ny):
@@ -830,66 +1297,24 @@ class CargoVolumeMapper:
         """
         half_l = self.inner_l * 0.5
         half_w = self.inner_w * 0.5
-        height = [[0.0] * self.ny for _ in range(self.nx)]
-        clearance = [[self.inner_h] * self.ny for _ in range(self.nx)]
-        state = [["unknown"] * self.ny for _ in range(self.nx)]
-        known_ratio = [[0.0] * self.ny for _ in range(self.nx)]
-        confidence = [["none"] * self.ny for _ in range(self.nx)]
-        semantic_label = [[0] * self.ny for _ in range(self.nx)]
-
-        for ix in range(self.nx):
-            for iy in range(self.ny):
-                top_occ = None
-                top_source = SOURCE_NONE
-                observed = 0
-                has_unknown = False
-                label_counts = {}
-                active_in_col = 0
-                for iz in range(self.nz):
-                    idx = self._index(ix, iy, iz)
-                    if self._active is not None and not self._active[idx]:
-                        continue
-                    active_in_col += 1
-                    cell = self._grid[idx]
-                    if cell == UNKNOWN:
-                        has_unknown = True
-                        continue
-                    observed += 1
-                    if cell == OCCUPIED:
-                        top_occ = iz
-                        top_source = self._source[idx]
-                        lbl = self._labels[idx]
-                        if lbl > 0:
-                            label_counts[lbl] = label_counts.get(lbl, 0) + 1
-                if top_occ is not None:
-                    surface = (top_occ + 1) * self.resolution
-                    surface = min(surface, self.inner_h)
-                    height[ix][iy] = surface
-                    clearance[ix][iy] = max(0.0, self.inner_h - surface)
-                    state[ix][iy] = "occupied"
-                    if top_source == SOURCE_SENSOR:
-                        confidence[ix][iy] = "sensor"
-                    elif top_source == SOURCE_GEOMETRY:
-                        confidence[ix][iy] = "geometry"
-                    else:
-                        confidence[ix][iy] = "sensor"
-                    if label_counts:
-                        semantic_label[ix][iy] = max(
-                            label_counts, key=label_counts.get)
-                elif not has_unknown:
-                    state[ix][iy] = "free"
-                    confidence[ix][iy] = "sensor"
-                else:
-                    state[ix][iy] = "unknown"
-                    confidence[ix][iy] = "none"
-                known_ratio[ix][iy] = (
-                    float(observed) / float(active_in_col) if active_in_col else 0.0)
+        source = getattr(self, '_surface_dict_source', None)
+        if source is not None:
+            memoized = source.surface_as_dict()
+            if memoized is not None:
+                columns = memoized
+            else:
+                columns = (self._surface_cache.as_dict()
+                           if self._surface_cache is not None
+                           else surface_columns(self))
+        else:
+            columns = (self._surface_cache.as_dict() if self._surface_cache is not None
+                       else surface_columns(self))
 
         return {
             "frame": "container_local",
             "map_revision": self._revision,
             "geometry_hash": self.geometry_hash,
-            "geometry_descriptor": dict(self.geometry_descriptor),
+            "geometry_descriptor": deepcopy(self.geometry_descriptor),
             "resolution": self.resolution,
             "nx": self.nx,
             "ny": self.ny,
@@ -899,15 +1324,15 @@ class CargoVolumeMapper:
             "origin_local": [-half_l, -half_w],
             "center_base": list(self.center),
             "yaw": self.yaw,
-            "height": height,
-            "clearance": clearance,
-            "state": state,
-            "known_ratio": known_ratio,
-            "confidence": confidence,
-            "semantic_label": semantic_label,
+            "height": columns["height"],
+            "clearance": columns["clearance"],
+            "state": columns["state"],
+            "known_ratio": columns["known_ratio"],
+            "confidence": columns["confidence"],
+            "semantic_label": columns["semantic_label"],
         }
 
-    def surface_contract_v2(self, scene_revision, request_id):
+    def surface_contract_v2(self, scene_revision, request_id, *, projection=None):
         """F06 v2: strict container-origin surface record for this map.
 
         ``surface_z_container`` is measured from the container origin
@@ -921,7 +1346,7 @@ class CargoVolumeMapper:
 
         floor = self.center[2] - 0.5 * self.inner_h
         ceiling = self.center[2] + 0.5 * self.inner_h
-        legacy = self.surface_map_2d()
+        legacy = self.surface_map_2d() if projection is None else projection
         surface_z, state, confidence, relative = [], [], [], []
         for ix in range(self.nx):
             z_row, s_row, c_row, r_row = [], [], [], []
@@ -979,430 +1404,3 @@ class CargoVolumeMapper:
         ly = -half_w + (iy + 0.5) * self.resolution
         lz = -self.inner_h * 0.5 if local_z is None else local_z
         return self._local_to_world(lx, ly, lz)
-
-    def occupied_clusters_world(self):
-        """Return coarse occupied voxel centers for inspector packing heuristics."""
-        centers = []
-        step = max(1, int(0.25 / self.resolution))
-        for ix in range(0, self.nx, step):
-            for iy in range(0, self.ny, step):
-                for iz in range(0, self.nz, step):
-                    if self._grid[self._index(ix, iy, iz)] != OCCUPIED:
-                        continue
-                    lx, ly, lz = self._voxel_center_local(ix, iy, iz)
-                    centers.append({
-                        "center": list(self._local_to_world(lx, ly, lz)),
-                        "size": [self.resolution * 2] * 3,
-                        "source": "voxel_map",
-                    })
-        return centers
-
-    def observed_edge_points_world(self, max_points=64):
-        """Depth-observed occupied voxels that lie near geometry-prior edges."""
-        points = []
-        for ix in range(self.nx):
-            for iy in range(self.ny):
-                for iz in range(self.nz):
-                    if self._grid[self._index(ix, iy, iz)] != OCCUPIED:
-                        continue
-                    lx, ly, lz = self._voxel_center_local(ix, iy, iz)
-                    if not self._is_near_edge_local(lx, ly, lz):
-                        continue
-                    points.append(list(self._local_to_world(lx, ly, lz)))
-
-        if len(points) <= max_points:
-            return points
-        step = max(1, len(points) // max_points)
-        return points[::step][:max_points]
-
-    def _iter_voxel_centers_base(self, state_filter, subsample=1, max_points=MAX_VOXEL_MARKERS):
-        points = []
-        step = max(1, int(subsample))
-        for ix in range(0, self.nx, step):
-            for iy in range(0, self.ny, step):
-                for iz in range(0, self.nz, step):
-                    idx = self._index(ix, iy, iz)
-                    if self._active is not None and not self._active[idx]:
-                        continue
-                    if self._grid[idx] not in state_filter:
-                        continue
-                    lx, ly, lz = self._voxel_center_local(ix, iy, iz)
-                    points.append(self._local_to_world(lx, ly, lz))
-                    if len(points) >= max_points:
-                        return points
-        return points
-
-    def to_octomap_msg(self, frame_id, stamp, include_free=True):
-        """Export observed voxels as octomap_msgs/Octomap for RViz OctoMap display."""
-        if octomap is None:
-            return None
-
-        from octomap_msgs.msg import Octomap
-
-        tree = octomap.OcTree(self.resolution)
-        for ix in range(self.nx):
-            for iy in range(self.ny):
-                for iz in range(self.nz):
-                    idx = self._index(ix, iy, iz)
-                    if self._active is not None and not self._active[idx]:
-                        continue
-                    state = self._grid[idx]
-                    if state == UNKNOWN:
-                        continue
-                    if state == FREE and not include_free:
-                        continue
-                    lx, ly, lz = self._voxel_center_local(ix, iy, iz)
-                    bx, by, bz = self._local_to_world(lx, ly, lz)
-                    # python-octomap (the .so in this container) has no
-                    # Point3d; OcTree.updateNode takes a 3-vector + occupied.
-                    tree.updateNode((bx, by, bz), state == OCCUPIED)
-
-        msg = Octomap()
-        msg.header.frame_id = frame_id
-        msg.header.stamp = stamp
-        msg.binary = True
-        msg.id = b"OcTree"
-        msg.resolution = self.resolution
-        binary_data = tree.writeBinary()
-        if isinstance(binary_data, str):
-            msg.data = [ord(ch) for ch in binary_data]
-        else:
-            msg.data = list(bytearray(binary_data))
-        return msg
-
-    @staticmethod
-    def _box_line_points(length, width, height, z_base=0.0):
-        """12 edges of an axis-aligned box in container_link (bottom-center origin)."""
-        hx = length * 0.5
-        hy = width * 0.5
-        z0 = z_base
-        z1 = z_base + height
-        corners = [
-            (-hx, -hy, z0), (hx, -hy, z0), (hx, hy, z0), (-hx, hy, z0),
-            (-hx, -hy, z1), (hx, -hy, z1), (hx, hy, z1), (-hx, hy, z1),
-        ]
-        edges = (
-            (0, 1), (1, 2), (2, 3), (3, 0),
-            (4, 5), (5, 6), (6, 7), (7, 4),
-            (0, 4), (1, 5), (2, 6), (3, 7),
-        )
-        points = []
-        for start, end in edges:
-            points.append(corners[start])
-            points.append(corners[end])
-        return points
-
-    @staticmethod
-    def _make_color(r, g, b, a=1.0):
-        from std_msgs.msg import ColorRGBA
-
-        color = ColorRGBA()
-        color.r = float(r)
-        color.g = float(g)
-        color.b = float(b)
-        color.a = float(a)
-        return color
-
-    @staticmethod
-    def _append_line_marker(markers, marker_id, frame_id, stamp, points, color, scale=0.04):
-        from geometry_msgs.msg import Point, Quaternion
-        from visualization_msgs.msg import Marker
-
-        marker = Marker()
-        marker.header.frame_id = frame_id
-        marker.header.stamp = stamp
-        marker.ns = MARKER_NS
-        marker.id = marker_id
-        marker.type = Marker.LINE_LIST
-        marker.action = Marker.ADD
-        marker.pose.orientation = Quaternion(w=1.0)
-        marker.scale.x = scale
-        marker.color = color
-        for x, y, z in points:
-            pt = Point()
-            pt.x = x
-            pt.y = y
-            pt.z = z
-            marker.points.append(pt)
-        markers.markers.append(marker)
-
-    @staticmethod
-    def _append_cube_list_marker(markers, marker_id, frame_id, stamp, points, color, cube_scale):
-        from geometry_msgs.msg import Point, Quaternion
-        from visualization_msgs.msg import Marker
-
-        if not points:
-            return
-        marker = Marker()
-        marker.header.frame_id = frame_id
-        marker.header.stamp = stamp
-        marker.ns = MARKER_NS
-        marker.id = marker_id
-        marker.type = Marker.CUBE_LIST
-        marker.action = Marker.ADD
-        marker.pose.orientation = Quaternion(w=1.0)
-        marker.scale.x = cube_scale
-        marker.scale.y = cube_scale
-        marker.scale.z = cube_scale
-        marker.color = color
-        for x, y, z in points:
-            pt = Point()
-            pt.x = x
-            pt.y = y
-            pt.z = z
-            marker.points.append(pt)
-        markers.markers.append(marker)
-
-    @staticmethod
-    def _append_sphere_list_marker(markers, marker_id, frame_id, stamp, points, color, diameter):
-        from geometry_msgs.msg import Point, Quaternion
-        from visualization_msgs.msg import Marker
-
-        if not points:
-            return
-        marker = Marker()
-        marker.header.frame_id = frame_id
-        marker.header.stamp = stamp
-        marker.ns = MARKER_NS
-        marker.id = marker_id
-        marker.type = Marker.SPHERE_LIST
-        marker.action = Marker.ADD
-        marker.pose.orientation = Quaternion(w=1.0)
-        marker.scale.x = diameter
-        marker.scale.y = diameter
-        marker.scale.z = diameter
-        marker.color = color
-        for x, y, z in points:
-            pt = Point()
-            pt.x = x
-            pt.y = y
-            pt.z = z
-            marker.points.append(pt)
-        markers.markers.append(marker)
-
-    def _container_wireframe_markers(self, scene_config, stamp):
-        from visualization_msgs.msg import Marker, MarkerArray
-
-        if scene_config is None:
-            return MarkerArray()
-
-        from luggage_description.scene_tf_config_utils import (  # noqa: WPS433
-            container_aperture_edges_in_container,
-            container_inner_hull_edges_in_container,
-            container_opening_in_container,
-            container_outer_dimensions,
-        )
-
-        markers = MarkerArray()
-        delete_all = Marker()
-        delete_all.action = Marker.DELETEALL
-        delete_all.ns = MARKER_NS
-        markers.markers.append(delete_all)
-
-        outer_l, outer_w, outer_h = container_outer_dimensions(scene_config)
-        container_frame = "container_link"
-
-        self._append_line_marker(
-            markers,
-            1,
-            container_frame,
-            stamp,
-            self._box_line_points(outer_l, outer_w, outer_h),
-            self._make_color(0.6, 0.6, 0.6, 1.0),
-            scale=0.055,
-        )
-        hull_pts = []
-        for start, end in container_inner_hull_edges_in_container(scene_config):
-            hull_pts.append(tuple(start))
-            hull_pts.append(tuple(end))
-        self._append_line_marker(
-            markers,
-            2,
-            container_frame,
-            stamp,
-            hull_pts,
-            self._make_color(0.0, 0.9, 0.9, 1.0),
-            scale=0.045,
-        )
-        aper_pts = []
-        for start, end in container_aperture_edges_in_container(scene_config):
-            aper_pts.append(tuple(start))
-            aper_pts.append(tuple(end))
-        if aper_pts:
-            self._append_line_marker(
-                markers,
-                3,
-                container_frame,
-                stamp,
-                aper_pts,
-                self._make_color(1.0, 0.82, 0.25, 1.0),
-                scale=0.055,
-            )
-
-        opening_xyz, _opening_rpy = container_opening_in_container(scene_config)
-        ox, oy, oz = opening_xyz
-        self._append_line_marker(
-            markers,
-            4,
-            container_frame,
-            stamp,
-            [(ox, oy - 0.2, oz), (ox, oy + 0.2, oz)],
-            self._make_color(1.0, 1.0, 0.0, 1.0),
-            scale=0.065,
-        )
-        return markers
-
-    def _iter_semantic_voxel_centers(self, subsample=1, max_points=MAX_VOXEL_MARKERS):
-        """Return occupied voxel centers grouped by semantic label."""
-        groups = {}  # label -> list of (x, y, z)
-        step = max(1, int(subsample))
-        total = 0
-        for ix in range(0, self.nx, step):
-            for iy in range(0, self.ny, step):
-                for iz in range(0, self.nz, step):
-                    idx = self._index(ix, iy, iz)
-                    if self._grid[idx] != OCCUPIED:
-                        continue
-                    lbl = self._labels[idx]
-                    lx, ly, lz = self._voxel_center_local(ix, iy, iz)
-                    groups.setdefault(lbl, []).append(
-                        self._local_to_world(lx, ly, lz))
-                    total += 1
-                    if total >= max_points:
-                        return groups
-        return groups
-
-    def to_marker_array(
-        self,
-        base_frame,
-        stamp,
-        scene_config=None,
-        show_free=False,
-        show_unknown=True,
-    ):
-        from visualization_msgs.msg import MarkerArray
-
-        markers = self._container_wireframe_markers(scene_config, stamp)
-
-        semantic_groups = self._iter_semantic_voxel_centers(subsample=1)
-        # Color palette per semantic label:
-        # 0=background (default red), 1=container_wall (grey),
-        # 2=cargo (green), 3=robot_arm (cyan), 4=unknown (orange)
-        label_colors = {
-            0: self._make_color(1.0, 0.2, 0.1, 0.85),
-            1: self._make_color(0.6, 0.6, 0.6, 0.7),
-            2: self._make_color(0.1, 0.85, 0.2, 0.9),
-            3: self._make_color(0.1, 0.8, 0.9, 0.7),
-            4: self._make_color(1.0, 0.55, 0.0, 0.85),
-        }
-        viz = MARKER_VIZ_SCALE
-        occupied_pts = []
-        marker_id_offset = 100
-        for lbl, pts in sorted(semantic_groups.items()):
-            occupied_pts.extend(pts)
-            if lbl > 0:
-                color = label_colors.get(lbl, self._make_color(0.8, 0.8, 0.2, 0.8))
-                self._append_cube_list_marker(
-                    markers, marker_id_offset + lbl, base_frame, stamp,
-                    pts, color, self.resolution * 0.95 * viz,
-                )
-
-        free_pts = (
-            self._iter_voxel_centers_base({FREE}, subsample=2)
-            if show_free
-            else []
-        )
-        unknown_pts = (
-            self._iter_voxel_centers_base({UNKNOWN}, subsample=2)
-            if show_unknown
-            else []
-        )
-        edge_pts = self.edge_points_world()
-        observed_edge_pts = self.observed_edge_points_world()
-        frontier_pts = self.frontier_centroids_world()
-
-        # Unlabeled occupied voxels (label=0) keep the original red color.
-        unlabeled_occ = semantic_groups.get(0, [])
-        self._append_cube_list_marker(
-            markers,
-            4,
-            base_frame,
-            stamp,
-            unlabeled_occ,
-            self._make_color(1.0, 0.2, 0.1, 0.85),
-            self.resolution * 0.95 * viz,
-        )
-        self._append_cube_list_marker(
-            markers,
-            5,
-            base_frame,
-            stamp,
-            free_pts,
-            self._make_color(0.1, 0.9, 0.2, 0.35),
-            self.resolution * 0.85 * viz,
-        )
-        self._append_cube_list_marker(
-            markers,
-            6,
-            base_frame,
-            stamp,
-            unknown_pts,
-            self._make_color(0.5, 0.5, 0.5, 0.15),
-            self.resolution * 0.75 * viz,
-        )
-        self._append_sphere_list_marker(
-            markers,
-            7,
-            base_frame,
-            stamp,
-            edge_pts,
-            self._make_color(0.1, 0.4, 1.0, 0.9),
-            self.resolution * 0.8 * viz,
-        )
-        self._append_sphere_list_marker(
-            markers,
-            8,
-            base_frame,
-            stamp,
-            observed_edge_pts,
-            self._make_color(1.0, 0.55, 0.0, 0.95),
-            self.resolution * 0.9 * viz,
-        )
-        self._append_sphere_list_marker(
-            markers,
-            9,
-            base_frame,
-            stamp,
-            frontier_pts,
-            self._make_color(1.0, 0.0, 1.0, 0.9),
-            self.resolution * viz,
-        )
-        return markers
-
-    def publish_params(self, rospy_module):
-        stats = self.stats()
-        rospy_module.set_param("/luggage/cargo_map/stats", stats)
-        rospy_module.set_param(
-            "/luggage/cargo_map/frontier_points",
-            self.frontier_centroids_world(),
-        )
-        rospy_module.set_param(
-            "/luggage/cargo_map/occupied_boxes",
-            self.occupied_clusters_world(),
-        )
-        rospy_module.set_param(
-            "/luggage/cargo_map/edge_points",
-            self.edge_points_world(),
-        )
-        rospy_module.set_param(
-            "/luggage/cargo_map/edge_boxes",
-            self.edge_boxes_world(),
-        )
-        rospy_module.set_param(
-            "/luggage/cargo_map/observed_edge_points",
-            self.observed_edge_points_world(),
-        )
-        rospy_module.set_param(
-            "/luggage/cargo_map/surface_2d",
-            self.surface_map_2d(),
-        )

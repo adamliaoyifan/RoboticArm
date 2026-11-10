@@ -668,6 +668,10 @@ class PickRetreatEvalDriver(Node):
         zero stamp is left as zero so the selector can refuse it; it is
         not replaced with the clock.
         """
+        # A confirmed attachment is frozen for this carrying phase. Combining
+        # a later TCP with the pre-pick detection would invent a new grasp.
+        if getattr(self, '_frame_attachment_confirmed', False):
+            return
         try:
             tf_msg = self._tf_buffer.lookup_transform(
                 "world", "suction_contact_frame", rclpy.time.Time(),
@@ -720,6 +724,9 @@ class PickRetreatEvalDriver(Node):
                 pick_msg, request_id, self._frame_scene_revision)
             grasp = None
             if enable:
+                self._frame_attachment_confirmed = False
+                self._frame_attachment_geometry = None
+                self._frame_grasp = None
                 # Lock at contact: live TCP versus the still-on-platform box.
                 self._frame_capture_grasp(pick_msg)
                 grasp = getattr(self, "_frame_grasp", None)
@@ -734,6 +741,30 @@ class PickRetreatEvalDriver(Node):
                 return False, "%s: %s" % (error.code, error.field)
             if response is None:
                 return False, "vacuum command timeout"
+            if enable and response.success:
+                if not getattr(response, 'has_measured_attachment', False):
+                    self._frame_grasp = None
+                    return False, 'MEASURED_ATTACHMENT_MISSING'
+                from luggage_planning.hardware_place_planning import attachment_from_response
+                from luggage_planning.typed_driver_adapter import grasp_record
+                try:
+                    actual = attachment_from_response(response, request_id=request_id,
+                        box_id=box_id, generation=generation, scene_revision=self._frame_scene_revision)
+                except ValueError as error:
+                    self._frame_grasp = None
+                    self._frame_attachment_geometry = None
+                    return False, 'ATTACHMENT_GEOMETRY_INVALID: %s' % error
+                self._frame_attachment_geometry = actual.geometry
+                self._frame_grasp = grasp_record(request_id, actual.scene_revision,
+                    actual.box_from_tcp.translation, actual.box_from_tcp.quaternion_xyzw,
+                    stamp_ns=actual.stamp_ns)
+                self._frame_grasp.update(box_id=actual.box_id, generation=actual.generation)
+                self._frame_grasp_stamp_ns = actual.stamp_ns
+                self._frame_attachment_confirmed = True
+            if not enable and response.success:
+                self._frame_attachment_confirmed = False
+                self._frame_attachment_geometry = None
+                self._frame_grasp = None
             if not response.success:
                 stamp = pick_msg.header.stamp
                 self._last_vacuum_attach_evidence = vacuum_attach_revision_dump(
@@ -854,12 +885,18 @@ class PickRetreatEvalDriver(Node):
     def call_srv(self, client, request, timeout):
         if not client.wait_for_service(timeout_sec=min(timeout, 15.0)):
             return None
+        recorder = getattr(self, '_service_boundary_recorder', None)
+        if recorder is not None:
+            recorder(client.srv_name+':request', request)
         event = threading.Event()
         future = client.call_async(request)
         future.add_done_callback(lambda _f: event.set())
         if not event.wait(timeout):
             return None
-        return future.result()
+        response = future.result()
+        if recorder is not None:
+            recorder(client.srv_name+':response', response)
+        return response
 
     def send_action(self, client, goal, timeout, name):
         if not client.wait_for_server(timeout_sec=min(timeout, 20.0)):
@@ -916,17 +953,110 @@ class PickRetreatEvalDriver(Node):
                 n_bridge)
         return ""
 
+    def _graph_diag_sample(self, t0):
+        """[r8 bounded boot diagnostics 2026-10-20, recording only]
+
+        One observation of THIS process's own graph view: full node
+        names AND namespaces, self visibility, and the /vacuum/command
+        SERVICE discovery state — distinguishing a node-name audit
+        failure from actual communication unavailability. Never a fix.
+        """
+        try:
+            names_ns = sorted(
+                (ns, n) for n, ns in
+                self.get_node_names_and_namespaces())
+        except Exception as exc:  # noqa: BLE001 - diagnostics only
+            names_ns = [("ERROR", repr(exc)[:120])]
+        vacuum_service = None
+        try:
+            client = getattr(self, "_vacuum_cmd_diag_client", None)
+            if client is None:
+                from luggage_msgs.srv import VacuumCommand
+                client = self.create_client(
+                    VacuumCommand, "/vacuum/command")
+                self._vacuum_cmd_diag_client = client
+            vacuum_service = bool(client.service_is_ready())
+        except Exception as exc:  # noqa: BLE001 - diagnostics only
+            vacuum_service = "ERROR:%s" % repr(exc)[:80]
+        return {
+            "elapsed_s": round(time.monotonic() - t0, 2),
+            "n_nodes": len(names_ns),
+            "nodes_namespaced": ["%s%s" % (ns, n) for ns, n in names_ns],
+            "self_visible": any(
+                n == self.get_name() for _ns, n in names_ns),
+            "vacuum_command_service_ready": vacuum_service,
+        }
+
+    def _dump_graph_diagnostics(self, verdict, samples, last_error=None):
+        env = dict(os.environ)
+        dds_env = {k: v for k, v in env.items() if (
+            k.startswith("ROS_") or k.startswith("RMW_")
+            or k.startswith("FASTRTPS") or k.startswith("FASTDDS")
+            or k.startswith("CYCLONEDDS"))}
+        record = {
+            "verdict": verdict,
+            "last_error": last_error,
+            "required_nodes": list(REQUIRED_NODES) + (
+                ["vacuum_controller"]
+                if getattr(self._args, "use_vacuum", False) else []),
+            "dds_env": dds_env,
+            "executor_thread_alive": None,
+            "samples": samples,
+        }
+        try:
+            record["executor_thread_alive"] = bool(
+                self._diag_spinner_thread.is_alive())
+        except AttributeError:
+            pass
+        out_dir = str(getattr(self._args, "out", "") or "")
+        try:
+            json_path = os.path.join(out_dir, "graph_diagnostics.json")
+            with open(json_path, "w", encoding="utf-8") as handle:
+                json.dump(record, handle, indent=1)
+            self.get_logger().info(
+                "graph diagnostics: %s -> %s (%d samples)" % (
+                    verdict, json_path, len(samples)))
+        except (OSError, ValueError) as exc:
+            self.get_logger().warning(
+                "graph diagnostics dump failed: %s" % exc)
+        return record
+
     def wait_graph(self, timeout=90.0):
         deadline = time.time() + timeout
         last = "not checked"
+        samples = []
+        t0 = time.monotonic()
+        next_sample = t0
         while time.time() < deadline:
             err = self.graph_error()
             last = err
             if err.startswith("duplicate"):
+                self._dump_graph_diagnostics("duplicate_process",
+                                             samples, err)
                 return err
             if not err:
+                self._dump_graph_diagnostics("graph_ok", samples)
                 return ""
+            if time.monotonic() >= next_sample:
+                samples.append(self._graph_diag_sample(t0))
+                next_sample += 5.0     # one observation per 5 s
             time.sleep(1.0)
+        self._dump_graph_diagnostics("graph_wait_failed", samples, last)
+        # [r8 diagnostics] Bounded hold so an EXTERNAL probe can observe
+        # the SAME moment (synchronous control, not a replacement for
+        # this process's own evidence). No behavior change; the abort
+        # still returns after the window.
+        hold = float(getattr(self._args, "graph_diag_hold_sec", 30.0)
+                     or 0.0)
+        if hold > 0.0:
+            self.get_logger().info(
+                "holding %ss diagnostic window (external probe)" % hold)
+            hold_until = time.monotonic() + hold
+            while time.monotonic() < hold_until:
+                time.sleep(1.0)
+                samples.append(self._graph_diag_sample(t0))
+            self._dump_graph_diagnostics(
+                "graph_wait_failed_post_hold", samples, last)
         return last or "graph wait timeout"
 
     def goto_observe(self):
@@ -1006,8 +1136,17 @@ class PickRetreatEvalDriver(Node):
                 GetCargoMapStats, "/cargo_map/get_stats",
                 callback_group=self._group)
             self._goto_stats_client = stats_client
+        # [G3 structural n=3, 2026-10-25] Boot-window resilience: at
+        # stack startup the frame-runtime identity flood can starve this
+        # node's executor for >5 s while the mapper's stats service is
+        # perfectly healthy (verified by direct CLI calls). Retry the
+        # wait instead of failing the whole session at the first goto.
         if not stats_client.wait_for_service(timeout_sec=5.0):
-            return False, "MAP_STATUS_UNAVAILABLE"
+            for _attempt in range(5):
+                if stats_client.wait_for_service(timeout_sec=5.0):
+                    break
+            else:
+                return False, "MAP_STATUS_UNAVAILABLE"
         request = GoToRobotPoseV2.Request()
         request.request_id = self._frame_request_id("goto_%s" % pose_name)
         request.pose_name = str(pose_name)
@@ -1022,8 +1161,22 @@ class PickRetreatEvalDriver(Node):
             request.request_id = self._frame_request_id(
                 "goto_%s" % pose_name
                 + ("" if attempt == 0 else "_r%d" % attempt))
+            # [G3 structural n=3, 2026-10-25] The 1cm OCC-crop mapper
+            # answers get_stats in ~8 s under load (measured; the 5 cm
+            # mapper was sub-second). 5 s was a guaranteed timeout.
             stats = self.call_srv(
-                stats_client, GetCargoMapStats.Request(), timeout=5.0)
+                stats_client, GetCargoMapStats.Request(), timeout=30.0)
+            if stats is None or not stats.success:
+                # Same boot-window resilience as the wait above: one
+                # starved 5 s call is not a verdict; retry before
+                # declaring the map status unavailable.
+                import sys as _sys
+                for _retry in range(3):
+                    stats = self.call_srv(
+                        stats_client, GetCargoMapStats.Request(),
+                        timeout=30.0)
+                    if stats is not None and stats.success:
+                        break
             if stats is None or not stats.success:
                 return False, "MAP_STATUS_UNAVAILABLE"
             request.latest_map_revision = int(stats.map_revision)
@@ -1082,6 +1235,8 @@ class PickRetreatEvalDriver(Node):
             "route_digest": admission["route_digest"],
             "certification_id": admission["certification_id"],
             "scene_revision": str(self._frame_scene_revision or ""),
+            "admission_map_revision": admission["admission_map_revision"],
+            "planner_detail": str(getattr(result, "detail", "") or ""),
         }
         return True, ""
 
@@ -2082,8 +2237,6 @@ class PickRetreatEvalDriver(Node):
                         failures.append(("vacuum_attach", vac_msg))
                         fields["fail_code"] = "VACUUM_ATTACH"
                         break
-                    if self._typed is not None:
-                        self._frame_capture_grasp(pick_msg)
             if segment.name == "pick_retreat":
                 retreat_xyz, tf_err = self.suction_xyz()
                 if retreat_xyz is None:
@@ -2345,6 +2498,11 @@ def parse_args(argv):
         help="Spawn-visual vs GT height (m).")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-graph-check", action="store_true")
+    parser.add_argument(
+        "--graph-diag-hold-sec", type=float, default=30.0,
+        help="[r8 diagnostics] Hold window after a failed graph wait so "
+             "an external probe can observe the same moment; 0 "
+             "disables. Recording only.")
     parser.add_argument(
         "--strict-gt", action="store_true",
         help="Abort on DETECT_GATE and SPAWN_VISUAL_MISMATCH (old behavior).")

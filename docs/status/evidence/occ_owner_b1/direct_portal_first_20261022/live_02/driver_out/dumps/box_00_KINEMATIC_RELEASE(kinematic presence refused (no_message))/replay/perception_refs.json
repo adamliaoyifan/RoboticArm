@@ -1,0 +1,37 @@
+{
+  "detect_message": null,
+  "gz_box": [
+    -2.03,
+    0.534996,
+    0.665525,
+    0.0,
+    -0.0,
+    1.1e-05
+  ],
+  "pick_detection": {
+    "frame_id": "world",
+    "height_source": 1,
+    "height_valid": true,
+    "id": "detected_box",
+    "pose_position": [
+      0.5650583557353854,
+      0.5923557971448917,
+      0.9687023931838725
+    ],
+    "size_wdh": [
+      0.5143269596827336,
+      0.3325262888606958,
+      0.21754086462522926
+    ],
+    "top_surface_valid": true,
+    "top_surface_z": 1.0774728254964872,
+    "yaw_valid": true
+  },
+  "suction_error": "",
+  "suction_xyz": [
+    -2.029999519881946,
+    0.5349961067377053,
+    0.8242949488177022
+  ],
+  "support_stream": null
+}

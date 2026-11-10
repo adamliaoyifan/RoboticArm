@@ -1,0 +1,16 @@
+{
+  "received": 18,
+  "enqueued": 18,
+  "written": 18,
+  "dropped": 0,
+  "failed": 0,
+  "written_bytes": 9327,
+  "errors": [],
+  "closed": true,
+  "queued_bytes": 0,
+  "run_id": "synthetic-abort",
+  "worker_alive": false,
+  "pending": 0,
+  "recorder_io_complete": true,
+  "run_capture_complete": false
+}

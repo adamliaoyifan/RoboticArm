@@ -212,6 +212,32 @@ def container_transform_fields(scene_config):
             [float(v) for v in origin], [float(v) for v in quaternion])
 
 
+def world_xyz_to_container(scene_config, xyz):
+    """World-frame point to container_link (inverse of the published TF).
+
+    Uses the same single scene-config transform as
+    ``container_transform_fields`` — drivers never hand-roll the inverse.
+    """
+    _source, _target, translation, quaternion = container_transform_fields(
+        scene_config)
+    qx, qy, qz, qw = (float(v) for v in quaternion)
+    dx = float(xyz[0]) - float(translation[0])
+    dy = float(xyz[1]) - float(translation[1])
+    dz = float(xyz[2]) - float(translation[2])
+    # p_container = R(q)^T * (p_world - t); rows below are R's columns.
+    return [
+        (1.0 - 2.0 * (qy * qy + qz * qz)) * dx
+        + 2.0 * (qx * qy + qw * qz) * dy
+        + 2.0 * (qx * qz - qw * qy) * dz,
+        2.0 * (qx * qy - qw * qz) * dx
+        + (1.0 - 2.0 * (qx * qx + qz * qz)) * dy
+        + 2.0 * (qy * qz + qw * qx) * dz,
+        2.0 * (qx * qz + qw * qy) * dx
+        + 2.0 * (qy * qz - qw * qx) * dy
+        + (1.0 - 2.0 * (qx * qx + qy * qy)) * dz,
+    ]
+
+
 def probe_segment_message(record, request_id, scene_revision, *,
                           name="place_probe", cartesian_fraction=0.95):
     """MotionSegmentV2 for ProbeMotionSegmentV2 from world waypoints."""
@@ -417,6 +443,7 @@ class TypedDriverAdapter:
             VacuumCommandV2)
         self.node = node
         self.runtime = runtime
+        self._placement_prior = None
         group = group or getattr(node, "_group", None)
         self._build = node.create_client(
             BuildMotionSequenceV2, "/waypoint_generator/build_motion_sequence_v2",
@@ -444,12 +471,18 @@ class TypedDriverAdapter:
             RemovePlacedBoxV2, "/cargo_map/remove_placed_box_v2",
             callback_group=group)
 
-    def _call(self, client, request, timeout_sec):
+    def _call(self, client, request, timeout_sec, *, scope=None):
         """Readiness-gated synchronous call; None on timeout/unavailable."""
-        self.runtime.require_graph_ready()
+        if scope is None:
+            self.runtime.require_graph_ready()
+        else:
+            self.runtime.require_graph_ready(scope=scope)
         if not client.wait_for_service(timeout_sec=2.0):
             raise ContractError("MISSING_ENDPOINT", client.srv_name,
                                 "v2 service", "unavailable")
+        recorder = getattr(self, '_boundary_recorder', None)
+        if recorder is not None:
+            recorder(client.srv_name + ':request', request)
         future = client.call_async(request)
         import time as _time
         deadline = _time.monotonic() + float(timeout_sec)
@@ -458,17 +491,40 @@ class TypedDriverAdapter:
         if not future.done():
             raise ContractError(
                 "BOUNDARY_TIMEOUT", client.srv_name, "response", timeout_sec)
-        return future.result()
+        response = future.result()
+        if recorder is not None:
+            recorder(client.srv_name + ':response', response)
+        return response
+
+    def set_boundary_recorder(self, recorder):
+        """Opt-in exact service capture before caller remapping or mutation."""
+        self._boundary_recorder = recorder
+
+    def set_placement_prior(self, prior):
+        """Bind an optional measured pre-pick hint for this driver's next Select.
+
+        Actual attachment, map and dimensions are checked again at Select. A
+        caller starts a new cycle or abandons this grasp by passing None.
+        """
+        import copy
+        if prior is not None and (not prior.success or not prior.measured):
+            raise ValueError("only a successful measured prior may be bound")
+        self._placement_prior = copy.deepcopy(prior)
 
     # -- placement ---------------------------------------------------------
     def compute_placement(self, *, request_id, box_wdh, height_measured,
                           scene_revision, placed=(), placed_wdh_flat=(),
                           geometry_hash="", expected_map_revision=0,
-                          max_candidates=5):
+                          max_candidates=5, conservative_geometry=None):
         """ComputePlacementV2 with an empty (first-box) placed list by default."""
         from luggage_msgs.srv import ComputePlacementV2
         request = ComputePlacementV2.Request()
-        request.box_wdh = [float(v) for v in box_wdh]
+        dimensions = box_wdh
+        if conservative_geometry is not None:
+            if tuple(float(v) for v in box_wdh) != conservative_geometry.measured_dimensions_wdh:
+                raise ValueError('ATTACHMENT_GEOMETRY_BINDING_MISMATCH')
+            dimensions = conservative_geometry.conservative.dimensions_wdh
+        request.box_wdh = [float(v) for v in dimensions]
         request.height_measured = bool(height_measured)
         for record in placed:
             request.placed.append(pose_message(record))
@@ -476,18 +532,26 @@ class TypedDriverAdapter:
         request.geometry_hash = str(geometry_hash)
         request.expected_map_revision = int(expected_map_revision)
         request.max_candidates = int(max_candidates)
-        return self._call(self._compute, request, 30.0)
+        response = self._call(self._compute, request, 30.0)
+        if conservative_geometry is None:
+            return response
+        from luggage_planning.attachment_placement_adapter import nominal_placement_response
+        return nominal_placement_response(response, conservative_geometry)
 
     # -- selection ---------------------------------------------------------
     def select_place_path(self, *, request_id, box_wdh, slots, slot_scores,
                           surface_message, inner_size, geometry_hash,
                           map_revision, start_tcp, start_joints, grasp,
                           container_transform, excluded_ids=(),
-                          box_id="", generation=0, timeout_sec=30.0):
+                          box_id="", generation=0, timeout_sec=30.0, placement_prior=None,
+                          conservative_geometry=None):
         """SelectPlacePathV2; the mapper's surface message rides verbatim."""
         from luggage_msgs.srv import SelectPlacePathV2
         source, target, translation, quaternion = container_transform
         request = SelectPlacePathV2.Request()
+        if conservative_geometry is not None:
+            from luggage_planning.attachment_geometry_transport import geometry_to_message
+            request.conservative_geometry = geometry_to_message(conservative_geometry)
         request.request_id = str(request_id)
         request.box_wdh = [float(v) for v in box_wdh]
         from luggage_msgs.msg import PoseContractV2
@@ -511,7 +575,14 @@ class TypedDriverAdapter:
         request.excluded_ids = [str(v) for v in excluded_ids]
         request.box_id = str(box_id or "")
         request.generation = int(generation or 0)
-        return self._call(self._select, request, timeout_sec)
+        from luggage_planning.placement_prior_adoption import order_select_candidates
+        if placement_prior is None:
+            placement_prior = getattr(self, "_placement_prior", None)
+        order = order_select_candidates(request, placement_prior)
+        response = self._call(self._select, request, timeout_sec)
+        if response is not None and response.success and 0 <= response.slot_index < len(order):
+            response.slot_index = order[response.slot_index]
+        return response
 
     # -- probe ---------------------------------------------------------------
     def probe_segment(self, segment_message, timeout_sec=30.0):
@@ -542,7 +613,10 @@ class TypedDriverAdapter:
 
     # -- map commits ---------------------------------------------------------
     def add_placed_box(self, *, slot, size_wdh, measured_source,
-                       expected_map_revision, geometry_hash):
+                       expected_map_revision, geometry_hash,
+                       verified_center_container=None,
+                       verify_tolerance_m=0.0, box_id="",
+                       verify_source=""):
         from luggage_msgs.srv import AddPlacedBoxV2
         request = AddPlacedBoxV2.Request()
         request.slot_pose = pose_message(slot)
@@ -550,7 +624,17 @@ class TypedDriverAdapter:
         request.measured_source = str(measured_source)
         request.expected_map_revision = int(expected_map_revision)
         request.geometry_hash = str(geometry_hash)
-        return self._call(self._add_placed, request, 15.0)
+        # [release-failure contract] Correlation identity (must match the
+        # box_released fact) and the DECLARED verify measurement source.
+        request.box_id = str(box_id or "")
+        request.verify_source = str(verify_source or "")
+        # [commit anchor] Optional verify-measured pose; tolerance <= 0
+        # leaves the legacy un-anchored commit.
+        if verified_center_container is not None:
+            request.verified_center_container = [
+                float(v) for v in verified_center_container]
+            request.verify_tolerance_m = float(verify_tolerance_m)
+        return self._call(self._add_placed, request, 15.0, scope="occupancy_commit")
 
     def remove_placed_box(self, *, slot, size_wdh, expected_map_revision,
                           geometry_hash):
@@ -574,6 +658,10 @@ class TypedDriverAdapter:
         request = BuildMotionSequenceV2.Request()
         request.phase = "pick"
         request.pick = pick_message
+        candidates = list(getattr(pick_message, "suction_candidates", ()) or ())
+        if candidates:
+            selected = min(candidates, key=lambda item: (item.rank, item.candidate_id))
+            request.suction_candidate_id = str(selected.candidate_id)
         request.request_id = str(request_id)
         request.scene_revision = str(scene_revision)
         request.pick_pose = pose_message(detection_record_from_box(
@@ -636,7 +724,12 @@ class TypedDriverAdapter:
         submissions after the refusal.
         """
         import time as _time
-        self.runtime.require_graph_ready()
+        from luggage_description.runtime_action_readiness import certified_motion_scope
+        scope = certified_motion_scope(admission)
+        if scope is None:
+            self.runtime.require_graph_ready()
+        else:
+            self.runtime.require_graph_ready(scope=scope)
         if not self._plan.wait_for_server(timeout_sec=2.0):
             return False, "plan_motion_v2 unavailable", None
         from luggage_msgs.action import PlanMotionV2

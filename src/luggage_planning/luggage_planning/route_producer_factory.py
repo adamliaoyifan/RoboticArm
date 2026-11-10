@@ -20,7 +20,8 @@ def build_production_route_producer(node, scene_tf_path, surface_provider,
                                     corridor_planner=None,
                                     vacuum_state_fn=None, site_poses_fn=None,
                                     clock_ns=None, log=None,
-                                    static_identity=None):
+                                    static_identity=None, work_counters=None,
+                                    route_budget_override_s=None):
     """Build one production route producer, or None when the contract is missing.
 
     ``surface_provider()`` returns the latched surface dict or empty.
@@ -130,13 +131,22 @@ def build_production_route_producer(node, scene_tf_path, surface_provider,
             "map_revision": int(stats["map_revision"]),
             "commit_revision": int(stats["map_revision"]),
             "geometry_hash": str(stats["geometry_hash"]),
+            # [B1] Snapshot identity: fresh stats win (same-commit), the
+            # latched surface's is the fallback for pre-B1 stat shapes.
+            "epoch": str(stats.get("epoch") or surface.get("epoch") or ""),
+            "content_digest": str(
+                stats.get("content_digest")
+                or surface.get("content_digest") or ""),
         })
         return planning_snapshot_from_surface(
             surface, scene_revision=str(scene_revision or ""),
             request_id="latest-snapshot")
 
     def refine(position, quaternion, seed):
-        return refine_to_pose(
+        operation = refine_to_pose
+        if work_counters is not None:
+            operation = lambda *args, **kwargs: work_counters.refine(refine_to_pose, *args, **kwargs)
+        return operation(
             urdf, tcp_path, position, quaternion, seed,
             pos_tol=2e-3, rot_tol=2e-2)
 
@@ -182,11 +192,32 @@ def build_production_route_producer(node, scene_tf_path, surface_provider,
         adapter.load_edges(edges, scene_states=scene_states)
         return adapter
 
-    def lattice_checker_factory(*, scene_states, start_q):
-        return LatticeStateChecker(node, scene_client, scene_states, start_q)
+    def lattice_checker_factory(*, scene_states, start_q, service_budget_s=5.0):
+        return LatticeStateChecker(
+            node, scene_client, scene_states, start_q, service_budget_s=service_budget_s)
 
-    budget_ns = route_budget_ns(int(box_count))
-    logger("route budget %.0fs for %d box(es)" % (budget_ns / 1e9, box_count))
+    # [Functional-diagnostic override, 2026-10-22] Phase-1 bounded
+    # relaxation ONLY: an explicit per-Select wall budget that reaches the
+    # searcher (RouteProducer.budget_ns), not a client-side wait. The
+    # frozen n*60s contract stays the default (override <= 0); per-edge
+    # budgets, retries, and every safety gate are untouched. Non-scoring
+    # diagnostics only — a pass under this budget is never reported as a
+    # frozen-budget pass.
+    if route_budget_override_s is None:
+        route_budget_override_s = float(
+            node.get_parameter("diagnostic_route_budget_s").value or 0.0)
+    try:
+        override_s = float(route_budget_override_s or 0.0)
+    except (TypeError, ValueError):
+        override_s = 0.0
+    if override_s > 0.0:
+        budget_ns = int(override_s * 1e9)
+        logger("route budget %.0fs for %d box(es) "
+               "(DIAGNOSTIC override of frozen %.0fs)" % (
+                   budget_ns / 1e9, box_count, route_budget_ns(int(box_count)) / 1e9))
+    else:
+        budget_ns = route_budget_ns(int(box_count))
+        logger("route budget %.0fs for %d box(es)" % (budget_ns / 1e9, box_count))
     producer = RouteProducer(
         graph=RouteGraph(static_identity=static_identity or (
             "st09-i-route:%s" % scene_tf_hash)),

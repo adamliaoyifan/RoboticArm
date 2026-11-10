@@ -69,7 +69,7 @@ def handle_probe_v2(executor, message, scene_revision, response, link=TARGET_LIN
 
 
 def handle_plan_v2(executor, message, scene_revision, response, prepare_occupancy,
-                   link=TARGET_LINK, current_joints=None):
+                   link=TARGET_LINK, current_joints=None, execute_timeout=45.0):
     """Admit first. Occupancy and execution run only after the record is valid."""
     record = {}
     context = execution_context(message, scene_revision, link)
@@ -96,7 +96,7 @@ def handle_plan_v2(executor, message, scene_revision, response, prepare_occupanc
             apply_diagnostic(response, record, context, None)
             return response
     result = executor.execute_segment_v2(
-        record, context, current_joints=current_joints)
+        record, context, current_joints=current_joints, execute_timeout=execute_timeout)
     response.success = bool(result.success)
     response.message = str(result.message)
     response.fraction = float(result.fraction)

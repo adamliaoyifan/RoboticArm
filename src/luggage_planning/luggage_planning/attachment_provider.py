@@ -209,6 +209,7 @@ class MeasuredAttachmentProvider:
         symmetry: str = "pi",
         evidence_digest: str = "",
         allow_pre_attach: bool = False,
+        conservative_geometry=None,
     ) -> AttachmentRecord:
         request_id = str(request_id)
         self._active_request = request_id
@@ -319,6 +320,15 @@ class MeasuredAttachmentProvider:
                 source_method, int(box_pose.stamp_ns), int(tcp_pose.stamp_ns),
                 box_pose.position, box_pose.quaternion_xyzw,
                 tcp_pose.position, tcp_pose.quaternion_xyzw)
+        envelope = None
+        if conservative_geometry is not None:
+            if (dims != conservative_geometry.measured_dimensions_wdh
+                    or any(abs(a-b) > 1e-9 for a,b in zip(translation, conservative_geometry.t_tool_box_translation))
+                    or abs(sum(a*b for a,b in zip(quaternion, conservative_geometry.t_tool_box_quaternion_xyzw))) < 1-1e-9):
+                raise ContractViolation('ATTACHMENT_GEOMETRY_BINDING_MISMATCH')
+            envelope = conservative_geometry.conservative
+            translation = conservative_geometry.t_tool_box_translation
+            quaternion = conservative_geometry.t_tool_box_quaternion_xyzw
         record = AttachmentRecord(
             schema_version=ATTACHMENT_SCHEMA_VERSION,
             cargo_id=str(cargo_id),
@@ -340,6 +350,7 @@ class MeasuredAttachmentProvider:
             evidence_digest=str(evidence_digest or ""),
             validity=AttachmentValidity.VALID,
             invalidation_reason=None,
+            collision_envelope=envelope,
         )
         self._records[request_id] = record
         return record
@@ -403,6 +414,7 @@ class MeasuredAttachmentProvider:
             evidence_digest=record.evidence_digest,
             validity=AttachmentValidity.INVALIDATED,
             invalidation_reason=str(reason.value),
+            collision_envelope=record.collision_envelope,
         )
         self._records[record.request_id] = replacement
         notification = AttachmentInvalidation(

@@ -1,0 +1,23 @@
+# Read-only rigid tool/payload vs frozen world query; not an execution certificate.
+# Poses are in the robot model frame, explicitly named by frame_id.
+string request_id
+string snapshot_id
+string model_sha256
+string frame_id
+string tcp_link
+string payload_id
+moveit_msgs/PlanningScene scene
+geometry_msgs/Pose[] tcp_poses
+geometry_msgs/Pose[] box_poses
+float64[3] box_wdh
+float64 budget_s
+---
+string request_id
+string snapshot_id
+string model_sha256
+bool complete
+string reason
+bool[] valid
+# Contacts identify sample by sample_index.
+luggage_msgs/RouteContact[] contacts
+float64 service_time_s

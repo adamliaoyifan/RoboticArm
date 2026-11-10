@@ -18,6 +18,7 @@ from __future__ import division
 
 import json
 import math
+import os
 import threading
 import time
 
@@ -178,6 +179,9 @@ class VacuumControllerNode(Node):
         group = ReentrantCallbackGroup()
 
         self.declare_parameter("backend", "sim")  # sim | stub | hardware
+        from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy
+        geometry_path = self.declare_parameter('attachment_geometry_config', '').value
+        self._geometry_policy = load_attachment_geometry_policy(geometry_path)
         self.declare_parameter("world", "airport_loading")
         self.declare_parameter("panel_frame", "suction_contact_frame")
         self.declare_parameter("follow_rate_hz", 30.0)
@@ -284,7 +288,8 @@ class VacuumControllerNode(Node):
                 gz_client, scene,
                 follow_rate_hz=float(
                     self.get_parameter("follow_rate_hz").value),
-                carry_filter=carry_filter)
+                carry_filter=carry_filter,
+                physical_relation_provider=self._resolve_physical_attachment)
 
         self._vacuum_on = False
         self._last_fail_reason = ""
@@ -348,6 +353,20 @@ class VacuumControllerNode(Node):
                     % (self._identity[0], self._identity[1]))
         else:
             self.get_logger().info("current_box cleared")
+
+    def _resolve_physical_attachment(self, model, generation, tool):
+        from luggage_planning.sim_physical_attachment import freeze_physical_relation
+        # This provider is installed only on the sim actuator backend. The
+        # response, scene attachment and prior continue to use measured data.
+        relation = freeze_physical_relation(
+            model, generation, tool,
+            read_identity=lambda: (str(self._identity[0]), int(self._identity[1])))
+        trace = os.environ.get('ELFIN_PHYSICAL_ATTACHMENT_TRACE', '').strip()
+        if trace:
+            with open(trace, 'a') as handle:
+                handle.write(json.dumps(dict(wall=time.time(), monotonic=time.monotonic(),
+                    tool_pose=tool, physical_relation=relation))+'\n')
+        return relation
 
     def _pull_gt_box(self, timeout=5.0):
         """Pull the GT spawn record for the CURRENT instance epoch.
@@ -459,7 +478,8 @@ class VacuumControllerNode(Node):
 
         response = handle_vacuum_command_v2(
             request, response, scene_revision=revision, generation=generation,
-            resolve_tool=resolve_tool, backend=self._backend)
+            resolve_tool=resolve_tool, backend=self._backend,
+            geometry_policy=self._geometry_policy)
         # v1 publishes /vacuum/state before returning. The pick driver treats
         # that latched state as the attach proof, so the v2 path must too.
         self._vacuum_on = bool(request.enable and response.success)
@@ -598,7 +618,24 @@ class VacuumControllerNode(Node):
                 return
             ok, message = self._backend.follow_step(panel[0], panel[1])
             if not ok:
-                self._last_fail_reason = message
+                # [follow grace, r7 lesson] ONE missed 50 ms set_pose
+                # tick (transport transient under load) was latched as
+                # fail_reason and the carrying gate read it as payload
+                # loss — with attached=true and the box following
+                # normally the whole time. A transport blip is not a
+                # seal loss: only N CONSECUTIVE failures publish a
+                # reason, and a success clears it. Detach/attach-gate
+                # reasons are untouched.
+                self._follow_fail_streak = getattr(
+                    self, "_follow_fail_streak", 0) + 1
+                self._follow_fail_msg = str(message)
+                if self._follow_fail_streak >= 3:
+                    self._last_fail_reason = self._follow_fail_msg
+            else:
+                self._follow_fail_streak = 0
+                if getattr(self, "_last_fail_reason", "") == getattr(
+                        self, "_follow_fail_msg", None):
+                    self._last_fail_reason = ""
             self._publish_state()
         finally:
             self._follow_lock.release()

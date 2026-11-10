@@ -190,7 +190,8 @@ class TestNamedNegatives:
 
     def test_expired_attachment(self):
         record = make_attachment("centered", stamp_ns=1_000_000_000)
-        box = make_box_target(record, stamp_ns=12_000_000_000)
+        from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
+        box = make_box_target(record, stamp_ns=record.acquisition_stamp_ns + ATTACHMENT_MAX_AGE_NS + 1)
         with pytest.raises(TargetSynthesisError) as err:
             expand_place_targets(box, record)
         assert err.value.reason is Reason.ATTACHMENT_EXPIRED

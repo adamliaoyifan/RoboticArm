@@ -9,6 +9,7 @@ revalidator, and the frozen v2 segment admission the legs must survive.
 from __future__ import division
 
 import dataclasses
+import pytest
 from pathlib import Path
 import sys
 
@@ -1129,6 +1130,11 @@ class TestPlanPlaceRoute:
         assert result["reason_code"] == "PLANNING_BUDGET_EXHAUSTED"
         assert result["n_tried"] == 0
         assert result["n_untried"] == 2
+        timings = result["stage_timings"]
+        assert timings["total_ms"] >= 0
+        assert timings["budget_ms"] == round(producer.budget_ns / 1e6, 1)
+        assert timings["certify_ms"] == 0
+        assert timings["by_reason_ms"] == {}
 
     def test_revalidation_stop_is_named(self):
         from luggage_planning.map_revalidation import (
@@ -1212,14 +1218,13 @@ def _hop_pairs(producer, *, opening, transit_clearance_z):
 
 class TestReverseEgressTable:
 
-    def test_staging_portal_is_joint_and_return_starts_outside(self):
+    def test_direct_portal_is_preferred_even_when_staging_is_configured(self):
         producer, _clock = build_producer()
         entry, retreat = _hop_pairs(
             producer,
             opening={"point": (1.0, 0.0, 0.4), "normal": (-1.0, 0.0, 0.0)},
             transit_clearance_z=5.0)
         assert entry == [
-            ("staging", "PORTAL_TRANSIT", "carrying"),
             ("portal", "PORTAL_TRANSIT", "carrying"),
             ("slot_approach", "TRAVERSE", "carrying"),
             ("slot_upper", "INSERT", "carrying"),
@@ -1229,10 +1234,11 @@ class TestReverseEgressTable:
             ("slot_upper", "RETREAT", "unloaded"),
             ("slot_approach", "RETREAT", "unloaded"),
             ("portal", "RETREAT", "unloaded"),
-            ("staging", "RETURN", "unloaded"),
             ("home", "RETURN", "unloaded"),
         ]
         assert "exit" not in [region for region, _cls, _load in retreat]
+
+        assert not producer.graph.nodes_by_region("staging")
 
     def test_opening_without_staging_returns_from_the_portal(self):
         producer, _clock = build_producer()
@@ -1705,6 +1711,8 @@ def _service_message(stamp_ns):
             "req-map-1", scene, "container_link", "",
             geometry_hash="geo-1", map_revision=1))
     message.box_wdh = [0.30, 0.20, 0.20]
+    from luggage_planning.attachment_geometry_transport import geometry_to_message
+    message.conservative_geometry = geometry_to_message(_confirmed_geometry(make_request()))
     message.inner_size = [0.6, 0.4, 0.4]
     message.geometry_hash = "geo-1"
     message.map_revision = 1
@@ -1864,9 +1872,13 @@ def _lattice_producer(checker):
 
 class TestLatticeCorridorPlanner:
 
-    def test_lattice_route_is_certified_and_complete(self):
+    @pytest.mark.parametrize("with_staging", [False, True])
+    def test_lattice_route_is_certified_and_complete(self, with_staging):
         checker = _ClearChecker()
         producer, builder, _clock = _lattice_producer(checker)
+        if with_staging:
+            producer.opening_info = {"point": (1.0, 0.0, 0.4), "normal": (-1.0, 0.0, 0.0)}
+            producer.transit_clearance_z = 5.0
         request = make_request()
         register_attach_from_request(
             producer.attachment_provider, request,
@@ -1886,6 +1898,8 @@ class TestLatticeCorridorPlanner:
         assert checker.states
         selected = [row for row in result["rows"] if row.get("reason") == "OK"]
         assert selected[0]["lattice"]["service_calls"] >= 1
+        assert selected[0]["selected_topology"] == "direct"
+        assert not producer.graph.nodes_by_region("staging")
 
     def test_lattice_without_a_chain_names_the_row(self):
         class _Blocked(_ClearChecker):
@@ -1917,3 +1931,288 @@ class TestLatticeCorridorPlanner:
                 attachment_provider=make_provider(None),
                 fk=fake_fk, refine=fake_refine,
                 corridor_planner="lattice")
+
+
+@pytest.mark.parametrize("direct_ok", [True, False])
+@pytest.mark.parametrize("available", [True, False, None])
+def test_staging_collision_can_use_alternate_transit_position(available, direct_ok):
+    """Real graph/route pipeline must escape a rejected staging centerline."""
+    producer, _clock = build_producer()
+    producer.opening_info = {
+        "point": (1.0, 0.0, 0.4), "normal": (-1.0, 0.0, 0.0)}
+    producer.transit_clearance_z = 5.0
+    original = producer.edge_builder
+    rejected, accepted = [], []
+
+    class RejectCenterline:
+        def __getattr__(self, name):
+            return getattr(original, name)
+
+        def __call__(self, source, destination, edge_class, **kwargs):
+            if not direct_ok and source.region == "home" and destination.region == "portal":
+                raise RoutePlanningError("EDGE_BUILD_FAILED", {"kind": "collision"})
+            if destination.region == "staging":
+                if abs(destination.tcp_position[1]) < 0.01:
+                    rejected.append(destination.tcp_position)
+                    raise RoutePlanningError("EDGE_BUILD_FAILED", {
+                        "kind": "collision", "edge_class": edge_class})
+                accepted.append(destination.tcp_position)
+            return original(source, destination, edge_class, **kwargs)
+
+    producer.edge_builder = RejectCenterline()
+    checked = []
+
+    class EndpointChecker:
+        def validate(self, states, expired):
+            verdicts = {}
+            for q, load in states:
+                node = next(n for n in producer.graph.nodes_by_region("staging")
+                            if tuple(n.q) == q and str(n.load_state) == load)
+                verdicts[(q, load)] = (abs(node.tcp_position[1]) >= 0.01
+                                       if available is True else available)
+                checked.append(verdicts[(q, load)])
+            return verdicts
+
+    producer.lattice_checker_factory = lambda **kwargs: EndpointChecker()
+    request = make_request()
+    register_attach_from_request(
+        producer.attachment_provider, request, box_wdh=request["box_wdh"])
+    result = producer.plan_place_route(request)
+    if direct_ok:
+        assert result["success"]
+        assert not checked and not rejected and not accepted
+        assert not producer.graph.nodes_by_region("staging")
+        return
+    if available is not True:
+        assert not result["success"]
+        assert not rejected and not accepted
+        assert any(r.get("detail", {}).get("stage") == "staging_endpoint"
+                   for r in result.get("rows", []))
+        return
+    assert result["success"], [(r.get("reason"), r.get("failure"), r.get("detail")) for r in result.get("rows", [])]
+    assert False in checked and True in checked
+    assert not rejected  # Invalid endpoints never spend a connection attempt.
+    assert accepted
+    assert all(abs(p[1]) >= 0.01 for p in accepted)
+
+
+def test_graph_edges_receive_world_measured_columns_used_by_certifier():
+    import math
+    producer, _clock = build_producer()
+    request = make_request()
+    request['container_transform']['translation'] = [1., 2., 3.]
+    request['container_transform']['quaternion_xyzw'] = [0., 0., math.sqrt(.5), math.sqrt(.5)]
+    request['surface'].update(state=[['occupied', 'free'], ['free', 'free']],
+                              floor_z_container=.1,
+                              height_above_floor=[[.42, 0.], [0., 0.]])
+    original = producer.edge_builder
+    seen = []
+
+    class CaptureScenes:
+        def __getattr__(self, name):
+            return getattr(original, name)
+
+        def __call__(self, source, destination, edge_class, **kwargs):
+            seen.append(kwargs['scene'])
+            return original(source, destination, edge_class, **kwargs)
+
+    producer.edge_builder = CaptureScenes()
+    register_attach_from_request(producer.attachment_provider, request,
+                                 box_wdh=request['box_wdh'])
+    producer.plan_place_route(request)
+    assert {s.load_state for s in seen} == {'carrying', 'unloaded'}
+    for scene in seen:
+        assert len(scene.placed_boxes) == 1
+        box = scene.placed_boxes[0]
+        assert box.center == pytest.approx((.975, 2.025, 3.31))
+        assert box.size_whd == pytest.approx((.15, .15, .42))
+        assert box.quaternion_xyzw == pytest.approx((0, 0, math.sqrt(.5), math.sqrt(.5)))
+
+
+def test_measured_corridor_height_raises_transit_not_placement():
+    producer, clock = build_producer()
+    producer.opening_info = {'point': (-.5, -.1, .4), 'normal': (-1., 0., 0.)}
+    request = make_request()
+    request['surface'].update(state=[['occupied', 'free'], ['free', 'free']],
+                              floor_z_container=0.,
+                              height_above_floor=[[.5, 0.], [0., 0.]])
+    register_attach_from_request(producer.attachment_provider, request,
+                                 box_wdh=request['box_wdh'])
+    attachment, reason, _ = admit_attachment_for_route(
+        producer.attachment_provider, request, clock())
+    assert reason is None
+    grasp_before = attachment.t_tcp_box_translation
+    candidate = candidate_from_slot(request['slots'][0], 0)
+    result = producer._prepare_candidate(candidate, attachment, request, START_Q,
+                                         (0., 0., 0., 1.), (.2, -.1, .24))
+    plan = result[2]
+    assert plan.slot == (.2, -.1, .24)
+    assert plan.portal[2] == pytest.approx(.75)
+    assert plan.slot_approach[2] == pytest.approx(.75)
+    assert plan.corridor_height_evidence['top_world_z'] == pytest.approx(.5)
+    assert attachment.t_tcp_box_translation == grasp_before
+    assert result[0].position_container == candidate.position_container
+
+
+@pytest.mark.parametrize('failures,at_knot,edge_class,expected_success,expected_calls', [
+    (1, False, 'RETURN', True, 2),
+    (10, False, 'RETURN', False, 3),
+    (1, True, 'RETURN', False, 1),
+    (1, False, 'DESCEND', False, 1),
+])
+def test_cert_collision_rebuild_is_bounded_and_only_for_joint_interiors(
+        failures, at_knot, edge_class, expected_success, expected_calls):
+    from st09_contracts.reasons import Reason
+    producer, clock = build_producer()
+    request = make_request()
+    register_attach_from_request(producer.attachment_provider, request,
+                                 box_wdh=request['box_wdh'])
+    original = producer._certify
+    calls = []
+    rejected = []
+
+    def certify(route, snapshot, attachment, edges, candidate, req):
+        calls.append(tuple(e.edge_id for e in edges))
+        # A rejected edge may never be reused in the next certification.
+        assert not set(rejected).intersection(calls[-1])
+        result, failure = original(route, snapshot, attachment, edges, candidate, req)
+        if len(calls) <= failures:
+            edge = next(e for e in edges if e.attributes.get('edge_class') == edge_class)
+            rejected.append(edge.edge_id)
+            result = dataclasses.replace(result, passed=False, reason=Reason.CERT_COLLISION,
+                failed_edge_id=edge.edge_id, failed_sample_index=1,
+                failed_sample_is_knot=at_knot)
+        return result, failure
+
+    producer._certify = certify
+    result = producer.plan_place_route(request)
+    assert result['success'] is expected_success, result['rows']
+    assert len(calls) == expected_calls
+    if expected_success:
+        assert result['certification'].passed
+        assert result['rows'][0]['route_build_count'] == 2
+        assert result['rows'][0]['certification_rebuilds'][0]['failed_sample_index'] == 1
+
+
+def test_cert_collision_never_restarts_expired_select_budget():
+    from st09_contracts.reasons import Reason
+    producer, clock = build_producer()
+    request = make_request()
+    register_attach_from_request(producer.attachment_provider, request,
+                                 box_wdh=request['box_wdh'])
+    original = producer._certify
+    calls = []
+    failed_ids = []
+    def certify(route, snapshot, attachment, edges, candidate, req):
+        calls.append(route.route_id)
+        result, failure = original(route, snapshot, attachment, edges, candidate, req)
+        edge = next(e for e in edges if e.attributes.get('edge_class') == 'RETURN')
+        failed_ids.append(edge.edge_id)
+        clock.advance_s(producer.budget_ns / 1e9 + 1)
+        return dataclasses.replace(result, passed=False, reason=Reason.CERT_COLLISION,
+            failed_edge_id=edge.edge_id, failed_sample_index=1,
+            failed_sample_is_knot=False), failure
+    producer._certify = certify
+    result = producer.plan_place_route(request)
+    assert not result['success']
+    assert len(calls) == 1
+    assert failed_ids[0] not in producer.graph.edges
+
+
+def test_cert_rebuild_failure_retains_secondary_cause():
+    from st09_contracts.reasons import Reason
+    producer, _clock = build_producer()
+    request = make_request()
+    register_attach_from_request(producer.attachment_provider, request,
+                                 box_wdh=request['box_wdh'])
+    original = producer._certify
+    def certify(route, snapshot, attachment, edges, candidate, req):
+        result, failure = original(route, snapshot, attachment, edges, candidate, req)
+        edge = next(e for e in edges if e.attributes.get('edge_class') == 'RETURN')
+        producer._builder.fail_all = True
+        return dataclasses.replace(result, passed=False, reason=Reason.CERT_COLLISION,
+            failed_edge_id=edge.edge_id, failed_sample_index=1,
+            failed_sample_is_knot=False), failure
+    producer._certify = certify
+    result = producer.plan_place_route(request)
+    assert not result['success']
+    retry = result['rows'][0]['certification_rebuilds'][0]
+    assert retry['outcome'] == 'failed'
+    assert retry['failure_code']
+    assert retry['failure_detail'] is not None
+
+
+def _confirmed_geometry(request):
+    from st09_contracts.attachment import invert_transform
+    from st09_contracts.attachment_geometry import freeze_geometry
+    from st09_contracts.payload_envelope import EnvelopeLimits
+    grasp = request['grasp']
+    transform = invert_transform(grasp['position'], grasp['quaternion_xyzw'])
+    return freeze_geometry(request['box_wdh'], *transform,
+                           EnvelopeLimits(5, (.1,)*3, (0.,0.), .005))
+
+
+def test_selector_refuses_missing_attachment_geometry_before_search():
+    from luggage_msgs.srv import SelectPlacePathV2
+    from luggage_msgs.msg import AttachmentGeometryV2
+    from luggage_planning.place_service import fill_select_response_route
+    producer, clock = build_producer()
+    message = _service_message(clock.now_ns)
+    message.conservative_geometry = AttachmentGeometryV2()
+    response = SelectPlacePathV2.Response()
+    fill_select_response_route(message, response, producer)
+    assert not response.success
+    assert response.reason_code == 'ATTACHMENT_GEOMETRY_INVALID'
+    assert not producer._builder.calls
+
+
+def test_envelope_identity_reaches_certification_with_nominal_targets():
+    from st09_contracts.payload_envelope import EnvelopeLimits
+    producer, _clock = build_producer()
+    producer.scene_config = {'container': {'inner': {
+        'length': 4, 'width': 4, 'floor_z': -1, 'ceiling_z': 3}}}
+    request = make_request()
+    request['conservative_geometry'] = _confirmed_geometry(request)
+    register_attach_from_request(producer.attachment_provider, request, box_wdh=request['box_wdh'])
+    attachment = producer.attachment_provider.latest_record(request['request_id'])
+    scenes_seen = []
+    factory = producer.validity_adapter_factory
+    def capture(**kwargs):
+        scenes_seen.extend(kwargs['scene_states'].values())
+        return factory(**kwargs)
+    producer.validity_adapter_factory = capture
+    result = producer.plan_place_route(request)
+    assert result['success'], result['rows']
+    assert result['certification'].passed
+    assert result['route'].attachment_digest == attachment.digest()
+    payloads = [s.payload for s in scenes_seen if s.payload]
+    assert payloads
+    assert all(p.dimensions_wdh == attachment.collision_envelope.dimensions_wdh for p in payloads)
+    assert all(p.t_tcp_box_translation == attachment.collision_envelope.t_tcp_box_translation for p in payloads)
+    assert tuple(request['box_wdh']) == attachment.dimensions_wdh
+
+
+@pytest.mark.parametrize('collision', [False, True])
+def test_attachment_geometry_preserves_trajectory_collision_gate(collision):
+    from st09_contracts.payload_envelope import EnvelopeLimits
+    producer, _clock = build_producer()
+    producer.scene_config = {'container': {'inner': {
+        'length': 4, 'width': 4, 'floor_z': 0, 'ceiling_z': 3}}}
+    request = make_request(slots=[{'position':[0,0,.1],
+        'quaternion_xyzw':[0,0,0,1], 'request_id':'floor-slot'}])
+    request['conservative_geometry'] = _confirmed_geometry(request)
+    register_attach_from_request(producer.attachment_provider, request, box_wdh=request['box_wdh'])
+    if collision:
+        def factory(*, scene_states, edges):
+            return StaticMoveItValidityAdapter({
+                (str(edge.edge_id), index): ValiditySample(
+                    edge_id=str(edge.edge_id), sample_index=index,
+                    valid=False, min_clearance_m=0.0, contacts=())
+                for edge in edges for index in range(len(sample_states(edge.trajectory)))})
+        producer.validity_adapter_factory = factory
+    result = producer.plan_place_route(request)
+    assert result['success'] is (not collision), result['rows']
+    assert producer._builder.calls
+    assert result['reason_code'] != 'PAYLOAD_ENVELOPE_OUTSIDE_SLOT_HULL'
+    if collision:
+        assert any(row.get('reason') == 'CERT_COLLISION' for row in result['rows'])

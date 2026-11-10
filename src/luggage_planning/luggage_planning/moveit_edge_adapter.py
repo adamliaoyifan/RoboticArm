@@ -341,6 +341,34 @@ def synthesize_waypoints(source_position, source_quaternion,
     return poses, distance
 
 
+#: Largest per-joint step between consecutive knots of a retimed joint edge.
+#: MoveGroup validates the straight joint segments between its waypoints; the
+#: controller (and the certifier) follow a spline through the knots, which can
+#: leave those segments between two sparse knots. Knots inserted on the
+#: validated segments keep the spline on the geometry that was checked.
+JOINT_KNOT_MAX_STEP_RAD = 0.05
+
+
+class _Knot(object):
+    def __init__(self, positions):
+        self.positions = list(positions)
+
+
+def densify_knots(points, max_step_rad):
+    """Insert knots on the straight joint segments (existing knots kept)."""
+    dense = [_Knot(points[0].positions)]
+    for left, right in zip(points, points[1:]):
+        a = [float(v) for v in left.positions]
+        b = [float(v) for v in right.positions]
+        delta = max(abs(y - x) for x, y in zip(a, b))
+        pieces = max(1, int(-(-delta // max_step_rad)))
+        for step in range(1, pieces + 1):
+            fraction = step / pieces
+            dense.append(_Knot(
+                [x + (y - x) * fraction for x, y in zip(a, b)]))
+    return dense
+
+
 class MoveItEdgeAdapter(object):
     """Builds route edges through MoveIt planning only (no execution).
 
@@ -386,6 +414,12 @@ class MoveItEdgeAdapter(object):
         self._call_counts: Dict[str, int] = {"move_group": 0,
                                              "cartesian": 0,
                                              "scene_apply": 0}
+        # [G1] per-stage wall timings in seconds: scene apply, MoveGroup
+        # round-trip, local retime/interpolation-check. Nested MoveGroup
+        # server timings are in the action result's planning_time.
+        self._stage_timings: Dict[str, List[float]] = {
+            "scene_apply": [], "move_group": [],
+            "retime_and_interpolation": [], "cartesian": []}
         self._call_durations: Dict[str, List[float]] = {
             "move_group": [], "cartesian": [], "scene_apply": []}
         self._request_dumps: List[dict] = []
@@ -415,6 +449,11 @@ class MoveItEdgeAdapter(object):
 
     def call_durations(self):
         return {key: list(values) for key, values in self._durations_items()}
+
+    def stage_timings(self):
+        """[G1] Per-stage wall timings (seconds) for the last session."""
+        return {key: list(values)
+                for key, values in self._stage_timings.items()}
 
     def _durations_items(self):
         return self._call_durations.items()
@@ -474,12 +513,27 @@ class MoveItEdgeAdapter(object):
         Idempotent; the success path's real release re-adds its own
         world geometry through the vacuum/placement surfaces.
         """
-        if self._scene is not None:
-            self._scene.detach_and_remove(box_id=payload_id)
-            for object_id in tuple(self._scene_world_ids_added):
-                self._scene.remove_object(object_id)
-        self._scene_world_ids_added = []
+        # Invalidate cached admission even when cleanup only partially succeeds.
         self._scene_state_applied = None
+        failures = []
+        if self._scene is not None:
+            operations = [(payload_id, lambda: self._scene.detach_and_remove(box_id=payload_id))]
+            operations.extend((object_id, lambda obj=object_id: self._scene.remove_object(obj))
+                              for object_id in tuple(self._scene_world_ids_added))
+            for index, (object_id, operation) in enumerate(operations):
+                try:
+                    ok, reason = operation()
+                except Exception as exc:
+                    ok, reason = False, repr(exc)
+                if not ok:
+                    failures.append({"object_id": object_id, "reason": str(reason)})
+                elif index > 0:
+                    self._scene_world_ids_added.remove(object_id)
+        else:
+            self._scene_world_ids_added = []
+        if failures:
+            self._record_failure("CLEANUP", "scene_cleanup_failed", failures=failures)
+            raise RuntimeError("scene cleanup failed: " + json.dumps(failures))
 
     def _ensure_scene(self, scene, payload_id="b-payload"):
         """Idempotent scene diff for the edge's load state (fail closed).
@@ -502,14 +556,28 @@ class MoveItEdgeAdapter(object):
         if marker == self._scene_state_applied:
             return
         started = time.monotonic()
+        self._scene_apply_began = started  # [G1] for stage timing
         world_boxes = tuple(scene.placed_boxes) + (
             (scene.released_box,) if scene.released_box else ())
+        # A certification retry can return from unloaded retreat planning to
+        # carrying. Remove only this adapter's obsolete world objects, otherwise
+        # the hypothetical released box collides with the still-held payload.
+        desired_ids = {str(box.object_id) for box in world_boxes}
+        for object_id in tuple(self._scene_world_ids_added):
+            if object_id not in desired_ids:
+                ok, reason = self._scene.remove_object(object_id)
+                if not ok:
+                    raise RuntimeError("scene remove failed for %s: %s" % (object_id, reason))
+                self._scene_world_ids_added.remove(object_id)
+                self._call_counts["scene_apply"] += 1
         for box in world_boxes:
-            if not self._scene.add_collision_box(
+            ok, reason = self._scene.add_collision_box(
                     box.object_id, list(box.center), list(box.quaternion_xyzw),
-                    list(box.size_whd), frame_id="world"):
-                raise RuntimeError("scene add failed for %s" % box.object_id)
-            self._scene_world_ids_added.append(str(box.object_id))
+                    list(box.size_whd), frame_id="world")
+            if not ok:
+                raise RuntimeError("scene add failed for %s: %s" % (box.object_id, reason))
+            if str(box.object_id) not in self._scene_world_ids_added:
+                self._scene_world_ids_added.append(str(box.object_id))
             self._call_counts["scene_apply"] += 1
         if scene.load_state == "carrying":
             if scene.payload is None:
@@ -526,23 +594,28 @@ class MoveItEdgeAdapter(object):
             # carrying edge refused on phantom collisions (live:
             # pedestal x pickup_box contacts at the world origin while
             # the arm stood over the platform).
-            if not self._scene.detach_and_remove(box_id=BOX_OBJECT_ID):
-                raise RuntimeError("live payload detach failed")
+            ok, reason = self._scene.detach_and_remove(box_id=BOX_OBJECT_ID)
+            if not ok:
+                raise RuntimeError("live payload detach failed: %s" % reason)
             attach_diff = build_attach_scene(
                 payload_id,
                 list(scene.payload.t_tcp_box_translation),
                 list(scene.payload.t_tcp_box_quaternion_xyzw),
                 list(scene.payload.dimensions_wdh),
                 self._link)
-            if not self._scene.apply_diff(attach_diff, timeout=5.0):
-                raise RuntimeError("scene attach failed")
+            ok, reason = self._scene.apply_diff(attach_diff, timeout=5.0)
+            if not ok:
+                raise RuntimeError("scene attach failed: %s" % reason)
             self._call_counts["scene_apply"] += 1
         elif self._scene_state_applied is not None:
-            if not self._scene.detach_and_remove(box_id=payload_id):
-                raise RuntimeError("scene detach failed")
+            ok, reason = self._scene.detach_and_remove(box_id=payload_id)
+            if not ok:
+                raise RuntimeError("scene detach failed: %s" % reason)
             self._call_counts["scene_apply"] += 1
         self._verify_scene(scene.load_state, payload_id)
         self._scene_state_applied = marker
+        self._stage_timings["scene_apply"].append(
+            round(time.monotonic() - started, 6))  # [G1]
         self._scene_dumps.append({
             "load_state": scene.load_state,
             "world_boxes": len(world_boxes),
@@ -603,9 +676,9 @@ class MoveItEdgeAdapter(object):
             waypoints_hint = [
                 (tuple(row["position"]), tuple(row["quaternion_xyzw"]))
                 for row in candidate.attributes["waypoints"]]
-        if scene is not None:
-            self._ensure_scene(scene)
         try:
+            if scene is not None:
+                self._ensure_scene(scene)
             if klass.planner == "joint":
                 trajectory, outcome = self._plan_joint(from_node, to_node,
                                                        klass)
@@ -661,11 +734,31 @@ class MoveItEdgeAdapter(object):
             | PlanningSceneComponents.WORLD_OBJECT_GEOMETRY
             | PlanningSceneComponents.ROBOT_STATE
             | PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS
-            | PlanningSceneComponents.ALLOWED_COLLISION_MATRIX)
+            | PlanningSceneComponents.ALLOWED_COLLISION_MATRIX
+            | PlanningSceneComponents.TRANSFORMS
+            | PlanningSceneComponents.OCTOMAP
+            | PlanningSceneComponents.LINK_PADDING_AND_SCALING)
         return self._scene.get_scene(parts, timeout=3.0)
 
     def _keep_portal_failure(self, from_node, to_node, code, scene_msg,
                              constraints):
+        """Capture boundary; a write failure is recorded, never raised.
+
+        Planning must not die because evidence could not be written. The
+        error list is the capture-health signal: a run with entries there
+        is incomplete evidence.
+        """
+        try:
+            MoveItEdgeAdapter._keep_portal_failure_impl(
+                self, from_node, to_node, code, scene_msg, constraints)
+        except OSError as error:
+            errors = getattr(self, "_portal_capture_errors", None)
+            if errors is None:
+                errors = self._portal_capture_errors = []
+            errors.append(repr(error)[:200])
+
+    def _keep_portal_failure_impl(self, from_node, to_node, code, scene_msg,
+                                  constraints):
         """Keep the first PORTAL_TRANSIT failure of each goal signature.
 
         ``scene_msg`` was read before the MoveGroup call. A scene read
@@ -675,15 +768,45 @@ class MoveItEdgeAdapter(object):
         if not directory or scene_msg is None:
             return
         os.makedirs(directory, exist_ok=True)
+        # Dedup on the EXACT goal (full-precision hash), not on the 3-decimal
+        # log rounding, so two different requests are never merged. The
+        # 3-decimal signature is kept only to count log-visible groups.
+        import hashlib
+        exact_goal = [float(v) for v in to_node.q]
+        # Scene identity is part of the key: the same goal under another
+        # world, attached payload or ACM is a different request. The digest
+        # is semantic (geometry, attachment, ACM), never CDR padding bytes.
+        try:
+            from luggage_planning.anchor_payload_gate import (
+                live_scene_digest,
+            )
+            scene_digest = live_scene_digest(scene_msg)
+        except Exception as error:  # noqa: BLE001 - capture must not abort
+            scene_digest = "digest_unavailable:%s" % type(error).__name__
+        exact_sha = hashlib.sha256(
+            json.dumps([int(code), exact_goal, [float(v) for v in from_node.q],
+                        scene_digest]).encode("utf-8")).hexdigest()
         goal_q = tuple(round(float(v), 3) for v in to_node.q)
         signature = "%s:%s" % (int(code), ",".join("%.3f" % v for v in goal_q))
         seen = getattr(self, "_portal_signatures", None)
         if seen is None:
             seen = set()
             self._portal_signatures = seen
-        if signature in seen or len(seen) >= 4:
+        counts = getattr(self, "_portal_occurrences", None)
+        if counts is None:
+            counts = {}
+            self._portal_occurrences = counts
+        entry = counts.setdefault(exact_sha, {
+            "exact_sha256": exact_sha, "signature_3dp": signature,
+            "occurrences": 0})
+        entry["occurrences"] += 1
+        with open(os.path.join(directory, "capture_index.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump({"max_kept": 8, "entries": list(counts.values())},
+                      handle, indent=1)
+        if exact_sha in seen or len(seen) >= 8:
             return
-        seen.add(signature)
+        seen.add(exact_sha)
         from luggage_planning.planning_scene_client import (
             summarize_planning_scene,
         )
@@ -696,12 +819,21 @@ class MoveItEdgeAdapter(object):
             if index >= len(acm.entry_values):
                 break
             enabled += sum(1 for flag in acm.entry_values[index].enabled if flag)
+        # _goal_on_submission_scene composes the ACM IN PLACE on scene_msg.
+        # Freeze the pre-call bytes and matrix first so the record is the
+        # scene MoveGroup was given, not the certifier's composed copy.
+        from rclpy.serialization import serialize_message
+        raw_scene = bytes(serialize_message(scene_msg))
+        acm_matrix = [[bool(f) for f in row.enabled]
+                      for row in acm.entry_values]
         validity = self._goal_on_submission_scene(scene_msg, to_node.q)
         document = {
             "when": "before_move_group_call",
             "edge_class": "PORTAL_TRANSIT",
             "error_code": int(code),
             "signature": signature,
+            "exact_sha256": exact_sha,
+            "scene_digest": scene_digest,
             "start_q": [float(v) for v in from_node.q],
             "goal_q": [float(v) for v in to_node.q],
             "goal_constraints": [{
@@ -716,17 +848,32 @@ class MoveItEdgeAdapter(object):
             "acm": {
                 "n_names": len(names),
                 "n_enabled_flags": enabled,
+                "entry_names": names,
+                "matrix": acm_matrix,
             },
+            "scene_bin": "portal_%02d.scene.bin" % (len(seen) - 1),
             "validity_on_submission_scene": validity,
         }
         path = os.path.join(
             directory, "portal_%02d.json" % (len(seen) - 1))
+        # Lossless pre-call scene (the summary above is not a replay input).
+        with open(os.path.join(directory, document["scene_bin"]), "wb") as raw:
+            raw.write(raw_scene)
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(document, handle, indent=1, default=str)
             handle.write("\n")
 
     def _goal_on_submission_scene(self, scene_msg, goal_q):
         """Validate the goal joints against the pre-call scene copy."""
+        return self._states_on_scene(scene_msg, [goal_q], "portal-goal")
+
+    def _states_on_scene(self, scene_msg, states, edge_id):
+        """Validate joint states against a scene copy (certifier ACM).
+
+        One ValidateRouteV2 leg whose samples are exactly ``states``; the
+        same collision machinery the certifier uses, so a verdict here is
+        the verdict the route would meet at certification for these states.
+        """
         from luggage_msgs.msg import RouteLegV2
         from luggage_msgs.srv import ValidateRouteV2
         from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -754,34 +901,35 @@ class MoveItEdgeAdapter(object):
                 FrozenSceneComposer, scene_msg.allowed_collision_matrix))
         scene_msg.is_diff = False
         request = ValidateRouteV2.Request()
-        request.request_id = "portal-goal"
-        request.route_digest = "portal-goal"
-        request.scene_digest = "portal-goal"
+        request.request_id = edge_id
+        request.route_digest = edge_id
+        request.scene_digest = edge_id
         request.load_state_scenes = [scene_msg]
         request.max_sample_dt_ns = 0.0
         request.distance_stride = 1000
-        request.budget_s = 2.0
+        request.budget_s = 2.0 if len(states) == 1 else 8.0
         request.joint_velocity_limits = [0.0] * len(JOINT_NAMES)
         leg = RouteLegV2()
-        leg.edge_id = "portal-goal"
+        leg.edge_id = edge_id
         leg.edge_class = "PORTAL_TRANSIT"
         leg.carrying = True
         leg.load_state_index = 0
         leg.joint_names = list(JOINT_NAMES)
-        leg.n_samples = 1
-        leg.sample_times_ns = [0.0]
-        leg.sample_positions_flat = [float(v) for v in goal_q]
+        leg.n_samples = len(states)
+        leg.sample_times_ns = [float(i) * 1e6 for i in range(len(states))]
+        leg.sample_positions_flat = [
+            float(v) for state in states for v in state]
         knots = JointTrajectory()
         knots.joint_names = list(JOINT_NAMES)
         point = JointTrajectoryPoint()
-        point.positions = [float(v) for v in goal_q]
+        point.positions = [float(v) for v in states[0]]
         knots.points = [point]
         leg.knots = knots
         request.legs = [leg]
         done = threading.Event()
         future = client.call_async(request)
         future.add_done_callback(lambda _f: done.set())
-        if not done.wait(8.0):
+        if not done.wait(12.0):
             return {"status": "not_evaluated", "reason": "timeout"}
         response = future.result()
         if response is None or not response.leg_results:
@@ -794,6 +942,8 @@ class MoveItEdgeAdapter(object):
             "valid": bool(result.valid),
             "reason": str(result.reason),
             "detail": str(result.detail),
+            "first_invalid_sample": int(result.first_invalid_sample),
+            "n_samples": len(states),
             "acm_rule": "certifier_composed",
             "structure_pair_allowed_before_compose": raw_allowed,
             "contacts": [
@@ -838,15 +988,26 @@ class MoveItEdgeAdapter(object):
         self._call_counts["move_group"] += 1
         began = time.monotonic()
         result = self._send_action_goal(goal)
-        self._call_durations["move_group"].append(
-            round(time.monotonic() - began, 6))
+        _mg_dur = round(time.monotonic() - began, 6)
+        self._call_durations["move_group"].append(_mg_dur)
+        self._stage_timings["move_group"].append(_mg_dur)  # [G1]
         self._request_dumps.append({
             "planner": "joint", "edge_class": klass.value,
             "planner_id": self._planner_id,
             "from": from_node.node_id, "to": to_node.node_id,
             "from_q": [round(float(v), 6) for v in from_node.q],
             "to_q": [round(float(v), 6) for v in to_node.q],
-            "error_code": int(result.error_code.val) if result else -1})
+            "error_code": int(result.error_code.val) if result else -1,
+            "wall_s": _mg_dur,
+            "server_planning_time_s": (
+                float(getattr(result, "planning_time", 0.0) or 0.0)
+                if result else None)})  # [G1]
+        if submission_scene is not None and str(from_node.load_state) == "carrying":
+            from luggage_planning.joint_boundary_capture import capture_boundary
+            capture_index = getattr(self, "_carrying_capture_index", 0)
+            if capture_boundary(os.environ.get("ST09_PORTAL_CAPTURE_DIR"),
+                                capture_index, submission_scene, goal, result):
+                self._carrying_capture_index = capture_index + 1
         trajectory = getattr(result, "planned_trajectory", None) if result \
             else None
         joint_trajectory = getattr(trajectory, "joint_trajectory", None) \
@@ -872,11 +1033,61 @@ class MoveItEdgeAdapter(object):
             raise RoutePlanningError("EDGE_BUILD_FAILED", {
                 "kind": "moveit_error",
                 "error_code": code})
-        timed = self._retime(joint_trajectory)
+        _rt_began = time.monotonic()
+        timed = self._retime(joint_trajectory, densify=True)
+        self._refuse_interpolated_collision(from_node, to_node, klass, timed)
+        self._stage_timings["retime_and_interpolation"].append(
+            round(time.monotonic() - _rt_began, 6))  # [G1]
         outcome = EdgeOutcome(
             edge_class=klass.value, planner="joint", ok=True,
             moveit_error_code=int(result.error_code.val), attempts=1)
         return timed, outcome
+
+    def _refuse_interpolated_collision(self, from_node, to_node, klass,
+                                       timed):
+        """Judge the joint edge the way the certifier will, before keeping it.
+
+        MoveGroup validates the waypoints it plans through; the certifier
+        samples the controller's spline between them. A leg whose waypoints
+        are all valid can still graze the world between two of them (G2
+        slot 794: 78 valid knots, sample 514 of 2702 at 0.6 mm). The edge is
+        refused here as ``EDGE_BUILD_FAILED`` so the existing bounded edge
+        repair redraws it; the certifier keeps the final word and its
+        threshold is untouched. An unavailable checker keeps the edge and is
+        recorded, never reported as a collision.
+        """
+        from luggage_planning.grid_path_search import RoutePlanningError
+        from luggage_planning.moveit_state_validity import sample_states
+
+        if os.environ.get("ST09_EDGE_INTERPOLATION_GATE", "1") == "0":
+            return
+        record = {"edge_class": klass.value, "from": from_node.node_id,
+                  "to": to_node.node_id}
+        try:
+            scene_msg = self._portal_submission_scene()
+            states = sample_states(timed)
+            verdict = self._states_on_scene(
+                scene_msg, states, "edge-%s" % klass.value.lower())
+        except Exception as error:  # noqa: BLE001 - checker boundary
+            verdict = {"status": "not_evaluated",
+                       "reason": "exception:%s" % type(error).__name__}
+            states = ()
+        record.update(status=verdict.get("status"), valid=verdict.get("valid"),
+                      n_samples=len(states),
+                      first_invalid=verdict.get("first_invalid_sample"),
+                      contacts=verdict.get("contacts", [])[:4])
+        log = getattr(self, "_interpolation_gate_log", None)
+        if log is None:
+            log = self._interpolation_gate_log = []
+        log.append(record)
+        if verdict.get("status") == "queried" and not verdict.get("valid") \
+                and verdict.get("reason") == "COLLISION":
+            raise RoutePlanningError("EDGE_BUILD_FAILED", {
+                "kind": "interpolated_collision",
+                "edge_class": klass.value,
+                "first_invalid_sample": verdict.get("first_invalid_sample"),
+                "n_samples": len(states),
+                "contacts": verdict.get("contacts", [])[:4]})
 
     def _plan_cartesian(self, from_node, to_node, klass, waypoints_hint):
         from luggage_planning.grid_path_search import RoutePlanningError
@@ -909,9 +1120,19 @@ class MoveItEdgeAdapter(object):
                 x=float(quaternion[0]), y=float(quaternion[1]),
                 z=float(quaternion[2]), w=float(quaternion[3]))
             request.waypoints.append(pose)
+        insert_capture_index = getattr(self, "_insert_capture_index", 0)
+        capture_insert = (klass == EdgeClass.INSERT and insert_capture_index < 4
+                          and os.environ.get("ST09_PORTAL_CAPTURE_DIR"))
+        submission_scene = self._portal_submission_scene() if capture_insert else None
         self._call_counts["cartesian"] += 1
         began = time.monotonic()
         response = self._send_cartesian_request(request)
+        if capture_insert:
+            from luggage_planning.joint_boundary_capture import capture_insert_boundary
+            if capture_insert_boundary(
+                    os.environ.get("ST09_PORTAL_CAPTURE_DIR"), insert_capture_index,
+                    submission_scene, request, response):
+                self._insert_capture_index = insert_capture_index + 1
         self._call_durations["cartesian"].append(
             round(time.monotonic() - began, 6))
         self._request_dumps.append({
@@ -1036,7 +1257,7 @@ class MoveItEdgeAdapter(object):
 
     # -- timing -------------------------------------------------------------
 
-    def _retime(self, joint_trajectory):
+    def _retime(self, joint_trajectory, densify=False):
         """Site rest-to-rest trapezoid over the geometric knots -> ns."""
         from st09_contracts.graph import TimedTrajectory
         from luggage_planning.trajectory_timing import (
@@ -1046,6 +1267,8 @@ class MoveItEdgeAdapter(object):
         names = tuple(joint_trajectory.joint_names or JOINT_NAMES)
         if len(points) < 2:
             raise ValueError("retime needs at least two knots")
+        if densify and os.environ.get("ST09_JOINT_KNOT_DENSIFY", "1") != "0":
+            points = densify_knots(points, JOINT_KNOT_MAX_STEP_RAD)
         timed = time_parameterize_cartesian(
             [list(point.positions) for point in points],
             self._velocity_scaling, self._acceleration_scaling)

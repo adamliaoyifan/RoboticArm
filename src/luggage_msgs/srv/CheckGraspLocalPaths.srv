@@ -1,0 +1,24 @@
+# Read-only full-arm check on a private frozen scene; no live state mutation.
+string request_id
+string snapshot_id
+string model_sha256
+moveit_msgs/PlanningScene scene
+geometry_msgs/Pose pick_box_world
+geometry_msgs/Pose place_box_world
+geometry_msgs/Pose box_from_tcp
+geometry_msgs/Pose pick_approach_world
+geometry_msgs/Pose pick_lift_world
+geometry_msgs/Pose place_entry_world
+geometry_msgs/Pose place_retreat_world
+float64[3] box_wdh
+float64 budget_s
+---
+string request_id
+string snapshot_id
+string model_sha256
+bool complete
+string reason
+luggage_msgs/GraspLocalBranch[] pick_branches
+luggage_msgs/GraspLocalBranch[] place_branches
+string diagnostics_json
+float64 elapsed_s

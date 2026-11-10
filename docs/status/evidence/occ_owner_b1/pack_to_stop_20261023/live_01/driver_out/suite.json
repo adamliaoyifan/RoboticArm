@@ -1,0 +1,56 @@
+{
+  "boxes_attempted": 5,
+  "boxes_packed": 5,
+  "boxes_per_min": 0.174,
+  "capacity_claim_valid": false,
+  "catalog_counts": {
+    "unknown": 5
+  },
+  "cycle_sec": {
+    "max": 434.39,
+    "mean": 339.9,
+    "n": 5,
+    "p50": 343.76
+  },
+  "final_layout": "final_layout",
+  "final_layout_meta": {
+    "files": [
+      "boxes.json",
+      "occupancy_gt.json",
+      "occupancy_gt.png",
+      "container_and_boxes.ply",
+      "interior_free.ply",
+      "layout.ply",
+      "layout.html",
+      "meta.json"
+    ],
+    "frame": "world",
+    "free_count": 32100,
+    "geometry_hash": "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+    "last_rejected": null,
+    "n_box_points": 4760,
+    "n_boxes": 5,
+    "n_free_voxels": 32100,
+    "n_wall_points": 16180,
+    "occupancy_ratio": 0.06140350877192982,
+    "occupied_count": 2100,
+    "output_frame": "world",
+    "position_frame": "container_link",
+    "record_kind": "gt_reference",
+    "schema": "luggage.pack_layout/2",
+    "surface_2d": true,
+    "termination": "PLACE_CANDIDATE_EXHAUSTED"
+  },
+  "floor_coverage": 0.3709,
+  "geometry_hash": "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+  "goto_failed_count": 0,
+  "inner_floor_m2": 2.2872,
+  "inner_volume_m3": 4.224,
+  "last_rejected": null,
+  "packed_volume_m3": 0.1773,
+  "rtf_last": 0.9999,
+  "skip_unplaceable": false,
+  "termination_reason": "PLACE_CANDIDATE_EXHAUSTED",
+  "volume_fraction": 0.042,
+  "wall_total_sec": 1726.6
+}

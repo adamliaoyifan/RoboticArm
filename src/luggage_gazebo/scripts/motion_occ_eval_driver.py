@@ -146,11 +146,34 @@ def _world_to_map(scene, xyz):
 class MotionOccDriver(CargoMapIntegrateDriver):
     def __init__(self, args):
         super().__init__(args)
+        if self._typed is not None and getattr(args, 'dump_dir', ''):
+            from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+            self._service_boundary_recorder = PriorEvidenceRecorder(
+                os.path.join(args.dump_dir, 'typed_service_boundaries'))
+            self._typed.set_boundary_recorder(self._service_boundary_recorder)
+            with open(os.path.join(args.dump_dir, 'runtime_identity.json'), 'x') as handle:
+                json.dump(self._frame_runtime_handle.identity, handle, indent=2)
+                handle.write('\n')
+        self._depth_observer = None
+        if getattr(args, 'bootstrap_depth_map', False):
+            if self._typed is None:
+                raise ValueError('depth bootstrap requires frame-runtime')
+            from luggage_perception.container_depth_observer import ContainerDepthObserver
+            from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+            self._depth_observer = ContainerDepthObserver(self, group=self._group,
+                recorder=PriorEvidenceRecorder(os.path.join(args.out, 'depth_bootstrap_boundaries')))
+        self._placement_prior_client = None
+        self._placement_prior_result = None
+        self._placement_prior_choice = None
+        if bool(getattr(args, 'placement_prior', False)):
+            if self._typed is None:
+                raise ValueError('placement prior evaluation requires frame-runtime')
+            from luggage_planning.placement_prior_client import PlacementPriorClient
+            self._placement_prior_client = PlacementPriorClient(self, group=getattr(self,'_group',None))
         self._atlas = None
         self._atlas_diag = {}
         try:
             from luggage_planning.atlas_runtime import (
-                certification_block_reason,
                 compute_reachability_scene_hash,
                 compute_scene_tf_hash,
                 load_atlas_runtime_for_scene,
@@ -160,7 +183,6 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             from luggage_description.scene_tf_config_utils import (
                 resolve_scene_tf_config_path,
             )
-            self._certification_block_reason = certification_block_reason
             self._load_runtime_atlas = load_runtime_atlas
             scene_path = resolve_scene_tf_config_path(
                 getattr(args, "scene_tf_config", None) or None)
@@ -177,7 +199,6 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             self._atlas = None
             self._atlas_diag = {"reason": str(exc)}
             self._atlas_cfg = {"enabled": False}
-            self._certification_block_reason = None
             self._load_runtime_atlas = None
             self._urdf_identity = None
             self._scene_tf_hash = ""
@@ -392,6 +413,65 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         }
         return True, ""
 
+    def bootstrap_depth_map(self):
+        """Explicit unloaded observation, through normal certified motion."""
+        if self._depth_observer is None:
+            return []
+        samples=getattr(self._args, 'bootstrap_depth_samples', 3)
+        if type(samples) is not int or not 3 <= samples <= 8:
+            raise ValueError('bootstrap depth samples must be an integer in [3,8]')
+        from luggage_gazebo.depth_observation_targets import load_depth_targets
+        targets=load_depth_targets(getattr(self._args,'bootstrap_depth_targets',''),
+                                   self._frame_scene_revision)
+        ok, reason = self._goto_named_pose_v2('portal_observe_sim', timeout=self._args.goto_timeout)
+        if not ok:
+            raise RuntimeError('BOOTSTRAP_OBSERVE_ROUTE: '+str(reason))
+        views=[]
+        for index in range(samples):
+            views.append(self._depth_observer.observe_once('bootstrap-depth-%d'%index))
+        for view_index,(xyz,quaternion) in enumerate(targets):
+            ok,reason=self._execute_observation_route(
+                'bootstrap-depth-view-%d'%view_index,xyz,quaternion)
+            if not ok:
+                raise RuntimeError('BOOTSTRAP_ADDITIONAL_ROUTE: '+str(reason))
+            for sample_index in range(samples):
+                views.append(self._depth_observer.observe_once(
+                    'bootstrap-depth-view-%d-sample-%d'%(view_index,sample_index)))
+        ok, reason, _ = self.goto_observe()
+        if not ok:
+            raise RuntimeError('BOOTSTRAP_RETURN_ROUTE: '+str(reason))
+        return views
+
+    def on_detected_luggage(self, pick_msg, trial, spawn):
+        reason = super().on_detected_luggage(pick_msg, trial, spawn)
+        self._placement_prior_result = None
+        self._placement_prior_choice = None
+        if reason or self._placement_prior_client is None:
+            return reason
+        self._typed.set_placement_prior(None)
+        from luggage_planning.placement_prior_requests import measured_detection_view
+        try:
+            response = self._placement_prior_client.prepare(pick_msg,self._frame_request_id('prior'))
+            _, choice = self._placement_prior_client.bind(response,measured_detection_view(pick_msg),
+                                                         self._frame_scene_revision)
+            selected = [candidate for candidate in pick_msg.suction_candidates
+                        if candidate.candidate_id == choice.candidate_id]
+            if len(selected) != 1:
+                raise ValueError('selected measured suction candidate is not unique')
+            # Retain the original measured contact and rank; only narrow the
+            # candidate list consumed by the existing pick builder.
+            pick_msg.suction_candidates = selected
+            self._placement_prior_result = response
+            self._placement_prior_choice = choice
+            self._typed.set_placement_prior(response)
+            trial.extras['placement_prior'] = dict(adopted=True,slot_id=choice.slot_id,
+                candidate_id=choice.candidate_id,elapsed_s=response.elapsed_s,cache_hit=response.cache_hit)
+        except Exception as exc:
+            trial.extras['placement_prior'] = dict(adopted=False,reason=str(exc))
+        if getattr(getattr(self, '_args', None), 'prior_acquisition_only', False):
+            return 'PRIOR_INPUT_ACQUISITION_COMPLETE'
+        return reason
+
     def _frame_place_slot(self, pick_msg, trial):
         """Typed v2 chain: ComputePlacementV2 -> SelectPlacePathV2 -> probe.
 
@@ -426,33 +506,46 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         # What the release commit needs later (see _commit_to_cargo_map).
         self._frame_box_wdh = list(box_wdh)
         request_id = self._frame_request_id("place")
+        from luggage_planning.placement_prior_adoption import bound_target_slots
         try:
-            placement = self._typed.compute_placement(
-                request_id=request_id, box_wdh=box_wdh,
-                height_measured=True,
-                scene_revision=self._frame_scene_revision,
-                geometry_hash=geometry_hash,
-                expected_map_revision=int(surface_msg.map_revision),
-                # Deep-first placement keeps the back wall in the first
-                # handful of slots. Those container-x cells are outside
-                # the arm (run10: world TCP x=-2.06, IK residual 0.5 m).
-                # The route producer reorders by increasing depth, so it
-                # needs the shallow end of the feasible list in hand.
-                max_candidates=2000)
-        except ContractError as error:
-            trial.fail_code = trial.fail_code or error.code
-            trial.extras["compute_placement"] = "%s: %s" % (
-                error.code, error.field)
+            bound = bound_target_slots(getattr(self, '_placement_prior_result', None),
+                getattr(self, '_placement_prior_choice', None), surface_msg, box_wdh,
+                self._frame_scene_revision, request_id)
+        except ValueError as error:
+            trial.fail_code = 'PRIOR_TARGET_STALE'
+            trial.extras['placement_prior_error'] = str(error)
             return None, None
-        if placement is None or not placement.success:
-            trial.fail_code = trial.fail_code or (
-                getattr(placement, "reason_code", None) or "PLACEMENT_FAILED")
-            trial.extras["compute_placement"] = (
-                placement.message if placement else "timeout")
-            return None, None
-        trial.extras["compute_placement"] = placement.message
-        slot_messages = list(placement.candidates) or [placement.slot]
-        scores = list(placement.candidate_scores) or [0.0]
+        if bound is not None:
+            slot_messages, scores = bound
+            trial.extras['compute_placement'] = 'bound measured prior target'
+        else:
+            try:
+                placement = self._typed.compute_placement(
+                    request_id=request_id, box_wdh=box_wdh,
+                    height_measured=True,
+                    scene_revision=self._frame_scene_revision,
+                    geometry_hash=geometry_hash,
+                    expected_map_revision=int(surface_msg.map_revision),
+                    # Deep-first placement keeps the back wall in the first
+                    # handful of slots. Those container-x cells are outside
+                    # the arm (run10: world TCP x=-2.06, IK residual 0.5 m).
+                    # The route producer reorders by increasing depth, so it
+                    # needs the shallow end of the feasible list in hand.
+                    max_candidates=2000)
+            except ContractError as error:
+                trial.fail_code = trial.fail_code or error.code
+                trial.extras["compute_placement"] = "%s: %s" % (
+                    error.code, error.field)
+                return None, None
+            if placement is None or not placement.success:
+                trial.fail_code = trial.fail_code or (
+                    getattr(placement, "reason_code", None) or "PLACEMENT_FAILED")
+                trial.extras["compute_placement"] = (
+                    placement.message if placement else "timeout")
+                return None, None
+            trial.extras["compute_placement"] = placement.message
+            slot_messages = list(placement.candidates) or [placement.slot]
+            scores = list(placement.candidate_scores) or [0.0]
         # ComputePlacementV2 has no request id field; the planner stamps
         # the slots. Select, grasp, and the start TCP join that id.
         slot_request = str(slot_messages[0].identity.request_id or "")
@@ -611,18 +704,21 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         # v1 view for the shared trial bookkeeping: container -> base_link
         # through the shared scene helpers, never hand-rolled.
         from luggage_description.scene_tf_config_utils import (
-            _local_point_to_base_link)
+            _local_point_to_base_link, container_in_base_link)
+        from scipy.spatial.transform import Rotation
         record = self._frame_slot_record
         base_xyz = _local_point_to_base_link(
             list(record["position"]), self._scene_config)
-        yaw_container = 2.0 * math.atan2(record["quaternion_xyzw"][2],
-                                          record["quaternion_xyzw"][3])
+        _translation, container_rpy = container_in_base_link(self._scene_config)
+        base_quaternion = (Rotation.from_euler("xyz", container_rpy)
+                           * Rotation.from_quat(record["quaternion_xyzw"])).as_quat()
         slot = SlotSpec()
         slot.place_pose.position.x = float(base_xyz[0])
         slot.place_pose.position.y = float(base_xyz[1])
         slot.place_pose.position.z = float(base_xyz[2])
-        slot.place_pose.orientation.z = math.sin(0.5 * yaw_container)
-        slot.place_pose.orientation.w = math.cos(0.5 * yaw_container)
+        (slot.place_pose.orientation.x, slot.place_pose.orientation.y,
+         slot.place_pose.orientation.z, slot.place_pose.orientation.w) = (
+             float(v) for v in base_quaternion)
         slot.width, slot.height, slot.depth = box_wdh[0], box_wdh[2], box_wdh[1]
         winner_rows = self._rows_from_selection(selection)
         self._dump_selector(trial, input_slots, winner_rows,
@@ -1006,10 +1102,11 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         return super().run_place_from_carry(pick_msg, trial, slot, slot_meta)
 
     def _integrate_after_place(self, trial, slot, slot_meta, pick_msg,
-                               view="lift", record=True, expected_revision=None):
+                               view="lift", record=True, expected_revision=None,
+                               depth_msg=None):
         result = super()._integrate_after_place(
             trial, slot, slot_meta, pick_msg, view=view, record=record,
-            expected_revision=expected_revision)
+            expected_revision=expected_revision, depth_msg=depth_msg)
         self._rehearsal_mark("integration")
         return result
 
@@ -1046,8 +1143,20 @@ def parse_args(argv=None):
     local.add_argument("--frame-runtime", action="store_true",
                        help="Adopt the v2 runtime chain from the stack graph")
     local.add_argument("--frame-peer", default="motion_occ_driver")
+    local.add_argument("--bootstrap-depth-map", action="store_true",
+                       help="Observe container depth from certified portal pose before pickup")
+    local.add_argument("--bootstrap-depth-samples", type=int, choices=range(3,9), default=3,
+                       help="Fresh settled acquisitions per view, bounded to 3..8")
+    local.add_argument("--bootstrap-depth-targets", default="",
+                       help="Scene-bound world camera intents; each uses certified observation routing")
+    local.add_argument("--prior-acquisition-only", action="store_true",
+                       help="Non-scored rehearsal: stop after measured detection/prior request, before pick")
+    local.add_argument("--placement-prior", action="store_true",
+                       help="Bind measured pickup candidate and target using the read-only prior service")
     local.add_argument("--rehearsal", default="",
                        help="Write non-scoring rehearsal evidence to this directory")
+    local.add_argument("--prior-functional-rehearsal", action="store_true",
+                       help="Use typed prior motion/OCC checks for every requested unscored cycle")
     local.add_argument("--rehearsal-fault", choices=("", "pre_pick", "pre_place"),
                        default="",
                        help="Inject one readiness refusal without scoring")
@@ -1061,8 +1170,22 @@ def parse_args(argv=None):
     args.place_probe = local_ns.place_probe
     args.frame_runtime = local_ns.frame_runtime
     args.frame_peer = local_ns.frame_peer
+    args.placement_prior = local_ns.placement_prior
+    args.bootstrap_depth_map = local_ns.bootstrap_depth_map
+    args.bootstrap_depth_targets = local_ns.bootstrap_depth_targets
+    args.bootstrap_depth_samples = local_ns.bootstrap_depth_samples
+    args.prior_acquisition_only = local_ns.prior_acquisition_only
+    if args.prior_acquisition_only and not (args.placement_prior and local_ns.rehearsal):
+        local.error("--prior-acquisition-only requires --placement-prior and --rehearsal")
     args.rehearsal_dir = str(local_ns.rehearsal or "")
     args.rehearsal_fault = str(local_ns.rehearsal_fault or "")
+    args.prior_functional_rehearsal = local_ns.prior_functional_rehearsal
+    if args.prior_functional_rehearsal and (
+            not args.placement_prior or not args.frame_runtime or not args.rehearsal_dir
+            or args.prior_acquisition_only or args.rehearsal_fault
+            or args.place_probe != "on" or args.plan_only):
+        local.error("--prior-functional-rehearsal requires measured prior/frame rehearsal "
+                    "with route verification and motion; acquisition-only/fault modes are separate")
     return args
 
 
@@ -1260,6 +1383,15 @@ def main(argv=None):
                 return 2
         print("graph ok; MOTION-OCC n=%d" % args.n, flush=True)
         time.sleep(8.0)
+        if args.bootstrap_depth_map:
+            try:
+                views = driver.bootstrap_depth_map()
+                _atomic_json(os.path.join(args.out, 'depth_bootstrap.json'),
+                             dict(success=True, views=views))
+            except Exception as error:
+                _atomic_json(os.path.join(args.out, 'depth_bootstrap.json'),
+                             dict(success=False, reason=str(error)))
+                return 2
         if args.rehearsal_fault:
             rec = driver.run_trial(0)
             records.append(rec)
@@ -1298,10 +1430,21 @@ def main(argv=None):
             path, evidence = _write_rehearsal(args.rehearsal_dir, records)
             note = {"scoring_writes": False, "namespace": "rehearsal",
                     "evidence": path, "complete": evidence.get("complete")}
+            if args.prior_functional_rehearsal:
+                from luggage_gazebo.prior_functional_evidence import summarize_prior_rehearsal
+                functional = summarize_prior_rehearsal(
+                    [trial_to_dict(record) for record in records], args.n)
+                functional_path = _atomic_json(
+                    os.path.join(args.rehearsal_dir, "prior-functional-evidence.json"), functional)
+                note.update(prior_functional_evidence=functional_path,
+                            functional_rehearsal_passed=functional["functional_rehearsal_passed"],
+                            f3_campaign="not_evaluated", performance="not_evaluated")
             _write_t0(args.out, extra, args, records, note, started_at)
             print(json.dumps(note, sort_keys=True), flush=True)
             if not records:
                 return 2
+            if args.prior_functional_rehearsal:
+                return 0 if functional["functional_rehearsal_passed"] else 1
             return 0 if evidence.get("complete") else 1
         suite = _write_suite(args.out, records, driver)
         _write_t0(args.out, extra, args, records, suite, started_at)
@@ -1331,9 +1474,9 @@ def main(argv=None):
             return 1
         return 0 if records and _place_reached(records[-1]) else 1
     finally:
-        executor.remove_node(driver)
-        driver.destroy_node()
-        rclpy.shutdown()
+        from luggage_gazebo.eval_lifecycle import close_driver_workers
+        close_driver_workers(driver, executor, spinner)
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

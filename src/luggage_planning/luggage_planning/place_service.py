@@ -155,6 +155,13 @@ def _admit_slot(message, request_id, scene_revision, interface_id):
 
 
 def request_dict(message):
+    from luggage_planning.attachment_geometry_transport import geometry_from_message
+    from st09_contracts._base import ContractViolation
+    try:
+        conservative_geometry = geometry_from_message(message.conservative_geometry)
+    except ContractViolation as error:
+        raise ContractError('ATTACHMENT_GEOMETRY_INVALID', 'conservative_geometry',
+                            'confirmed attachment output', str(error)) from error
     if not message.slots:
         raise ContractError("MISSING_IDENTITY", "slots", "nonempty", [])
     request_id = _require_request_id(str(message.request_id))
@@ -187,6 +194,7 @@ def request_dict(message):
         "request_id": request_id,
         "scene_revision": scene,
         "box_wdh": _xyz(message.box_wdh),
+        "conservative_geometry": conservative_geometry,
         "slots": slots,
         "slot_scores": [float(v) for v in message.slot_scores],
         "surface": surface,
@@ -298,11 +306,32 @@ def fill_select_response_route(message, response, producer,
     # the live scene (the retreat chain's unload never runs); the next
     # motion then collides with the phantom. Every exit resets.
     reset_scene = getattr(producer.edge_builder, "reset_scene", None)
+    result = None
+    planning_error = None
+    cleanup_error = None
     try:
         result = producer.plan_place_route(request)
+    except Exception as exc:
+        planning_error = exc
     finally:
         if callable(reset_scene):
-            reset_scene()
+            try:
+                reset_scene()
+            except Exception as exc:
+                cleanup_error = exc
+    if cleanup_error is not None:
+        response.success = False
+        response.reason_code = "SCENE_CLEANUP_FAILED"
+        response.slot_index = -1
+        response.motion_segments = []
+        response.carry_segments = []
+        response.rows_json = json.dumps((result or {}).get("rows", []) + [{
+            "reason": "SCENE_CLEANUP_FAILED", "detail": str(cleanup_error),
+            "planning_error": repr(planning_error) if planning_error else None}])
+        response.stage_timings_json = json.dumps((result or {}).get("stage_timings", {}))
+        return response
+    if planning_error is not None:
+        raise planning_error
     if not result.get("success"):
         response.success = False
         response.reason_code = str(result.get("reason_code") or "NO_FEASIBLE_ROUTE")
@@ -410,13 +439,30 @@ def handle_build_v2(request, response, pick=None, pick_encoder=None):
                     "timed pick legs require the edge builder", None)
             legs = None
             from luggage_planning.grid_path_search import RoutePlanningError
+            candidate_kwargs = {}
+            candidate_id = str(request.suction_candidate_id or "")
+            if candidate_id or request.pick.suction_candidates:
+                from luggage_planning.placement_prior_requests import measured_detection_view
+                from luggage_planning.placement_prior_pick import candidates_for_prior
+                # Validate frame/stamp/object/contact-model identity before
+                # passing any selected contact to the timed path encoder.
+                try:
+                    detection = measured_detection_view(request.pick)
+                    candidates_for_prior(detection)
+                except ValueError as error:
+                    raise ContractError("INVALID_RECORD", "suction_candidate", "measured coherent candidates", str(error))
+                selected = [c for c in detection.candidates if c.candidate_id == candidate_id]
+                if len(selected) != 1:
+                    raise ContractError("INVALID_RECORD", "suction_candidate_id", "one explicit measured candidate", candidate_id)
+                candidate_kwargs["suction_candidate"] = selected[0]
 
             try:
                 legs = pick_encoder(
                     pick,
                     request_id=str(request.request_id),
                     scene_revision=str(request.scene_revision),
-                    stamp_ns=int(pick_record.get("stamp_ns") or 0))
+                    stamp_ns=int(pick_record.get("stamp_ns") or 0),
+                    **candidate_kwargs)
             except RoutePlanningError as error:
                 # [ST09-I S5.7-4] a refused pick keeps its own named
                 # reason (IK/edge/certification) — the CERT_* codes must

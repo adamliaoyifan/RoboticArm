@@ -1,0 +1,83 @@
+{
+  "revision": "8550f7a2897c542b78b68c0024a4816154eb2e2e",
+  "created_at": "2026-10-22T14:33:51.138716+08:00",
+  "mode": "offline audit of preserved attempt A; no simulator",
+  "source": "/tmp/jcc_runs/n3_functional_20261022_130429",
+  "artifacts": [
+    {
+      "path": "attempt_A/driver.log",
+      "bytes": 2789,
+      "sha256": "e8e7122e8fa66c6ce6ba852573979d7821d2ed9c757fe191d6fe62ca0407bb67"
+    },
+    {
+      "path": "attempt_A/runner.log",
+      "bytes": 246,
+      "sha256": "5708323ce1d4b89dc95bfeb579b39636c36f5d65a35a597aca92b91205726447"
+    },
+    {
+      "path": "attempt_A/launch.log",
+      "bytes": 118464,
+      "sha256": "d061d8aeebe9e6f52af05fbcf8734527e87e8213a3e8a13075940a3f55b68891"
+    },
+    {
+      "path": "attempt_A/driver_out/suite.json",
+      "bytes": 1410,
+      "sha256": "d2dad9383c65510d6ef42e0f4b3ba4d163c38e647a1198a8b49df46a22257a4c"
+    },
+    {
+      "path": "attempt_A/driver_out/dumps/box_00_HANDOFF_SETTLE_TIMEOUT/state_timeline.jsonl",
+      "bytes": 731,
+      "sha256": "14d477f735ea2aa6336716b05bd54ead4041098570df35c22ad34cccc3a471a5"
+    },
+    {
+      "path": "attempt_A/driver_out/dumps/box_00_HANDOFF_SETTLE_TIMEOUT/handoff.json",
+      "bytes": 128035,
+      "sha256": "2e4091bd845713393f39a037c32715273f35e2b48c175fa510ce6b4aefa8299b"
+    },
+    {
+      "path": "attempt_A/driver_out/dumps/box_00_HANDOFF_SETTLE_TIMEOUT/replay/joint_ring.jsonl",
+      "bytes": 5245864,
+      "sha256": "87e204f6d1ea85ac3fba5c93500fd397b93fa8f8a5d3479e95ee478bc3a6c5ae"
+    },
+    {
+      "path": "attempt_A/joint_capture/manifest_recorder.json",
+      "bytes": 602,
+      "sha256": "48f7c927567cfaf10504adfa148a729a00fa10a8b923e60452800f155f0dd4dc"
+    },
+    {
+      "path": "attempt_A/joint_capture/events.bin",
+      "bytes": 288,
+      "sha256": "3c16e01366228443b28080eb0fce36c739d272f5cab2e1092399e18b26e4dac3"
+    },
+    {
+      "path": "attempt_A/joint_capture/plugin_write.bin",
+      "bytes": 91735048,
+      "sha256": "b70320aa1af586ec88043b729f0634700ca8ed64cd1d2f931cc7a3eacdb67631"
+    },
+    {
+      "path": "attempt_A/joint_capture/plugin_read.bin",
+      "bytes": 8771172,
+      "sha256": "d39a24019c65f2c59d407b070db951e2a7dcb1d57f8245a6b33edf67d3448b7f"
+    },
+    {
+      "path": "attempt_A/joint_capture/follow_trace.jsonl",
+      "bytes": 2593115,
+      "sha256": "4f9b602ecaa4c50c2b2c5685579ccb83b554c530369945187e82a78a98c02900"
+    },
+    {
+      "path": "attempt_A/joint_capture/iteration.bin",
+      "bytes": 824957,
+      "sha256": "76e7c700c48d5c1e2c7b3c30c0a55d740a532b8e3b43c192464d6db989b8ff12"
+    },
+    {
+      "path": "attempt_A/joint_capture/health.json",
+      "bytes": 481,
+      "sha256": "635030d753f441b4b7d09e9d59812c43fc3637af58862f20fc46f26bd3db410a"
+    },
+    {
+      "path": "attempt_A/joint_capture/ctl/stop",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "checked_configs": 6139,
+  "recorded_samples": 4600,
+  "interp_step_s": 0.005,
+  "points_per_link": 400,
+  "links_with_geometry": [
+    "camera_link",
+    "elfin_base",
+    "elfin_link1",
+    "elfin_link2",
+    "elfin_link3",
+    "elfin_link4",
+    "elfin_link5",
+    "elfin_link6",
+    "mid360_mount_frame"
+  ],
+  "min_distance_m": {
+    "A0": 0.0364,
+    "APRIME": 0.01635,
+    "B": 0.01635
+  },
+  "worst_t_sim": {
+    "A0": 127.07499999999999,
+    "APRIME": 127.96,
+    "B": 127.96
+  },
+  "pass_margin_m": 0.0,
+  "pass": true,
+  "evidence_class": "sampling (uniform points per link mesh, 5 ms interpolated configs); not a continuous-geometry proof"
+}

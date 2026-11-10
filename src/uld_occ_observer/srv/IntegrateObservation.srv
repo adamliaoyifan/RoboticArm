@@ -1,0 +1,9 @@
+string sensor_id
+string observation_id
+string clock_domain
+string geometry_hash
+uint64 epoch
+sensor_msgs/PointCloud2 cloud
+geometry_msgs/TransformStamped uld_from_optical
+---
+uld_occ_observer/UpdateReceipt receipt

@@ -37,12 +37,25 @@ NEAREST_SEED = [0.858, -1.175, 1.504, -1.904, -1.567, -0.713]
 
 @pytest.fixture()
 def data_cfg():
-    # Query tests read the on-disk grid. Identity is covered separately;
-    # the certification default is strict and would refuse a hash-less load.
+    # Query tests read the on-disk grid; identity is covered separately.
     return ar._deep_merge(ar.DEFAULT_ATLAS_RUNTIME, {
         "atlas_dir": ATLAS_DATA,
-        "hash_policy": "warn",
     })
+
+
+def load_verified(cfg, box_size):
+    """load_runtime_atlas through the real verified path (2026-10-15:
+    the single scene rule always verifies, so query-layer tests load
+    with the atlas's own recorded fingerprints, no hash-less bypass)."""
+    import yaml
+    _npz, meta_path = ar.resolve_atlas_files(cfg, box_size)
+    with open(meta_path, "r", encoding="utf-8") as handle:
+        deps = yaml.safe_load(handle).get("dependencies") or {}
+    return ar.load_runtime_atlas(
+        cfg, box_size=box_size,
+        scene_tf_hash=str(deps.get("scene_tf_hash") or ""),
+        reachability_scene_hash=str(
+            deps.get("reachability_scene_hash") or ""))
 
 
 def test_defaults_and_deep_merge(tmp_path):
@@ -113,14 +126,11 @@ def test_default_runtime_stays_on_sim_atlas():
     assert npz.endswith(os.path.join(
         "reachability_atlas", "s20_container_collision_aware.npz"))
     assert "reachability_atlas_deploy" not in npz
-    assert cfg["hash_policy"] == "strict"
 
 
-def test_deploy_runtime_is_fail_closed():
-    # ST09-PD: the deploy cell refuses an unverified/mismatched atlas
-    # exactly like the simulation certification cell. warn is forbidden.
+def test_deploy_runtime_loads():
     cfg = ar.load_atlas_runtime(DEPLOY_RUNTIME)
-    assert cfg["hash_policy"] == "strict"
+    assert cfg["atlas_dir"]
 
 
 SIM_SCENE = os.path.normpath(os.path.join(
@@ -176,77 +186,49 @@ def test_resolve_atlas_file_override_wins(data_cfg, tmp_path):
 
 
 @pytest.mark.skipif(not os.path.isfile(REAL_ATLAS), reason="atlas data")
-def test_load_runtime_atlas_hash_policies(data_cfg):
-    wrong_hash = "deadbeef" * 4
-    atlas, diag = ar.load_runtime_atlas(
-        data_cfg, box_size=[0.55, 0.40, 0.25], scene_tf_hash=wrong_hash)
-    # warn keeps the atlas loaded but records the mismatch
-    assert atlas is not None and diag["loaded"]
-    assert not diag["scene_tf_ok"]
-    assert "scene_tf" in diag["hash_message"]
-
-    strict = ar._deep_merge(data_cfg, {"hash_policy": "strict"})
-    atlas, diag = ar.load_runtime_atlas(
-        strict, box_size=[0.55, 0.40, 0.25], scene_tf_hash=wrong_hash)
-    assert atlas is None and not diag["loaded"]
-    assert diag["reason"] == "hash_mismatch_strict"
-
-    off = ar._deep_merge(data_cfg, {"hash_policy": "off"})
-    atlas, diag = ar.load_runtime_atlas(
-        off, box_size=[0.55, 0.40, 0.25], scene_tf_hash=wrong_hash)
-    assert atlas is not None and diag["scene_tf_ok"]
-
-
 @pytest.mark.skipif(not os.path.isfile(REAL_ATLAS), reason="atlas data")
-def test_strict_requires_both_live_hashes(data_cfg):
-    import yaml
-    strict = ar._deep_merge(data_cfg, {"hash_policy": "strict"})
-    _npz, meta_path = ar.resolve_atlas_files(strict, [0.55, 0.40, 0.25])
-    with open(meta_path, "r", encoding="utf-8") as handle:
-        deps = (yaml.safe_load(handle).get("dependencies") or {})
-    scene = deps["scene_tf_hash"]
-    urdf = deps["urdf_hash"]
+def test_load_runtime_atlas_single_scene_rule(data_cfg):
+    """2026-10-15: one identity rule - the arm-to-container fingerprint.
+
+    A wrong scene fingerprint refuses the atlas; the matching one loads
+    it. No off/warn bypass and no URDF-hash comparison.
+    """
+    wrong = "deadbeef" * 4
     atlas, diag = ar.load_runtime_atlas(
-        strict, box_size=[0.55, 0.40, 0.25],
-        scene_tf_hash=scene, urdf_hash=urdf)
+        data_cfg, box_size=[0.55, 0.40, 0.25],
+        scene_tf_hash=wrong,
+        reachability_scene_hash=wrong)
+    assert atlas is None and not diag["loaded"]
+    assert diag["reason"] == "atlas_scene_mismatch"
+    assert not diag["scene_tf_ok"]
+
+    atlas, diag = load_verified(data_cfg, [0.55, 0.40, 0.25])
     assert atlas is not None and diag["loaded"]
     assert diag["reason"] == "ok"
 
+
+@pytest.mark.skipif(not os.path.isfile(REAL_ATLAS), reason="atlas data")
+def test_scene_rule_requires_present_scene_hash(data_cfg):
     atlas, diag = ar.load_runtime_atlas(
-        strict, box_size=[0.55, 0.40, 0.25],
-        scene_tf_hash=scene, urdf_hash="")
+        data_cfg, box_size=[0.55, 0.40, 0.25])
     assert atlas is None and not diag["loaded"]
-    assert diag["reason"] == "hash_unverified_strict"
-    assert diag["scene_tf_ok"] and not diag["urdf_ok"]
-
-    atlas, diag = ar.load_runtime_atlas(
-        strict, box_size=[0.55, 0.40, 0.25],
-        scene_tf_hash=scene, urdf_hash="deadbeef" * 4)
-    assert atlas is None
-    assert diag["reason"] == "hash_mismatch_strict"
-    assert not diag["urdf_ok"]
+    assert diag["reason"] == "atlas_scene_unverified"
+    assert not diag["scene_tf_ok"]
 
 
-def test_certification_block_reason_is_fail_closed():
-    cfg = {
-        "enabled": True,
-        "hash_policy": "strict",
-        "placement": {"dump_only": False, "hard_reject": True},
-    }
-    assert ar.certification_block_reason(
-        cfg, {"loaded": False, "reason": "hash_unverified_strict"},
-    ) == ar.ATLAS_IDENTITY_UNVERIFIED
-    assert ar.certification_block_reason(cfg, {"loaded": True}) == ""
-    warn = dict(cfg, hash_policy="warn")
-    assert ar.certification_block_reason(warn, {"loaded": False}) == ""
-    dump_only = ar._deep_merge(cfg, {"placement": {"dump_only": True}})
-    assert ar.certification_block_reason(dump_only, {"loaded": False}) == ""
-    assert ar.ATLAS_IDENTITY_UNVERIFIED == "ATLAS_IDENTITY_UNVERIFIED"
+@pytest.mark.skipif(not os.path.isfile(REAL_ATLAS), reason="atlas data")
+def test_urdf_hash_is_not_an_identity_input(data_cfg):
+    """The stored urdf_hash is metadata only: loading with no live URDF
+    supplied succeeds under the scene rule (the live URDF embeds
+    workspace-absolute paths; its byte hash was removed by design)."""
+    atlas, diag = load_verified(data_cfg, [0.55, 0.40, 0.25])
+    assert atlas is not None and diag["loaded"]
+    assert "urdf_hash" in (atlas.meta.get("dependencies") or {})
 
 
 @pytest.mark.skipif(not os.path.isfile(REAL_ATLAS), reason="atlas data")
 def test_atlas_seeds_for_query_known_cell(data_cfg):
-    atlas, diag = ar.load_runtime_atlas(data_cfg, box_size=[0.55, 0.40, 0.25])
+    atlas, diag = load_verified(data_cfg, [0.55, 0.40, 0.25])
     assert diag["loaded"]
     # Exact slot point: containment cell UNREACHABLE with NaN seeds, the
     # neighbour fallback supplies three seed families from [1,1,2,1].
@@ -267,7 +249,7 @@ def test_atlas_seeds_for_query_known_cell(data_cfg):
 
 @pytest.mark.skipif(not os.path.isfile(REAL_ATLAS), reason="atlas data")
 def test_atlas_seeds_direct_cell_no_fallback(data_cfg):
-    atlas, _ = ar.load_runtime_atlas(data_cfg, box_size=[0.55, 0.40, 0.25])
+    atlas, _ = load_verified(data_cfg, [0.55, 0.40, 0.25])
     out = ar.atlas_seeds_for_query(
         atlas, *SEED_CELL_CENTER, yaw=SEED_YAW, seed_set="transit", max_seeds=3)
     assert out["cell"] == SEED_CELL
@@ -278,7 +260,7 @@ def test_atlas_seeds_direct_cell_no_fallback(data_cfg):
 
 @pytest.mark.skipif(not os.path.isfile(REAL_ATLAS), reason="atlas data")
 def test_atlas_seeds_directed_bins_and_offset(data_cfg):
-    atlas, _ = ar.load_runtime_atlas(data_cfg, box_size=[0.55, 0.40, 0.25])
+    atlas, _ = load_verified(data_cfg, [0.55, 0.40, 0.25])
     base = ar.atlas_seeds_for_query(atlas, *SEED_CELL_CENTER, yaw=SEED_YAW)
     # ST06: directed 2pi bins -- yaw and yaw+pi name DIFFERENT concrete
     # branches (the legacy pi fold is gone; 0 and pi stay distinct).
@@ -355,17 +337,17 @@ def test_reachability_hash_ignores_pickup_and_catches_container_motion(tmp_path)
     assert ar.compute_reachability_scene_hash(paths["container"]) != base
     assert ar.compute_scene_tf_hash(paths["base"]) != ar.compute_scene_tf_hash(
         paths["pickup"])
-    ok, message, scene_ok, _urdf_ok = ar.identity_verdict(
+    ok, message, scene_ok = ar.identity_verdict(
         {"reachability_scene_hash": base, "scene_tf_hash": "old-file",
          "urdf_hash": "urdf"},
-        scene_tf_hash="new-file", urdf_hash="urdf", policy="strict",
+        scene_tf_hash="new-file",
         reachability_scene_hash=base)
     assert ok and scene_ok
     assert "diagnostic" in message
-    bad, _message, scene_bad, _urdf = ar.identity_verdict(
+    bad, _message, scene_bad = ar.identity_verdict(
         {"reachability_scene_hash": base, "scene_tf_hash": "old-file",
          "urdf_hash": "urdf"},
-        scene_tf_hash="new-file", urdf_hash="urdf", policy="strict",
+        scene_tf_hash="new-file",
         reachability_scene_hash="not-the-same-hash")
     assert not bad and not scene_bad
 
@@ -429,7 +411,7 @@ def test_query_semantics_defaults_in_config():
 
 def test_apply_query_semantics_gating(data_cfg):
     assert ar.apply_query_semantics(None, data_cfg) is None
-    atlas, _ = ar.load_runtime_atlas(data_cfg, box_size=[0.55, 0.40, 0.25])
+    atlas, _ = load_verified(data_cfg, [0.55, 0.40, 0.25])
     off = ar._deep_merge(data_cfg, {"query_semantics": {"enabled": False}})
     assert ar.apply_query_semantics(atlas, off) is atlas  # passthrough
     wrapped = ar.apply_query_semantics(atlas, data_cfg)
@@ -449,7 +431,7 @@ def test_query_semantics_floor_reanchor(data_cfg):
     collision-free (the box was placed there in sim). The semantics layer
     re-anchors the query to the first cell whose centre clears the floor.
     """
-    atlas, _ = ar.load_runtime_atlas(data_cfg, box_size=[0.55, 0.40, 0.25])
+    atlas, _ = load_verified(data_cfg, [0.55, 0.40, 0.25])
     sem = ar.QuerySemantics(atlas, floor_z=0.53, box_height=0.25)
     raw = atlas.query(-0.495, -0.735, 0.7772, SEED_YAW)
     got = sem.query(-0.495, -0.735, 0.7772, SEED_YAW)
@@ -490,7 +472,7 @@ def test_query_semantics_boundary_never_rejected(data_cfg):
     back UNKNOWN (promoted) and never hard_reject_safe, whatever its own
     confidence says -- "between two reachable points" cannot be rejected.
     """
-    atlas, _ = ar.load_runtime_atlas(data_cfg, box_size=[0.55, 0.40, 0.25])
+    atlas, _ = load_verified(data_cfg, [0.55, 0.40, 0.25])
     sem = ar.QuerySemantics(atlas)                    # no floor: pure verdict fix
     origin = atlas.meta["grid"]["origin"]
     res = float(atlas.resolution)
@@ -518,7 +500,7 @@ def test_query_semantics_boundary_never_rejected(data_cfg):
 @pytest.mark.skipif(not os.path.isfile(REAL_ATLAS), reason="atlas data")
 def test_query_semantics_strict_interior_blocks_reject(data_cfg):
     """With promotion off, the strict-interior rule alone blocks rejection."""
-    atlas, _ = ar.load_runtime_atlas(data_cfg, box_size=[0.55, 0.40, 0.25])
+    atlas, _ = load_verified(data_cfg, [0.55, 0.40, 0.25])
     strict_only = ar.QuerySemantics(
         atlas, opts={"neighbor_promote": False, "strict_interior_reject": True})
     origin = atlas.meta["grid"]["origin"]
@@ -535,3 +517,47 @@ def test_query_semantics_strict_interior_blocks_reject(data_cfg):
         # status untouched (promotion off), rejection suppressed
         assert int(got.status) == int(raw.status)
         assert not got.hard_reject_safe
+
+
+SCENE_DEPS = {
+    "scene_tf_hash": "aa" * 8,
+    "reachability_scene_hash": "bb" * 8,
+    "urdf_hash": "06c4187e" + "0" * 24,
+}
+
+
+def test_scene_match_ignores_urdf_and_file_hash_diagnostic():
+    """The TF fingerprint decides; file-bytes and URDF hashes do not."""
+    ok, message, scene_ok = ar.identity_verdict(
+        SCENE_DEPS,
+        scene_tf_hash="cc" * 8,          # file bytes differ: diagnostic only
+        reachability_scene_hash="bb" * 8)
+    assert ok and scene_ok
+    assert "diagnostic" in message
+
+
+def test_scene_mismatch_refuses():
+    ok, message, scene_ok = ar.identity_verdict(
+        SCENE_DEPS,
+        scene_tf_hash="cc" * 8,
+        reachability_scene_hash="dd" * 8)   # WRONG container geometry
+    assert not ok and not scene_ok
+    assert "reachability_scene hash mismatch" in message
+
+
+def test_scene_requires_present_scene_hash():
+    ok, message, scene_ok = ar.identity_verdict(
+        SCENE_DEPS,
+        scene_tf_hash="cc" * 8,
+        reachability_scene_hash=None)        # live fingerprint missing
+    assert not ok and not scene_ok
+    assert "reachability_scene hash missing" in message
+
+
+def test_legacy_atlas_gates_on_file_hash():
+    legacy = {"scene_tf_hash": "aa" * 8}     # no reachability fingerprint
+    ok, _message, scene_ok = ar.identity_verdict(
+        legacy, scene_tf_hash="aa" * 8)
+    assert ok and scene_ok
+    ok, _m, scene_ok = ar.identity_verdict(legacy, scene_tf_hash="ff" * 8)
+    assert not ok and not scene_ok

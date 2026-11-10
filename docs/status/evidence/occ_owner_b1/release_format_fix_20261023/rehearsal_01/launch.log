@@ -1,0 +1,631 @@
+[INFO] [launch]: All log files can be found below /home/adamliao/.ros/log/2026-10-23-10-29-09-436343-adamliao-X870-EAGLE-WIFI7-756568
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [ign gazebo-1]: process started with pid [756618]
+[INFO] [parameter_bridge-2]: process started with pid [756620]
+[INFO] [parameter_bridge-3]: process started with pid [756623]
+[INFO] [depth_image_republisher.py-4]: process started with pid [756625]
+[INFO] [camera_info_alias.py-5]: process started with pid [756627]
+[INFO] [sensor_preprocessor_node.py-6]: process started with pid [756629]
+[INFO] [parameter_bridge-7]: process started with pid [756631]
+[INFO] [pickup_box_spawner_node.py-8]: process started with pid [756633]
+[INFO] [scene_viz_node.py-9]: process started with pid [756635]
+[INFO] [luggage_detector_node.py-10]: process started with pid [756637]
+[INFO] [semantic_segmenter_node.py-11]: process started with pid [756639]
+[INFO] [semantic_point_filter_node.py-12]: process started with pid [756641]
+[INFO] [scene_manager_node.py-13]: process started with pid [756643]
+[INFO] [waypoint_generator_node.py-14]: process started with pid [756645]
+[INFO] [motion_planner_node.py-15]: process started with pid [756647]
+[INFO] [trajectory_selector_node.py-16]: process started with pid [756649]
+[INFO] [validate_route_node-17]: process started with pid [756651]
+[INFO] [cargo_volume_mapper_node.py-18]: process started with pid [756653]
+[INFO] [placement_planner_node.py-19]: process started with pid [756655]
+[INFO] [vacuum_controller_node.py-20]: process started with pid [756657]
+[INFO] [container_tf_publisher-21]: process started with pid [756659]
+[INFO] [robot_state_publisher-22]: process started with pid [756661]
+[INFO] [create-23]: process started with pid [756663]
+[INFO] [create-24]: process started with pid [756665]
+[INFO] [create-25]: process started with pid [756667]
+[INFO] [spawner-26]: process started with pid [756669]
+[parameter_bridge-3] [INFO] [1792722550.560470563] [camera_bridge]: Creating GZ->ROS Bridge: [/d435/image (gz.msgs.Image) -> /d435/image (sensor_msgs/msg/Image)] (Lazy 0)
+[parameter_bridge-3] [INFO] [1792722550.561514892] [camera_bridge]: Creating GZ->ROS Bridge: [/d435/depth_image (gz.msgs.Image) -> /d435/depth_image (sensor_msgs/msg/Image)] (Lazy 0)
+[parameter_bridge-3] [INFO] [1792722550.562327962] [camera_bridge]: Creating GZ->ROS Bridge: [/d435/camera_info (gz.msgs.CameraInfo) -> /d435/camera_info (sensor_msgs/msg/CameraInfo)] (Lazy 0)
+[parameter_bridge-3] [INFO] [1792722550.562825555] [camera_bridge]: Creating GZ->ROS Bridge: [/livox/scan/points (gz.msgs.PointCloudPacked) -> /livox/scan/points (sensor_msgs/msg/PointCloud2)] (Lazy 0)
+[robot_state_publisher-22] [INFO] [1792722550.572087773] [robot_state_publisher]: got segment camera_color_frame
+[robot_state_publisher-22] [INFO] [1792722550.572206207] [robot_state_publisher]: got segment camera_color_optical_frame
+[robot_state_publisher-22] [INFO] [1792722550.572212439] [robot_state_publisher]: got segment camera_depth_frame
+[robot_state_publisher-22] [INFO] [1792722550.572215725] [robot_state_publisher]: got segment camera_depth_optical_frame
+[robot_state_publisher-22] [INFO] [1792722550.572218661] [robot_state_publisher]: got segment camera_link
+[robot_state_publisher-22] [INFO] [1792722550.572221727] [robot_state_publisher]: got segment d555_link
+[robot_state_publisher-22] [INFO] [1792722550.572224281] [robot_state_publisher]: got segment eef_mount_adapter
+[robot_state_publisher-22] [INFO] [1792722550.572227057] [robot_state_publisher]: got segment elfin_base
+[robot_state_publisher-22] [INFO] [1792722550.572229632] [robot_state_publisher]: got segment elfin_base_link
+[robot_state_publisher-22] [INFO] [1792722550.572232267] [robot_state_publisher]: got segment elfin_dummy_gripper
+[robot_state_publisher-22] [INFO] [1792722550.572234962] [robot_state_publisher]: got segment elfin_end_link
+[robot_state_publisher-22] [INFO] [1792722550.572237637] [robot_state_publisher]: got segment elfin_link1
+[robot_state_publisher-22] [INFO] [1792722550.572240632] [robot_state_publisher]: got segment elfin_link2
+[robot_state_publisher-22] [INFO] [1792722550.572243107] [robot_state_publisher]: got segment elfin_link3
+[robot_state_publisher-22] [INFO] [1792722550.572245752] [robot_state_publisher]: got segment elfin_link4
+[robot_state_publisher-22] [INFO] [1792722550.572248307] [robot_state_publisher]: got segment elfin_link5
+[robot_state_publisher-22] [INFO] [1792722550.572251022] [robot_state_publisher]: got segment elfin_link6
+[robot_state_publisher-22] [INFO] [1792722550.572253577] [robot_state_publisher]: got segment livox_frame
+[robot_state_publisher-22] [INFO] [1792722550.572256482] [robot_state_publisher]: got segment livox_imu_frame
+[robot_state_publisher-22] [INFO] [1792722550.572259087] [robot_state_publisher]: got segment mid360_mount_frame
+[robot_state_publisher-22] [INFO] [1792722550.572261732] [robot_state_publisher]: got segment suction_contact_frame
+[robot_state_publisher-22] [INFO] [1792722550.572264267] [robot_state_publisher]: got segment suction_panel
+[robot_state_publisher-22] [INFO] [1792722550.572267123] [robot_state_publisher]: got segment world
+[validate_route_node-17] [INFO] [1792722550.576725239] [moveit_robot_model.robot_model]: Loading robot model 'S20'...
+[validate_route_node-17] [INFO] [1792722550.576765635] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
+[parameter_bridge-2] [INFO] [1792722550.603802088] [clock_bridge]: Creating GZ->ROS Bridge: [/clock (gz.msgs.Clock) -> /clock (rosgraph_msgs/msg/Clock)] (Lazy 0)
+[validate_route_node-17] [INFO] [1792722550.875844883] [validate_route_v2]: validate_route_v2 ready (model root S20, 6 variables)
+[scene_viz_node.py-9] [INFO] [1792722550.925555523] [scene_viz]: scene_viz ready (container=airport_container_real_aprime)
+[sensor_preprocessor_node.py-6] [INFO] [1792722550.955634971] [sensor_preprocessor]: sensor_preprocessor ready (depth-primary): frame=camera_depth_optical_frame pair_tolerance=0.000s wait_deadline=0.060s maxlen=15/1.0s compressed=False input_qos=reliable camera_info_shared=True
+[spawner-26] [INFO] [1792722550.955873343] [spawner_joint_state_broadcaster]: waiting for service /controller_manager/list_controllers to become available...
+[sensor_preprocessor_node.py-6] [WARN] [1792722550.956292998] [sensor_preprocessor]: camera_info_shared: /camera/depth/camera_info describes both colour and aligned depth; observations are flagged info_aliased
+[container_tf_publisher-21] [INFO] [1792722550.973323473] [container_tf_publisher]: Static TF from /tmp/elfin-master-pack-baseline-g3/docs/status/evidence/occ_owner_b1/release_format_fix_20261023/rehearsal_01/scene_tf_used.yaml (5 transforms): world->pedestal_link, world->pickup_platform_link, pickup_platform_link->pickup_platform_top, world->container_link, container_link->container_opening_frame
+[container_tf_publisher-21] [INFO] [1792722550.973614855] [container_tf_publisher]: task ROI (this node only): center=[-0.0, -1.059, 0.41] dims=[1.49, 1.97, 1.48] yaw=-1.5708 opening=[-0.27, -0.314, 0.44] aperture=1.326x1.412
+[placement_planner_node.py-19] [INFO] [1792722550.993804506] [placement_planner]: atlas runtime gate on (dir=reachability_atlas, w=0.3, hard_reject=True)
+[trajectory_selector_node.py-16] [INFO] [1792722551.010531627] [trajectory_selector]: trajectory_selector up
+[semantic_point_filter_node.py-12] [INFO] [1792722551.011911802] [semantic_point_filter]: semantic_point_filter ready (extrinsics=identity, cargo_labels=[2])
+[placement_planner_node.py-19] [INFO] [1792722551.022099012] [placement_planner]: placement_planner ready (aperture_y=(-0.928, 0.398), corridor=request_box, geometry_hash=cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856)
+[scene_manager_node.py-13] [INFO] [1792722551.040350872] [scene_manager]: scene_manager ready
+[luggage_detector_node.py-10] [WARN] [1792722551.046287148] [luggage_detector]: scene_tf_config is ignored on DetectLuggage (catalog/scene_tf is spawn-only)
+[pickup_box_spawner_node.py-8] [INFO] [1792722551.053365939] [pickup_box_spawner]: pickup_box_spawner ready (visual_kind=mesh size_mode=catalog)
+[luggage_detector_node.py-10] [INFO] [1792722551.057938563] [luggage_detector]: luggage_detector subscribing to /luggage/semantic/cargo_points
+[luggage_detector_node.py-10] [INFO] [1792722551.059336902] [luggage_detector]: luggage_detector ready (platform-free, semantic=True, support_mode=auto, platform_z=omitted, crop_to_workspace=False, retries=4 period=0.25s suitcase_wait=0.0s, estimate=single-flight)
+[waypoint_generator_node.py-14] [INFO] [1792722551.087238173] [waypoint_generator]: waypoint_generator ready (clearances {'pre_grasp': 0.3, 'approach': 0.25, 'attach': 0.0, 'pick_retreat': 0.35, 'pre_grasp_min': 0.2, 'approach_min': 0.08}, place_slot_frame=elfin_base_link)
+[create-25] [INFO] [1792722551.103548945] [ros_gz_sim]: Requested creation of entity.
+[create-25] [INFO] [1792722551.103632223] [ros_gz_sim]: OK creation of entity.
+[vacuum_controller_node.py-20] [INFO] [1792722551.103795602] [vacuum_controller]: vacuum_controller ready (backend=sim, panel=suction_contact_frame)
+[motion_planner_node.py-15] [INFO] [1792722551.113015330] [motion_planner]: motion_planner up (move_group probed on first PlanMotion)
+[create-24] [INFO] [1792722551.203681022] [ros_gz_sim]: Requested creation of entity.
+[create-24] [INFO] [1792722551.203799968] [ros_gz_sim]: OK creation of entity.
+[INFO] [create-25]: process has finished cleanly [pid 756667]
+[create-23] [INFO] [1792722551.303829972] [ros_gz_sim]: Requested creation of entity.
+[create-23] [INFO] [1792722551.303948386] [ros_gz_sim]: OK creation of entity.
+[INFO] [create-24]: process has finished cleanly [pid 756665]
+[INFO] [create-23]: process has finished cleanly [pid 756663]
+[INFO] [launch.user]: spawn_robot: create S20
+[INFO] [create-27]: process started with pid [757450]
+[cargo_volume_mapper_node.py-18] [INFO] [1792722551.487638781] [cargo_volume_mapper]: cargo_volume_mapper ready (inner 1.49x1.97x1.48 m, res 0.05, geometry_hash cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856, cloud=/luggage/semantic/cargo_points_untracked)
+[vacuum_controller_node.py-20] [INFO] [1792722551.513694455] [vacuum_controller]: current_box cleared
+[create-27] [INFO] [1792722551.634196405] [ros_gz_sim]: Requested creation of entity.
+[create-27] [INFO] [1792722551.634296885] [ros_gz_sim]: OK creation of entity.
+[INFO] [create-27]: process has finished cleanly [pid 757450]
+[INFO] [wait_controller_manager-28]: process started with pid [757476]
+[ign gazebo-1] [INFO] [1792722552.730467197] [GazeboSimROS2ControlPlugin]: robot_param_node is robot_state_publisher
+[ign gazebo-1] [INFO] [1792722552.730494058] [GazeboSimROS2ControlPlugin]: robot_param_node is robot_description
+[wait_controller_manager-28] wait_controller_manager: ok /controller_manager/list_controllers after 1.01s
+[INFO] [wait_controller_manager-28]: process has finished cleanly [pid 757476]
+[ign gazebo-1] [ERROR] [1792722553.392721052] [gz_ros2_control]: robot_state_publisher service not available, waiting again...
+[luggage_detector_node.py-10] [WARN] [1792722553.597097757] [luggage_detector]: New publisher discovered on topic '/luggage/semantic/mask', offering incompatible QoS. No messages will be received from it. Last incompatible policy: RELIABILITY
+[semantic_segmenter_node.py-11] [INFO] [1792722553.617273071] [semantic_segmenter]: suction-panel mask 12517 px source=urdf_chain
+[semantic_segmenter_node.py-11] [INFO] [1792722553.617443845] [semantic_segmenter]: semantic_segmenter ready (backend=bbox_fill:/home/adamliao/work/elfin_humble_ws/yolov8s-world.pt, prompts=8, self_body=urdf_chain, temporal_window=5, publish_overlay=False, confidence_threshold=0.200, cargo_min_confidence=0.200, robot_arm_confidence_threshold=0.500)
+[semantic_segmenter_node.py-11] [WARN] [1792722553.617877326] [semantic_segmenter]: New subscription discovered on topic '/luggage/semantic/mask', requesting incompatible QoS. No messages will be sent to it. Last incompatible policy: RELIABILITY
+[ign gazebo-1] [INFO] [1792722553.880877277] [gz_ros2_control]: connected to service!! robot_state_publisher asking for robot_description
+[ign gazebo-1] [INFO] [1792722553.963980211] [gz_ros2_control]: Received URDF from param server
+[ign gazebo-1] [INFO] [1792722553.966954887] [gz_ros2_control]: [gz_ros2_control] Fixed joint ['world_base'] (Entity='90') is skipped.
+[ign gazebo-1] [INFO] [1792722553.970071191] [gz_ros2_control]: The position_proportional_gain has been set to: 0.8
+[ign gazebo-1] [INFO] [1792722553.982935884] [gz_ros2_control]: [jcc] capture mode='window' active=1 dir='/tmp/elfin-master-pack-baseline-g3/docs/status/evidence/occ_owner_b1/release_format_fix_20261023/rehearsal_01/joint_capture'
+[ign gazebo-1] [INFO] [1792722553.983054378] [gz_ros2_control]: Loading joint: elfin_joint1
+[ign gazebo-1] [INFO] [1792722553.983075418] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1792722553.983083213] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722553.983136294] [gz_ros2_control]: 			 found initial value: 1.880600
+[ign gazebo-1] [INFO] [1792722553.983142555] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1792722553.983163545] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1792722553.983166741] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722553.983275157] [gz_ros2_control]: Loading joint: elfin_joint2
+[ign gazebo-1] [INFO] [1792722553.983278763] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1792722553.983281719] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722553.983284645] [gz_ros2_control]: 			 found initial value: -1.773600
+[ign gazebo-1] [INFO] [1792722553.983287380] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1792722553.983289564] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1792722553.983291347] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722553.983309742] [gz_ros2_control]: Loading joint: elfin_joint3
+[ign gazebo-1] [INFO] [1792722553.983312798] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1792722553.983314762] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722553.983316996] [gz_ros2_control]: 			 found initial value: -1.049100
+[ign gazebo-1] [INFO] [1792722553.983319370] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1792722553.983321264] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1792722553.983323248] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722553.983328778] [gz_ros2_control]: Loading joint: elfin_joint4
+[ign gazebo-1] [INFO] [1792722553.983331543] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1792722553.983333527] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722553.983335782] [gz_ros2_control]: 			 found initial value: 4.443900
+[ign gazebo-1] [INFO] [1792722553.983338447] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1792722553.983340691] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1792722553.983342424] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722553.983347854] [gz_ros2_control]: Loading joint: elfin_joint5
+[ign gazebo-1] [INFO] [1792722553.983350139] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1792722553.983352353] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722553.983355218] [gz_ros2_control]: 			 found initial value: 1.772100
+[ign gazebo-1] [INFO] [1792722553.983357443] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1792722553.983359336] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1792722553.983361019] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722553.983366079] [gz_ros2_control]: Loading joint: elfin_joint6
+[ign gazebo-1] [INFO] [1792722553.983368323] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1792722553.983370257] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722553.983371920] [gz_ros2_control]: 			 found initial value: 1.847300
+[ign gazebo-1] [INFO] [1792722553.983374304] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1792722553.983376008] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1792722553.983377701] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1792722553.983686626] [resource_manager]: Initialize hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1792722553.983832072] [resource_manager]: Successful initialization of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1792722553.983870024] [resource_manager]: 'configure' hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1792722553.983871827] [gz_ros2_control]: System Successfully configured!
+[ign gazebo-1] [INFO] [1792722553.983876386] [resource_manager]: Successful 'configure' of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1792722553.983879201] [resource_manager]: 'activate' hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1792722553.983882337] [resource_manager]: Successful 'activate' of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1792722553.983885212] [gz_ros2_control]: Loading controller_manager
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mIgnition Gazebo Server v[0m[1;32m6.18.0[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLoading SDF world file[[0m[1;32m/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/share/luggage_gazebo/worlds/airport_loading.sdf[0m[1;32m].[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing entity system service on [[0m[1;32m/[0m[1;32mentity/system/add[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mCreate service on [[0m[1;32m/world/airport_loading/create[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mRemove service on [[0m[1;32m/world/airport_loading/remove[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPose service on [[0m[1;32m/world/airport_loading/set_pose[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPose service on [[0m[1;32m/world/airport_loading/set_pose_vector[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLight configuration service on [[0m[1;32m/world/airport_loading/light_config[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPhysics service on [[0m[1;32m/world/airport_loading/set_physics[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mSphericalCoordinates service on [[0m[1;32m/world/airport_loading/set_spherical_coordinates[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mEnable collision service on [[0m[1;32m/world/airport_loading/enable_collision[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mDisable collision service on [[0m[1;32m/world/airport_loading/disable_collision[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mMaterial service on [[0m[1;32m/world/airport_loading/visual_config[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mMaterial service on [[0m[1;32m/world/airport_loading/wheel_slip[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLoaded level [[0m[1;32m3[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing world controls on [[0m[1;32m/world/airport_loading[0m[1;32m/control], [[0m[1;32m/world/airport_loading[0m[1;32m/control/state] and [[0m[1;32m/world/airport_loading[0m[1;32m/playback/control][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing GUI information on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mgui/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mWorld [[0m[1;32mairport_loading[0m[1;32m] initialized with [[0m[1;32m1ms[0m[1;32m] physics profile.[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing world SDF generation service on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mgenerate_world_sdf[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing world names on [[0m[1;32m/gazebo/worlds[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource path add service on [[0m[1;32m/gazebo/resource_paths/add[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource path get service on [[0m[1;32m/gazebo/resource_paths/get[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource path resolve service on [[0m[1;32m/gazebo/resource_paths/resolve[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource paths published on [[0m[1;32m/gazebo/resource_paths[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServer control service on [[0m[1;32m/server_control[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mFound no publishers on /stats, adding root stats topic[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mFound no publishers on /clock, adding root clock topic[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLoading plugin [[0m[1;32mignition-rendering-ogre2[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing scene information on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mscene/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing graph information on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mscene/graph[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing full state on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mstate[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing full state (async) on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mstate_async[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [WARN] [1792722554.152935269] [gz_ros2_control]:  Desired controller update period (0.01 s) is slower than the gazebo simulation period (0.001 s).
+[ign gazebo-1] [INFO] [1792722554.211271270] [controller_manager]: Loading controller 'joint_state_broadcaster'
+[spawner-26] [INFO] [1792722554.223761113] [spawner_joint_state_broadcaster]: [94mLoaded [1mjoint_state_broadcaster[0m
+[ign gazebo-1] [INFO] [1792722554.224564525] [controller_manager]: Configuring controller 'joint_state_broadcaster'
+[ign gazebo-1] [INFO] [1792722554.224633436] [joint_state_broadcaster]: 'joints' or 'interfaces' parameter is empty. All available state interfaces will be published
+[ign gazebo-1] libEGL warning: egl: failed to create dri2 screen
+[ign gazebo-1] libEGL warning: egl: failed to create dri2 screen
+[spawner-26] [INFO] [1792722554.591543190] [spawner_joint_state_broadcaster]: [92mConfigured and activated [1mjoint_state_broadcaster[0m
+[INFO] [spawner-26]: process has finished cleanly [pid 756669]
+[INFO] [spawner-29]: process started with pid [757703]
+[spawner-29] [INFO] [1792722554.920194171] [spawner_elfin_arm_controller]: waiting for service /controller_manager/list_controllers to become available...
+[ign gazebo-1] [INFO] [1792722555.923285011] [controller_manager]: Loading controller 'elfin_arm_controller'
+[ign gazebo-1] [WARN] [1792722555.931783232] [elfin_arm_controller]: [Deprecated]: "allow_nonzero_velocity_at_trajectory_end" is set to true. The default behavior will change to false.
+[spawner-29] [INFO] [1792722555.933754326] [spawner_elfin_arm_controller]: [94mLoaded [1melfin_arm_controller[0m
+[ign gazebo-1] [INFO] [1792722555.934769870] [controller_manager]: Configuring controller 'elfin_arm_controller'
+[ign gazebo-1] [INFO] [1792722555.934884768] [elfin_arm_controller]: No specific joint names are used for command interfaces. Using 'joints' parameter.
+[ign gazebo-1] [INFO] [1792722555.934899776] [elfin_arm_controller]: Command interfaces are [position] and state interfaces are [position velocity].
+[ign gazebo-1] [INFO] [1792722555.934921076] [elfin_arm_controller]: Using 'splines' interpolation method.
+[ign gazebo-1] [INFO] [1792722555.935662702] [elfin_arm_controller]: Controller state will be published at 50.00 Hz.
+[ign gazebo-1] [INFO] [1792722555.936900076] [elfin_arm_controller]: Action status changes will be monitored at 20.00 Hz.
+[spawner-29] [INFO] [1792722555.963398198] [spawner_elfin_arm_controller]: [92mConfigured and activated [1melfin_arm_controller[0m
+[INFO] [spawner-29]: process has finished cleanly [pid 757703]
+[INFO] [observe_pose_hold.py-30]: process started with pid [757759]
+[INFO] [move_group-31]: process started with pid [757761]
+[move_group-31] [INFO] [1792722556.158181548] [moveit_rdf_loader.rdf_loader]: Loaded robot model in 0 seconds
+[move_group-31] [INFO] [1792722556.158232133] [moveit_robot_model.robot_model]: Loading robot model 'S20'...
+[move_group-31] [INFO] [1792722556.158237734] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
+[move_group-31] [INFO] [1792722556.641977399] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Publishing maintained planning scene on 'monitored_planning_scene'
+[move_group-31] [INFO] [1792722556.642099320] [moveit.ros_planning_interface.moveit_cpp]: Listening to 'joint_states' for joint states
+[move_group-31] [INFO] [1792722556.642635776] [moveit_ros.current_state_monitor]: Listening to joint states on topic 'joint_states'
+[move_group-31] [INFO] [1792722556.642939962] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/attached_collision_object' for attached collision objects
+[move_group-31] [INFO] [1792722556.642950302] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting planning scene monitor
+[move_group-31] [INFO] [1792722556.643230252] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/planning_scene'
+[move_group-31] [INFO] [1792722556.643239430] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting world geometry update monitor for collision objects, attached objects, octomap updates.
+[move_group-31] [INFO] [1792722556.643486408] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'collision_object'
+[move_group-31] [INFO] [1792722556.643727404] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'planning_scene_world' for planning scene world geometry
+[move_group-31] [WARN] [1792722556.644076115] [moveit.ros.occupancy_map_monitor.middleware_handle]: Resolution not specified for Octomap. Assuming resolution = 0.1 instead
+[move_group-31] [ERROR] [1792722556.644085713] [moveit.ros.occupancy_map_monitor.middleware_handle]: No 3D sensor plugin(s) defined for octomap updates
+[ign gazebo-1] [INFO] [1792722556.891192122] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1792722556.891266292] [elfin_arm_controller]: Accepted new action goal
+[ign gazebo-1] [INFO] [1792722557.396126861] [elfin_arm_controller]: Goal reached, success!
+[move_group-31] [INFO] [1792722557.433410928] [moveit.ros_planning_interface.moveit_cpp]: Loading planning pipeline 'ompl'
+[move_group-31] [INFO] [1792722557.438783997] [moveit.ros_planning.planning_pipeline]: Using planning interface 'OMPL'
+[move_group-31] [INFO] [1792722557.439963773] [moveit_ros.add_time_optimal_parameterization]: Param 'ompl.path_tolerance' was not set. Using default value: 0.100000
+[move_group-31] [INFO] [1792722557.439975495] [moveit_ros.add_time_optimal_parameterization]: Param 'ompl.resample_dt' was not set. Using default value: 0.100000
+[move_group-31] [INFO] [1792722557.439977789] [moveit_ros.add_time_optimal_parameterization]: Param 'ompl.min_angle_change' was not set. Using default value: 0.001000
+[move_group-31] [INFO] [1792722557.439986786] [moveit_ros.fix_workspace_bounds]: Param 'ompl.default_workspace_bounds' was not set. Using default value: 10.000000
+[move_group-31] [INFO] [1792722557.439994010] [moveit_ros.fix_start_state_bounds]: Param 'ompl.start_state_max_bounds_error' was set to 0.100000
+[move_group-31] [INFO] [1792722557.439996044] [moveit_ros.fix_start_state_bounds]: Param 'ompl.start_state_max_dt' was not set. Using default value: 0.500000
+[move_group-31] [INFO] [1792722557.440000302] [moveit_ros.fix_start_state_collision]: Param 'ompl.start_state_max_dt' was not set. Using default value: 0.500000
+[move_group-31] [INFO] [1792722557.440002706] [moveit_ros.fix_start_state_collision]: Param 'ompl.jiggle_fraction' was set to 0.050000
+[move_group-31] [INFO] [1792722557.440004760] [moveit_ros.fix_start_state_collision]: Param 'ompl.max_sampling_attempts' was not set. Using default value: 100
+[move_group-31] [INFO] [1792722557.440008768] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Add Time Optimal Parameterization'
+[move_group-31] [INFO] [1792722557.440010180] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Resolve constraint frames to robot links'
+[move_group-31] [INFO] [1792722557.440011413] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Workspace Bounds'
+[move_group-31] [INFO] [1792722557.440012595] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State Bounds'
+[move_group-31] [INFO] [1792722557.440013607] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State In Collision'
+[move_group-31] [INFO] [1792722557.440014639] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State Path Constraints'
+[move_group-31] [WARN] [1792722557.442351757] [rcl.logging_rosout]: Publisher already registered for provided node name. If this is due to multiple nodes with the same name then all logs for that logger name will go out over the existing publisher. As soon as any node with that name is destructed it will unregister the publisher, preventing any further logs for that name from being published on the rosout topic.
+[observe_pose_hold.py-30] [INFO] [1792722557.450446403] [observe_pose_hold]: Held pose 'pickup_observe_sim' error_code=0
+[move_group-31] [INFO] [1792722557.452786005] [moveit.plugins.moveit_simple_controller_manager]: Added FollowJointTrajectory controller for elfin_arm_controller
+[move_group-31] [INFO] [1792722557.452904419] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722557.452918887] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-31] [INFO] [1792722557.453272266] [moveit_ros.trajectory_execution_manager]: Trajectory execution is not managing controllers
+[move_group-31] [INFO] [1792722557.453283668] [move_group.move_group]: MoveGroup debug mode is ON
+[move_group-31] [INFO] [1792722557.464971471] [move_group.move_group]: 
+[move_group-31] 
+[move_group-31] ********************************************************
+[move_group-31] * MoveGroup using: 
+[move_group-31] *     - ApplyPlanningSceneService
+[move_group-31] *     - ClearOctomapService
+[move_group-31] *     - CartesianPathService
+[move_group-31] *     - ExecuteTrajectoryAction
+[move_group-31] *     - GetPlanningSceneService
+[move_group-31] *     - KinematicsService
+[move_group-31] *     - MoveAction
+[move_group-31] *     - MotionPlanService
+[move_group-31] *     - QueryPlannersService
+[move_group-31] *     - StateValidationService
+[move_group-31] ********************************************************
+[move_group-31] 
+[move_group-31] [INFO] [1792722557.465018330] [moveit_move_group_capabilities_base.move_group_context]: MoveGroup context using planning plugin ompl_interface/OMPLPlanner
+[move_group-31] [INFO] [1792722557.465026466] [moveit_move_group_capabilities_base.move_group_context]: MoveGroup context initialization complete
+[move_group-31] [96mLoading 'move_group/ApplyPlanningSceneService'...
+[move_group-31] [0m[96mLoading 'move_group/ClearOctomapService'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupCartesianPathService'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupExecuteTrajectoryAction'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupGetPlanningSceneService'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupKinematicsService'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupMoveAction'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupPlanService'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupQueryPlannersService'...
+[move_group-31] [0m[96mLoading 'move_group/MoveGroupStateValidationService'...
+[move_group-31] [0m[92m
+[move_group-31] You can start planning now!
+[move_group-31] 
+[INFO] [observe_pose_hold.py-30]: process has finished cleanly [pid 757759]
+[move_group-31] [WARN] [1792722557.632793430] [moveit_planning_scene.planning_scene]: Tried to remove world object 'airport_container_real_aprime', but it does not exist in this scene.
+[move_group-31] [WARN] [1792722557.634974342] [moveit_planning_scene.planning_scene]: Tried to remove world object 'robot_pedestal', but it does not exist in this scene.
+[scene_manager_node.py-13] [INFO] [1792722557.651343574] [scene_manager]: auto sync_static_scene: static scene synced (airport_container_real_aprime, 148 triangles)
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPublishing scene information on [[0m[1;32m/world/airport_loading/scene/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPublishing entity deletions on [[0m[1;32m/world/airport_loading/scene/deletion[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPublishing state changes on [[0m[1;32m/world/airport_loading/state[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPublishing pose messages on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mpose/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPublishing dynamic pose messages on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mdynamic_pose/info[0m[1;32m][0m[1;32m[0m
+[semantic_segmenter_node.py-11] [WARN] [1792722559.688211469] [semantic_segmenter]: self-body mesh mask is empty
+[move_group-31] [INFO] [1792722563.396479086] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[validate_route_node-17] [INFO] [1792722563.396480709] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[robot_state_publisher-22] [INFO] [1792722563.396474087] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[parameter_bridge-7] [INFO] [1792722563.396481852] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[parameter_bridge-2] [INFO] [1792722563.396505947] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[parameter_bridge-3] [INFO] [1792722563.396705425] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[parameter_bridge-3] Failed to delete datawriter, at ./src/publisher.cpp:48 during '__function__'
+[ign gazebo-1] [INFO] [1792722563.415285767] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[ign gazebo-1] [INFO] [1792722563.415362883] [controller_manager]: Shutdown request received....
+[ign gazebo-1] [INFO] [1792722563.415410152] [controller_manager]: Shutting down all controllers in the controller manager.
+[ign gazebo-1] [INFO] [1792722563.415428667] [controller_manager]: Deactivating controller 'joint_state_broadcaster'
+[ign gazebo-1] [INFO] [1792722563.415466028] [controller_manager]: Shutting down controller 'joint_state_broadcaster'
+[ign gazebo-1] [INFO] [1792722563.415489973] [controller_manager]: Deactivating controller 'elfin_arm_controller'
+[ign gazebo-1] [INFO] [1792722563.415512346] [controller_manager]: Shutting down controller 'elfin_arm_controller'
+[ign gazebo-1] [INFO] [1792722563.415530580] [resource_manager]: 'deactivate' hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1792722563.415542052] [resource_manager]: Successful 'deactivate' of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1792722563.415543835] [resource_manager]: 'shutdown' hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1792722563.415545990] [resource_manager]: Successful 'shutdown' of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1792722563.415547993] [controller_manager]: Shutting down the controller manager.
+[move_group-31] [INFO] [1792722563.420117611] [moveit.ros_planning_interface.moveit_cpp]: Deleting MoveItCpp
+[container_tf_publisher-21] Traceback (most recent call last):
+[container_tf_publisher-21]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_description/lib/luggage_description/container_tf_publisher", line 5, in <module>
+[container_tf_publisher-21]     main()
+[container_tf_publisher-21]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_description/local/lib/python3.10/dist-packages/luggage_description/scene_tf_publisher.py", line 180, in main
+[container_tf_publisher-21]     rclpy.spin(node)
+[container_tf_publisher-21]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 229, in spin
+[container_tf_publisher-21]     executor.spin_once()
+[container_tf_publisher-21]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 808, in spin_once
+[container_tf_publisher-21]     self._spin_once_impl(timeout_sec)
+[container_tf_publisher-21]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 797, in _spin_once_impl
+[move_group-31] [INFO] [1792722563.420590707] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Stopped publishing maintained planning scene.
+[container_tf_publisher-21]     handler, entity, node = self.wait_for_ready_callbacks(timeout_sec=timeout_sec)
+[container_tf_publisher-21]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[container_tf_publisher-21]     return next(self._cb_iter)
+[container_tf_publisher-21]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 681, in _wait_for_ready_callbacks
+[container_tf_publisher-21]     raise ExternalShutdownException()
+[container_tf_publisher-21] rclpy.executors.ExternalShutdownException
+[move_group-31] [INFO] [1792722563.421183189] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Stopping world geometry monitor
+[move_group-31] [INFO] [1792722563.421445627] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Stopping planning scene monitor
+[move_group-31] Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+[move_group-31]          at line 127 in ./src/class_loader.cpp
+[semantic_segmenter_node.py-11] Traceback (most recent call last):
+[semantic_segmenter_node.py-11]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_segmenter_node.py", line 681, in <module>
+[semantic_segmenter_node.py-11]     main()
+[semantic_segmenter_node.py-11]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_segmenter_node.py", line 677, in main
+[semantic_segmenter_node.py-11]     rclpy.shutdown()
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[semantic_segmenter_node.py-11]     _shutdown(context=context)
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[semantic_segmenter_node.py-11]     return context.shutdown()
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[semantic_segmenter_node.py-11]     self.__context.shutdown()
+[semantic_segmenter_node.py-11] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[depth_image_republisher.py-4] Traceback (most recent call last):
+[depth_image_republisher.py-4]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/depth_image_republisher.py", line 80, in <module>
+[depth_image_republisher.py-4]     main()
+[depth_image_republisher.py-4]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/depth_image_republisher.py", line 67, in main
+[depth_image_republisher.py-4]     rclpy.spin(node)
+[depth_image_republisher.py-4]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 229, in spin
+[depth_image_republisher.py-4]     executor.spin_once()
+[depth_image_republisher.py-4]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 808, in spin_once
+[camera_info_alias.py-5] Traceback (most recent call last):
+[camera_info_alias.py-5]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/camera_info_alias.py", line 53, in <module>
+[camera_info_alias.py-5]     main()
+[camera_info_alias.py-5]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/camera_info_alias.py", line 40, in main
+[camera_info_alias.py-5]     rclpy.spin(node)
+[camera_info_alias.py-5]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 229, in spin
+[camera_info_alias.py-5]     executor.spin_once()
+[camera_info_alias.py-5]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 808, in spin_once
+[camera_info_alias.py-5]     self._spin_once_impl(timeout_sec)
+[camera_info_alias.py-5]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 797, in _spin_once_impl
+[camera_info_alias.py-5]     handler, entity, node = self.wait_for_ready_callbacks(timeout_sec=timeout_sec)
+[camera_info_alias.py-5]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[camera_info_alias.py-5]     return next(self._cb_iter)
+[camera_info_alias.py-5]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 681, in _wait_for_ready_callbacks
+[camera_info_alias.py-5]     raise ExternalShutdownException()
+[camera_info_alias.py-5] rclpy.executors.ExternalShutdownException
+[depth_image_republisher.py-4]     self._spin_once_impl(timeout_sec)
+[depth_image_republisher.py-4]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 797, in _spin_once_impl
+[depth_image_republisher.py-4]     handler, entity, node = self.wait_for_ready_callbacks(timeout_sec=timeout_sec)
+[depth_image_republisher.py-4]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[depth_image_republisher.py-4]     return next(self._cb_iter)
+[depth_image_republisher.py-4]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 681, in _wait_for_ready_callbacks
+[depth_image_republisher.py-4]     raise ExternalShutdownException()
+[depth_image_republisher.py-4] rclpy.executors.ExternalShutdownException
+[motion_planner_node.py-15] Traceback (most recent call last):
+[motion_planner_node.py-15]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/motion_planner_node.py", line 1380, in <module>
+[motion_planner_node.py-15]     main()
+[motion_planner_node.py-15]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/motion_planner_node.py", line 1376, in main
+[motion_planner_node.py-15]     rclpy.shutdown()
+[motion_planner_node.py-15]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[motion_planner_node.py-15]     _shutdown(context=context)
+[motion_planner_node.py-15]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[motion_planner_node.py-15]     return context.shutdown()
+[motion_planner_node.py-15]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[motion_planner_node.py-15]     self.__context.shutdown()
+[motion_planner_node.py-15] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[luggage_detector_node.py-10] Traceback (most recent call last):
+[luggage_detector_node.py-10]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py", line 2606, in main
+[luggage_detector_node.py-10]     executor.spin()
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 323, in spin
+[luggage_detector_node.py-10]     self.spin_once()
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 863, in spin_once
+[luggage_detector_node.py-10]     self._spin_once_impl(timeout_sec)
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 844, in _spin_once_impl
+[luggage_detector_node.py-10]     handler, entity, node = self.wait_for_ready_callbacks(
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[luggage_detector_node.py-10]     return next(self._cb_iter)
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 653, in _wait_for_ready_callbacks
+[luggage_detector_node.py-10]     wait_set = _rclpy.WaitSet(
+[luggage_detector_node.py-10] rclpy._rclpy_pybind11.RCLError: failed to initialize wait set: the given context is not valid, either rcl_init() was not called or rcl_shutdown() was called., at ./src/rcl/wait.c:130
+[luggage_detector_node.py-10] 
+[luggage_detector_node.py-10] During handling of the above exception, another exception occurred:
+[luggage_detector_node.py-10] 
+[luggage_detector_node.py-10] Traceback (most recent call last):
+[luggage_detector_node.py-10]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py", line 2613, in <module>
+[luggage_detector_node.py-10]     main()
+[luggage_detector_node.py-10]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py", line 2609, in main
+[luggage_detector_node.py-10]     rclpy.shutdown()
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[luggage_detector_node.py-10]     _shutdown(context=context)
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[luggage_detector_node.py-10]     return context.shutdown()
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[luggage_detector_node.py-10]     self.__context.shutdown()
+[luggage_detector_node.py-10] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[scene_manager_node.py-13] Traceback (most recent call last):
+[scene_manager_node.py-13]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/scene_manager_node.py", line 287, in main
+[scene_manager_node.py-13]     executor.spin()
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 323, in spin
+[scene_manager_node.py-13]     self.spin_once()
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 863, in spin_once
+[scene_manager_node.py-13]     self._spin_once_impl(timeout_sec)
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 844, in _spin_once_impl
+[move_group-31] Stack trace (most recent call last):
+[scene_manager_node.py-13]     handler, entity, node = self.wait_for_ready_callbacks(
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[scene_manager_node.py-13]     return next(self._cb_iter)
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 653, in _wait_for_ready_callbacks
+[scene_manager_node.py-13]     wait_set = _rclpy.WaitSet(
+[scene_manager_node.py-13] rclpy._rclpy_pybind11.RCLError: failed to initialize wait set: the given context is not valid, either rcl_init() was not called or rcl_shutdown() was called., at ./src/rcl/wait.c:130
+[scene_manager_node.py-13] 
+[scene_manager_node.py-13] During handling of the above exception, another exception occurred:
+[scene_manager_node.py-13] 
+[scene_manager_node.py-13] Traceback (most recent call last):
+[scene_manager_node.py-13]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/scene_manager_node.py", line 297, in <module>
+[scene_manager_node.py-13]     main()
+[scene_manager_node.py-13]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/scene_manager_node.py", line 293, in main
+[scene_manager_node.py-13]     rclpy.shutdown()
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[scene_manager_node.py-13]     _shutdown(context=context)
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[scene_manager_node.py-13]     return context.shutdown()
+[scene_manager_node.py-13]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[scene_manager_node.py-13]     self.__context.shutdown()
+[scene_manager_node.py-13] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[move_group-31] #16   Object "", at 0xffffffffffffffff, in 
+[move_group-31] #15   Object "/opt/ros/humble/lib/moveit_ros_move_group/move_group", at 0x61262400d724, in 
+[trajectory_selector_node.py-16] Traceback (most recent call last):
+[trajectory_selector_node.py-16]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/trajectory_selector_node.py", line 774, in <module>
+[trajectory_selector_node.py-16]     main()
+[trajectory_selector_node.py-16]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/trajectory_selector_node.py", line 766, in main
+[trajectory_selector_node.py-16]     executor.spin()
+[trajectory_selector_node.py-16]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 323, in spin
+[trajectory_selector_node.py-16]     self.spin_once()
+[trajectory_selector_node.py-16]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 863, in spin_once
+[trajectory_selector_node.py-16]     self._spin_once_impl(timeout_sec)
+[trajectory_selector_node.py-16]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 844, in _spin_once_impl
+[trajectory_selector_node.py-16]     handler, entity, node = self.wait_for_ready_callbacks(
+[trajectory_selector_node.py-16]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[trajectory_selector_node.py-16]     return next(self._cb_iter)
+[trajectory_selector_node.py-16]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 653, in _wait_for_ready_callbacks
+[trajectory_selector_node.py-16]     wait_set = _rclpy.WaitSet(
+[trajectory_selector_node.py-16] rclpy._rclpy_pybind11.RCLError: failed to initialize wait set: the given context is not valid, either rcl_init() was not called or rcl_shutdown() was called., at ./src/rcl/wait.c:130
+[semantic_point_filter_node.py-12] Traceback (most recent call last):
+[semantic_point_filter_node.py-12]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_point_filter_node.py", line 877, in <module>
+[semantic_point_filter_node.py-12]     main()
+[semantic_point_filter_node.py-12]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_point_filter_node.py", line 873, in main
+[semantic_point_filter_node.py-12]     rclpy.shutdown()
+[semantic_point_filter_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[semantic_point_filter_node.py-12]     _shutdown(context=context)
+[semantic_point_filter_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[semantic_point_filter_node.py-12]     return context.shutdown()
+[semantic_point_filter_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[semantic_point_filter_node.py-12]     self.__context.shutdown()
+[semantic_point_filter_node.py-12] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[waypoint_generator_node.py-14] Traceback (most recent call last):
+[waypoint_generator_node.py-14]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/waypoint_generator_node.py", line 750, in main
+[waypoint_generator_node.py-14]     executor.spin()
+[waypoint_generator_node.py-14]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 323, in spin
+[waypoint_generator_node.py-14]     self.spin_once()
+[waypoint_generator_node.py-14]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 863, in spin_once
+[waypoint_generator_node.py-14]     self._spin_once_impl(timeout_sec)
+[waypoint_generator_node.py-14]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 844, in _spin_once_impl
+[waypoint_generator_node.py-14]     handler, entity, node = self.wait_for_ready_callbacks(
+[waypoint_generator_node.py-14]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[waypoint_generator_node.py-14]     return next(self._cb_iter)
+[waypoint_generator_node.py-14]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 653, in _wait_for_ready_callbacks
+[waypoint_generator_node.py-14]     wait_set = _rclpy.WaitSet(
+[waypoint_generator_node.py-14] rclpy._rclpy_pybind11.RCLError: failed to initialize wait set: the given context is not valid, either rcl_init() was not called or rcl_shutdown() was called., at ./src/rcl/wait.c:130
+[waypoint_generator_node.py-14] 
+[waypoint_generator_node.py-14] During handling of the above exception, another exception occurred:
+[waypoint_generator_node.py-14] 
+[waypoint_generator_node.py-14] Traceback (most recent call last):
+[waypoint_generator_node.py-14]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/waypoint_generator_node.py", line 769, in <module>
+[waypoint_generator_node.py-14]     main()
+[waypoint_generator_node.py-14]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/waypoint_generator_node.py", line 765, in main
+[waypoint_generator_node.py-14]     rclpy.shutdown()
+[waypoint_generator_node.py-14]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[waypoint_generator_node.py-14]     _shutdown(context=context)
+[waypoint_generator_node.py-14]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[waypoint_generator_node.py-14]     return context.shutdown()
+[waypoint_generator_node.py-14]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[waypoint_generator_node.py-14]     self.__context.shutdown()
+[waypoint_generator_node.py-14] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[placement_planner_node.py-19] Traceback (most recent call last):
+[placement_planner_node.py-19]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_packing/lib/luggage_packing/placement_planner_node.py", line 1153, in main
+[placement_planner_node.py-19]     executor.spin()
+[placement_planner_node.py-19]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 323, in spin
+[placement_planner_node.py-19]     self.spin_once()
+[placement_planner_node.py-19]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 863, in spin_once
+[placement_planner_node.py-19]     self._spin_once_impl(timeout_sec)
+[placement_planner_node.py-19]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 844, in _spin_once_impl
+[placement_planner_node.py-19]     handler, entity, node = self.wait_for_ready_callbacks(
+[placement_planner_node.py-19]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[placement_planner_node.py-19]     return next(self._cb_iter)
+[placement_planner_node.py-19]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 653, in _wait_for_ready_callbacks
+[placement_planner_node.py-19]     wait_set = _rclpy.WaitSet(
+[placement_planner_node.py-19] rclpy._rclpy_pybind11.RCLError: failed to initialize wait set: the given context is not valid, either rcl_init() was not called or rcl_shutdown() was called., at ./src/rcl/wait.c:130
+[placement_planner_node.py-19] 
+[placement_planner_node.py-19] During handling of the above exception, another exception occurred:
+[placement_planner_node.py-19] 
+[placement_planner_node.py-19] Traceback (most recent call last):
+[placement_planner_node.py-19]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_packing/lib/luggage_packing/placement_planner_node.py", line 1162, in <module>
+[placement_planner_node.py-19]     main()
+[placement_planner_node.py-19]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_packing/lib/luggage_packing/placement_planner_node.py", line 1158, in main
+[placement_planner_node.py-19]     rclpy.shutdown()
+[placement_planner_node.py-19]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[placement_planner_node.py-19]     _shutdown(context=context)
+[placement_planner_node.py-19]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[placement_planner_node.py-19]     return context.shutdown()
+[placement_planner_node.py-19]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[placement_planner_node.py-19]     self.__context.shutdown()
+[placement_planner_node.py-19] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[cargo_volume_mapper_node.py-18] Traceback (most recent call last):
+[cargo_volume_mapper_node.py-18]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py", line 967, in <module>
+[cargo_volume_mapper_node.py-18]     main()
+[cargo_volume_mapper_node.py-18]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py", line 963, in main
+[cargo_volume_mapper_node.py-18]     rclpy.shutdown()
+[cargo_volume_mapper_node.py-18]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[cargo_volume_mapper_node.py-18]     _shutdown(context=context)
+[cargo_volume_mapper_node.py-18]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[cargo_volume_mapper_node.py-18]     return context.shutdown()
+[cargo_volume_mapper_node.py-18]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[cargo_volume_mapper_node.py-18]     self.__context.shutdown()
+[cargo_volume_mapper_node.py-18] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[pickup_box_spawner_node.py-8] Traceback (most recent call last):
+[pickup_box_spawner_node.py-8]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/pickup_box_spawner_node.py", line 1007, in <module>
+[pickup_box_spawner_node.py-8]     main()
+[pickup_box_spawner_node.py-8]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/pickup_box_spawner_node.py", line 1003, in main
+[pickup_box_spawner_node.py-8]     rclpy.shutdown()
+[pickup_box_spawner_node.py-8]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[pickup_box_spawner_node.py-8]     _shutdown(context=context)
+[pickup_box_spawner_node.py-8]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[pickup_box_spawner_node.py-8]     return context.shutdown()
+[pickup_box_spawner_node.py-8]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[pickup_box_spawner_node.py-8]     self.__context.shutdown()
+[pickup_box_spawner_node.py-8] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[vacuum_controller_node.py-20] Traceback (most recent call last):
+[vacuum_controller_node.py-20]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/vacuum_controller_node.py", line 695, in <module>
+[vacuum_controller_node.py-20]     main()
+[vacuum_controller_node.py-20]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/vacuum_controller_node.py", line 691, in main
+[vacuum_controller_node.py-20]     rclpy.shutdown()
+[vacuum_controller_node.py-20]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[vacuum_controller_node.py-20]     _shutdown(context=context)
+[vacuum_controller_node.py-20]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[vacuum_controller_node.py-20]     return context.shutdown()
+[vacuum_controller_node.py-20]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[vacuum_controller_node.py-20]     self.__context.shutdown()
+[vacuum_controller_node.py-20] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[scene_viz_node.py-9] Traceback (most recent call last):
+[scene_viz_node.py-9]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/scene_viz_node.py", line 424, in <module>
+[scene_viz_node.py-9]     main()
+[scene_viz_node.py-9]   File "/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/scene_viz_node.py", line 420, in main
+[scene_viz_node.py-9]     rclpy.shutdown()
+[scene_viz_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[scene_viz_node.py-9]     _shutdown(context=context)
+[scene_viz_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[scene_viz_node.py-9]     return context.shutdown()
+[scene_viz_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[scene_viz_node.py-9]     self.__context.shutdown()
+[scene_viz_node.py-9] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[move_group-31] #14   Source "../csu/libc-start.c", line 392, in __libc_start_main_impl [0x7203ad429e3f]
+[move_group-31] #13   Source "../sysdeps/nptl/libc_start_call_main.h", line 58, in __libc_start_call_main [0x7203ad429d8f]
+[move_group-31] #12   Object "/opt/ros/humble/lib/moveit_ros_move_group/move_group", at 0x61262400c65b, in 
+[move_group-31] #11   Object "/opt/ros/humble/lib/moveit_ros_move_group/move_group", at 0x61262400e709, in 
+[move_group-31] #10   Object "/opt/ros/humble/lib/libmoveit_cpp.so.2.5.9", at 0x7203ae112876, in moveit_cpp::MoveItCpp::~MoveItCpp()
+[move_group-31] #9    Object "/opt/ros/humble/lib/libmoveit_cpp.so.2.5.9", at 0x7203ae110ba9, in 
+[move_group-31] #8    Object "/opt/ros/humble/lib/libmoveit_trajectory_execution_manager.so.2.5.9", at 0x7203ad6783b5, in trajectory_execution_manager::TrajectoryExecutionManager::~TrajectoryExecutionManager()
+[move_group-31] #7    Object "/opt/ros/humble/lib/libmoveit_trajectory_execution_manager.so.2.5.9", at 0x7203ad68b2d9, in 
+[move_group-31] #6    Object "/opt/ros/humble/lib/librclcpp.so", at 0x7203add73b8c, in rclcpp::Node::~Node()
+[move_group-31] #5    Object "/opt/ros/humble/lib/librclcpp.so", at 0x7203add73b2e, in rclcpp::Node::~Node()
+[move_group-31] #4    Object "/opt/ros/humble/lib/librclcpp.so", at 0x7203add4ed39, in 
+[move_group-31] #3    Object "/opt/ros/humble/lib/librclcpp.so", at 0x7203add7d0b9, in 
+[move_group-31] #2    Object "/opt/ros/humble/lib/librclcpp.so", at 0x7203add7d000, in rclcpp::node_interfaces::NodeBase::~NodeBase()
+[move_group-31] #1    Object "/opt/ros/humble/lib/librclcpp.so", at 0x7203add4ed39, in 
+[move_group-31] #0    Object "/opt/ros/humble/lib/librclcpp.so", at 0x7203add53b31, in rclcpp::CallbackGroup::~CallbackGroup()
+[move_group-31] Segmentation fault (Address not mapped to object [0x72038c13a798])
+[ERROR] [sensor_preprocessor_node.py-6]: process has died [pid 756629, exit code -11, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/sensor_preprocessor_node.py --ros-args -r __node:=sensor_preprocessor --params-file /tmp/elfin-master-pack-baseline-g3/install/luggage_perception/share/luggage_perception/config/sensor_preprocessor.yaml --params-file /tmp/launch_params_j2o60exl --params-file /tmp/launch_params_yyzvoxdj'].
+[INFO] [parameter_bridge-2]: process has finished cleanly [pid 756620]
+[INFO] [parameter_bridge-3]: process has finished cleanly [pid 756623]
+[INFO] [parameter_bridge-7]: process has finished cleanly [pid 756631]
+[INFO] [robot_state_publisher-22]: process has finished cleanly [pid 756661]
+[INFO] [validate_route_node-17]: process has finished cleanly [pid 756651]
+[ERROR] [camera_info_alias.py-5]: process has died [pid 756627, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/camera_info_alias.py --ros-args -r __node:=camera_info_alias --params-file /tmp/launch_params_x_u5ybkj'].
+[ERROR] [depth_image_republisher.py-4]: process has died [pid 756625, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/depth_image_republisher.py --ros-args -r __node:=depth_image_republisher --params-file /tmp/launch_params_fmr5o6pk'].
+[ERROR] [semantic_point_filter_node.py-12]: process has died [pid 756641, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_point_filter_node.py --ros-args -r __node:=semantic_point_filter --params-file /tmp/elfin-master-pack-baseline-g3/install/luggage_perception/share/luggage_perception/config/semantic_segmenter.yaml --params-file /tmp/launch_params_jsvgnvgp'].
+[ERROR] [placement_planner_node.py-19]: process has died [pid 756655, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_packing/lib/luggage_packing/placement_planner_node.py --ros-args -r __node:=placement_planner --params-file /tmp/launch_params_ch3tv3sa --params-file /tmp/launch_params_h1ro73ra'].
+[ERROR] [luggage_detector_node.py-10]: process has died [pid 756637, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py --ros-args --params-file /tmp/launch_params_ql944rsg'].
+[ERROR] [pickup_box_spawner_node.py-8]: process has died [pid 756633, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/pickup_box_spawner_node.py --ros-args --params-file /tmp/launch_params_mmcdnbf2'].
+[ERROR] [waypoint_generator_node.py-14]: process has died [pid 756645, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/waypoint_generator_node.py --ros-args -r __node:=waypoint_generator --params-file /tmp/launch_params_8yczogdq'].
+[ERROR] [container_tf_publisher-21]: process has died [pid 756659, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_description/lib/luggage_description/container_tf_publisher --ros-args -r __node:=container_tf_publisher --params-file /tmp/launch_params_4pre017b'].
+[ERROR] [motion_planner_node.py-15]: process has died [pid 756647, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/motion_planner_node.py --ros-args -r __node:=motion_planner --params-file /tmp/launch_params_ktfk6vib --params-file /tmp/launch_params_tj0nnpio'].
+[ERROR] [vacuum_controller_node.py-20]: process has died [pid 756657, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/vacuum_controller_node.py --ros-args -r __node:=vacuum_controller --params-file /tmp/launch_params_q9fx5k6w'].
+[ERROR] [trajectory_selector_node.py-16]: process has died [pid 756649, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/trajectory_selector_node.py --ros-args -r __node:=trajectory_selector --params-file /tmp/launch_params_1k7w2ory --params-file /tmp/launch_params_77w6o92o'].
+[ERROR] [scene_viz_node.py-9]: process has died [pid 756635, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_gazebo/lib/luggage_gazebo/scene_viz_node.py --ros-args -r __node:=scene_viz --params-file /tmp/launch_params_iskonldd'].
+[ERROR] [scene_manager_node.py-13]: process has died [pid 756643, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_planning/lib/luggage_planning/scene_manager_node.py --ros-args -r __node:=scene_manager --params-file /tmp/launch_params_rhn7kk7d'].
+[ERROR] [cargo_volume_mapper_node.py-18]: process has died [pid 756653, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py --ros-args -r __node:=cargo_volume_mapper --params-file /tmp/launch_params_9tkx834i'].
+[INFO] [ign gazebo-1]: process has finished cleanly [pid 756618]
+[INFO] [launch]: process[ign gazebo-1] was required: shutting down launched system
+[INFO] [move_group-31]: sending signal 'SIGINT' to process[move_group-31]
+[INFO] [semantic_segmenter_node.py-11]: sending signal 'SIGINT' to process[semantic_segmenter_node.py-11]
+[ERROR] [semantic_segmenter_node.py-11]: process has died [pid 756639, exit code 1, cmd '/tmp/elfin-master-pack-baseline-g3/install/luggage_perception/lib/luggage_perception/semantic_segmenter_node.py --ros-args -r __node:=semantic_segmenter --params-file /tmp/elfin-master-pack-baseline-g3/install/luggage_perception/share/luggage_perception/config/semantic_segmenter.yaml --params-file /tmp/launch_params_nr9p3709'].
+[ERROR] [move_group-31]: process has died [pid 757761, exit code -11, cmd '/opt/ros/humble/lib/moveit_ros_move_group/move_group --ros-args -r __node:=move_group --params-file /tmp/launch_params_ebj5zaft --params-file /tmp/launch_params_7qumuiz3 --params-file /tmp/launch_params_h1fxhw4l'].
+[move_group-31] [0m

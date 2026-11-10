@@ -137,6 +137,28 @@ def _call(producer, *, targets=None, latest=5, scene="scene-A",
         latest_map_revision=latest, purpose="post_place_aim")
 
 
+def test_rejected_branch_is_not_adopted_and_next_branch_is_certified():
+    producer = _Producer(snapshot=_snapshot(),
+                         revalidation=_ok_revalidation(),
+                         certification=_ok_certification())
+    calls = []
+    def refine(position, quaternion, seed):
+        calls.append(seed)
+        return tuple(seed), {}
+    producer.refine = refine
+    certifications = []
+    def certify(*args, **kwargs):
+        certifications.append(args)
+        return (None, 'CERT_COLLISION') if len(certifications) == 1 else _ok_certification()
+    producer._certify = certify
+    result = _call(producer)
+    assert result['success']
+    assert len(calls) == len(certifications) == 2
+    assert result['rows'][0]['reason'] == 'CERT_COLLISION'
+    assert result['rows'][1]['ik']['seed'].startswith('j6-')
+    assert result['rows'][1]['certified']
+
+
 def test_missing_targets_and_limit_refuse():
     producer = _Producer(snapshot=_snapshot())
     assert _call(producer, targets=[])[

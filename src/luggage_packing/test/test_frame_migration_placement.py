@@ -17,6 +17,48 @@ import unittest
 
 from rclpy.serialization import serialize_message, deserialize_message
 
+# [G1] The admission gate is mandatory: every stub that drives the real
+# planner callbacks carries an OPEN gate (VALID grid identity + fresh
+# robot sample + property-shaped clock), and every wire surface record
+# carries the epoch/validity_generation the gate binds.
+TEST_EPOCH = "0123456789abcdef0123456789abcdef"
+TEST_GENERATION = 7
+_TEST_NOW = [10_000_000_000]
+
+
+class _FakeTime:
+    @property
+    def nanoseconds(self):
+        return _TEST_NOW[0]
+
+
+def _open_validity_state(stub, *, epoch=TEST_EPOCH,
+                         generation=TEST_GENERATION):
+    from luggage_packing.placement_admission import (
+        AdmissionGate, MapObservation, RobotStateSample, ValidityObservation)
+    gate = AdmissionGate()
+    gate.observe_validity(ValidityObservation(
+        "VALID", epoch, generation, backend="grid_g", transition_mono_ns=1))
+    gate.observe_map(MapObservation(
+        epoch=epoch, generation=generation, backend="grid_g"))
+    gate.observe_robot_state(RobotStateSample(2))
+    stub._admission = gate
+    stub._validity_seen = True
+    stub._validity_backend = "grid_g"
+    stub._validity_topic = "/cargo_map/validity"
+    stub._validity_status_service = ""
+    stub._validity_status_client = None
+    stub._robot_max_age_ns = 10 ** 18
+    stub._dropped_zero_stamp_robot_samples = 0
+    stub._rejected_validity_messages = 0
+    stub._confirmed_restarts = 0
+    stub.get_clock = lambda: _ClockNs()
+
+
+class _ClockNs:
+    def now(self):
+        return _FakeTime()
+
 from luggage_description.frame_contracts import ContractError
 from luggage_description.frame_diagnostics import (
     BoundaryContext, BoundaryContractError,
@@ -519,13 +561,16 @@ class FrameMigrationPlacement(unittest.TestCase):
             _inner_size=(float(mapper.inner_l), float(mapper.inner_w),
                          float(mapper.inner_h)),
             _hull=types_module.SimpleNamespace(descriptor=lambda: {}),
+            get_parameter=lambda name: types_module.SimpleNamespace(
+                value=("" if name == "volume_evidence_source" else False)),
             get_logger=lambda: types_module.SimpleNamespace(
                 error=errors.append))
         planner = module['PlacementPlannerNode']
         for name in ('_surface_context', '_surface_view_from_record',
-                     '_on_surface_v2', '_on_surface'):
+                     '_on_surface_v2', '_on_surface', '_admit_surface_map'):
             setattr(stub, name,
                     types_module.MethodType(getattr(planner, name), stub))
+        _open_validity_state(stub)
         return stub, errors
 
     @staticmethod
@@ -536,6 +581,8 @@ class FrameMigrationPlacement(unittest.TestCase):
         )
         record = mapper.surface_contract_v2(SCENE, request_id)
         record['map_revision'] = int(revision)
+        record['epoch'] = TEST_EPOCH
+        record['validity_generation'] = TEST_GENERATION
         context = BoundaryContext(
             'F06', 'cargo_volume_mapper', 'placement_planner',
             request_id, SCENE, 'container_link', '', 'scene',
@@ -667,6 +714,8 @@ class FrameMigrationPlacement(unittest.TestCase):
             mapper = fresh_map()
             stub, errors = self._planner_stub(module, mapper, v2_mode=False)
             v1_dict = mapper.surface_map_2d()
+            v1_dict['epoch'] = TEST_EPOCH
+            v1_dict['validity_generation'] = TEST_GENERATION
             v1_message = type('V1Message', (), {})()
             v1_message.data = json.dumps(v1_dict, sort_keys=True)
             planner._on_surface(stub, v1_message)
@@ -698,8 +747,15 @@ class FrameMigrationPlacement(unittest.TestCase):
         stub._allowed_yaws = [0.0]
         stub._params = {}
         stub._atlas_hook = lambda size: None
+        stub.behavior_hook = lambda name, detail="": None
         stub._active_surface = types_module.MethodType(
             planner._active_surface, stub)
+        for name in ('_validity_admit', '_validity_commit', '_handle_v2',
+                     '_compute_inputs',
+                     '_publish_last'):
+            setattr(stub, name,
+                    types_module.MethodType(getattr(planner, name), stub))
+        stub._publish_last = lambda payload: None
 
         with case('review3/surface-to-service-continuity',
                   {}) as observed:
@@ -775,12 +831,26 @@ class FrameMigrationPlacement(unittest.TestCase):
         import types as types_module
 
         def make_stub(active_revision):
-            return types_module.SimpleNamespace(
+            stub = types_module.SimpleNamespace(
                 _geometry_hash='hull', _v2_request_seq=0,
                 _placed_aabbs_v2=lambda *a: [],
                 _active_surface=lambda: {'map_revision': active_revision},
                 _allowed_yaws=[0.0], _params={},
-                _atlas_hook=lambda size: None)
+                _runtime=None, _committed=None,
+                _atlas_hook=lambda size: None,
+                behavior_hook=lambda name, detail="": None,
+                _surface={'map_revision': active_revision},
+                get_parameter=lambda name: types_module.SimpleNamespace(
+                    value=("" if name == "volume_evidence_source"
+                           else False)),
+                get_logger=lambda: types_module.SimpleNamespace(
+                    error=lambda *_: None, warning=lambda *_: None))
+            for name in ('_validity_admit', '_validity_commit',
+                         '_handle_v2', '_compute_inputs', '_placed_ledger_recheck'):
+                setattr(stub, name, types_module.MethodType(
+                    getattr(planner, name), stub))
+            _open_validity_state(stub)
+            return stub
 
         def request(revision):
             req = ComputePlacementV2.Request()
@@ -824,3 +894,120 @@ class FrameMigrationPlacement(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PlacedLedgerSingleSource(unittest.TestCase):
+    """[B2] 规划输入必须来自 mapper：request-carried placed is validated
+    against the committed ledger; the solver input is ledger-derived."""
+
+    def test_phantom_placed_copy_rejected_ledger_source_used(self):
+        import json as json_module
+        import runpy
+        import types as types_module
+        from std_msgs.msg import String
+        from luggage_msgs.srv import ComputePlacementV2
+        from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
+        from luggage_planning.place_service import pose_message
+
+        module = runpy.run_path(os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'scripts', 'placement_planner_node.py'))
+        planner = module['PlacementPlannerNode']
+        mapper = CargoVolumeMapper(
+            (1.0, 0.6, 0.8), (0.0, 0.0, .53 + 0.4), 0.0, resolution=0.05)
+        mapper.mark_placed_box([0.1, 0.05, .53 + 0.16], [0.2, 0.2, 0.2],
+                               measured_source='verify_placed_box')
+        stub = types_module.SimpleNamespace(
+            _frame_scene_revision=SCENE, _v2_surface_mode=True,
+            _geometry_hash=mapper.geometry_hash, _rejected_maps=0,
+            _surface=None, _admitted_map_revision=None,
+            _inner_size=(float(mapper.inner_l), float(mapper.inner_w),
+                         float(mapper.inner_h)), _floor_z=0.0,
+            _hull=types_module.SimpleNamespace(descriptor=lambda: {}),
+            _runtime=None, _allowed_yaws=[0.0], _params={},
+            _atlas_hook=lambda size: None,
+            behavior_hook=lambda name, detail="": None,
+            get_parameter=lambda name: types_module.SimpleNamespace(
+                value=("" if name == "volume_evidence_source" else False)),
+            get_logger=lambda: types_module.SimpleNamespace(
+                error=lambda *_: None))
+        for name in ('_surface_context', '_surface_view_from_record',
+                     '_on_surface_v2', '_on_committed', '_active_surface',
+                     '_placed_matches_ledger', '_ledger_aabbs',
+                     '_admit_surface_map', '_validity_admit',
+                     '_validity_commit', '_handle_v2', '_compute_inputs', '_placed_ledger_recheck'):
+            setattr(stub, name,
+                    types_module.MethodType(getattr(planner, name), stub))
+        _open_validity_state(stub)
+        # If the request copy were used as the solver source, this blows up.
+        def _no_request_copy(*_a, **_k):
+            raise AssertionError('request placed copy must not be the source')
+        stub._placed_aabbs_v2 = _no_request_copy
+
+        revision = mapper._revision
+        planner._on_surface_v2(stub, FrameMigrationPlacement._wire_surface(
+            mapper, revision, 'map-rev-%d' % revision))
+        planner._on_committed(stub, String(data=json_module.dumps({
+            'boxes': mapper.commit_ledger(), 'map_revision': revision,
+            'geometry_hash': mapper.geometry_hash, 'epoch': 'e1',
+            'content_digest': 'd1'})))
+        self.assertEqual(len(stub._committed['boxes']), 1)
+
+        def placed_message(position):
+            record = dict(
+                contract_version=2, frame_id='container_link',
+                length_unit='m', stamp_ns=1, time_basis='scene',
+                scene_revision=SCENE, request_id='placed-0',
+                reference='box_center', orientation_semantics='box_axis_pi',
+                position=list(position),
+                quaternion_xyzw=[0., 0., 0., 1.])
+            return pose_message(record)
+
+        def request(positions):
+            req = ComputePlacementV2.Request()
+            req.height_measured = True
+            req.box_wdh = [.35, .25, .22]
+            req.geometry_hash = mapper.geometry_hash
+            req.expected_map_revision = revision
+            for position in positions:
+                req.placed.append(placed_message(position))
+                req.placed_wdh_flat.extend([0.2, 0.2, 0.2])
+            return req
+
+        handle = planner._handle_v2
+        original_solver = handle.__globals__['solve_placement']
+        calls = []
+
+        def spy(*_args, **_kwargs):
+            calls.append(True)
+            return {'success': False, 'reason_code': 'SPY',
+                    'message': 'spy'}
+
+        try:
+            handle.__globals__['solve_placement'] = spy
+            # witness-scale phantom copy: rejected at the gate.
+            response = handle(stub, request([[0.75, 0.7, .53 + 0.16]]),
+                              ComputePlacementV2.Response())
+            self.assertFalse(response.success)
+            self.assertEqual(response.reason_code, 'PLACED_LEDGER_MISMATCH')
+            self.assertEqual(len(calls), 0)
+            # matching copy: solver entered, ledger the placed source.
+            response = handle(stub, request([[0.1, 0.05, .53 + 0.16]]),
+                              ComputePlacementV2.Response())
+            self.assertEqual(len(calls), 1)
+            # EMPTY copy = the driver defers to the ledger (the select
+            # path's second compute never carried placed; empty is not a
+            # divergence claim). Solver proceeds, ledger-sourced.
+            calls.clear()
+            response = handle(stub, request([]),
+                              ComputePlacementV2.Response())
+            self.assertEqual(len(calls), 1)
+        finally:
+            handle.__globals__['solve_placement'] = original_solver
+
+        # Ledger-derived AABBs are floor-relative and sane.
+        aabbs = stub._ledger_aabbs(stub._committed)
+        self.assertEqual(len(aabbs), 1)
+        (x0, y0, z0, x1, y1, z1) = aabbs[0]
+        self.assertAlmostEqual(x1 - x0, 0.2, places=6)
+        self.assertAlmostEqual(z1 - z0, 0.2, places=6)

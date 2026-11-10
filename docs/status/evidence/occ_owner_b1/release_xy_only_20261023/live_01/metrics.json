@@ -1,0 +1,147 @@
+{
+  "product_revision": "8afbec19d1f0f60a89f519320826d30bfb12c23f",
+  "suite": {
+    "boxes_attempted": 1,
+    "boxes_packed": 0,
+    "boxes_per_min": 0.0,
+    "capacity_claim_valid": false,
+    "catalog_counts": {},
+    "cycle_sec": {
+      "max": null,
+      "mean": null,
+      "n": 0,
+      "p50": null
+    },
+    "final_layout": "final_layout",
+    "final_layout_meta": {
+      "files": [
+        "boxes.json",
+        "occupancy_gt.json",
+        "occupancy_gt.png",
+        "container_and_boxes.ply",
+        "interior_free.ply",
+        "layout.ply",
+        "layout.html",
+        "meta.json"
+      ],
+      "frame": "world",
+      "free_count": 34200,
+      "geometry_hash": "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+      "last_rejected": null,
+      "n_box_points": 0,
+      "n_boxes": 0,
+      "n_free_voxels": 34200,
+      "n_wall_points": 16180,
+      "occupancy_ratio": 0.0,
+      "occupied_count": 0,
+      "output_frame": "world",
+      "position_frame": "container_link",
+      "record_kind": "gt_reference",
+      "schema": "luggage.pack_layout/2",
+      "surface_2d": true,
+      "termination": "DRIVER_EXC_ContractError"
+    },
+    "floor_coverage": 0.0,
+    "geometry_hash": "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+    "goto_failed_count": 0,
+    "inner_floor_m2": 2.2872,
+    "inner_volume_m3": 4.224,
+    "last_rejected": null,
+    "packed_volume_m3": 0,
+    "rtf_last": 1.0,
+    "skip_unplaceable": false,
+    "termination_reason": "DRIVER_EXC_ContractError",
+    "volume_fraction": 0.0,
+    "wall_total_sec": 292.0
+  },
+  "suite_pass": false,
+  "suites_run": 1,
+  "not_attempted_boxes": 2,
+  "release_gate_pass_observed": true,
+  "certified_leg_count": 8,
+  "executed_leg_count_observed": 8,
+  "home_state_entered_but_return_observe_failed": true,
+  "first_named_runtime_failure": "PEER_LEASE_EXPIRED placement_planner",
+  "exact_live_release_check_inputs_durable": false,
+  "selections": [
+    {
+      "request": "place-v2-2",
+      "success": true,
+      "slot_index": 12,
+      "stage_timings": {
+        "total_ms": 27567.0,
+        "budget_ms": 180000.0,
+        "prep_ms": 59.0,
+        "search_ms": 26449.7,
+        "certify_ms": 1007.0,
+        "revalidate_ms": 51.3,
+        "by_reason_ms": {
+          "CERT_SERVICE_REJECTED": 16769.0,
+          "OK": 10726.0
+        },
+        "accounted_ms": 27495.0,
+        "outside_rows_ms": 72.0
+      },
+      "selected_topologies": [
+        "direct"
+      ]
+    }
+  ],
+  "raw_target_samples": 827,
+  "capture_complete": false,
+  "missing": [
+    "trial.json and its in-memory release_kinematic evidence: exception in _home_arm precedes _dump_place",
+    "failure driver joint ring and replay manifest normally emitted by _dump_place",
+    "raw runtime identity heartbeat sequence for exact lease replay"
+  ],
+  "plugin_capture": {
+    "epoch": "4a18c966a9f3b392a9619887dfea10ce",
+    "watermark": " git:4f5ace6ca2df",
+    "mode": "window",
+    "close_reason": "CTL_STOP",
+    "pre_s": 15,
+    "post_s": 60,
+    "wall_deadline_s": 600,
+    "ring_mib": [
+      48,
+      12,
+      2,
+      2
+    ],
+    "queue_mib": 32,
+    "flush_mib": 256,
+    "record_sizes": [
+      456,
+      436,
+      41,
+      128
+    ],
+    "streams": {
+      "plugin_write": {
+        "produced": 300996,
+        "dropped_ring": 169923,
+        "dropped_queue": 0,
+        "written": 300995
+      },
+      "plugin_read": {
+        "produced": 30099,
+        "dropped_ring": 0,
+        "dropped_queue": 0,
+        "written": 30099
+      },
+      "iteration": {
+        "produced": 30099,
+        "dropped_ring": 0,
+        "dropped_queue": 0,
+        "written": 30099
+      },
+      "events": {
+        "produced": 1,
+        "dropped_ring": 0,
+        "dropped_queue": 0,
+        "written": 1
+      }
+    },
+    "faults": []
+  }
+}

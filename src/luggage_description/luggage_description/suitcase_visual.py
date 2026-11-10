@@ -5,7 +5,7 @@ Unit-AABB sources live in ``luggage_gazebo/models/suitcase_loafbrr`` and
 two: Fortress ogre2 caches GPU meshes by URI, so sharing one STL with SDF
 ``<scale>`` makes later boxes render at the first scale.
 
-Pickup mesh assets are six pre-scaled models (each visual x small/medium/large).
+Pickup mesh assets have unique pre-scaled models for each visual and size tier.
 Collision is the scaled STL. Visual is a copy of the family DAE with the
 same vertex scale, ``Z_UP``, and a diffuse texture pointing at the copied
 ``suitcase.png``. Spawn references those per-model URIs at scale 1 1 1.
@@ -64,20 +64,22 @@ SIZE_TIERS = (
     ("large", (0.80, 0.50, 0.32), 23.0, "large"),
 )
 
-# Lying inch sizes. Standing height_cm = round(inch * 2.54) + 2, which
+# Inch sizes. Standing height_cm = round(inch * 2.54) + 2, which
 # reproduces the 20-26 series (53, 58, 63, 68). Width/depth continue that
 # 1 cm grid: width +2/+3 cm and depth +2 cm per 2-inch step. Retail
 # 28/30/32 in. cases sit in this band (SafariBags 28 in. 71x46x30 cm and
 # 32 in. 81x51x36 cm; Amazon 30 in. 78x53x32 cm; Chinese 28/32 in. charts
 # 47x78x28 and 53x88x30 cm). Lying spawn size is (X, Y, Z) = (width,
 # standing height, depth). Masses follow the catalog affine density,
-# clamped to the 2..23 kg band. Sized model dirs suitcase_loafbrr_inchXX
-# carry the STLs (visual and collision share the mesh, as inch20-26).
+# clamped to the 2..23 kg band. inch20-26 carry the TEXTURED assets
+# (suitcase.dae visual + suitcase.stl collision, the mesh-only campaign
+# line; sizes/masses match those model dirs exactly); inch28-32 are
+# STL-shared (write_inch_suitcase_models output).
 INCH_SIZE_TIERS = (
     ("inch20", (0.35, 0.53, 0.22), 5.67, "inch20"),
     ("inch22", (0.37, 0.58, 0.24), 7.41, "inch22"),
-    ("inch24", (0.40, 0.63, 0.26), 9.70, "inch24"),
-    ("inch26", (0.42, 0.68, 0.28), 12.20, "inch26"),
+    ("inch24", (0.40, 0.63, 0.25), 9.40, "inch24"),
+    ("inch26", (0.42, 0.68, 0.27), 12.02, "inch26"),
     ("inch28", (0.45, 0.73, 0.30), 16.35, "inch28"),
     ("inch30", (0.47, 0.78, 0.32), 20.49, "inch30"),
     ("inch32", (0.50, 0.83, 0.34), 23.0, "inch32"),
@@ -85,6 +87,11 @@ INCH_SIZE_TIERS = (
 INCH_TIER_NAMES = frozenset(item[0] for item in INCH_SIZE_TIERS)
 
 ALL_SIZE_TIERS = SIZE_TIERS + INCH_SIZE_TIERS
+
+
+def iter_size_tiers():
+    """Catalog tiers, then the inch sizes."""
+    return SIZE_TIERS + INCH_SIZE_TIERS
 
 SIZED_MANIFEST_NAME = "sized_suitcases.json"
 
@@ -121,10 +128,10 @@ def sized_visual_mesh_uri(visual_id, tier):
 
 
 def size_tier_name(size, atol=1e-3):
-    """Return the tier name if *size* matches a catalog tier, else None."""
+    """Return the tier name if *size* matches a registered tier, else None."""
     if size is None or len(size) < 3:
         return None
-    for name, spec, _mass, _catalog_id in ALL_SIZE_TIERS:
+    for name, spec, _mass, _catalog_id in iter_size_tiers():
         if all(abs(float(size[i]) - float(spec[i])) <= atol for i in range(3)):
             return name
     return None
@@ -427,10 +434,20 @@ def _mesh_geometry_xml(uri, scale):
     )
 
 
+def _box_geometry_xml(size):
+    return (
+        "          <box>\n"
+        "            <size>%.6f %.6f %.6f</size>\n"
+        "          </box>"
+        % (float(size[0]), float(size[1]), float(size[2]))
+    )
+
+
 def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
                       models_root=None, scaled_dir=SCALED_MESH_DIR,
                       static=True, contact_topic=None,
-                      collide_bitmask=None):
+                      collide_bitmask=None, collision_kind="mesh",
+                      lid_offset=None):
     """SDF for a pickup spawn: thirdparty suitcase mesh only.
 
     References a pre-scaled ``model://`` URI; it does not write a new STL.
@@ -442,6 +459,20 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
     Pickup carry stays ``static=True`` so kinematic ``set_pose`` follow
     does not fight the solver. Place detach respawns the same mesh with
     ``static=False`` so the body can fall onto the container support.
+
+    ``collision_kind="box"`` (placed bodies only, authorized 2026-10-15)
+    keeps the textured mesh VISUAL for perception/depth but replaces the
+    collision STL with a size-matched box primitive: a resting suitcase
+    mesh on the container trimesh drives ODE trimesh-trimesh contact
+    pathological (RTF ~0.03); a primitive collision carries the same
+    outer extents and physical truth at a fraction of the cost.
+
+    ``collision_kind="box_recess"`` (2026-10-19) is the contact-recess
+    approximation used for BOTH the carry and the released body so the
+    static->dynamic swap adds no volume: full AABB minus the crown band
+    above the lid plateau inside the measured cup footprint
+    (CONTACT_RECESS_FOOTPRINT_M). *lid_offset* is the tier constant —
+    callers must NOT measure geometry online for this.
     """
     del models_root, scaled_dir
     kind = str(visual_kind or "mesh").strip().lower()
@@ -450,6 +481,14 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
             "visual_kind must be 'mesh' (textureless primitive boxes were "
             "removed: YOLO-World cannot detect them reliably), got %r"
             % (visual_kind,))
+    collision = str(collision_kind or "mesh").strip().lower()
+    if collision not in ("mesh", "box", "box_recess"):
+        raise ValueError(
+            "collision_kind must be 'mesh', 'box' or 'box_recess', got %r"
+            % (collision_kind,))
+    if collision == "box_recess" and lid_offset is None:
+        raise ValueError(
+            "collision_kind='box_recess' requires the tier lid_offset")
     tier = size_tier_name(size)
     if tier is None:
         raise ValueError(
@@ -480,14 +519,69 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
         use_mesh_material=True,
         contact_topic=contact_topic,
         collide_bitmask=collide_bitmask,
+        collision_kind=collision,
+        lid_offset=lid_offset,
     )
+
+
+#: [contact-recess approximation 2026-10-19, user-frozen scope] The
+#: AABB collision of a placed/carry box keeps its bottom, sides, origin,
+#: mass and inertia, but the crown region above the lid plateau is kept
+#: ONLY outside the cup's actual contact footprint: the p04 suction
+#: plate measures 0.180 x 0.180 (panel-local x/z +-0.090, from the
+#: panel collision STLs), so the recess footprint adds 15 mm/side for
+#: grasp-alignment wander (measured contact offsets +-0.075 in r5/r6).
+#: Depth per tier = lid_offset (observable reference, bottom-shared).
+#: Simulation approximation for the current flat-top grasp flow only;
+#: stacking support geometry is NOT validated by this shape.
+CONTACT_RECESS_FOOTPRINT_M = 0.210
+CONTACT_RECESS_SIDE_MARGIN_M = 0.015
+
+
+def contact_recess_boxes(size, lid_offset,
+                         footprint=CONTACT_RECESS_FOOTPRINT_M):
+    """Box list [(name, size_xyz, pose_xyz)] for the recess composition.
+
+    body_collision keeps the sensor-bearing name and the FULL bottom
+    and side extents up to the lid plateau; four rim strips keep the
+    crown band outside the cup footprint. The union equals the AABB
+    minus the recess column (plateau->crown inside the footprint).
+    """
+    length, width, height = [float(v) for v in size]
+    off = float(lid_offset)
+    if not 0.0 < off < height / 2.0:
+        raise ValueError(
+            "lid_offset must be in (0, height/2), got %r" % (lid_offset,))
+    fp = float(footprint)
+    if fp >= min(length, width):
+        raise ValueError(
+            "recess footprint %r must stay inside the box extents %s"
+            % (footprint, list(size)))
+    slab_h = height - off
+    band_h = off
+    z_slab = -off / 2.0
+    z_band = height / 2.0 - band_h / 2.0
+    rim_x = (length - fp) / 2.0
+    rim_y = (width - fp) / 2.0
+    return [
+        ("body_collision", (length, width, slab_h), (0.0, 0.0, z_slab)),
+        ("rim_collision_px", (rim_x, width, band_h),
+         (+(length - rim_x) / 2.0, 0.0, z_band)),
+        ("rim_collision_nx", (rim_x, width, band_h),
+         (-(length - rim_x) / 2.0, 0.0, z_band)),
+        ("rim_collision_py", (fp, rim_y, band_h),
+         (0.0, +(width - rim_y) / 2.0, z_band)),
+        ("rim_collision_ny", (fp, rim_y, band_h),
+         (0.0, -(width - rim_y) / 2.0, z_band)),
+    ]
 
 
 def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
                  mesh_already_scaled=False, visual_kind="mesh",
                  static=False, collision_uri_override=None,
                  use_mesh_material=False, contact_topic=None,
-                 collide_bitmask=None):
+                 collide_bitmask=None, collision_kind="mesh",
+                 lid_offset=None):
     """SDF at the link origin.
 
     Default mesh mode shares one STL URI for visual and collision.
@@ -495,6 +589,19 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
     STL as *collision_uri_override*. *use_mesh_material* omits the SDF
     ``<material>`` block so Gazebo keeps the COLLADA texture. An SDF
     diffuse color replaces that texture.
+
+    ``collision_kind="box"`` replaces the collision STL with a box
+    primitive of the same outer extents (visual mesh unchanged); the
+    inertia model is the cuboid either way.
+
+    ``collision_kind="box_recess"`` (2026-10-19) replaces it with the
+    contact-recess composition: full AABB minus the crown band above
+    the lid plateau inside the cup footprint (see
+    CONTACT_RECESS_FOOTPRINT_M). *lid_offset* is REQUIRED for this
+    kind (tier constant; no online measurement). Bottom, sides, model
+    origin, mass and inertia are unchanged; every collision carries
+    the same collide_bitmask; the contact sensor stays on
+    body_collision.
     """
     length, width, height = [float(v) for v in size]
     mass = float(mass_kg)
@@ -506,12 +613,81 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
         raise ValueError(
             "visual_kind must be 'mesh' (primitive-box visuals were "
             "removed), got %r" % (visual_kind,))
+    collision = str(collision_kind or "mesh").strip().lower()
+    if collision not in ("mesh", "box", "box_recess"):
+        raise ValueError(
+            "collision_kind must be 'mesh', 'box' or 'box_recess', got %r"
+            % (collision_kind,))
+    if collision == "box_recess" and lid_offset is None:
+        raise ValueError(
+            "collision_kind='box_recess' requires the tier lid_offset "
+            "(bottom-shared observable constant; no online measurement)")
     uri = mesh_uri_override if mesh_uri_override else mesh_uri(visual_id)
     collision_uri = collision_uri_override if collision_uri_override else uri
     mesh_scale = (1.0, 1.0, 1.0) if mesh_already_scaled else (
         length, width, height)
     geometry = _mesh_geometry_xml(uri, mesh_scale)
-    collision_geom = _mesh_geometry_xml(collision_uri, mesh_scale)
+
+    def _collision_xml(name, box_size, pose):
+        return (
+            "      <collision name=\"%s\">\n"
+            "        <pose>%.6f %.6f %.6f 0 0 0</pose>\n"
+            "        <geometry>\n"
+            "          <box>\n"
+            "            <size>%.6f %.6f %.6f</size>\n"
+            "          </box>\n"
+            "        </geometry>\n"
+            "        <surface>\n"
+            "          <contact><collide_bitmask>%d</collide_bitmask>"
+            "</contact>\n"
+            "          <friction><ode><mu>0.6</mu><mu2>0.6</mu2></ode>"
+            "</friction>\n"
+            "        </surface>\n"
+            "      </collision>\n" % (
+                name, pose[0], pose[1], pose[2],
+                box_size[0], box_size[1], box_size[2],
+                BOX_FULL_MASK if collide_bitmask is None
+                else int(collide_bitmask)))
+
+    if collision == "box":
+        collision_geom = _box_geometry_xml((length, width, height))
+        collision_blocks = (
+            "      <collision name=\"body_collision\">\n"
+            "        <geometry>\n"
+            "%s\n"
+            "        </geometry>\n"
+            "        <surface>\n"
+            "          <contact><collide_bitmask>%d</collide_bitmask>"
+            "</contact>\n"
+            "          <friction><ode><mu>0.6</mu><mu2>0.6</mu2></ode>"
+            "</friction>\n"
+            "        </surface>\n"
+            "      </collision>\n" % (
+                collision_geom,
+                BOX_FULL_MASK if collide_bitmask is None
+                else int(collide_bitmask)))
+    elif collision == "box_recess":
+        collision_blocks = "".join(
+            _collision_xml(name, box_size, pose)
+            for name, box_size, pose in contact_recess_boxes(
+                (length, width, height), lid_offset))
+    else:
+        collision_geom = _mesh_geometry_xml(collision_uri, mesh_scale)
+        collision_blocks = (
+            "      <collision name=\"body_collision\">\n"
+            "        <geometry>\n"
+            "%s\n"
+            "        </geometry>\n"
+            "        <surface>\n"
+            "          <contact><collide_bitmask>%d</collide_bitmask>"
+            "</contact>\n"
+            "          <friction><ode><mu>0.6</mu><mu2>0.6</mu2></ode>"
+            "</friction>\n"
+            "        </surface>\n"
+            "      </collision>\n" % (
+                collision_geom,
+                BOX_FULL_MASK if collide_bitmask is None
+                else int(collide_bitmask)))
     comment_kind = visual_id
     static_xml = "    <static>true</static>\n" if static else ""
     if use_mesh_material:
@@ -541,16 +717,7 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
 %s
         </geometry>
 %s      </visual>
-      <collision name="body_collision">
-        <geometry>
-%s
-        </geometry>
-        <surface>
-          <contact><collide_bitmask>%d</collide_bitmask></contact>
-          <friction><ode><mu>0.6</mu><mu2>0.6</mu2></ode></friction>
-        </surface>
-      </collision>
-    </link>
+%s    </link>
   </model>
 </sdf>
 """ % (
@@ -559,24 +726,31 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
         model_name,
         geometry,
         material_xml,
-        collision_geom,
-        BOX_FULL_MASK if collide_bitmask is None else int(collide_bitmask),
+        collision_blocks,
     )
     topic = str(contact_topic or "").strip()
     if topic:
-        # Observation sensor on the existing collision. It does not add a
-        # collision and does not change friction. gz Contact publishes only
-        # when this collision has contacts, so an empty log is not itself
-        # proof that nothing touched.
+        # Observation sensor on the existing collisions. It does not add
+        # collisions and does not change friction. The contact-recess
+        # composition lists ALL five bodies (r7 evidence: every collision
+        # must be attributable); the single-collision kinds keep one
+        # entry. gz Contact publishes only when a listed collision has
+        # contacts, so an empty log is not itself proof that nothing
+        # touched.
+        sensor_names = (
+            ["body_collision", "rim_collision_px", "rim_collision_nx",
+             "rim_collision_py", "rim_collision_ny"]
+            if collision == "box_recess" else ["body_collision"])
         sensor = (
             "      <sensor name=\"box_contact\" type=\"contact\">\n"
             "        <always_on>1</always_on>\n"
             "        <update_rate>50</update_rate>\n"
             "        <contact>\n"
-            "          <collision>body_collision</collision>\n"
-            "          <topic>%s</topic>\n"
-            "        </contact>\n"
-            "      </sensor>\n" % topic)
+            + "".join("          <collision>%s</collision>\n" % n
+                      for n in sensor_names)
+            + "          <topic>%s</topic>\n"
+              "        </contact>\n"
+              "      </sensor>\n" % topic)
         xml = xml.replace(
             "    </link>\n  </model>", sensor + "    </link>\n  </model>", 1)
     return xml
@@ -765,8 +939,129 @@ def write_inch_suitcase_models(models_root, tiers=None):
     return records
 
 
+
+
+def _dae_vertex_extents(path):
+    """Vertex-array extents of a COLLADA visual, in its own units."""
+    import xml.etree.ElementTree as ET
+
+    root = ET.parse(path).getroot()
+    vals = []
+    for fa in root.iter():
+        if not fa.tag.endswith("float_array"):
+            continue
+        if not str(fa.get("id") or "").lower().startswith("verts"):
+            continue
+        vals.extend(float(v) for v in fa.text.split())
+    if not vals:
+        return None
+    points = [vals[i:i + 3] for i in range(0, len(vals) - 2, 3)]
+    return [max(p[k] for p in points) - min(p[k] for p in points)
+            for k in range(3)]
+
+
+def _stl_vertex_extents(path):
+    """Vertex extents of a binary STL (normals skipped)."""
+    xs, ys, zs = [], [], []
+    for x, y, z in iter_stl_vertices(path):
+        xs.append(x)
+        ys.append(y)
+        zs.append(z)
+    return [max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs)]
+
+
+def sized_asset_records(models_root):
+    """One machine-readable truth record per REGISTERED tier, from disk.
+
+    The single source for spawn/GT references, the placed-body primitive
+    collision size and asset hashes (G3 wave 3: one pipeline, every
+    asset; register a tier, run sync, check passes). Deterministic:
+    sorted keys, no timestamps, values from the on-disk meshes.
+    """
+    import hashlib
+
+    records = {}
+    for tier, size, mass_kg, catalog_id in iter_size_tiers():
+        for visual_id in VISUAL_IDS:
+            name = sized_model_name(visual_id, tier)
+            stl = sized_stl_path(visual_id, tier, models_root)
+            dae = os.path.join(os.path.dirname(stl), VISUAL_MESH_FILE)
+            if not os.path.isfile(stl):
+                continue
+            # measure_size keeps the historical mesh_top_footprint
+            # schema (top-band W/D + full height); the GT observable
+            # reference's lid_offset IS stored (2026-10-19): the
+            # contact-recess collision consumes it as a tier constant
+            # so no runtime path re-measures geometry.
+            w, d, h = mesh_top_footprint(stl)
+            _ow, _od, lid_off, _fh = mesh_observable_reference(stl)
+            records[name] = {
+                "catalog_id": catalog_id,
+                "collision_uri": "model://%s/%s" % (name, MESH_FILE),
+                "contact_recess_footprint": CONTACT_RECESS_FOOTPRINT_M,
+                "lid_offset": round(float(lid_off), 6),
+                "mass_kg": mass_kg,
+                "measure_size": [w, d, h],
+                "primitive_collision_size": [float(v) for v in size],
+                "size": [float(v) for v in size],
+                "tier": tier,
+                "uri": "model://%s/%s" % (name, MESH_FILE),
+                "visual_id": visual_id,
+                "visual_uri": "model://%s/%s" % (name, VISUAL_MESH_FILE),
+                "stl_sha256": hashlib.sha256(
+                    open(stl, "rb").read()).hexdigest(),
+                "dae_sha256": (
+                    hashlib.sha256(open(dae, "rb").read()).hexdigest()
+                    if os.path.isfile(dae) else None),
+            }
+    return records
+
+
+def check_sized_assets(models_root, atol=1e-3):
+    """Validate the sim-object contract for every registered tier.
+
+    Returns a list of failure strings (empty = pass): each registered
+    tier must have a model dir whose collision STL and visual DAE vertex
+    extents equal the registered size, and the manifest on disk must
+    equal :func:`sized_asset_records` exactly.
+    """
+    failures = []
+    manifest_path = sized_suitcases_manifest_path(models_root)
+    records = sized_asset_records(models_root)
+    for tier, size, _mass, _catalog in iter_size_tiers():
+        for visual_id in VISUAL_IDS:
+            name = sized_model_name(visual_id, tier)
+            stl = sized_stl_path(visual_id, tier, models_root)
+            if name not in records:
+                failures.append("%s: missing model dir" % name)
+                continue
+            extents = _stl_vertex_extents(stl)
+            if any(abs(extents[k] - size[k]) > atol for k in range(3)):
+                failures.append("%s: STL extents %s != registered %s" % (
+                    name, [round(v, 4) for v in extents], list(size)))
+            dae = os.path.join(os.path.dirname(stl), VISUAL_MESH_FILE)
+            if os.path.isfile(dae):
+                dae_ext = _dae_vertex_extents(dae)
+                if dae_ext is None:
+                    failures.append("%s: DAE has no vertex array" % name)
+                elif any(abs(sorted(dae_ext)[k] - sorted(size)[k]) > atol
+                         for k in range(3)):
+                    failures.append("%s: DAE extents %s != registered %s" % (
+                        name, [round(v, 4) for v in dae_ext], list(size)))
+    if os.path.isfile(manifest_path):
+        on_disk = json.load(open(manifest_path))
+        if on_disk != records:
+            missing = sorted(set(records) - set(on_disk))
+            stale = sorted(set(on_disk) - set(records))
+            failures.append("manifest != records (missing=%s stale=%s"
+                            "; run sync-manifest)" % (missing, stale))
+    else:
+        failures.append("manifest missing: %s" % manifest_path)
+    return failures
+
+
 def write_sized_suitcase_models(models_root):
-    """Write the six pre-scaled pickup models and a measure_size manifest.
+    """Write supported pre-scaled pickup models and a measure_size manifest.
 
     Collision size is the scaled STL. Visual is the textured DAE at the
     same size. Catalog size, mass, and measure_size are unchanged.
@@ -777,7 +1072,7 @@ def write_sized_suitcase_models(models_root):
         src = source_stl_path(visual_id, models_root)
         if not os.path.isfile(src):
             raise IOError("missing unit STL: %s" % src)
-        for tier, size, mass_kg, catalog_id in SIZE_TIERS:
+        for tier, size, mass_kg, catalog_id in iter_size_tiers():
             name = sized_model_name(visual_id, tier)
             dest_stl = sized_stl_path(visual_id, tier, models_root)
             write_scaled_stl(src, dest_stl, size)

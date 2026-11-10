@@ -9,6 +9,7 @@ Settle/verify runs only after retreat and return have been admitted.
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 _SCRIPTS = os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
@@ -174,6 +175,35 @@ class _Flow(object):
     def ros_now_sec(self):
         return 1.0
 
+    def _notify_box_released(self):
+        # G3 release-failure contract hook (map notify) — stubbed ok.
+        return True, "stub-notified"
+
+    def _release_kinematic(self, model, slot_meta):
+        # G3 planning-verification release (default mode): declared
+        # end-state confirmation stubbed as succeeding exactly.
+        rest = list(self._rest)
+        return True, "kinematic", {
+            "mode": "kinematic",
+            "declared_pose_rpy6": rest,
+            "declared_vs_world_m": 0.0,
+            "verdict": "declared_state_confirmed"}
+    def _evaluate_place_verify(self, trial, expected, actual,
+                               pose_release, pose_drift):
+        # G3 verify gate hook: fills trial.extras["verify"] and returns
+        # the failing gate name or None (exact placement -> pass).
+        trial.err_xy = 0.0
+        trial.err_z = 0.0
+        trial.roll = 0.0
+        trial.pitch = 0.0
+        trial.drift = 0.0
+        trial.inside_inner_box = True
+        trial.extras.setdefault("verify", {}).update({
+            "err_xy": trial.err_xy, "err_z": trial.err_z, "drift": 0.0,
+            "settled": True, "verdict": "ok"})
+        return None
+
+
     def get_logger(self):
         return _Log()
 
@@ -257,6 +287,11 @@ class _Flow(object):
     _set_place_touch = PlaceSmokeDriver._set_place_touch
     _abort = PlaceSmokeDriver._abort
     _slot_world_msg = PlaceSmokeDriver._slot_world_msg
+    _contact_capture_gate = PlaceSmokeDriver._contact_capture_gate
+    _start_release_capture = PlaceSmokeDriver._start_release_capture
+    _release_capture_event = PlaceSmokeDriver._release_capture_event
+    _stop_release_capture = PlaceSmokeDriver._stop_release_capture
+    _commit_to_cargo_map = PlaceSmokeDriver._commit_to_cargo_map
     run_place_from_carry = PlaceSmokeDriver.run_place_from_carry
 
 
@@ -310,6 +345,13 @@ def _route_v2():
 
 
 class TestSettleFollowsReturn(unittest.TestCase):
+    def setUp(self):
+        # Exercise the real optional-capture no-op path without inheriting a
+        # shell's live diagnostic launch setting into this offline fixture.
+        environment = patch.dict(os.environ, {'ELFIN_RELEASE_CAPTURE_DIR': ''})
+        environment.start()
+        self.addCleanup(environment.stop)
+
     def test_carrying_segment_does_not_submit_when_unattached(self):
         driver = _Flow(attached=False)
         trial = PlaceTrial(index=0)

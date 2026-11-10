@@ -1,0 +1,100 @@
+{
+  "acm_names": [
+    "airport_container_real_aprime",
+    "camera_color_optical_frame",
+    "camera_depth_optical_frame",
+    "camera_link",
+    "eef_mount_adapter",
+    "elfin_base",
+    "elfin_end_link",
+    "elfin_link1",
+    "elfin_link2",
+    "elfin_link3",
+    "elfin_link4",
+    "elfin_link5",
+    "elfin_link6",
+    "mid360_mount_frame",
+    "pickup_box",
+    "robot_pedestal",
+    "suction_panel"
+  ],
+  "attached": [],
+  "octomap": {
+    "binary_bytes": 0,
+    "frame": "world",
+    "id": ""
+  },
+  "place_state": "ABORT_RELEASED",
+  "robot_joints": {
+    "name": [
+      "elfin_joint1",
+      "elfin_joint2",
+      "elfin_joint3",
+      "elfin_joint4",
+      "elfin_joint5",
+      "elfin_joint6"
+    ],
+    "position": [
+      1.4356001935307134,
+      -0.47819024637734375,
+      0.7414424015795866,
+      -1.8277379585459483,
+      -1.5716449952540663,
+      -3.276815813880527
+    ]
+  },
+  "world_object_ids": [
+    "airport_container_real_aprime",
+    "robot_pedestal"
+  ],
+  "world_objects": [
+    {
+      "frame": "world",
+      "id": "airport_container_real_aprime",
+      "n_triangles": 148,
+      "quat": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "type": "mesh",
+      "xyz": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "frame": "world",
+      "id": "robot_pedestal",
+      "quat": [
+        0.0,
+        0.0,
+        0.7071080798594739,
+        0.7071054825112362
+      ],
+      "size": [
+        0.74,
+        0.5,
+        0.86
+      ],
+      "type": "box",
+      "xyz": [
+        -0.441,
+        0.6,
+        0.43
+      ],
+      "xyz_object": [
+        -0.441,
+        0.6,
+        0.43
+      ],
+      "xyz_primitive": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ]
+}

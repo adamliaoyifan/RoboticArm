@@ -41,6 +41,17 @@ def _bool_text(value):
     return str(value).strip().lower() in ("true", "1", "yes", "on")
 
 
+def _plan_only(context):
+    return _bool_text(LaunchConfiguration("plan_only", default="false").perform(context))
+
+
+def _execution_gate(context, *args, **kwargs):
+    """Plan-only launch must not start the CPS hardware owner."""
+    if _plan_only(context):
+        return [SetLaunchConfiguration("start_executor", "false")]
+    return []
+
+
 _RAW_COLOR = "/camera/d555/color/image_raw"
 _RAW_DEPTH = "/camera/d555/aligned_depth_to_color/image_raw"
 
@@ -78,6 +89,11 @@ def _preprocessor_node(context, *args, **kwargs):
     ]
 
 
+def _placement_enabled(context):
+    return any(_bool_text(LaunchConfiguration(name, default="false").perform(context))
+               for name in ("start_placement", "start_placement_prior"))
+
+
 def _frame_runtime_params(context):
     """ST09 F21 identity/peer parameters for the hardware-plan-only chain.
 
@@ -85,6 +101,10 @@ def _frame_runtime_params(context):
     URDF, final SRDF, resolved atlas files). Fails closed on a partial
     enablement; off (default) leaves the graph byte-identical.
     """
+    if _placement_enabled(context):
+        for name in ("frame_runtime", "start_planning", "start_scene", "use_moveit"):
+            if not _bool_text(LaunchConfiguration(name, default="false").perform(context)):
+                raise RuntimeError("placement planning requires " + name)
     if not _bool_text(LaunchConfiguration("frame_runtime").perform(context)):
         return {}
     off = [name for name in ("start_planning", "start_scene")
@@ -95,7 +115,7 @@ def _frame_runtime_params(context):
             "(no mixed-v2 enablement)" % ", ".join(off))
     import json
     from luggage_description.runtime_graph import (
-        HARDWARE_STACK_PEERS, endpoint_registry, identity_endpoints, resolve_peers)
+        HARDWARE_STACK_PEERS, STACK_PEERS, endpoint_registry, identity_endpoints, resolve_peers)
     from luggage_description.runtime_identity import build_identity
     from luggage_planning.atlas_runtime import (
         load_atlas_runtime_for_scene, resolve_atlas_files)
@@ -104,7 +124,8 @@ def _frame_runtime_params(context):
     driver = str(
         LaunchConfiguration("frame_driver_peer").perform(context)
         or "hardware_pick_driver")
-    peers = resolve_peers(driver, stack=HARDWARE_STACK_PEERS)
+    peers = resolve_peers(driver, stack=STACK_PEERS if _placement_enabled(context)
+                          else HARDWARE_STACK_PEERS)
     xacro_path = os.path.join(
         get_package_share_directory("luggage_description"),
         "urdf", "elfin_s20_with_camera.urdf.xacro")
@@ -195,7 +216,7 @@ def _frame_nodes(context, *args, **kwargs):
             output="screen",
             parameters=[{
                 "use_sim_time": False,
-                "backend": "hardware",
+                "backend": "stub" if _plan_only(context) else "hardware",
                 "seal_timeout_sec": 8.0,
                 "follow_rate_hz": 10.0,
                 **frame,
@@ -203,6 +224,44 @@ def _frame_nodes(context, *args, **kwargs):
             condition=start_planning_of(context),
         ),
     ]
+
+
+def _placement_prior_nodes(context, *args, **kwargs):
+    if not _bool_text(LaunchConfiguration("start_placement_prior").perform(context)):
+        return []
+    if not _bool_text(LaunchConfiguration("frame_runtime").perform(context)):
+        raise RuntimeError("placement prior requires the measured v2 frame runtime")
+    frame = _frame_runtime_params(context)
+    from launch.actions import IncludeLaunchDescription
+    from launch.launch_description_sources import PythonLaunchDescriptionSource
+    launch_path = os.path.join(get_package_share_directory("luggage_planning"),
+                               "launch", "placement_prior.launch.py")
+    return [IncludeLaunchDescription(PythonLaunchDescriptionSource(launch_path),
+        launch_arguments={
+            "scene_tf_config": LaunchConfiguration("scene_tf_config").perform(context),
+            "frame_scene_revision": frame["frame_scene_revision"],
+        }.items())]
+
+
+def _placement_service_nodes(context, *args, **kwargs):
+    if not _placement_enabled(context):
+        return []
+    from luggage_planning.hardware_placement_launch import placement_nodes
+    return placement_nodes(
+        frame=_frame_runtime_params(context),
+        scene=LaunchConfiguration("scene_tf_config"),
+        atlas=LaunchConfiguration("atlas_runtime_config"),
+        poses=LaunchConfiguration("robot_poses_config"),
+        cargo_map_resolution_m=LaunchConfiguration("cargo_map_resolution_m", default="").perform(context))
+
+
+def _certification_nodes(context, *args, **kwargs):
+    if not _bool_text(LaunchConfiguration("start_planning").perform(context)):
+        return []
+    return [Node(package="luggage_planning", executable="validate_route_node",
+                 name="validate_route_v2", output="screen", parameters=[
+                     _robot_description(LaunchConfiguration("scene_tf_config")),
+                     _semantic_srdf(), {"use_sim_time": False}])]
 
 
 def start_planning_of(context):
@@ -227,6 +286,8 @@ def _deploy_profile_gate(context, *args, **kwargs):
         LaunchConfiguration("atlas_runtime_config").perform(context) or "")
     record = resolve_deploy_profile(
         scene, atlas_cfg,
+        manifest_arg=LaunchConfiguration(
+            "deploy_asset_manifest", default="").perform(context),
         check_atlas=_bool_text(
             LaunchConfiguration("start_planning").perform(context)))
     if "atlas_npz" not in record:
@@ -325,20 +386,21 @@ def _move_group(context, *args, **kwargs):
     params = dict(moveit_config.to_dict())
     # Humble sim yaml uses scalar plugin keys nested under ompl.
     # Jazzy move_group rejects those; overlay the site string-array file.
-    jazzy_ompl = os.path.join(
-        get_package_share_directory("elfin_moveit_config"),
-        "config",
-        "ompl_planning.jazzy.yaml",
-    )
-    with open(jazzy_ompl, "r", encoding="utf-8") as handle:
-        overlay = yaml.safe_load(handle) or {}
-    params.pop("planning_plugin", None)
-    params.pop("request_adapters", None)
-    ompl = dict(params.get("ompl") or {})
-    ompl.pop("planning_plugin", None)
-    ompl.pop("request_adapters", None)
-    ompl.update(overlay)
-    params["ompl"] = ompl
+    if os.environ.get("ROS_DISTRO", "") == "jazzy":
+        jazzy_ompl = os.path.join(
+            get_package_share_directory("elfin_moveit_config"),
+            "config",
+            "ompl_planning.jazzy.yaml",
+        )
+        with open(jazzy_ompl, "r", encoding="utf-8") as handle:
+            overlay = yaml.safe_load(handle) or {}
+        params.pop("planning_plugin", None)
+        params.pop("request_adapters", None)
+        ompl = dict(params.get("ompl") or {})
+        ompl.pop("planning_plugin", None)
+        ompl.pop("request_adapters", None)
+        ompl.update(overlay)
+        params["ompl"] = ompl
     return [
         Node(
             package="moveit_ros_move_group",
@@ -350,7 +412,7 @@ def _move_group(context, *args, **kwargs):
                 _semantic_srdf(),
                 {
                     "publish_robot_description_semantic": True,
-                    "allow_trajectory_execution": True,
+                    "allow_trajectory_execution": not _plan_only(context),
                     "use_sim_time": False,
                 },
             ],
@@ -398,7 +460,7 @@ def _launch_description():
                 default_value=default_atlas_cfg,
                 description=(
                     "Reachability-atlas runtime YAML. Default is the "
-                    "installed atlas_runtime_deploy.yaml (hash_policy "
+                    "installed atlas_runtime_deploy.yaml (atlas identity "
                     "strict); atlas_runtime.yaml is the simulation cell "
                     "and is rejected on this cell."
                 ),
@@ -444,6 +506,17 @@ def _launch_description():
             ),
             DeclareLaunchArgument("start_d555", default_value="true"),
             DeclareLaunchArgument("start_executor", default_value="true"),
+            DeclareLaunchArgument(
+                "deploy_asset_manifest", default_value="",
+                description="Explicit frozen deployment manifest; all file hashes remain strictly checked."),
+            DeclareLaunchArgument(
+                "plan_only", default_value="false",
+                description="Disable CPS startup and MoveIt execution; use a vacuum stub for offline interface checks."),
+            DeclareLaunchArgument("start_placement_prior", default_value="false"),
+            DeclareLaunchArgument("cargo_map_resolution_m", default_value="",
+                                  description="Shared OCC/surface spacing; startup-only."),
+            DeclareLaunchArgument("start_placement", default_value="false",
+                description="Start typed OCC, placement and Select providers; also enabled by start_placement_prior."),
             DeclareLaunchArgument(
                 "start_scene",
                 default_value="true",
@@ -532,6 +605,7 @@ def _launch_description():
             # a missing/ambiguous/sim-named/hash-mismatched asset fails
             # the whole launch instead of starting on the wrong cell.
             OpaqueFunction(function=_deploy_profile_gate),
+            OpaqueFunction(function=_execution_gate),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     os.path.join(exec_share, "launch", "jazzy_real.launch.py")
@@ -660,6 +734,9 @@ def _launch_description():
                 description="Driver node name joining the v2 graph as client.",
             ),
             OpaqueFunction(function=_frame_nodes),
+            OpaqueFunction(function=_placement_service_nodes),
+            OpaqueFunction(function=_certification_nodes),
+            OpaqueFunction(function=_placement_prior_nodes),
             OpaqueFunction(function=_move_group),
         ]
     )

@@ -1,0 +1,23 @@
+# Query the map's reset-validity lifecycle state (OCC-GRID-CONSUMER-COMPAT G1).
+#
+# Mirrors uld_occ_observer's get_validity: the response is the SAME
+# consistent transaction state as the published map (never a guess), and
+# events_json replays the latched transition log so a consumer that
+# reconnects (or sees an epoch it has not observed before) can confirm
+# the producer's current identity without fabricating freshness.
+---
+string state                       # VALID|INVALID|BUILDING
+string epoch                       # UUID string (lossless, verbatim)
+uint64 generation
+string reason
+string reset_id
+int64 transition_mono_ns           # monotonic-domain transition stamp
+int64 transition_stamp_ns          # same transition in the store clock domain
+uint64 map_revision
+uint64 observed_revision
+int64 last_integrated_stamp_ns
+string geometry_hash
+string config_digest
+string clock_domain
+string backend                     # "grid_g"
+string events_json                 # latched transition log (bounded)

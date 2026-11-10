@@ -1,0 +1,31 @@
+{
+  "commands": [
+    [
+      "topic_info",
+      [
+        "ign",
+        "topic",
+        "-i",
+        "-t",
+        "/world/airport_loading/pose/info"
+      ]
+    ],
+    [
+      "raw_pose",
+      [
+        "ign",
+        "topic",
+        "-e",
+        "-t",
+        "/world/airport_loading/pose/info",
+        "--num",
+        "3"
+      ]
+    ]
+  ],
+  "exit_codes": {
+    "topic_info": 0,
+    "raw_pose": 0
+  },
+  "scored_cases": 0
+}

@@ -1,0 +1,837 @@
+diff -ruN src/uld_occ_observer/CMakeLists.txt diag/src/uld_occ_observer/CMakeLists.txt
+--- src/uld_occ_observer/CMakeLists.txt	2026-10-29 21:19:37.251754786 +0800
++++ diag/src/uld_occ_observer/CMakeLists.txt	2026-10-30 16:41:18.529328744 +0800
+@@ -11,7 +11,8 @@
+ add_library(uld_occ_observer_core
+   src/preprocessing.cpp src/geometry.cpp src/block_storage.cpp src/snapshot.cpp
+   src/occupancy_grid.cpp src/observer.cpp
+-  src/snapshot_repository.cpp src/observation_worker.cpp)
++  src/snapshot_repository.cpp src/observation_worker.cpp
++  src/interface_trace.cpp)
+ target_include_directories(uld_occ_observer_core PUBLIC
+   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+   $<INSTALL_INTERFACE:include> ${OCTOMAP_INCLUDE_DIRS})
+@@ -45,6 +46,11 @@
+ target_link_libraries(observer_profile_cli PRIVATE uld_occ_observer_io)
+ set_target_properties(observer_profile_cli PROPERTIES BUILD_RPATH "${OCTOMAP_LIBRARY_DIRS}" INSTALL_RPATH "${OCTOMAP_LIBRARY_DIRS}")
+ install(TARGETS observer_profile_cli DESTINATION lib/${PROJECT_NAME})
++add_executable(interface_probe_cli src/interface_probe_cli.cpp test/query_content_digest.cpp)
++target_include_directories(interface_probe_cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/test)
++target_link_libraries(interface_probe_cli PRIVATE uld_occ_observer_io)
++set_target_properties(interface_probe_cli PROPERTIES BUILD_RPATH "${OCTOMAP_LIBRARY_DIRS}" INSTALL_RPATH "${OCTOMAP_LIBRARY_DIRS}")
++install(TARGETS interface_probe_cli DESTINATION lib/${PROJECT_NAME})
+ add_executable(observer_cli src/observer_cli.cpp)
+ target_link_libraries(observer_cli PRIVATE uld_occ_observer_io)
+ set_target_properties(observer_cli PROPERTIES BUILD_RPATH "${OCTOMAP_LIBRARY_DIRS}" INSTALL_RPATH "${OCTOMAP_LIBRARY_DIRS}")
+diff -ruN src/uld_occ_observer/include/uld_occ_observer/interface_trace.hpp diag/src/uld_occ_observer/include/uld_occ_observer/interface_trace.hpp
+--- src/uld_occ_observer/include/uld_occ_observer/interface_trace.hpp	1970-01-01 08:00:00.000000000 +0800
++++ diag/src/uld_occ_observer/include/uld_occ_observer/interface_trace.hpp	2026-10-30 16:22:44.197213617 +0800
+@@ -0,0 +1,21 @@
++#pragma once
++#include <atomic>
++#include <cstdint>
++
++namespace uld_occ_observer {
++// 0 = off. The inline check is one relaxed load so the off arm does not take
++// the product locks or write the ring.
++extern std::atomic<int> interface_trace_flag;
++
++void interface_trace_configure_from_env();
++void interface_trace_flush();
++void interface_trace_event_slow(const char* event, const char* request_id,
++                                const char* status, const char* phase);
++
++inline void interface_trace_event(const char* event, const char* request_id,
++                                  const char* status, const char* phase) {
++  if (interface_trace_flag.load(std::memory_order_relaxed) == 0) return;
++  interface_trace_event_slow(event, request_id ? request_id : "",
++                             status ? status : "", phase ? phase : "");
++}
++}  // namespace uld_occ_observer
+diff -ruN src/uld_occ_observer/src/interface_probe_cli.cpp diag/src/uld_occ_observer/src/interface_probe_cli.cpp
+--- src/uld_occ_observer/src/interface_probe_cli.cpp	1970-01-01 08:00:00.000000000 +0800
++++ diag/src/uld_occ_observer/src/interface_probe_cli.cpp	2026-10-30 16:30:02.788110240 +0800
+@@ -0,0 +1,158 @@
++#include "uld_occ_observer/configuration.hpp"
++#include "uld_occ_observer/interface_trace.hpp"
++#include "query_content_digest.hpp"
++
++#include "uld_occ_observer/observer.hpp"
++#include "uld_occ_observer/snapshot_repository.hpp"
++
++#include <algorithm>
++#include <chrono>
++#include <cstdlib>
++#include <fstream>
++#include <iostream>
++#include <map>
++#include <string>
++#include <vector>
++
++namespace {
++using Clock = std::chrono::steady_clock;
++
++double milliseconds(Clock::time_point start, Clock::time_point end) {
++  return std::chrono::duration<double, std::milli>(end - start).count();
++}
++
++std::vector<uld_occ_observer::Vec3> read_points(const std::string& path) {
++  std::ifstream input(path);
++  if (!input) throw uld_occ_observer::Error("POINTS_UNAVAILABLE");
++  std::vector<uld_occ_observer::Vec3> points;
++  double x = 0, y = 0, z = 0;
++  while (input >> x >> y >> z) points.push_back({x, y, z});
++  if (points.size() != 30000) throw uld_occ_observer::Error("POINTS_NOT_30000");
++  return points;
++}
++
++uld_occ_observer::OpticalObservation make_observation(const uld_occ_observer::ObserverConfiguration& config,
++                                                     const std::vector<uld_occ_observer::Vec3>& points,
++                                                     std::uint64_t epoch) {
++  uld_occ_observer::OpticalObservation observation;
++  observation.identity.sensor_id = "cam0";
++  observation.identity.observation_id = "probe-1";
++  observation.identity.optical_frame = "d555_color_optical_frame";
++  observation.identity.clock_domain = config.clock_domain;
++  observation.identity.geometry_hash = config.geometry.geometry_hash;
++  observation.identity.epoch = epoch;
++  observation.identity.stamp_ns = 1000000000;
++  observation.uld_from_optical.stamp_ns = observation.identity.stamp_ns;
++  const double rotation[9] = {0, 0, 1, -1, 0, 0, 0, -1, 0};
++  for (int index = 0; index < 9; ++index) observation.uld_from_optical.rotation[index] = rotation[index];
++  observation.uld_from_optical.translation = {-1.15, 0.0, 1.20};
++  observation.points_m = points;
++  return observation;
++}
++
++std::string content_hash(uld_occ_observer::ObservationStore& store,
++                         uld_occ_observer::SnapshotRepository& repository) {
++  const auto diagnostics = store.diagnostics();
++  const auto lease = repository.acquire(diagnostics.identity.last_integrated_stamp_ns, 0);
++  const auto snapshot = repository.get(lease.handle);
++  const auto shape = store.domain()->shape();
++  const auto page = snapshot->read_cells(
++      {0, 0, 0}, {std::min(16, shape.x), std::min(16, shape.y), std::min(16, shape.z)}, 0, 4096);
++  const auto first = snapshot->surface(nullptr);
++  const auto second = snapshot->surface(nullptr);
++  const auto hash = uld_occ_observer::query_content_sha256(page, first.get(), second.get());
++  repository.release(lease.handle);
++  return hash;
++}
++}  // namespace
++
++int main(int argc, char** argv) {
++  if (argc == 2 && std::string(argv[1]) == "--help") {
++    std::cout << "interface_probe_cli --op integrate|acquire|roi|surface "
++                 "--geometry FILE --config FILE --points FILE --out FILE\n"
++              << "Times one fresh-process operation. Trace follows ULD_OCC_INTERFACE_TRACE.\n"
++              << "Content hash is computed outside the timed call. Exit 0 records, 3 fails.\n";
++    return 0;
++  }
++  try {
++    if (argc != 11) throw uld_occ_observer::Error("INVALID_ARGUMENTS");
++    std::map<std::string, std::string> options;
++    for (int index = 1; index < argc; index += 2) {
++      if (!options.emplace(argv[index], argv[index + 1]).second)
++        throw uld_occ_observer::Error("DUPLICATE_OPTION");
++    }
++    const auto op = options.at("--op");
++    if (op != "integrate" && op != "acquire" && op != "roi" && op != "surface")
++      throw uld_occ_observer::Error("INVALID_OP");
++    uld_occ_observer::interface_trace_configure_from_env();
++    const auto config = uld_occ_observer::load_configuration(options.at("--geometry"), options.at("--config"));
++    const auto points = read_points(options.at("--points"));
++    uld_occ_observer::ObservationStore store(config.geometry, config.resolution, config.depth,
++                                            config.clock_domain, config.digest, config.discretize_endpoints);
++    uld_occ_observer::SnapshotRepository repository(store);
++    const auto observation = make_observation(config, points, store.diagnostics().identity.epoch);
++    double sample_ms = 0;
++    double surface_first_ms = -1;
++    double surface_second_ms = -1;
++    std::string status = "OK";
++    if (op == "integrate") {
++      const auto start = Clock::now();
++      const auto receipt = store.integrate(observation);
++      sample_ms = milliseconds(start, Clock::now());
++      status = receipt.status;
++    } else {
++      const auto receipt = store.integrate(observation);
++      status = receipt.status;
++      if (status != "INTEGRATED") throw uld_occ_observer::Error(status);
++      if (op == "acquire") {
++        const auto diagnostics = store.diagnostics();
++        const auto start = Clock::now();
++        const auto lease = repository.acquire(diagnostics.identity.last_integrated_stamp_ns, 0);
++        sample_ms = milliseconds(start, Clock::now());
++        repository.release(lease.handle);
++      } else if (op == "roi") {
++        const auto diagnostics = store.diagnostics();
++        const auto lease = repository.acquire(diagnostics.identity.last_integrated_stamp_ns, 0);
++        const auto snapshot = repository.get(lease.handle);
++        const auto shape = store.domain()->shape();
++        const auto start = Clock::now();
++        const auto page = snapshot->read_cells(
++            {0, 0, 0}, {std::min(16, shape.x), std::min(16, shape.y), std::min(16, shape.z)}, 0, 4096);
++        sample_ms = milliseconds(start, Clock::now());
++        if (page.cells.size() != 4096) throw uld_occ_observer::Error("ROI_LENGTH");
++        repository.release(lease.handle);
++      } else {
++        const auto diagnostics = store.diagnostics();
++        const auto lease = repository.acquire(diagnostics.identity.last_integrated_stamp_ns, 0);
++        const auto snapshot = repository.get(lease.handle);
++        const auto first_start = Clock::now();
++        const auto first = snapshot->surface(nullptr);
++        surface_first_ms = milliseconds(first_start, Clock::now());
++        const auto second_start = Clock::now();
++        const auto second = snapshot->surface(nullptr);
++        surface_second_ms = milliseconds(second_start, Clock::now());
++        sample_ms = surface_first_ms;
++        if (first->size() != second->size() || first->empty()) throw uld_occ_observer::Error("SURFACE_LENGTH");
++        repository.release(lease.handle);
++      }
++    }
++    if (status != "INTEGRATED" && op == "integrate") throw uld_occ_observer::Error(status);
++    const auto hash = content_hash(store, repository);
++    const char* trace = std::getenv("ULD_OCC_INTERFACE_TRACE");
++    std::ofstream output(options.at("--out"));
++    if (!output) throw uld_occ_observer::Error("OUTPUT_UNAVAILABLE");
++    output << "{\n  \"op\": \"" << op << "\",\n  \"trace\": \""
++           << (trace && std::string(trace) == "1" ? "on" : "off")
++           << "\",\n  \"sample_ms\": " << sample_ms
++           << ",\n  \"surface_first_ms\": " << surface_first_ms
++           << ",\n  \"surface_second_ms\": " << surface_second_ms
++           << ",\n  \"content_sha256\": \"" << hash << "\",\n  \"status\": \"" << status
++           << "\",\n  \"not_scored\": true\n}\n";
++    uld_occ_observer::interface_trace_flush();
++    return 0;
++  } catch (const std::exception& error) {
++    std::cerr << error.what() << '\n';
++    uld_occ_observer::interface_trace_flush();
++    return 3;
++  }
++}
+diff -ruN src/uld_occ_observer/src/interface_trace.cpp diag/src/uld_occ_observer/src/interface_trace.cpp
+--- src/uld_occ_observer/src/interface_trace.cpp	1970-01-01 08:00:00.000000000 +0800
++++ diag/src/uld_occ_observer/src/interface_trace.cpp	2026-10-30 16:41:01.684064050 +0800
+@@ -0,0 +1,183 @@
++#include "uld_occ_observer/interface_trace.hpp"
++
++#include <algorithm>
++#include <atomic>
++#include <chrono>
++#include <cstdint>
++#include <ctime>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <mutex>
++#include <string>
++#include <thread>
++#include <unistd.h>
++#include <sys/syscall.h>
++
++namespace uld_occ_observer {
++namespace {
++constexpr std::uint32_t kCapacity = 65536;
++
++struct Slot {
++  std::atomic<std::uint32_t> ready{0};
++  std::int64_t mono_ns{};
++  std::int64_t thread_cpu_ns{};
++  int pid{};
++  int tid{};
++  std::uint64_t seq{};
++  char event[48]{};
++  char request_id[96]{};
++  char status[96]{};
++  char phase[16]{};
++};
++
++Slot g_slots[kCapacity];
++std::atomic<std::uint32_t> g_write{0};
++std::atomic<std::uint64_t> g_dropped{0};
++std::atomic<std::uint64_t> g_seq{1};
++std::atomic<int> g_started{0};
++std::mutex g_emit_mu;
++std::string g_run_id = "unset";
++FILE* g_file = nullptr;
++std::thread g_flush;
++std::atomic<int> g_stop{0};
++std::uint32_t g_read = 0;
++std::mutex g_flush_mutex;
++
++std::int64_t clock_ns(clockid_t clock) {
++  timespec ts{};
++  clock_gettime(clock, &ts);
++  return static_cast<std::int64_t>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
++}
++
++void copy_field(char* dest, std::size_t size, const char* value) {
++  if (!value) value = "";
++  std::snprintf(dest, size, "%s", value);
++}
++
++void json_escape(FILE* file, const char* value) {
++  for (const unsigned char* cursor = reinterpret_cast<const unsigned char*>(value); *cursor; ++cursor) {
++    if (*cursor == '"' || *cursor == '\\') std::fputc('\\', file);
++    if (*cursor >= 32) std::fputc(*cursor, file);
++  }
++}
++
++void write_slot(const Slot& slot) {
++  std::fprintf(g_file,
++               "{\"schema_version\":1,\"run_id\":\"");
++  json_escape(g_file, g_run_id.c_str());
++  std::fprintf(g_file, "\",\"phase\":\"");
++  json_escape(g_file, slot.phase);
++  std::fprintf(g_file, "\",\"event_seq\":%llu,\"event\":",
++               static_cast<unsigned long long>(slot.seq));
++  std::fputc('"', g_file);
++  json_escape(g_file, slot.event);
++  std::fprintf(g_file, "\",\"mono_ns\":%lld,\"pid\":%d,\"tid\":%d,\"thread_cpu_ns\":%lld,\"request_id\":",
++               static_cast<long long>(slot.mono_ns), slot.pid, slot.tid,
++               static_cast<long long>(slot.thread_cpu_ns));
++  std::fputc('"', g_file);
++  json_escape(g_file, slot.request_id);
++  std::fprintf(g_file, "\",\"chain_id\":null,\"input_id\":null,\"status\":\"");
++  json_escape(g_file, slot.status);
++  std::fprintf(g_file, "\"}\n");
++}
++
++void drain() {
++  if (!g_file) return;
++  const std::uint32_t claimed = g_write.load(std::memory_order_acquire);
++  while (g_read < claimed && g_read < kCapacity) {
++    if (g_slots[g_read].ready.load(std::memory_order_acquire) == 0) return;
++    write_slot(g_slots[g_read]);
++    ++g_read;
++  }
++  std::fflush(g_file);
++}
++
++void flush_loop() {
++  while (g_stop.load(std::memory_order_acquire) == 0) {
++    drain();
++    std::this_thread::sleep_for(std::chrono::milliseconds(20));
++  }
++  drain();
++}
++}  // namespace
++
++std::atomic<int> interface_trace_flag{0};
++
++void interface_trace_event_slow(const char* event, const char* request_id,
++                                const char* status, const char* phase) {
++  // This mutex is the trace ring, not a product lock. Sequence and the
++  // monotonic stamp are taken together so a later sequence is not stamped
++  // earlier by another thread.
++  std::lock_guard<std::mutex> guard(g_emit_mu);
++  const std::uint32_t pos = g_write.fetch_add(1, std::memory_order_relaxed);
++  if (pos >= kCapacity) {
++    g_dropped.fetch_add(1, std::memory_order_relaxed);
++    return;
++  }
++  Slot& slot = g_slots[pos];
++  slot.mono_ns = clock_ns(CLOCK_MONOTONIC);
++  slot.thread_cpu_ns = clock_ns(CLOCK_THREAD_CPUTIME_ID);
++  slot.pid = static_cast<int>(::getpid());
++  slot.tid = static_cast<int>(::syscall(SYS_gettid));
++  slot.seq = g_seq.fetch_add(1, std::memory_order_relaxed);
++  copy_field(slot.event, sizeof slot.event, event);
++  copy_field(slot.request_id, sizeof slot.request_id, request_id);
++  copy_field(slot.status, sizeof slot.status, status);
++  copy_field(slot.phase, sizeof slot.phase, phase);
++  slot.ready.store(1, std::memory_order_release);
++}
++
++void interface_trace_configure_from_env() {
++  if (g_started.exchange(1) != 0) return;
++  const char* enabled = std::getenv("ULD_OCC_INTERFACE_TRACE");
++  if (!enabled || std::strcmp(enabled, "1") != 0) return;
++  const char* path = std::getenv("ULD_OCC_TRACE_PATH");
++  const char* run = std::getenv("ULD_OCC_TRACE_RUN_ID");
++  if (!path || !path[0]) return;
++  if (run && run[0]) g_run_id = run;
++  g_file = std::fopen(path, "w");
++  if (!g_file) return;
++  g_flush = std::thread(flush_loop);
++  interface_trace_flag.store(1, std::memory_order_release);
++}
++
++void interface_trace_flush() {
++  std::lock_guard<std::mutex> guard(g_flush_mutex);
++  if (!g_file) return;
++  interface_trace_flag.store(0, std::memory_order_release);
++  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
++  while (std::chrono::steady_clock::now() < deadline) {
++    const std::uint32_t claimed = std::min(g_write.load(std::memory_order_acquire), kCapacity);
++    bool ready = true;
++    for (std::uint32_t index = 0; index < claimed; ++index) {
++      if (g_slots[index].ready.load(std::memory_order_acquire) == 0) ready = false;
++    }
++    if (ready) break;
++    std::this_thread::sleep_for(std::chrono::milliseconds(1));
++  }
++  if (g_flush.joinable()) {
++    g_stop.store(1, std::memory_order_release);
++    g_flush.join();
++  }
++  drain();
++  const auto dropped = g_dropped.load(std::memory_order_relaxed);
++  const auto seq = g_seq.fetch_add(1, std::memory_order_relaxed);
++  std::fprintf(g_file,
++               "{\"schema_version\":1,\"run_id\":\"");
++  json_escape(g_file, g_run_id.c_str());
++  std::fprintf(g_file,
++               "\",\"phase\":\"capture\",\"event_seq\":%llu,\"event\":\"trace_footer\","
++               "\"mono_ns\":%lld,\"pid\":%d,\"tid\":%d,\"thread_cpu_ns\":%lld,"
++               "\"request_id\":null,\"chain_id\":null,\"input_id\":null,\"status\":\"%llu\"}\n",
++               static_cast<unsigned long long>(seq),
++               static_cast<long long>(clock_ns(CLOCK_MONOTONIC)),
++               static_cast<int>(::getpid()),
++               static_cast<int>(::syscall(SYS_gettid)),
++               static_cast<long long>(clock_ns(CLOCK_THREAD_CPUTIME_ID)),
++               static_cast<unsigned long long>(dropped));
++  std::fflush(g_file);
++  std::fclose(g_file);
++  g_file = nullptr;
++}
++}  // namespace uld_occ_observer
+diff -ruN src/uld_occ_observer/src/observation_worker.cpp diag/src/uld_occ_observer/src/observation_worker.cpp
+--- src/uld_occ_observer/src/observation_worker.cpp	2026-10-26 22:54:16.214086380 +0800
++++ diag/src/uld_occ_observer/src/observation_worker.cpp	2026-10-30 16:41:18.535328839 +0800
+@@ -1,4 +1,5 @@
+ #include "uld_occ_observer/observation_worker.hpp"
++#include "uld_occ_observer/interface_trace.hpp"
+ namespace uld_occ_observer {
+ ObservationWorker::ObservationWorker(ObservationStore& store) : store_(store) {
+   diagnostics_.store = store_.diagnostics();
+@@ -9,11 +10,20 @@
+   ready_.notify_one(); thread_.join();
+ }
+ bool ObservationWorker::enqueue(OpticalObservation observation, Completion completion) {
+-  std::lock_guard<std::mutex> lock(mutex_);
+-  ++diagnostics_.submitted;
+-  if (closing_ || queue_.size() >= 2) { ++diagnostics_.queue_rejected; return false; }
+-  queue_.push_back({std::move(observation),std::move(completion),Clock::now()});
+-  diagnostics_.waiting = queue_.size(); ready_.notify_one(); return true;
++  const auto input_id = observation.identity.observation_id;
++  interface_trace_event("enqueue_begin", input_id.c_str(), "", "writer");
++  bool accepted = false;
++  {
++    std::lock_guard<std::mutex> lock(mutex_);
++    ++diagnostics_.submitted;
++    if (closing_ || queue_.size() >= 2) ++diagnostics_.queue_rejected;
++    else {
++      queue_.push_back({std::move(observation),std::move(completion),Clock::now()});
++      diagnostics_.waiting = queue_.size(); ready_.notify_one(); accepted = true;
++    }
++  }
++  interface_trace_event("enqueue_result", input_id.c_str(), accepted ? "accepted" : "QUEUE_FULL", "writer");
++  return accepted;
+ }
+ WorkerDiagnostics ObservationWorker::diagnostics() const {
+   std::lock_guard<std::mutex> lock(mutex_); return diagnostics_;
+@@ -31,20 +41,26 @@
+       job = std::move(queue_.front()); queue_.pop_front();
+       diagnostics_.waiting = queue_.size(); diagnostics_.in_flight = 1;
+     }
++    const auto input_id = job.observation.identity.observation_id;
++    interface_trace_event("worker_dequeue", input_id.c_str(), "", "writer");
+     const double queue_ms = std::chrono::duration<double,std::milli>(Clock::now()-job.received).count();
+     CompletedObservation done;
+     done.queue_ms = queue_ms;
++    interface_trace_event("integrate_worker_start", input_id.c_str(), "", "writer");
+     try { done.receipt = store_.integrate(job.observation); }
+     catch (const std::exception& error) {
+       done.receipt.status = std::string("INTERNAL_ERROR:") + error.what();
+       done.receipt.identity = store_.diagnostics().identity;
+     }
++    interface_trace_event("integrate_worker_end", input_id.c_str(), done.receipt.status.c_str(), "writer");
+     const auto state = store_.diagnostics();
+     { std::lock_guard<std::mutex> lock(mutex_);
+       diagnostics_.store = state; diagnostics_.in_flight = 0;
+       diagnostics_.max_queue_ms = std::max(diagnostics_.max_queue_ms,queue_ms);
+     }
++    interface_trace_event("worker_completion", input_id.c_str(), done.receipt.status.c_str(), "writer");
+     job.completion(std::move(done));
++    interface_trace_event("worker_completion_returned", input_id.c_str(), "", "writer");
+   }
+ }
+ }  // namespace uld_occ_observer
+diff -ruN src/uld_occ_observer/src/observer.cpp diag/src/uld_occ_observer/src/observer.cpp
+--- src/uld_occ_observer/src/observer.cpp	2026-10-29 15:47:22.557918495 +0800
++++ diag/src/uld_occ_observer/src/observer.cpp	2026-10-30 16:41:18.529328744 +0800
+@@ -1,4 +1,5 @@
+ #include "uld_occ_observer/observer.hpp"
++#include "uld_occ_observer/interface_trace.hpp"
+ #include "uld_occ_observer/block_storage.hpp"
+ #include <openssl/evp.h>
+ #include <optional>
+@@ -54,6 +55,8 @@
+ }
+ 
+ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation, ProfileMode profile_mode) {
++  const auto& trace_id = observation.identity.observation_id;
++  interface_trace_event("integrate_start", trace_id.c_str(), "", "writer");
+   const auto start = Clock::now();
+   UpdateReceipt receipt;
+   OccupancyDiagnostic diagnostic(profile_mode);
+@@ -64,7 +67,9 @@
+     receipt.profile = diagnostic.report();
+   };
+   std::unique_lock<std::mutex> lock(mutex_, std::defer_lock);
++  interface_trace_event("store_lock_attempt", trace_id.c_str(), "integrate", "writer");
+   { auto span = diagnostic.span(ProfileStage::LockWait); lock.lock(); }
++  interface_trace_event("store_lock_acquired", trace_id.c_str(), "integrate", "writer");
+   ++received_;
+   receipt.sensor_id = observation.identity.sensor_id;
+   receipt.observation_id = observation.identity.observation_id;
+@@ -96,6 +101,8 @@
+     if (duplicate) {
+       ++duplicates_; receipt.status = "ALREADY_PROCESSED";
+       publish();
++      interface_trace_event("store_lock_release", trace_id.c_str(), receipt.status.c_str(), "writer");
++      interface_trace_event("integrate_end", trace_id.c_str(), receipt.status.c_str(), "writer");
+       return receipt;
+     }
+     FilterResult filtered;
+@@ -167,21 +174,36 @@
+     ++rejected_; receipt.status = error.what();
+   }
+   publish();
++  interface_trace_event("store_lock_release", trace_id.c_str(), receipt.status.c_str(), "writer");
++  interface_trace_event("integrate_end", trace_id.c_str(), receipt.status.c_str(), "writer");
+   return receipt;
+ }
+ 
+ std::shared_ptr<const Snapshot> ObservationStore::snapshot() const {
++  interface_trace_event("store_lock_attempt", "snapshot", "", "query");
+   std::lock_guard<std::mutex> lock(mutex_);
+-  if (!last_integrated_stamp_ns_) throw Error("NO_DATA");
+-  if (cached_snapshot_) return cached_snapshot_;
++  interface_trace_event("store_lock_acquired", "snapshot", "", "query");
++  if (!last_integrated_stamp_ns_) {
++    interface_trace_event("store_lock_release", "snapshot", "NO_DATA", "query");
++    throw Error("NO_DATA");
++  }
++  if (cached_snapshot_) {
++    interface_trace_event("store_lock_release", "snapshot", "hit", "query");
++    return cached_snapshot_;
++  }
+   auto result = std::make_shared<const Snapshot>(identity_unlocked(), domain_, blocks_);
+   cached_snapshot_ = result;
++  interface_trace_event("store_lock_release", "snapshot", "build", "query");
+   return result;
+ }
+ Diagnostics ObservationStore::diagnostics() const {
++  interface_trace_event("store_lock_attempt", "diagnostics", "", "query");
+   std::lock_guard<std::mutex> lock(mutex_);
+-  return {identity_unlocked(), grid_.nodeCount(), known_cells_, blocks_.size(), grid_.memoryUsage(),
+-          received_, integrated_, rejected_, duplicates_, full_serializations_};
++  interface_trace_event("store_lock_acquired", "diagnostics", "", "query");
++  Diagnostics out{identity_unlocked(), grid_.nodeCount(), known_cells_, blocks_.size(), grid_.memoryUsage(),
++                  received_, integrated_, rejected_, duplicates_, full_serializations_};
++  interface_trace_event("store_lock_release", "diagnostics", "", "query");
++  return out;
+ }
+ std::uint64_t ObservationStore::reset(std::uint64_t expected_epoch) {
+   std::lock_guard<std::mutex> lock(mutex_);
+diff -ruN src/uld_occ_observer/src/observer_node.cpp diag/src/uld_occ_observer/src/observer_node.cpp
+--- src/uld_occ_observer/src/observer_node.cpp	2026-10-27 12:06:43.744535585 +0800
++++ diag/src/uld_occ_observer/src/observer_node.cpp	2026-10-30 16:41:18.530328760 +0800
+@@ -17,11 +17,13 @@
+ #include <future>
+ #include <iostream>
+ #include <atomic>
++#include "uld_occ_observer/interface_trace.hpp"
+ 
+ namespace uld_occ_observer {
+ class ObserverNode : public rclcpp::Node {
+  public:
+   ObserverNode() : Node("uld_occ_observer", "/uld_occ_observer") {
++    interface_trace_configure_from_env();
+     const auto geometry_file = declare_parameter<std::string>("geometry_file", "");
+     const auto config_file = declare_parameter<std::string>("config_file", "");
+     config_ = load_configuration(geometry_file, config_file);
+@@ -51,7 +53,7 @@
+     health_timer_ = create_wall_timer(std::chrono::milliseconds(500),[this] { publish_health(); });
+     RCLCPP_INFO(get_logger(),"Ready: independent observer, OctoMap 1.9.8, input_mode=%s",mode_.c_str());
+   }
+-  ~ObserverNode() override { worker_.reset(); }
++  ~ObserverNode() override { worker_.reset(); interface_trace_flush(); }
+  private:
+   OpticalObservation convert(const sensor_msgs::msg::PointCloud2& cloud,
+       const geometry_msgs::msg::TransformStamped& tf, const std::string& sensor,
+@@ -64,24 +66,40 @@
+       static_cast<std::int64_t>(cloud.header.stamp.sec)*1000000000+cloud.header.stamp.nanosec};
+     observation.uld_from_optical = rigid_transform(tf,cloud.header.frame_id);
+     observation.points_m = optical_points(cloud);
++    interface_trace_event("points_decoded", observation.identity.observation_id.c_str(),
++        std::to_string(observation.points_m.size()).c_str(), "input");
+     return observation;
+   }
+   void on_cloud(const sensor_msgs::msg::PointCloud2& cloud) {
++    const auto cloud_id = std::to_string(rclcpp::Time(cloud.header.stamp).nanoseconds());
++    interface_trace_event("callback_enter", cloud_id.c_str(), "", "input");
+     try {
+       if (cloud.header.frame_id != optical_frame_) throw Error("OPTICAL_FRAME_MISMATCH");
++      interface_trace_event("tf_lookup_begin", cloud_id.c_str(), "", "input");
+       const auto tf = tf_buffer_->lookupTransform("container_link", cloud.header.frame_id,
+           rclcpp::Time(cloud.header.stamp),rclcpp::Duration::from_seconds(.1));
+       const auto stamp = rclcpp::Time(cloud.header.stamp).nanoseconds();
++      interface_trace_event("tf_lookup_end", cloud_id.c_str(), "OK", "input");
++      interface_trace_event("convert_begin", cloud_id.c_str(), "", "input");
+       auto observation = convert(cloud,tf,sensor_id_,std::to_string(stamp),config_.clock_domain,
+           config_.geometry.geometry_hash,store_->diagnostics().identity.epoch);
++      interface_trace_event("convert_end", observation.identity.observation_id.c_str(), "", "input");
+       if (!worker_->enqueue(std::move(observation),[this](CompletedObservation done) {
+-            receipt_pub_->publish(ros_receipt(done)); })) throw Error("QUEUE_FULL");
++            interface_trace_event("receipt_publish_begin", done.receipt.observation_id.c_str(), done.receipt.status.c_str(), "receipt");
++            receipt_pub_->publish(ros_receipt(done));
++            interface_trace_event("receipt_publish_end", done.receipt.observation_id.c_str(), done.receipt.status.c_str(), "receipt");
++            })) throw Error("QUEUE_FULL");
+     } catch (const std::exception& error) {
+       ++adapter_rejected_;
++      interface_trace_event("adapter_rejected", cloud_id.c_str(), error.what(), "input");
+       msg::UpdateReceipt receipt; receipt.status = error.what();
+       receipt.sensor_id = sensor_id_; receipt.input_stamp_ns = rclcpp::Time(cloud.header.stamp).nanoseconds();
+-      receipt.observation_id = std::to_string(receipt.input_stamp_ns); receipt_pub_->publish(receipt);
++      receipt.observation_id = std::to_string(receipt.input_stamp_ns);
++      interface_trace_event("receipt_publish_begin", receipt.observation_id.c_str(), receipt.status.c_str(), "receipt");
++      receipt_pub_->publish(receipt);
++      interface_trace_event("receipt_publish_end", receipt.observation_id.c_str(), receipt.status.c_str(), "receipt");
+     }
++    interface_trace_event("callback_exit", cloud_id.c_str(), "", "input");
+   }
+   template<class Service, class Callback>
+   typename rclcpp::Service<Service>::SharedPtr service(const std::string& name, Callback callback) {
+@@ -99,7 +117,10 @@
+           auto future = promise->get_future();
+           if (!worker_->enqueue(std::move(observation),[promise](CompletedObservation done) {
+                 promise->set_value(std::move(done)); })) throw Error("QUEUE_FULL");
+-          response->receipt = ros_receipt(future.get()); receipt_pub_->publish(response->receipt);
++          response->receipt = ros_receipt(future.get());
++          interface_trace_event("receipt_publish_begin", response->receipt.observation_id.c_str(), response->receipt.status.c_str(), "receipt");
++          receipt_pub_->publish(response->receipt);
++          interface_trace_event("receipt_publish_end", response->receipt.observation_id.c_str(), response->receipt.status.c_str(), "receipt");
+         } catch (const std::exception& error) {
+           response->receipt.status = error.what(); response->receipt.sensor_id = request->sensor_id;
+           response->receipt.observation_id = request->observation_id;
+@@ -110,22 +131,34 @@
+       [this](const std::shared_ptr<srv::GetSnapshot::Request> request,
+              std::shared_ptr<srv::GetSnapshot::Response> response) {
+         try {
++          interface_trace_event("query_callback_enter", "get_snapshot", "", "query");
+           if (request->max_age_ms < 0 || request->max_age_ms > 86400000) throw Error("INVALID_MAX_AGE");
++          interface_trace_event("acquire_call_begin", "get_snapshot", "", "query");
+           const auto lease = repository_->acquire(now().nanoseconds(),request->max_age_ms*1000000,
+               request->allow_stale,request->expected_epoch,request->exact_revision ?
+                 std::optional<std::uint64_t>(request->expected_revision) : std::nullopt);
++          interface_trace_event("response_assemble_begin", lease.handle.c_str(), "get_snapshot", "query");
+           response->status = "OK"; response->handle = lease.handle;
+           response->identity = ros_identity(lease.identity); response->age_ns = lease.age_ns;
+           response->stale = lease.stale;
+-        } catch (const std::exception& error) { response->status = error.what(); }
++          interface_trace_event("response_assemble_end", lease.handle.c_str(), "OK", "query");
++          interface_trace_event("query_callback_exit", lease.handle.c_str(), "OK", "query");
++        } catch (const std::exception& error) {
++          response->status = error.what();
++          interface_trace_event("query_callback_exit", "get_snapshot", error.what(), "query");
++        }
+       });
+     cells_ = service<srv::ReadCells>("read_cells",
+       [this](const std::shared_ptr<srv::ReadCells::Request> request,
+              std::shared_ptr<srv::ReadCells::Response> response) {
+         try {
++          interface_trace_event("query_callback_enter", request->handle.c_str(), "read_cells", "query");
+           const auto snapshot = repository_->get(request->handle);
+           const auto& b = request->begin; const auto& e = request->end;
++          interface_trace_event("roi_begin", request->handle.c_str(), "", "query");
+           const auto page = snapshot->read_cells({b[0],b[1],b[2]},{e[0],e[1],e[2]},request->cursor,request->limit);
++          interface_trace_event("roi_end", request->handle.c_str(), std::to_string(page.cells.size()).c_str(), "query");
++          interface_trace_event("response_assemble_begin", request->handle.c_str(), "read_cells", "query");
+           response->identity = ros_identity(snapshot->identity());
+           response->next_cursor = page.next_cursor; response->done = page.done;
+           for (const auto& cell : page.cells) {
+@@ -133,14 +166,23 @@
+             response->log_odds.push_back(cell.known ? cell.value.log_odds : 0);
+           }
+           response->status = "OK";
+-        } catch (const std::exception& error) { response->status = error.what(); }
++          interface_trace_event("response_assemble_end", request->handle.c_str(), "OK", "query");
++          interface_trace_event("query_callback_exit", request->handle.c_str(), "OK", "query");
++        } catch (const std::exception& error) {
++          response->status = error.what();
++          interface_trace_event("query_callback_exit", request->handle.c_str(), error.what(), "query");
++        }
+       });
+     surface_ = service<srv::ReadSurface>("read_surface",
+       [this](const std::shared_ptr<srv::ReadSurface::Request> request,
+              std::shared_ptr<srv::ReadSurface::Response> response) {
+         try {
++          interface_trace_event("query_callback_enter", request->handle.c_str(), "read_surface", "query");
+           const auto snapshot = repository_->get(request->handle);
++          interface_trace_event("surface_begin", request->handle.c_str(), "", "query");
+           const auto surface = snapshot->surface();
++          interface_trace_event("surface_end", request->handle.c_str(), std::to_string(surface->size()).c_str(), "query");
++          interface_trace_event("response_assemble_begin", request->handle.c_str(), "read_surface", "query");
+           if (!request->limit || request->limit > 65536 || request->cursor > surface->size())
+             throw Error("INVALID_SURFACE_PAGE");
+           const auto stop = request->cursor + std::min<std::uint64_t>(request->limit,surface->size()-request->cursor);
+@@ -152,12 +194,19 @@
+           }
+           response->identity = ros_identity(snapshot->identity());
+           response->next_cursor = stop; response->done = stop == surface->size(); response->status = "OK";
+-        } catch (const std::exception& error) { response->status = error.what(); }
++          interface_trace_event("response_assemble_end", request->handle.c_str(), "OK", "query");
++          interface_trace_event("query_callback_exit", request->handle.c_str(), "OK", "query");
++        } catch (const std::exception& error) {
++          response->status = error.what();
++          interface_trace_event("query_callback_exit", request->handle.c_str(), error.what(), "query");
++        }
+       });
+     release_ = service<srv::ReleaseSnapshot>("release_snapshot",
+       [this](const std::shared_ptr<srv::ReleaseSnapshot::Request> request,
+              std::shared_ptr<srv::ReleaseSnapshot::Response> response) {
++        interface_trace_event("query_callback_enter", request->handle.c_str(), "release_snapshot", "query");
+         repository_->release(request->handle); response->status = "OK";
++        interface_trace_event("query_callback_exit", request->handle.c_str(), "OK", "query");
+       });
+     reset_ = service<srv::ResetObservation>("reset_observation",
+       [this](const std::shared_ptr<srv::ResetObservation::Request> request,
+@@ -198,7 +247,10 @@
+     health["known_cells"] = d.store.known_cells; health["integrated"] = d.store.integrated;
+     health["rejected"] = d.store.rejected; health["duplicates"] = d.store.duplicates;
+     health["capabilities"] = std::vector<std::string>{"OBSERVE","RESET","QUERY","CHECKPOINT","RESTORE"};
+-    std_msgs::msg::String message; message.data = YAML::Dump(health); health_pub_->publish(message);
++    std_msgs::msg::String message; message.data = YAML::Dump(health);
++    interface_trace_event("health_publish_begin", "", "", "health");
++    health_pub_->publish(message);
++    interface_trace_event("health_publish_end", "", "", "health");
+   }
+   ObserverConfiguration config_;
+   std::string mode_, optical_frame_, sensor_id_;
+diff -ruN src/uld_occ_observer/src/snapshot.cpp diag/src/uld_occ_observer/src/snapshot.cpp
+--- src/uld_occ_observer/src/snapshot.cpp	2026-10-29 15:47:22.558918595 +0800
++++ diag/src/uld_occ_observer/src/snapshot.cpp	2026-10-30 16:41:18.529328744 +0800
+@@ -1,4 +1,5 @@
+ #include "uld_occ_observer/snapshot.hpp"
++#include "uld_occ_observer/interface_trace.hpp"
+ #include "uld_occ_observer/block_storage.hpp"
+ #include <algorithm>
+ 
+@@ -86,6 +87,7 @@
+     profile->domain_init_collected = true;
+   }
+   std::lock_guard<std::mutex> lock(surface_cache_->mutex);
++  interface_trace_event("surface_cache_locked", "", surface_cache_->value ? "hit" : "miss", "query");
+   const auto locked = profile ? Clock::now() : Clock::time_point{};
+   if (profile) profile->lock_wait_ms = std::chrono::duration<double,std::milli>(locked-started).count();
+   if (surface_cache_->value) {
+diff -ruN src/uld_occ_observer/src/snapshot_repository.cpp diag/src/uld_occ_observer/src/snapshot_repository.cpp
+--- src/uld_occ_observer/src/snapshot_repository.cpp	2026-10-26 22:54:16.214086380 +0800
++++ diag/src/uld_occ_observer/src/snapshot_repository.cpp	2026-10-30 16:41:18.529328744 +0800
+@@ -1,4 +1,5 @@
+ #include "uld_occ_observer/snapshot_repository.hpp"
++#include "uld_occ_observer/interface_trace.hpp"
+ #include <set>
+ 
+ namespace uld_occ_observer {
+@@ -12,11 +13,16 @@
+ SnapshotLease SnapshotRepository::acquire(std::int64_t now_ns, std::int64_t max_age_ns,
+     bool allow_stale, std::uint64_t expected_epoch,
+     std::optional<std::uint64_t> expected_revision) {
++  interface_trace_event("repository_lock_attempt", "acquire", "", "query");
+   std::lock_guard<std::mutex> lock(mutex_);
++  interface_trace_event("repository_lock_acquired", "acquire", "", "query");
+   const auto latest = store_.snapshot();
+   const auto now = Clock::now();
+   expire_unlocked(now, latest->identity().epoch);
+-  if (expected_epoch && expected_epoch != latest->identity().epoch) throw Error("EPOCH_MISMATCH");
++  if (expected_epoch && expected_epoch != latest->identity().epoch) {
++    interface_trace_event("repository_lock_release", "acquire", "EPOCH_MISMATCH", "query");
++    throw Error("EPOCH_MISMATCH");
++  }
+   auto selected = latest;
+   if (expected_revision && *expected_revision != latest->identity().map_revision) {
+     selected.reset();
+@@ -25,30 +31,54 @@
+         selected = entry.second.snapshot; break;
+       }
+     }
+-    if (!selected) throw Error("REVISION_UNAVAILABLE");
++    if (!selected) {
++      interface_trace_event("repository_lock_release", "acquire", "REVISION_UNAVAILABLE", "query");
++      throw Error("REVISION_UNAVAILABLE");
++    }
+   }
+   const auto& identity = selected->identity();
+-  if (now_ns < identity.last_integrated_stamp_ns || max_age_ns < 0) throw Error("INVALID_QUERY_TIME");
++  if (now_ns < identity.last_integrated_stamp_ns || max_age_ns < 0) {
++    interface_trace_event("repository_lock_release", "acquire", "INVALID_QUERY_TIME", "query");
++    throw Error("INVALID_QUERY_TIME");
++  }
+   const auto age = now_ns-identity.last_integrated_stamp_ns;
+-  if (age > max_age_ns && !allow_stale) throw Error("STALE");
++  interface_trace_event("snapshot_age", "acquire", std::to_string(age).c_str(), "query");
++  if (age > max_age_ns && !allow_stale) {
++    interface_trace_event("repository_lock_release", "acquire", "STALE", "query");
++    throw Error("STALE");
++  }
+   std::set<std::uint64_t> revisions;
+   revisions.insert(identity.map_revision);
+   for (const auto& entry : entries_) revisions.insert(entry.second.snapshot->identity().map_revision);
+-  if (entries_.size() >= 8 || revisions.size() > 2) throw Error("SNAPSHOT_PRESSURE");
++  if (entries_.size() >= 8 || revisions.size() > 2) {
++    interface_trace_event("repository_lock_release", "acquire", "SNAPSHOT_PRESSURE", "query");
++    throw Error("SNAPSHOT_PRESSURE");
++  }
+   const auto handle = std::to_string(identity.epoch) + ":" + std::to_string(++next_handle_);
+   entries_.emplace(handle, Entry{selected, now + std::chrono::seconds(5)});
++  interface_trace_event("snapshot_selected", handle.c_str(), std::to_string(age).c_str(), "query");
++  interface_trace_event("repository_lock_release", handle.c_str(), age > max_age_ns ? "STALE_ALLOWED" : "OK", "query");
+   return {handle, identity, age, age > max_age_ns};
+ }
+ std::shared_ptr<const Snapshot> SnapshotRepository::get(const std::string& handle) {
++  interface_trace_event("repository_lock_attempt", handle.c_str(), "get", "query");
+   std::lock_guard<std::mutex> lock(mutex_);
++  interface_trace_event("repository_lock_acquired", handle.c_str(), "get", "query");
+   const auto epoch = store_.diagnostics().identity.epoch;
+   expire_unlocked(Clock::now(), epoch);
+   const auto entry = entries_.find(handle);
+-  if (entry == entries_.end()) throw Error("INVALID_OR_EXPIRED_HANDLE");
++  if (entry == entries_.end()) {
++    interface_trace_event("repository_lock_release", handle.c_str(), "INVALID_OR_EXPIRED_HANDLE", "query");
++    throw Error("INVALID_OR_EXPIRED_HANDLE");
++  }
++  interface_trace_event("repository_lock_release", handle.c_str(), "OK", "query");
+   return entry->second.snapshot;
+ }
+ void SnapshotRepository::release(const std::string& handle) {
++  interface_trace_event("repository_lock_attempt", handle.c_str(), "release", "query");
+   std::lock_guard<std::mutex> lock(mutex_);
++  interface_trace_event("repository_lock_acquired", handle.c_str(), "release", "query");
+   entries_.erase(handle);
++  interface_trace_event("repository_lock_release", handle.c_str(), "OK", "query");
+ }
+ }  // namespace uld_occ_observer
+Binary files src/uld_occ_observer/test/benchmark/__pycache__/closeout_g2.cpython-310.pyc and diag/src/uld_occ_observer/test/benchmark/__pycache__/closeout_g2.cpython-310.pyc differ
+Binary files src/uld_occ_observer/test/benchmark/__pycache__/fusion_benchmark.cpython-310.pyc and diag/src/uld_occ_observer/test/benchmark/__pycache__/fusion_benchmark.cpython-310.pyc differ
+Binary files src/uld_occ_observer/test/benchmark/__pycache__/fusion_report.cpython-310.pyc and diag/src/uld_occ_observer/test/benchmark/__pycache__/fusion_report.cpython-310.pyc differ
+Binary files src/uld_occ_observer/test/benchmark/__pycache__/interface_campaign.cpython-310.pyc and diag/src/uld_occ_observer/test/benchmark/__pycache__/interface_campaign.cpython-310.pyc differ
+Binary files src/uld_occ_observer/test/benchmark/__pycache__/interface_coverage.cpython-310.pyc and diag/src/uld_occ_observer/test/benchmark/__pycache__/interface_coverage.cpython-310.pyc differ
+Binary files src/uld_occ_observer/test/benchmark/__pycache__/interface_events.cpython-310.pyc and diag/src/uld_occ_observer/test/benchmark/__pycache__/interface_events.cpython-310.pyc differ
+Binary files src/uld_occ_observer/test/benchmark/__pycache__/interface_session.cpython-310.pyc and diag/src/uld_occ_observer/test/benchmark/__pycache__/interface_session.cpython-310.pyc differ
+Binary files src/uld_occ_observer/test/benchmark/__pycache__/o6_matrix.cpython-310.pyc and diag/src/uld_occ_observer/test/benchmark/__pycache__/o6_matrix.cpython-310.pyc differ
+Binary files src/uld_occ_observer/test/benchmark/__pycache__/surface_diag.cpython-310.pyc and diag/src/uld_occ_observer/test/benchmark/__pycache__/surface_diag.cpython-310.pyc differ
+Binary files src/uld_occ_observer/test/benchmark/__pycache__/sustained_run.cpython-310.pyc and diag/src/uld_occ_observer/test/benchmark/__pycache__/sustained_run.cpython-310.pyc differ
+Binary files src/uld_occ_observer/test/__pycache__/test_closeout_g2.cpython-310-pytest-9.0.3.pyc and diag/src/uld_occ_observer/test/__pycache__/test_closeout_g2.cpython-310-pytest-9.0.3.pyc differ
+Binary files src/uld_occ_observer/test/__pycache__/test_config_entry.cpython-310-pytest-9.0.3.pyc and diag/src/uld_occ_observer/test/__pycache__/test_config_entry.cpython-310-pytest-9.0.3.pyc differ
+Binary files src/uld_occ_observer/test/__pycache__/test_eval_cli.cpython-310-pytest-9.0.3.pyc and diag/src/uld_occ_observer/test/__pycache__/test_eval_cli.cpython-310-pytest-9.0.3.pyc differ
+Binary files src/uld_occ_observer/test/__pycache__/test_fusion_benchmark.cpython-310.pyc and diag/src/uld_occ_observer/test/__pycache__/test_fusion_benchmark.cpython-310.pyc differ
+Binary files src/uld_occ_observer/test/__pycache__/test_fusion_benchmark.cpython-310-pytest-9.0.3.pyc and diag/src/uld_occ_observer/test/__pycache__/test_fusion_benchmark.cpython-310-pytest-9.0.3.pyc differ
+Binary files src/uld_occ_observer/test/__pycache__/test_interface_events.cpython-310-pytest-9.0.3.pyc and diag/src/uld_occ_observer/test/__pycache__/test_interface_events.cpython-310-pytest-9.0.3.pyc differ
+Binary files src/uld_occ_observer/test/__pycache__/test_o6_o7_tools.cpython-310-pytest-9.0.3.pyc and diag/src/uld_occ_observer/test/__pycache__/test_o6_o7_tools.cpython-310-pytest-9.0.3.pyc differ
+Binary files src/uld_occ_observer/test/__pycache__/test_profile_cli.cpython-310-pytest-9.0.3.pyc and diag/src/uld_occ_observer/test/__pycache__/test_profile_cli.cpython-310-pytest-9.0.3.pyc differ
+Binary files src/uld_occ_observer/test/__pycache__/test_profile_report.cpython-310-pytest-9.0.3.pyc and diag/src/uld_occ_observer/test/__pycache__/test_profile_report.cpython-310-pytest-9.0.3.pyc differ

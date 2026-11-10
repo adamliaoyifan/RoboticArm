@@ -1,0 +1,9 @@
+{
+  "input_id": "o9-injected-epoch",
+  "epoch": 99,
+  "status": "REJECTED",
+  "reason": "EPOCH_MISMATCH",
+  "sensor_id": "cam0",
+  "capture_complete": true,
+  "frame_sha256": "ca45605ffb958a9c6e83f2ee2a3b4a55e2b3ef9f0d545fe9f6853b5cee49419a"
+}

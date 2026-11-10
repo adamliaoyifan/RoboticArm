@@ -1,0 +1,10 @@
+uint64 epoch
+string sensor_id
+string observation_id
+---
+string status
+uld_occ_observer/UpdateReceipt receipt
+
+uld_occ_observer/ValidityStamp validity
+string last_reset_id
+string validity_events_json

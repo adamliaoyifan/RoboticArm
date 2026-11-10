@@ -1,116 +1,394 @@
 {
-  "suitcase_loafbrr_large": {
-    "catalog_id": "large",
-    "collision_uri": "model://suitcase_loafbrr_large/meshes/suitcase.stl",
-    "mass_kg": 23.0,
-    "measure_size": [
-      0.6612416505813599,
-      0.44012051820755005,
-      0.3199999928474426
-    ],
-    "size": [
-      0.8,
-      0.5,
-      0.32
-    ],
-    "tier": "large",
-    "uri": "model://suitcase_loafbrr_large/meshes/suitcase.stl",
-    "visual_id": "suitcase_loafbrr",
-    "visual_uri": "model://suitcase_loafbrr_large/meshes/suitcase.dae"
-  },
-  "suitcase_loafbrr_medium": {
-    "catalog_id": "standard",
-    "collision_uri": "model://suitcase_loafbrr_medium/meshes/suitcase.stl",
-    "mass_kg": 15.0,
-    "measure_size": [
-      0.620204508304596,
-      0.4387931823730469,
-      0.2800000011920929
-    ],
-    "size": [
-      0.7,
-      0.45,
-      0.28
-    ],
-    "tier": "medium",
-    "uri": "model://suitcase_loafbrr_medium/meshes/suitcase.stl",
-    "visual_id": "suitcase_loafbrr",
-    "visual_uri": "model://suitcase_loafbrr_medium/meshes/suitcase.dae"
-  },
-  "suitcase_loafbrr_small": {
-    "catalog_id": "carryon",
-    "collision_uri": "model://suitcase_loafbrr_small/meshes/suitcase.stl",
-    "mass_kg": 8.0,
-    "measure_size": [
-      0.4873035401105881,
-      0.390038400888443,
-      0.25
-    ],
-    "size": [
-      0.55,
-      0.4,
-      0.25
-    ],
-    "tier": "small",
-    "uri": "model://suitcase_loafbrr_small/meshes/suitcase.stl",
-    "visual_id": "suitcase_loafbrr",
-    "visual_uri": "model://suitcase_loafbrr_small/meshes/suitcase.dae"
-  },
-  "suitcase_vintage_large": {
-    "catalog_id": "large",
-    "collision_uri": "model://suitcase_vintage_large/meshes/suitcase.stl",
-    "mass_kg": 23.0,
-    "measure_size": [
-      0.6069081127643585,
-      0.42597928643226624,
-      0.3199999928474426
-    ],
-    "size": [
-      0.8,
-      0.5,
-      0.32
-    ],
-    "tier": "large",
-    "uri": "model://suitcase_vintage_large/meshes/suitcase.stl",
-    "visual_id": "suitcase_vintage",
-    "visual_uri": "model://suitcase_vintage_large/meshes/suitcase.dae"
-  },
-  "suitcase_vintage_medium": {
-    "catalog_id": "standard",
-    "collision_uri": "model://suitcase_vintage_medium/meshes/suitcase.stl",
-    "mass_kg": 15.0,
-    "measure_size": [
-      0.6552294790744781,
-      0.38338135182857513,
-      0.2800000011920929
-    ],
-    "size": [
-      0.7,
-      0.45,
-      0.28
-    ],
-    "tier": "medium",
-    "uri": "model://suitcase_vintage_medium/meshes/suitcase.stl",
-    "visual_id": "suitcase_vintage",
-    "visual_uri": "model://suitcase_vintage_medium/meshes/suitcase.dae"
-  },
-  "suitcase_vintage_small": {
-    "catalog_id": "carryon",
-    "collision_uri": "model://suitcase_vintage_small/meshes/suitcase.stl",
-    "mass_kg": 8.0,
-    "measure_size": [
-      0.5148231685161591,
-      0.35336706042289734,
-      0.25
-    ],
-    "size": [
-      0.55,
-      0.4,
-      0.25
-    ],
-    "tier": "small",
-    "uri": "model://suitcase_vintage_small/meshes/suitcase.stl",
-    "visual_id": "suitcase_vintage",
-    "visual_uri": "model://suitcase_vintage_small/meshes/suitcase.dae"
-  }
+ "suitcase_loafbrr_inch20": {
+  "catalog_id": "inch20",
+  "collision_uri": "model://suitcase_loafbrr_inch20/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
+  "dae_sha256": null,
+  "lid_offset": 0.011033,
+  "mass_kg": 5.67,
+  "measure_size": [
+   0.3145875483751297,
+   0.5168008506298065,
+   0.2199999988079071
+  ],
+  "primitive_collision_size": [
+   0.35,
+   0.53,
+   0.22
+  ],
+  "size": [
+   0.35,
+   0.53,
+   0.22
+  ],
+  "stl_sha256": "2680f1094c4bfa4b0608a01c6767009194ce28e575fe7788d897e4d83fff3567",
+  "tier": "inch20",
+  "uri": "model://suitcase_loafbrr_inch20/meshes/suitcase.stl",
+  "visual_id": "suitcase_loafbrr",
+  "visual_uri": "model://suitcase_loafbrr_inch20/meshes/suitcase.dae"
+ },
+ "suitcase_loafbrr_inch22": {
+  "catalog_id": "inch22",
+  "collision_uri": "model://suitcase_loafbrr_inch22/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
+  "dae_sha256": null,
+  "lid_offset": 0.012036,
+  "mass_kg": 7.41,
+  "measure_size": [
+   0.32782238721847534,
+   0.5655556619167328,
+   0.23999999463558197
+  ],
+  "primitive_collision_size": [
+   0.37,
+   0.58,
+   0.24
+  ],
+  "size": [
+   0.37,
+   0.58,
+   0.24
+  ],
+  "stl_sha256": "dc034dd5a97d3d6729cc7f9f700472590d5b679a5305c183f18066dd0386b586",
+  "tier": "inch22",
+  "uri": "model://suitcase_loafbrr_inch22/meshes/suitcase.stl",
+  "visual_id": "suitcase_loafbrr",
+  "visual_uri": "model://suitcase_loafbrr_inch22/meshes/suitcase.dae"
+ },
+ "suitcase_loafbrr_inch24": {
+  "catalog_id": "inch24",
+  "collision_uri": "model://suitcase_loafbrr_inch24/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
+  "dae_sha256": null,
+  "lid_offset": 0.012537,
+  "mass_kg": 9.4,
+  "measure_size": [
+   0.3544025868177414,
+   0.6143104732036591,
+   0.25
+  ],
+  "primitive_collision_size": [
+   0.4,
+   0.63,
+   0.25
+  ],
+  "size": [
+   0.4,
+   0.63,
+   0.25
+  ],
+  "stl_sha256": "c96e074a20045eb5e9a1bbe9a73436710ad491627a20a3b8515a070374a9a67a",
+  "tier": "inch24",
+  "uri": "model://suitcase_loafbrr_inch24/meshes/suitcase.stl",
+  "visual_id": "suitcase_loafbrr",
+  "visual_uri": "model://suitcase_loafbrr_inch24/meshes/suitcase.dae"
+ },
+ "suitcase_loafbrr_inch26": {
+  "catalog_id": "inch26",
+  "collision_uri": "model://suitcase_loafbrr_inch26/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
+  "dae_sha256": null,
+  "lid_offset": 0.01354,
+  "mass_kg": 12.02,
+  "measure_size": [
+   0.37212270498275757,
+   0.6630652844905853,
+   0.27000001072883606
+  ],
+  "primitive_collision_size": [
+   0.42,
+   0.68,
+   0.27
+  ],
+  "size": [
+   0.42,
+   0.68,
+   0.27
+  ],
+  "stl_sha256": "8c1d7fbd93669613a366ca799f3c5675d702534c569389d65f478b949fe35bd3",
+  "tier": "inch26",
+  "uri": "model://suitcase_loafbrr_inch26/meshes/suitcase.stl",
+  "visual_id": "suitcase_loafbrr",
+  "visual_uri": "model://suitcase_loafbrr_inch26/meshes/suitcase.dae"
+ },
+ "suitcase_loafbrr_large": {
+  "catalog_id": "large",
+  "collision_uri": "model://suitcase_loafbrr_large/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
+  "dae_sha256": null,
+  "lid_offset": 0.016048,
+  "mass_kg": 23.0,
+  "measure_size": [
+   0.6612416505813599,
+   0.44012051820755005,
+   0.3199999928474426
+  ],
+  "primitive_collision_size": [
+   0.8,
+   0.5,
+   0.32
+  ],
+  "size": [
+   0.8,
+   0.5,
+   0.32
+  ],
+  "stl_sha256": "e4026bc7bcfb9d125a7621952c5a24a279e4c592f2368141109002c08659a141",
+  "tier": "large",
+  "uri": "model://suitcase_loafbrr_large/meshes/suitcase.stl",
+  "visual_id": "suitcase_loafbrr",
+  "visual_uri": "model://suitcase_loafbrr_large/meshes/suitcase.dae"
+ },
+ "suitcase_loafbrr_medium": {
+  "catalog_id": "standard",
+  "collision_uri": "model://suitcase_loafbrr_medium/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
+  "dae_sha256": null,
+  "lid_offset": 0.014042,
+  "mass_kg": 15.0,
+  "measure_size": [
+   0.620204508304596,
+   0.4387931823730469,
+   0.2800000011920929
+  ],
+  "primitive_collision_size": [
+   0.7,
+   0.45,
+   0.28
+  ],
+  "size": [
+   0.7,
+   0.45,
+   0.28
+  ],
+  "stl_sha256": "66ef99c33349f771ccaa5d619a9e1ded72c59119a94cddd4a1551ad1779bea5c",
+  "tier": "medium",
+  "uri": "model://suitcase_loafbrr_medium/meshes/suitcase.stl",
+  "visual_id": "suitcase_loafbrr",
+  "visual_uri": "model://suitcase_loafbrr_medium/meshes/suitcase.dae"
+ },
+ "suitcase_loafbrr_small": {
+  "catalog_id": "carryon",
+  "collision_uri": "model://suitcase_loafbrr_small/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
+  "dae_sha256": null,
+  "lid_offset": 0.012537,
+  "mass_kg": 8.0,
+  "measure_size": [
+   0.4873035401105881,
+   0.390038400888443,
+   0.25
+  ],
+  "primitive_collision_size": [
+   0.55,
+   0.4,
+   0.25
+  ],
+  "size": [
+   0.55,
+   0.4,
+   0.25
+  ],
+  "stl_sha256": "9d352245b015628149366bb075510993fb58315b4641d0189a9f057ad7e4132d",
+  "tier": "small",
+  "uri": "model://suitcase_loafbrr_small/meshes/suitcase.stl",
+  "visual_id": "suitcase_loafbrr",
+  "visual_uri": "model://suitcase_loafbrr_small/meshes/suitcase.dae"
+ },
+ "suitcase_vintage_inch20": {
+  "catalog_id": "inch20",
+  "collision_uri": "model://suitcase_vintage_inch20/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
+  "dae_sha256": null,
+  "lid_offset": 0.01348,
+  "mass_kg": 5.67,
+  "measure_size": [
+   0.3314480036497116,
+   0.4682113379240036,
+   0.2199999988079071
+  ],
+  "primitive_collision_size": [
+   0.35,
+   0.53,
+   0.22
+  ],
+  "size": [
+   0.35,
+   0.53,
+   0.22
+  ],
+  "stl_sha256": "e32c5285ac4b777f6b4c34ad0288bd0654fb54e774d3f6c7b1bcda3b3b3c4238",
+  "tier": "inch20",
+  "uri": "model://suitcase_vintage_inch20/meshes/suitcase.stl",
+  "visual_id": "suitcase_vintage",
+  "visual_uri": "model://suitcase_vintage_inch20/meshes/suitcase.dae"
+ },
+ "suitcase_vintage_inch22": {
+  "catalog_id": "inch22",
+  "collision_uri": "model://suitcase_vintage_inch22/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
+  "dae_sha256": null,
+  "lid_offset": 0.014623,
+  "mass_kg": 7.41,
+  "measure_size": [
+   0.35038788616657257,
+   0.5123822093009949,
+   0.23999999463558197
+  ],
+  "primitive_collision_size": [
+   0.37,
+   0.58,
+   0.24
+  ],
+  "size": [
+   0.37,
+   0.58,
+   0.24
+  ],
+  "stl_sha256": "7ab97553cb2619752470b17961183bc86d8d3a63eff9cdd9ed809a05ee281f6a",
+  "tier": "inch22",
+  "uri": "model://suitcase_vintage_inch22/meshes/suitcase.stl",
+  "visual_id": "suitcase_vintage",
+  "visual_uri": "model://suitcase_vintage_inch22/meshes/suitcase.dae"
+ },
+ "suitcase_vintage_inch24": {
+  "catalog_id": "inch24",
+  "collision_uri": "model://suitcase_vintage_inch24/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
+  "dae_sha256": null,
+  "lid_offset": 0.015428,
+  "mass_kg": 9.4,
+  "measure_size": [
+   0.37441684305667877,
+   0.5565531253814697,
+   0.25
+  ],
+  "primitive_collision_size": [
+   0.4,
+   0.63,
+   0.25
+  ],
+  "size": [
+   0.4,
+   0.63,
+   0.25
+  ],
+  "stl_sha256": "1336999c4fbad48e014bacf3707111f0f9db04e575571f65a25855e1449d0cf1",
+  "tier": "inch24",
+  "uri": "model://suitcase_vintage_inch24/meshes/suitcase.stl",
+  "visual_id": "suitcase_vintage",
+  "visual_uri": "model://suitcase_vintage_inch24/meshes/suitcase.dae"
+ },
+ "suitcase_vintage_inch26": {
+  "catalog_id": "inch26",
+  "collision_uri": "model://suitcase_vintage_inch26/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
+  "dae_sha256": null,
+  "lid_offset": 0.016518,
+  "mass_kg": 12.02,
+  "measure_size": [
+   0.39313769340515137,
+   0.588901162147522,
+   0.27000001072883606
+  ],
+  "primitive_collision_size": [
+   0.42,
+   0.68,
+   0.27
+  ],
+  "size": [
+   0.42,
+   0.68,
+   0.27
+  ],
+  "stl_sha256": "87f35de54b9afabb2adcc4c8bd84b51537fd7e675fad7fdf9541f8e337eb4ba1",
+  "tier": "inch26",
+  "uri": "model://suitcase_vintage_inch26/meshes/suitcase.stl",
+  "visual_id": "suitcase_vintage",
+  "visual_uri": "model://suitcase_vintage_inch26/meshes/suitcase.dae"
+ },
+ "suitcase_vintage_large": {
+  "catalog_id": "large",
+  "collision_uri": "model://suitcase_vintage_large/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
+  "dae_sha256": null,
+  "lid_offset": 0.019577,
+  "mass_kg": 23.0,
+  "measure_size": [
+   0.6069081127643585,
+   0.42597928643226624,
+   0.3199999928474426
+  ],
+  "primitive_collision_size": [
+   0.8,
+   0.5,
+   0.32
+  ],
+  "size": [
+   0.8,
+   0.5,
+   0.32
+  ],
+  "stl_sha256": "c4e76b1b9757d1f64f467281ecbe10074790067e174529852538c699927dcca0",
+  "tier": "large",
+  "uri": "model://suitcase_vintage_large/meshes/suitcase.stl",
+  "visual_id": "suitcase_vintage",
+  "visual_uri": "model://suitcase_vintage_large/meshes/suitcase.dae"
+ },
+ "suitcase_vintage_medium": {
+  "catalog_id": "standard",
+  "collision_uri": "model://suitcase_vintage_medium/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
+  "dae_sha256": null,
+  "lid_offset": 0.01636,
+  "mass_kg": 15.0,
+  "measure_size": [
+   0.6552294790744781,
+   0.38338135182857513,
+   0.2800000011920929
+  ],
+  "primitive_collision_size": [
+   0.7,
+   0.45,
+   0.28
+  ],
+  "size": [
+   0.7,
+   0.45,
+   0.28
+  ],
+  "stl_sha256": "bafe1316aa134bf675cd94039726919aa86931128b61ea3fcd5ab054e613fcc4",
+  "tier": "medium",
+  "uri": "model://suitcase_vintage_medium/meshes/suitcase.stl",
+  "visual_id": "suitcase_vintage",
+  "visual_uri": "model://suitcase_vintage_medium/meshes/suitcase.dae"
+ },
+ "suitcase_vintage_small": {
+  "catalog_id": "carryon",
+  "collision_uri": "model://suitcase_vintage_small/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
+  "dae_sha256": null,
+  "lid_offset": 0.015428,
+  "mass_kg": 8.0,
+  "measure_size": [
+   0.5148231685161591,
+   0.35336706042289734,
+   0.25
+  ],
+  "primitive_collision_size": [
+   0.55,
+   0.4,
+   0.25
+  ],
+  "size": [
+   0.55,
+   0.4,
+   0.25
+  ],
+  "stl_sha256": "bdb6da58e779e0215104c972c7ad529aa3f06cf95324f69de69e2e01f2a9ccc3",
+  "tier": "small",
+  "uri": "model://suitcase_vintage_small/meshes/suitcase.stl",
+  "visual_id": "suitcase_vintage",
+  "visual_uri": "model://suitcase_vintage_small/meshes/suitcase.dae"
+ }
 }

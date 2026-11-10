@@ -35,7 +35,7 @@ from luggage_description.scene_tf_config_utils import (
 )
 from luggage_description.scene_tf_publisher import rpy_to_quaternion
 from luggage_msgs.srv import (
-    AddPlacedBox, AddSceneBoxV2, RemovePlacedBox, RemoveSceneBoxV2, SyncStaticScene,
+    AddSceneBoxV2, RemoveSceneBoxV2, SyncStaticScene,
 )
 from luggage_planning.planning_scene_client import (
     BOX_OBJECT_ID,
@@ -43,10 +43,6 @@ from luggage_planning.planning_scene_client import (
     load_stl_mesh_msg,
     static_sync_failure_is_permanent,
 )
-
-
-def placed_object_id(slot):
-    return "placed_%d_%d_%d" % (int(slot.layer), int(slot.row), int(slot.col))
 
 
 class SceneManagerNode(Node):
@@ -64,7 +60,6 @@ class SceneManagerNode(Node):
 
         self._world_frame = str(self.get_parameter("world_frame").value)
         self._pickup_id = str(self.get_parameter("pickup_object_id").value)
-        self._placed_ids = []
         self._container_id = ""
         self._place_support_touch = False
         self._synced = False
@@ -75,12 +70,6 @@ class SceneManagerNode(Node):
         self.create_service(
             SyncStaticScene, "~/sync_static_scene",
             self._handle_sync_static, callback_group=group)
-        self.create_service(
-            AddPlacedBox, "~/add_placed_box",
-            self._handle_add_placed, callback_group=group)
-        self.create_service(
-            RemovePlacedBox, "~/remove_placed_box",
-            self._handle_remove_placed, callback_group=group)
         self.create_service(
             AddSceneBoxV2, "~/add_scene_box_v2",
             self._handle_add_scene_v2, callback_group=group)
@@ -223,32 +212,6 @@ class SceneManagerNode(Node):
             return True, "static scene synced (%s, %d triangles)" % (
                 obj_id, len(mesh_msg.triangles))
 
-    def _handle_add_placed(self, request, response):
-        _gate = getattr(self, "_gate_mutation", None)
-        if _gate is not None and not _gate(response):
-            return response
-        slot = request.slot
-        obj_id = placed_object_id(slot)
-        xyz = [
-            slot.place_pose.position.x,
-            slot.place_pose.position.y,
-            slot.place_pose.position.z,
-        ]
-        quat = [
-            slot.place_pose.orientation.x,
-            slot.place_pose.orientation.y,
-            slot.place_pose.orientation.z,
-            slot.place_pose.orientation.w,
-        ]
-        size = [slot.width, slot.depth, slot.height]
-        ok, message = self._scene.add_collision_box(
-            obj_id, xyz, quat, size, frame_id=self._world_frame)
-        if ok and obj_id not in self._placed_ids:
-            self._placed_ids.append(obj_id)
-        response.success = ok
-        response.message = message if not ok else "added %s" % obj_id
-        return response
-
     def _handle_add_scene_v2(self, request, response):
         from luggage_description.scene_tf_config_utils import (
             origin_in_world, resolve_scene_tf_config_path,
@@ -278,24 +241,21 @@ class SceneManagerNode(Node):
             return response
         return handle_remove_scene_box_v2(request, response, self._scene)
 
-    def _handle_remove_placed(self, request, response):
-        _gate = getattr(self, "_gate_mutation", None)
-        if _gate is not None and not _gate(response):
-            return response
-        obj_id = placed_object_id(request.slot)
-        ok, message = self._scene.remove_object(obj_id)
-        self._placed_ids = [
-            existing for existing in self._placed_ids if existing != obj_id]
-        response.success = ok
-        response.message = message if not ok else "removed %s" % obj_id
-        return response
-
     def _support_pairs(self):
+        """Seal-contact allowance for the landing surface.
+
+        [G3 wave5 2026-10-15] the slot-named placed-box object channel is
+        REMOVED: rigid placed-box geometry comes only from the confirmed
+        cargo-map occupancy columns (snapshot-cell-*, inserted by the
+        edge builder and the cert composer from the same
+        occupancy_boxes_from_surface source). Stacking on a placed box
+        needs no v1 support pair here — the certified chain releases
+        above the surface (release gap) and the payload attach carries
+        the suction-interface touch links.
+        """
         pairs = []
         if self._container_id:
             pairs.append((self._pickup_id, self._container_id))
-        for placed_id in self._placed_ids:
-            pairs.append((self._pickup_id, placed_id))
         return pairs
 
     def _handle_place_support(self, request, response):

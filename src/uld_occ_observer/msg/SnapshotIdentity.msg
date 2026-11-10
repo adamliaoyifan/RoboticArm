@@ -1,0 +1,7 @@
+uint64 epoch
+uint64 map_revision
+uint64 observed_revision
+int64 last_integrated_stamp_ns
+string geometry_hash
+string config_digest
+string clock_domain

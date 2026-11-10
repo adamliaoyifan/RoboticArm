@@ -1,0 +1,19 @@
+# Explicit validity/status service (plan §2): the latched current state plus
+# the replayable transition log, so a restarting consumer observes the present
+# without having witnessed any transient event.
+---
+string state
+uint64 epoch
+uint64 generation
+string reason
+string reset_id
+int64 transition_mono_ns
+uint64 map_revision
+uint64 observed_revision
+int64 last_integrated_stamp_ns
+string geometry_hash
+string config_digest
+string clock_domain
+# Bounded latched transition log, oldest first, JSON array of
+# {generation,state,epoch,reason,reset_id,transition_mono_ns}.
+string events_json

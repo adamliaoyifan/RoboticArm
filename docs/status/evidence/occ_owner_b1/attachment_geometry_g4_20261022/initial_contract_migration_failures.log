@@ -1,0 +1,152 @@
+........................................................................ [ 44%]
+....................................................................F... [ 89%]
+.............FFFF                                                        [100%]
+=================================== FAILURES ===================================
+___ TestSelectPlacePathV2Admission.test_service_selects_the_reachable_route ____
+
+self = <test_route_producer.TestSelectPlacePathV2Admission object at 0x7cc39d5e8970>
+
+    def test_service_selects_the_reachable_route(self):
+        import json
+        from luggage_msgs.srv import SelectPlacePathV2
+        from luggage_planning.place_service import fill_select_response_route
+    
+        producer, clock = build_producer()
+        producer.atlas_prior = _tier_prior
+        producer.edge_builder = _FirstSlotDescendFails()
+        message = _service_message(clock.now_ns)
+        response = SelectPlacePathV2.Response()
+        fill_select_response_route(message, response, producer)
+>       assert response.success, response.reason_code
+E       AssertionError: ATTACHMENT_GEOMETRY_INVALID
+E       assert False
+E        +  where False = luggage_msgs.srv.SelectPlacePathV2_Response(success=False, reason_code='ATTACHMENT_GEOMETRY_INVALID', slot_index=-1, s...tive_geometry: expected \'confirmed attachment output\', got \'ATTACHMENT_GEOMETRY_MISSING\'"}', stage_timings_json='').success
+
+tests/st09_parallel/I/test_route_producer.py:1753: AssertionError
+______ test_diagnostic_envelope_refuses_floor_slots_before_building_edges ______
+
+    def test_diagnostic_envelope_refuses_floor_slots_before_building_edges():
+        from st09_contracts.payload_envelope import EnvelopeLimits
+        producer, _clock = build_producer()
+        producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.1,)*3, (0.,0.), .005)
+        producer.scene_config = {'container': {'inner': {
+            'length': 4, 'width': 4, 'floor_z': 0, 'ceiling_z': 3}}}
+        request = make_request(slots=[{'position':[0,0,.1],
+            'quaternion_xyzw':[0,0,0,1], 'request_id':'floor-slot'}])
+        register_attach_from_request(producer.attachment_provider, request, box_wdh=request['box_wdh'])
+        result = producer.plan_place_route(request)
+>       assert not result['success']
+E       assert not True
+
+tests/st09_parallel/I/test_route_producer.py:2139: AssertionError
+----------------------------- Captured stdout call -----------------------------
+route chain goal=[0.936, -1.025] entry=['carrying-home-ec2f6e7a', 'carrying-slot_approach', 'carrying-slot_approach', 'carrying-slot_approach'] twin=[0.4, 0.0] retreat=['unloaded-slot-dbfa6206', 'unloaded-slot-dbfa6206', 'unloaded-slot-dbfa6206', 'unloaded-slot-dbfa6206']
+______ test_envelope_identity_reaches_certification_with_nominal_targets _______
+
+    def test_envelope_identity_reaches_certification_with_nominal_targets():
+        from st09_contracts.payload_envelope import EnvelopeLimits
+        producer, _clock = build_producer()
+        producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.1,)*3, (0.,0.), .005)
+        producer.scene_config = {'container': {'inner': {
+            'length': 4, 'width': 4, 'floor_z': -1, 'ceiling_z': 3}}}
+        request = make_request()
+        register_attach_from_request(producer.attachment_provider, request, box_wdh=request['box_wdh'])
+        attachment = producer.attachment_provider.latest_record(request['request_id'])
+        scenes_seen = []
+        factory = producer.validity_adapter_factory
+        def capture(**kwargs):
+            scenes_seen.extend(kwargs['scene_states'].values())
+            return factory(**kwargs)
+        producer.validity_adapter_factory = capture
+        result = producer.plan_place_route(request)
+        assert result['success'], result['rows']
+        assert result['certification'].passed
+        assert result['route'].attachment_digest == attachment.digest()
+        payloads = [s.payload for s in scenes_seen if s.payload]
+        assert payloads
+>       assert all(p.dimensions_wdh == attachment.collision_envelope.dimensions_wdh for p in payloads)
+
+tests/st09_parallel/I/test_route_producer.py:2166: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = <list_iterator object at 0x7cc39c4b1e10>
+
+>   assert all(p.dimensions_wdh == attachment.collision_envelope.dimensions_wdh for p in payloads)
+E   AttributeError: 'NoneType' object has no attribute 'dimensions_wdh'
+
+tests/st09_parallel/I/test_route_producer.py:2166: AttributeError
+----------------------------- Captured stdout call -----------------------------
+route chain goal=[0.944, -1.029] entry=['carrying-home-ec2f6e7a', 'carrying-slot_approach', 'carrying-slot_approach', 'carrying-slot_approach'] twin=[0.4, 0.0] retreat=['unloaded-slot-dbfa6206', 'unloaded-slot-dbfa6206', 'unloaded-slot-dbfa6206', 'unloaded-slot-dbfa6206']
+____ test_diagnostic_slot_bypass_preserves_trajectory_collision_gate[False] ____
+
+collision = False
+
+    @pytest.mark.parametrize('collision', [False, True])
+    def test_diagnostic_slot_bypass_preserves_trajectory_collision_gate(collision):
+        from st09_contracts.payload_envelope import EnvelopeLimits
+        producer, _clock = build_producer()
+        producer.diagnostic_skip_slot_envelope_check = True
+        producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.1,)*3, (0.,0.), .005)
+        producer.scene_config = {'container': {'inner': {
+            'length': 4, 'width': 4, 'floor_z': 0, 'ceiling_z': 3}}}
+        request = make_request(slots=[{'position':[0,0,.1],
+            'quaternion_xyzw':[0,0,0,1], 'request_id':'floor-slot'}])
+        register_attach_from_request(producer.attachment_provider, request, box_wdh=request['box_wdh'])
+        if collision:
+            def factory(*, scene_states, edges):
+                return StaticMoveItValidityAdapter({
+                    (str(edge.edge_id), index): ValiditySample(
+                        edge_id=str(edge.edge_id), sample_index=index,
+                        valid=False, min_clearance_m=0.0, contacts=())
+                    for edge in edges for index in range(len(sample_states(edge.trajectory)))})
+            producer.validity_adapter_factory = factory
+        result = producer.plan_place_route(request)
+        assert result['success'] is (not collision), result['rows']
+        assert producer._builder.calls
+>       assert any(row.get('diagnostic_skip_slot_envelope_check') for row in result['rows'])
+E       assert False
+E        +  where False = any(<generator object test_diagnostic_slot_bypass_preserves_trajectory_collision_gate.<locals>.<genexpr> at 0x7cc39be01230>)
+
+tests/st09_parallel/I/test_route_producer.py:2193: AssertionError
+----------------------------- Captured stdout call -----------------------------
+route chain goal=[0.936, -1.025] entry=['carrying-home-ec2f6e7a', 'carrying-slot_approach', 'carrying-slot_approach', 'carrying-slot_approach'] twin=[0.4, 0.0] retreat=['unloaded-slot-dbfa6206', 'unloaded-slot-dbfa6206', 'unloaded-slot-dbfa6206', 'unloaded-slot-dbfa6206']
+____ test_diagnostic_slot_bypass_preserves_trajectory_collision_gate[True] _____
+
+collision = True
+
+    @pytest.mark.parametrize('collision', [False, True])
+    def test_diagnostic_slot_bypass_preserves_trajectory_collision_gate(collision):
+        from st09_contracts.payload_envelope import EnvelopeLimits
+        producer, _clock = build_producer()
+        producer.diagnostic_skip_slot_envelope_check = True
+        producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.1,)*3, (0.,0.), .005)
+        producer.scene_config = {'container': {'inner': {
+            'length': 4, 'width': 4, 'floor_z': 0, 'ceiling_z': 3}}}
+        request = make_request(slots=[{'position':[0,0,.1],
+            'quaternion_xyzw':[0,0,0,1], 'request_id':'floor-slot'}])
+        register_attach_from_request(producer.attachment_provider, request, box_wdh=request['box_wdh'])
+        if collision:
+            def factory(*, scene_states, edges):
+                return StaticMoveItValidityAdapter({
+                    (str(edge.edge_id), index): ValiditySample(
+                        edge_id=str(edge.edge_id), sample_index=index,
+                        valid=False, min_clearance_m=0.0, contacts=())
+                    for edge in edges for index in range(len(sample_states(edge.trajectory)))})
+            producer.validity_adapter_factory = factory
+        result = producer.plan_place_route(request)
+        assert result['success'] is (not collision), result['rows']
+        assert producer._builder.calls
+>       assert any(row.get('diagnostic_skip_slot_envelope_check') for row in result['rows'])
+E       assert False
+E        +  where False = any(<generator object test_diagnostic_slot_bypass_preserves_trajectory_collision_gate.<locals>.<genexpr> at 0x7cc39be018c0>)
+
+tests/st09_parallel/I/test_route_producer.py:2193: AssertionError
+----------------------------- Captured stdout call -----------------------------
+route chain goal=[0.936, -1.025] entry=['carrying-home-ec2f6e7a', 'carrying-slot_approach', 'carrying-slot_approach', 'carrying-slot_approach'] twin=[0.4, 0.0] retreat=['unloaded-slot-dbfa6206', 'unloaded-slot-dbfa6206', 'unloaded-slot-dbfa6206', 'unloaded-slot-dbfa6206']
+=========================== short test summary info ============================
+FAILED tests/st09_parallel/I/test_route_producer.py::TestSelectPlacePathV2Admission::test_service_selects_the_reachable_route
+FAILED tests/st09_parallel/I/test_route_producer.py::test_diagnostic_envelope_refuses_floor_slots_before_building_edges
+FAILED tests/st09_parallel/I/test_route_producer.py::test_envelope_identity_reaches_certification_with_nominal_targets
+FAILED tests/st09_parallel/I/test_route_producer.py::test_diagnostic_slot_bypass_preserves_trajectory_collision_gate[False]
+FAILED tests/st09_parallel/I/test_route_producer.py::test_diagnostic_slot_bypass_preserves_trajectory_collision_gate[True]
+5 failed, 156 passed in 1.43s

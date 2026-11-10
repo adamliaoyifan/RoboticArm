@@ -1,0 +1,69 @@
+{
+  "first_build_seeds": [
+    3301301853,
+    336273254,
+    3583396547,
+    517139197,
+    3024474953,
+    2829800317,
+    1796168656,
+    1442277126,
+    3530209401,
+    2872807283,
+    4232433573,
+    3307811851,
+    1190367235,
+    4101977414,
+    2557723484,
+    517798264,
+    506156068,
+    4008661459,
+    3837911865,
+    4270705661,
+    1246322398,
+    2084499898,
+    4266738234,
+    979452973,
+    1881738572,
+    422873325,
+    874683769,
+    2802657285,
+    582421560,
+    3110869464
+  ],
+  "generator_version": "o6-load-v1",
+  "group": {
+    "boxes": 0,
+    "cloud": 30000,
+    "config_file": "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_o6_o7_20261029/run01/fixtures/config_chamfer_r0p02.yaml",
+    "config_sha256": "c5c58ffc0f32ee73d15356fd074f722b8395dca4a8438e0f233f50c411fc9a6b",
+    "cross": 0.0,
+    "geometry_file": "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_o6_o7_20261029/run01/fixtures/geometry_chamfer.yaml",
+    "geometry_sha256": "c2912984be7de04c10ba1ec26a29cfb2d509d9fab2e4f7d27ba13183f99f5972",
+    "hull": "chamfer",
+    "id": "r02_b00_chamfer_c30000_o50_x00",
+    "outside": 0.5,
+    "quotas": {
+      "cross": 0,
+      "interior": 15000,
+      "miss": 15000
+    },
+    "resolution": 0.02
+  },
+  "performance_roi_cells": {
+    "begin": [
+      0,
+      0,
+      0
+    ],
+    "count": 4096,
+    "end": [
+      16,
+      16,
+      16
+    ]
+  },
+  "point_bytes": "not_emitted",
+  "scored": 30,
+  "warmup": 3
+}

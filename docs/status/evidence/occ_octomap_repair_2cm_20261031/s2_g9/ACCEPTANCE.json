@@ -1,0 +1,13 @@
+{
+  "items": [
+    {"id": "cumulative-profile", "status": "pass", "observation": "O5 and O6 each used one process and two frames; three surface timings recorded"},
+    {"id": "independent-sender", "status": "pass", "observation": "planned 0/0.5s, actual interval 0.500402s, query 0.717092s, distinct sender thread"},
+    {"id": "complete-query", "status": "pass", "observation": "two WaitSnapshot leases, 15 pages, 7425 columns, ROI 4096, release OK"},
+    {"id": "failure-save", "status": "pass", "observation": "missing profile binary writes failure/o5/manifest.json; this run had no failure directory"},
+    {"id": "short-sample-reject", "status": "pass", "observation": "formal_pass false; O5/O6 missing_group, O7 window_count, O8 run_count"},
+    {"id": "official-windows", "status": "not_run"},
+    {"id": "historical-o9", "status": "pass", "observation": "7537b033 retained and does not sign this runner"},
+    {"id": "resource-512mib", "status": "not_evaluated"},
+    {"id": "placement-bridge", "status": "not_evaluated"}
+  ]
+}

@@ -22,6 +22,19 @@ REASON_STAMP_STALE = "STAMP_STALE"
 REASON_STAMP_ALREADY_INTEGRATED = "STAMP_ALREADY_INTEGRATED"
 REASON_VIEW_EMPTY = "VIEW_EMPTY"
 REASON_TF_MISSING = "TF_MISSING"
+# B1 occupancy-map store reasons (apply_update transaction outcomes).
+# Premise mismatches reuse the specific existing codes above (revision) plus
+# EPOCH_MISMATCH / CONTENT_DIGEST_MISMATCH below; there is deliberately no
+# generic VERSION_CONFLICT — callers must see WHICH premise leg failed.
+REASON_OPERATION_ID_CONFLICT = "OPERATION_ID_CONFLICT"
+REASON_EPOCH_MISMATCH = "EPOCH_MISMATCH"
+REASON_CONTENT_DIGEST_MISMATCH = "CONTENT_DIGEST_MISMATCH"
+REASON_EVIDENCE_MISSING = "EVIDENCE_MISSING"
+REASON_EVIDENCE_NOT_FINITE = "EVIDENCE_NOT_FINITE"
+REASON_EVIDENCE_ANCHOR_MISMATCH = "EVIDENCE_ANCHOR_MISMATCH"
+REASON_LATE_FACT_RECORDED_PENDING = "LATE_FACT_RECORDED_PENDING"
+REASON_NO_MATCHING_BOX = "NO_MATCHING_BOX"
+REASON_INVALID_PAYLOAD = "INVALID_PAYLOAD"
 
 DEFAULT_FRESHNESS_WINDOW_SEC = 0.20
 
@@ -124,11 +137,20 @@ def select_fresh_record(
 
 OCCUPANCY_CHANGE_EVENTS = (
     "box_placed",
+    "box_released",
     "box_removed",
     "box_disturbed",
     "cargo_edited",
     "container_pose_changed",
 )
+#: [release-failure contract] ``box_released`` is the fact recorded at
+#: vacuum-off, BEFORE any acceptance decision: the map must know the
+#: world changed the moment the box leaves the tool, so a later verify
+#: failure cannot leave the spot readable as free. It carries the
+#: commanded footprint and is confirmable like box_placed (the box is
+#: physically there whatever the acceptance verdict); an anchored,
+#: accepted commit clears the matching record (the verify anchor IS the
+#: measured-occupancy evidence).
 #: Motion around the container does not edit the cargo that was integrated.
 NON_INVALIDATING_EVENTS = (
     "return",
@@ -238,41 +260,29 @@ def prepare_points(points, voxel_size):
     return kept, n_finite
 
 
-def apply_integrate(mapper, points, origin, voxel_size=None):
-    """Downsample ``points`` and call ``mapper.integrate_points``.
-
-    Returns a dict with counts, latency, and revisions. Does not publish.
-    """
-    resolution = float(
-        voxel_size if voxel_size is not None else mapper.resolution)
+def apply_integrate(mapper, points, origin, voxel_size=None, minimum_z=None):
+    """Prepare OCC-local hit/ray streams, then update through the owner."""
+    from luggage_perception.cargo_occ_input import OccInputPolicy, prepare_occ_observation
+    resolution = float(voxel_size if voxel_size is not None else mapper.resolution)
     t0 = time.monotonic()
-    kept, n_finite = prepare_points(points, resolution)
-    if n_finite == 0 or kept.shape[0] == 0:
-        return {
-            "ok": False,
-            "reason_code": REASON_VIEW_EMPTY,
-            "n_finite": n_finite,
-            "n_kept": int(kept.shape[0]),
-            "latency_sec": time.monotonic() - t0,
-            "revision_before": int(mapper.stats()["map_revision"]),
-            "revision_after": int(mapper.stats()["map_revision"]),
-        }
-    before = int(mapper.stats()["map_revision"])
+    prepared = prepare_occ_observation(points, origin, mapper._hull, resolution,
+        OccInputPolicy(minimum_z, tuple(mapper.center), mapper.yaw))
+    before = int(mapper.map_revision)
     origin_tuple = None if origin is None else tuple(float(v) for v in origin)
-    mapper.integrate_points(
-        kept.tolist(), origin=origin_tuple)
-    after = int(mapper.stats()["map_revision"])
+    t_integrate = time.monotonic()
+    ray_counts = mapper.integrate_points(prepared.hit_points.tolist(), origin=origin_tuple,
+                            ray_points=prepared.ray_points.tolist())
+    after = int(mapper.map_revision)
     return {
         "ok": after > before,
         "reason_code": "" if after > before else REASON_VIEW_EMPTY,
-        "n_finite": n_finite,
-        "n_kept": int(kept.shape[0]),
+        "n_finite": prepared.counts["finite"],
+        "n_kept": len(prepared.ray_points),
         "latency_sec": time.monotonic() - t0,
-        "revision_before": before,
-        "revision_after": after,
-        # What this view itself observed; confirmation reads this, never
-        # the accumulated map.
-        "observed_points": kept,
+        "revision_before": before, "revision_after": after,
+        "observed_points": prepared.hit_points,
+        "preprocess_counts": dict(prepared.counts, **ray_counts),
+        "preprocess_timings": dict(prepared.timings, integrate_s=time.monotonic()-t_integrate),
     }
 
 
@@ -466,6 +476,32 @@ def footprint_sensor_coverage(surface, aabb_xy):
     if total == 0:
         return 0.0, 0, 0
     return float(hit) / float(total), hit, total
+
+
+def footprint_free_coverage(surface, aabb_xy):
+    """Fraction of AABB columns that are observed FREE (miss raycasts).
+
+    [B2] Occlusion-safe free evidence for confirming a removal: only
+    columns whose state is ``free`` count — unknown (unobserved or
+    occluded) columns do not, so "did not see" never reads as free.
+    """
+    xmin, ymin, xmax, ymax = (float(v) for v in aabb_xy)
+    nx = int(surface.get("nx") or 0)
+    ny = int(surface.get("ny") or 0)
+    state = surface.get("state") or []
+    total = 0
+    free = 0
+    for ix in range(nx):
+        for iy in range(ny):
+            x, y = cell_xy_container(surface, ix, iy)
+            if x < xmin or x > xmax or y < ymin or y > ymax:
+                continue
+            total += 1
+            if state[ix][iy] == "free":
+                free += 1
+    if total == 0:
+        return 0.0, 0, 0
+    return float(free) / float(total), free, total
 
 
 def occupied_sensor_aabb(surface):
@@ -712,6 +748,8 @@ def planning_snapshot_from_surface(surface_map, scene_revision="",
         occupancy_confirmed=bool(
             surface_map.get("occupancy_confirmed", True)),
         change_event=str(surface_map.get("change_event") or ""),
+        epoch=str(surface_map.get("epoch") or ""),
+        content_digest=str(surface_map.get("content_digest") or ""),
     )
 
 

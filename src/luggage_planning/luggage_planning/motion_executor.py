@@ -380,6 +380,27 @@ def cartesian_hops(start, end, step_m=0.30):
     return hops
 
 
+def execute_wait_timeout_sec(execute_timeout, points):
+    """Wall wait for one leg's execution, aware of its own duration.
+
+    A fixed 45 s wall deadline is shorter than a ~45 s nominal transit
+    leg and fails even at RTF 1.0 (rehearsal_07: ExecuteTrajectory
+    timeout at 45.99 s wall on a fully planned, healthy leg). The
+    leg's own trajectory duration floors the wait with headroom for
+    real-time-factor degradation; short legs keep the caller's timeout.
+    """
+    try:
+        duration_s = max(
+            float(point.time_from_start.sec)
+            + float(point.time_from_start.nanosec) * 1e-9
+            for point in points)
+    except (AttributeError, TypeError, ValueError):
+        return float(execute_timeout)
+    if duration_s <= 0.0 or not math.isfinite(duration_s):
+        return float(execute_timeout)
+    return max(float(execute_timeout), duration_s * 2.0 + 10.0)
+
+
 class MotionExecutor:
 
     def __init__(self, node, group_name="elfin_arm",
@@ -693,6 +714,8 @@ class MotionExecutor:
         hook = getattr(self, "_timed_submit", None)
         if hook is not None:
             return hook(trajectory)
+        from luggage_planning.timed_execution_budget import timed_execution_wait
+        response_wait = timed_execution_wait(points, execute_timeout)
         self._notify(feedback_cb, "executing", admitted.name, 1.0)
         goal = ExecuteTrajectory.Goal()
         goal.trajectory = trajectory
@@ -702,7 +725,13 @@ class MotionExecutor:
         handle = self._wait_future(future, 10.0)
         if handle is None or not handle.accepted:
             return self._result(False, "ExecuteTrajectory goal rejected", 1.0)
-        wrapped = self._wait_goal(handle, execute_timeout)
+        # [merge semantics] The certified trajectory duration bounds the
+        # wait (prior-g1 contract, consistent with the driver-side
+        # certified_execution_wait); execute_wait_timeout_sec stays the
+        # upper bound for degenerate/untimed records.
+        wrapped = self._wait_goal(handle, min(
+            response_wait,
+            execute_wait_timeout_sec(execute_timeout, points)))
         if wrapped is None:
             handle.cancel_goal()
             return self._result(False, "ExecuteTrajectory timeout", 1.0)

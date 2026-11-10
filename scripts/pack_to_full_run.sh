@@ -93,6 +93,8 @@ launch_stack() {
       sequence_ids:="$SEQUENCE_IDS" \
       observe_pose_name:=pickup_observe \
       semantic_require_backend:=bbox_fill \
+      frame_runtime:=true \
+      frame_driver_peer:=pack_eval_driver \
       > "$OUT/launch.log" 2>&1 &)
   sleep 3
   local pid
@@ -116,4 +118,5 @@ setsid ros2 run luggage_gazebo pack_eval_driver.py \
   --sequence-ids "$SEQUENCE_IDS" \
   --max-boxes "$MAX_BOXES" \
   --goto-timeout 60 \
+  --frame-runtime \
   --out "$OUT"

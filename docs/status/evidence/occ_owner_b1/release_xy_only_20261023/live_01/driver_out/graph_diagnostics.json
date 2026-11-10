@@ -1,0 +1,45 @@
+{
+ "verdict": "graph_ok",
+ "last_error": null,
+ "required_nodes": [
+  "camera_bridge",
+  "sensor_preprocessor",
+  "pickup_box_spawner",
+  "luggage_detector",
+  "waypoint_generator",
+  "motion_planner",
+  "move_group",
+  "vacuum_controller"
+ ],
+ "dds_env": {
+  "ROS_VERSION": "2",
+  "ROS_PYTHON_VERSION": "3",
+  "ROS_DOMAIN_ID": "7",
+  "ROS_LOCALHOST_ONLY": "0",
+  "ROS_DISTRO": "humble"
+ },
+ "executor_thread_alive": null,
+ "samples": [
+  {
+   "elapsed_s": 0.04,
+   "n_nodes": 13,
+   "nodes_namespaced": [
+    "/controller_manager",
+    "/elfin_arm_controller",
+    "/gz_ros2_control",
+    "/joint_state_broadcaster",
+    "/motion_planner",
+    "/move_group",
+    "/move_group",
+    "/move_group_private_105886948371072",
+    "/pick_eval_tf",
+    "/pick_retreat_eval_driver",
+    "/placement_planner",
+    "/sensor_preprocessor",
+    "/transform_listener_impl_604db9f38900"
+   ],
+   "self_visible": true,
+   "vacuum_command_service_ready": false
+  }
+ ]
+}

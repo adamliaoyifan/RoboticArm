@@ -161,6 +161,8 @@ class NodeRuntime:
         if identity_endpoints(self.registry) != self.identity["endpoints"]:
             reject("PEER_IDENTITY_MISMATCH", "endpoints",
                    identity_endpoints(self.registry), self.identity["endpoints"])
+        from collections import deque
+        self.receive_trace = deque(maxlen=256)
         self.counters = {}
         self.transitions_path = transitions_path
         # Isolated colcon installs give every package its own prefix
@@ -182,7 +184,11 @@ class NodeRuntime:
         self.gate = ReadinessGate(
             self.identity,
             [peer for peer in self.peers if peer != self.peer],
-            install_root, lease_seconds=lease_seconds)
+            install_root, lease_seconds=lease_seconds,
+            renewable_peers=[peer for peer in self.peers
+                             if peer == "placement_planner" and peer != self.peer])
+        from luggage_description.runtime_action_readiness import ActionReadiness
+        self.action_readiness = ActionReadiness(self.gate, self.registry, self.peer)
         self._live_providers = live_providers
         # Rehearsal fault injection. While set, peer heartbeats are counted
         # and dropped so require_graph_ready fails closed without touching
@@ -203,13 +209,20 @@ class NodeRuntime:
         if self.suppress_peer_observation:
             self._count("PEER_OBSERVATION_SUPPRESSED")
             return
+        import time
+        trace = {"received_monotonic": time.monotonic(),
+                 "peer": str(message.peer), "sequence": int(message.heartbeat_sequence),
+                 "status": "decoding"}
+        self.receive_trace.append(trace)
         try:
             report = report_from_message(message, self.registry)
             if report["peer"] == self.peer:
                 return
             with self._lock:
-                self.gate.observe(report)
+                self.action_readiness.observe(report)
+            trace["status"] = "accepted"
         except ContractError as error:
+            trace.update(status=error.code, field=error.field)
             self._count(error.code)
             # [ST09-I] traceability: the expected/received pair is the
             # whole story for overlay rejections (a bare code sent a
@@ -220,6 +233,7 @@ class NodeRuntime:
                                  str(error.expected)[:160],
                                  str(error.received)[:160]))
         except Exception as error:  # noqa: BLE001 - a bad peer must not kill the node
+            trace["status"] = "INVALID_PROCESS_REPORT"
             self._count("INVALID_PROCESS_REPORT")
             self.node.get_logger().warning(
                 "runtime identity report failed to decode: %s" % (error,))
@@ -240,18 +254,20 @@ class NodeRuntime:
             return error.code
 
     # -- admission -------------------------------------------------------
-    def admit_request(self, request_id, endpoint=None, client=None):
+    def admit_request(self, request_id, endpoint=None, client=None, *, scope=None):
         """Admit a request under the current graph; returns the admission token."""
         with self._lock:
-            token = self.gate.admit(self._providers(), request_id,
+            token = self.action_readiness.gate(scope).admit(self._providers(), request_id,
                                     endpoint=endpoint, client=client)
+        token["scope"] = scope
         self._count("ADMITTED")
         return token
 
     def authorize_effect(self, admission, request_id):
         """Recheck readiness and the token immediately before an effect."""
         with self._lock:
-            self.gate.require_admission(admission, self._providers(), request_id)
+            self.action_readiness.gate(admission.get("scope")).require_admission(
+                admission, self._providers(), request_id)
         self._count("EFFECT_AUTHORIZED")
 
     def authorize_legacy_effect(self):
@@ -260,10 +276,10 @@ class NodeRuntime:
             self.gate.require_ready(self._providers())
         self._count("LEGACY_EFFECT_AUTHORIZED")
 
-    def require_graph_ready(self):
+    def require_graph_ready(self, *, scope=None):
         """Client-side enforcement: a driver requests only against a live graph."""
         with self._lock:
-            self.gate.require_ready(self._providers())
+            self.action_readiness.gate(scope).require_ready(self._providers())
         self._count("GRAPH_READY_CHECK")
 
     def readiness(self):
@@ -288,6 +304,19 @@ class NodeRuntime:
             transitions = self.gate.transitions
             self.gate.transitions = []
         self._write_transitions(transitions)
+        with self._lock:
+            scope_evidence = {}
+            for name, gate in (("unloaded_motion", self.action_readiness.unloaded),
+                               ("occupancy_commit", self.action_readiness.occupancy_commit)):
+                if gate is not None:
+                    scope_evidence[name] = {
+                        "readiness": gate.reason(self._providers()),
+                        "required_peers": list(gate.peers),
+                        "received_monotonic": {peer: value["received"]
+                                               for peer, value in gate.reports.items()},
+                        "transitions": list(gate.transitions),
+                    }
+
         return {
             "peer": self.peer,
             "readiness": self._readiness(),
@@ -295,6 +324,9 @@ class NodeRuntime:
             "counters": dict(self.counters),
             "transitions": transitions,
             "heartbeat_sequence": self._heartbeat.sequence,
+            "scopes": scope_evidence,
+            "lease_epochs": dict(self.gate.lease_epochs),
+            "receive_trace": list(self.receive_trace),
         }
 
 

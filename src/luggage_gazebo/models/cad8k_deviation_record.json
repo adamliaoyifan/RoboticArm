@@ -1,0 +1,16 @@
+{
+ "note": "8k CAD STL (container_collision.stl) vs the frozen common baseline. NAMING: the CAD has no chamfer — after arbitrating the YAML as the simulation-product baseline this is 'relative to the current planning contract the CAD lacks the chamfer', NOT a CAD defect. The 8k is retained as a separate asset; it is not truth this round.",
+ "measured_2026_10_19": {
+  "floor_z": {"cad": 0.5270, "baseline": 0.53, "delta_mm": 3.0},
+  "wall_neg_y": {"cad": -1.0407, "baseline": -0.985, "delta_mm": 55.7},
+  "wall_pos_y": {"cad": 0.9697, "baseline": 0.985, "delta_mm": 15.3},
+  "cavity_width": {"cad": 2.0104, "baseline": 1.97, "delta_mm": 40.4},
+  "face_neg_x": {"cad": -0.7500, "baseline": -0.745, "delta_mm": 5.0},
+  "ceiling_z": {"cad": 2.117, "baseline": 2.01, "delta_mm": 107.0},
+  "chamfer": {"cad": "absent (vertical walls, inner and outer)",
+              "baseline": "+Y slope 0.985@0.90 -> 0.55@2.01"},
+  "symmetry": {"cad": "asymmetric y (-1.0407/+0.9697)", "baseline": "symmetric"},
+  "watertight": false
+ },
+ "a0_physics_2k": "same cavity as the 8k within a few mm, plus decimation damage (floor 21% area missing, inward debris to 197mm, 311 through-rays, front face 29%) — see AB_CONTROL_REGISTRATION.md"
+}

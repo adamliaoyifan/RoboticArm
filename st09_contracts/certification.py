@@ -60,8 +60,18 @@ class CertificationResult:
     sampling_motion_bound_m: Optional[float] = None
     contact_reports: Tuple[Mapping[str, Any], ...] = ()
     method_note: str = ""
+    failed_edge_id: str = ""
+    failed_sample_index: Optional[int] = None
+    failed_sample_is_knot: Optional[bool] = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.failed_edge_id, str):
+            raise ContractViolation("failed_edge_id: string required")
+        if self.failed_sample_index is not None and (
+                type(self.failed_sample_index) is not int or self.failed_sample_index < 0):
+            raise ContractViolation("failed_sample_index: nonnegative integer required")
+        if self.failed_sample_is_knot is not None and type(self.failed_sample_is_knot) is not bool:
+            raise ContractViolation("failed_sample_is_knot: bool required")
         object.__setattr__(
             self, "certification_id", nonempty_str(self.certification_id, "certification_id"))
         object.__setattr__(self, "route_id", nonempty_str(self.route_id, "route_id"))

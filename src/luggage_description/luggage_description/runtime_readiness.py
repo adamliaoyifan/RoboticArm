@@ -15,11 +15,14 @@ from .runtime_manifest import identity_fingerprint, validate_artifact_locations,
 
 class ReadinessGate:
     def __init__(self, expected_identity, peers, install_root, lease_seconds=2.0,
-                 clock=time.monotonic, manifest=None):
+                 clock=time.monotonic, manifest=None, endpoints=None, renewable_peers=()):
         self.identity = validate_identity(expected_identity)
         self.manifest = validate_manifest(manifest) if manifest is not None else None
         if self.manifest and self.manifest["identity"] != self.identity:
             reject("PEER_IDENTITY_MISMATCH", "manifest.identity", self.identity, self.manifest["identity"])
+        self.endpoints = tuple(self.identity["endpoints"] if endpoints is None else endpoints)
+        if not self.endpoints or not set(self.endpoints).issubset(self.identity["endpoints"]):
+            reject("INVALID_ENDPOINT_SCOPE", "endpoints", sorted(self.identity["endpoints"]), self.endpoints)
         self.generation = 1
         if (not isinstance(peers, (list, tuple)) or not peers
                 or any(not isinstance(peer, str) or not peer.strip() for peer in peers)
@@ -29,6 +32,10 @@ class ReadinessGate:
                 or lease_seconds <= 0):
             reject("INVALID_LEASE", "lease_seconds", "positive", lease_seconds)
         self.peers = tuple(peers)
+        self.renewable_peers = frozenset(renewable_peers)
+        if not self.renewable_peers.issubset(self.peers):
+            reject("INVALID_PEER_SET", "renewable_peers", self.peers, renewable_peers)
+        self.lease_epochs = {peer: 0 for peer in self.peers}
         self.install_root = Path(install_root).resolve()
         if self.manifest and Path(self.manifest["install_root"]).resolve() != self.install_root:
             reject("WRONG_OVERLAY", "install_root", self.manifest["install_root"], str(self.install_root))
@@ -82,7 +89,12 @@ class ReadinessGate:
             # Detect expiration before updating received: a late heartbeat must
             # not conceal a lease gap between request acceptance and effects.
             if prior and self.clock() - prior["received"] > self.lease_seconds:
-                reject("PEER_LEASE_EXPIRED", peer, "unbroken lease", self.clock() - prior["received"])
+                if peer in self.renewable_peers:
+                    # Idle planning service can renew for a NEW request. An
+                    # already-issued token remembers the prior lease epoch.
+                    self.lease_epochs[peer] += 1
+                else:
+                    reject("PEER_LEASE_EXPIRED", peer, "unbroken lease", self.clock() - prior["received"])
             fingerprint = identity_fingerprint(report)
             if prior and prior["fingerprint"] != fingerprint:
                 code = ("PEER_RESTART" if prior["report"]["incarnation"] != report["incarnation"]
@@ -104,11 +116,13 @@ class ReadinessGate:
                 return self._transition("MISSING_PEER")
             if now - self.reports[peer]["received"] > self.lease_seconds:
                 # An expired admitted peer cannot re-enable an interrupted request.
-                self.revoked = "PEER_LEASE_EXPIRED"
-                return self._transition(self.revoked)
+                if peer not in self.renewable_peers:
+                    self.revoked = "PEER_LEASE_EXPIRED"
+                return self._transition("PEER_LEASE_EXPIRED")
         if providers is None:
             return self._transition("MISSING_ENDPOINT_GRAPH")
-        for endpoint, expected_type in self.identity["endpoints"].items():
+        for endpoint in self.endpoints:
+            expected_type = self.identity["endpoints"][endpoint]
             actual = providers.get(endpoint, [])
             if self.manifest:
                 registered = self.manifest["endpoints"][endpoint]
@@ -168,6 +182,7 @@ class ReadinessGate:
                 reject("ENDPOINT_CLIENT_MISMATCH", "client", endpoint, client)
         return {"generation": self.generation, "request_id": request_id,
                 "endpoint": endpoint, "client": client,
+                "lease_epochs": dict(self.lease_epochs),
                 "peers": {peer: value["fingerprint"] for peer, value in self.reports.items()}}
 
     def require_admission(self, admission, providers, request_id):
@@ -176,6 +191,7 @@ class ReadinessGate:
         if (not isinstance(admission, dict)
                 or admission.get("generation") != self.generation
                 or admission.get("request_id") != request_id
+                or admission.get("lease_epochs") != self.lease_epochs
                 or admission.get("peers") != {peer: value["fingerprint"] for peer, value in self.reports.items()}):
             reject("ADMISSION_REVOKED", "admission", "current request and generation", admission)
         if self.manifest:

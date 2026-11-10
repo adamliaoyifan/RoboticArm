@@ -1,0 +1,27 @@
+[
+  {
+    "path": "src/luggage_perception/scripts/semantic_point_filter_node.py",
+    "sha256": "fc7d9c447b2d6a68d1669acb1f6c453ecaa17efc1fa27f537ad281c1bf0813cf",
+    "unchanged": true
+  },
+  {
+    "path": "src/luggage_perception/scripts/luggage_detector_node.py",
+    "sha256": "0c26fb328a7482dec3f5dc20b16ac2e10deeb35ec9a68d328cff39e61eb97b71",
+    "unchanged": true
+  },
+  {
+    "path": "src/luggage_perception/luggage_perception/dynamic_top_surface.py",
+    "sha256": "dea58b6d18144aad1bc0c794ad2e08bb8b002506826e6634f198ca92ce46d0c2",
+    "unchanged": true
+  },
+  {
+    "path": "src/luggage_gazebo/launch/sim_world.launch.py",
+    "sha256": "57b205a5c76490779635f8eee140b79974d5554a15697f407d1b750d991590db",
+    "unchanged": true
+  },
+  {
+    "path": "src/luggage_planning/luggage_planning/hardware_placement_launch.py",
+    "sha256": "38961627ce206fa3cc0f71c675a0abb1410762a96df499db44cb250d3bc122cf",
+    "unchanged": true
+  }
+]

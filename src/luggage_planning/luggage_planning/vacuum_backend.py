@@ -186,13 +186,15 @@ class SimVacuumBackend(VacuumBackend):
     only the kinematic follow offset.
     """
 
-    def __init__(self, gz_client, scene, follow_rate_hz=30.0, carry_filter=None):
+    def __init__(self, gz_client, scene, follow_rate_hz=30.0, carry_filter=None,
+                 physical_relation_provider=None):
         self._gz = gz_client
         self._scene = scene
         self.follow_rate_hz = float(follow_rate_hz)
         # ``carry_filter(True)`` excludes p04 from the carried box only.
         # None in unit tests, which have no Gazebo. The sim node always sets it.
         self._carry_filter = carry_filter
+        self._physical_relation_provider = physical_relation_provider
         self._attached = False
         self._model_name = None
         self._offset_xyz = None
@@ -217,14 +219,29 @@ class SimVacuumBackend(VacuumBackend):
             return True, "already attached"
         record = context.get("attach_record") if isinstance(context, dict) else None
         if record is not None:
+            physical = context.get("physical_relation")
+            if self._physical_relation_provider is not None:
+                try:
+                    physical = self._physical_relation_provider(
+                        context['model_name'], record['generation'], context['tool_pose'])
+                    if physical is None:
+                        raise ValueError('missing physical relation')
+                except Exception as exc:
+                    self.last_error = str(exc)
+                    return False, 'PHYSICAL_ATTACHMENT_UNAVAILABLE: %s' % exc
             self.last_attach_record = record
             self._planning_relation = record
-            self._physical_relation = context.get("physical_relation")
+            self._physical_relation = physical
             self._model_name = context.get("model_name")
             try:
+                geometry = record.get('conservative_geometry')
+                if geometry is None:
+                    raise ValueError('ATTACHMENT_GEOMETRY_MISSING')
+                scene_position, scene_quaternion = geometry.conservative_pose_at_box(
+                    record['box_pose']['position'], record['box_pose']['quaternion_xyzw'])
                 scene_ok, scene_msg = self._scene.attach_pickup_box(
-                    self._model_name, record["box_pose"]["position"],
-                    record["box_pose"]["quaternion_xyzw"], record["size_wdh"],
+                    self._model_name, scene_position, scene_quaternion,
+                    geometry.conservative.dimensions_wdh,
                     context.get("attach_link", "suction_contact_frame"))
             except Exception as exc:  # noqa: BLE001 - backend boundary
                 self.last_error = str(exc)

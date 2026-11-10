@@ -17,6 +17,7 @@ from __future__ import division
 
 import argparse
 import copy
+import hashlib
 import json
 import math
 import os
@@ -52,6 +53,7 @@ from luggage_msgs.srv import (
     ClearCurrentBox,
     ComputePlacement,
     FinalizeCurrentBox,
+    GetCargoMapStats,
     SpawnNextBox,
     RemovePlacedBox,
 )
@@ -59,6 +61,35 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
 MAX_CONSECUTIVE_FAILURES = 3
+
+
+def placement_slot_context_request_id(local_request_id, slot_request_id):
+    """Request id used to decode a ComputePlacementV2 slot.
+
+    The service has no client request id. The planner stamps its own id
+    on the slot. Decoding with the driver's private id rejects every
+    successful response as REQUEST_IDENTITY_MISMATCH.
+    """
+    stamped = str(slot_request_id or "")
+    if stamped:
+        return stamped
+    return str(local_request_id or "")
+
+
+def process_exit_code(termination, packed, max_boxes):
+    """0 only when every requested box committed."""
+    if str(termination) == "MAX_BOXES" and int(packed) == int(max_boxes):
+        return 0
+    return 1
+
+
+def driver_source_sha256():
+    """SHA256 of this driver file, the identity a launch must execute."""
+    digest = hashlib.sha256()
+    with open(__file__, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 class PackEvalDriver(PlaceSmokeDriver):
@@ -73,6 +104,8 @@ class PackEvalDriver(PlaceSmokeDriver):
             RemovePlacedBox, "/cargo_map/remove_placed_box")
         self._finalize = self.create_client(
             FinalizeCurrentBox, "/pickup_box_spawner/finalize_current_box")
+        self._map_stats = self.create_client(
+            GetCargoMapStats, "/cargo_map/get_stats")
         latch = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -104,17 +137,25 @@ class PackEvalDriver(PlaceSmokeDriver):
         self._pending_placed = None
         self._surface_v2_msg = None
         if getattr(self, "_typed", None) is not None:
-            # NOTE: no function-local rclpy.qos import here — it would
-            # shadow the module-level QoSProfile for the WHOLE __init__
-            # scope and the latch subscription above would die with
-            # UnboundLocalError before ever reaching this branch.
-            from luggage_msgs.msg import SurfaceContractV2
-            transient = QoSProfile(
-                depth=1, reliability=ReliabilityPolicy.RELIABLE,
-                durability=DurabilityPolicy.TRANSIENT_LOCAL)
-            self.create_subscription(
-                SurfaceContractV2, "/luggage/cargo_map/surface_v2",
-                self._on_surface_v2, transient, callback_group=self._group)
+            self._subscribe_typed_surface()
+
+    def _subscribe_typed_surface(self):
+        """Subscribe to the v2 cargo surface.
+
+        QoS symbols stay the module-level imports. A function-local
+        ``from rclpy.qos import QoSProfile`` inside ``__init__`` would
+        make that name local to the whole constructor and raise
+        UnboundLocalError on the latch subscription above.
+        """
+        if getattr(self, "_typed", None) is None:
+            return
+        from luggage_msgs.msg import SurfaceContractV2
+        transient = QoSProfile(
+            depth=1, reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.create_subscription(
+            SurfaceContractV2, "/luggage/cargo_map/surface_v2",
+            self._on_surface_v2, transient, callback_group=self._group)
 
     def _on_surface_v2(self, msg):
         self._surface_v2_msg = msg
@@ -144,7 +185,14 @@ class PackEvalDriver(PlaceSmokeDriver):
 
     def on_detected_luggage(self, pick_msg, trial, spawn):
         """ComputePlacement from DetectLuggage, not GetCurrentBox / catalog."""
-        del spawn
+        # [placement-prior opt-in] The measured prior hook lives on the
+        # PLACE base (prepare+bind strictly BEFORE the grasp); this pack
+        # override must run it first or it shadows the wiring (r10: the
+        # hook never fired, no placement_prior evidence). Any named
+        # refusal stops the trial as usual.
+        prior_err = super().on_detected_luggage(pick_msg, trial, spawn)
+        if prior_err:
+            return prior_err
         if getattr(self, "_typed", None) is not None:
             return self._frame_on_detected(pick_msg, trial)
         request = self._compute_request(pick_msg)
@@ -203,6 +251,15 @@ class PackEvalDriver(PlaceSmokeDriver):
         placed_flat = [entry["size_wdh"] for entry in
                        getattr(self, "_frame_placed_records", None) or []]
         placed_flat = [float(v) for entry in placed_flat for v in entry]
+        placement_error = None
+        trial.extras["placement_request"] = dict(
+            request_id=request_id, scene_revision=self._frame_scene_revision,
+            box_wdh=box_wdh, height_measured=bool(pick_msg.height_valid),
+            placed=placed, placed_wdh_flat=placed_flat,
+            geometry_hash=geometry_hash, expected_map_revision=map_revision)
+        # This pre-contact query is only a nominal capacity preview. Actual
+        # place candidates are regenerated after confirmed Attachment geometry.
+        trial.extras['placement_geometry_stage'] = 'pre_attach_nominal_preview'
         try:
             placement = self._typed.compute_placement(
                 request_id=request_id, box_wdh=box_wdh,
@@ -213,10 +270,12 @@ class PackEvalDriver(PlaceSmokeDriver):
                 expected_map_revision=map_revision)
         except ContractError as error:
             placement = None
-            trial.extras["placement"] = "%s: %s" % (error.code, error.field)
+            placement_error = error
+            trial.extras["placement_error"] = error.as_dict()
         if placement is None or not placement.success:
-            reason = (placement.message if placement else "COMPUTE_TIMEOUT")
-            reason_code = (
+            reason = (str(placement_error) if placement_error is not None else
+                      placement.message if placement else "COMPUTE_TIMEOUT")
+            reason_code = (placement_error.code if placement_error is not None else
                 str(getattr(placement, "reason_code", "") or "")
                 if placement else "COMPUTE_TIMEOUT")
             last = dict(self._last_result or {})
@@ -234,7 +293,11 @@ class PackEvalDriver(PlaceSmokeDriver):
             trial.extras["placement_from"] = "DetectLuggage"
             return reason_code or "PLACEMENT_FAILED"
         context = BoundaryContext(
-            "F07", "typed_driver_adapter", "pack_eval_driver", request_id,
+            "F07", "typed_driver_adapter", "pack_eval_driver",
+            placement_slot_context_request_id(
+                request_id,
+                getattr(getattr(placement.slot, "identity", None),
+                        "request_id", "")),
             self._frame_scene_revision, "container_link", "box_center",
             "scene")
         try:
@@ -243,7 +306,9 @@ class PackEvalDriver(PlaceSmokeDriver):
             trial.extras["placement"] = error.code
             return error.code
         slot = slot_spec_from_record(record, self._scene_config, box_wdh)
-        self._frame_slot_record = record
+        # [single-writer fix] _frame_slot_record belongs to the Select
+        # winner (place_smoke_driver._typed_place_slot); this pre-select
+        # compute is a PREVIEW only and must not touch the shared record.
         audit, center_local = self._corridor_audit(slot)
         self._pending_slot = slot
         self._pending_slot_meta = self._slot_meta(slot)
@@ -257,11 +322,223 @@ class PackEvalDriver(PlaceSmokeDriver):
         return ""
 
     def _place_slot_for(self, pick_msg, box_msg, trial):
+        if getattr(self, "_typed", None) is not None:
+            slot, meta = self._typed_place_slot(pick_msg, trial)
+            if slot is not None:
+                self._pending_slot = slot
+                self._pending_slot_meta = meta
+                self._refresh_pending_placed_from_selection()
+            return slot, meta
         del pick_msg, box_msg
         if self._pending_slot is None:
             trial.fail_code = trial.fail_code or "PLACEMENT_FAILED"
             return None, None
         return self._pending_slot, self._pending_slot_meta
+
+    def _failure_cleanup(self, seq, fail):
+        """[release-failure contract] Post-failure box cleanup decision.
+
+        Returns "retained" (the box physically left the tool: it stays in
+        the world and pending on the map — only an explicit, recorded
+        sim-reset operation may remove it) or "cleared" (pre-release
+        failure: ClearCurrentBox ran).
+        """
+        if getattr(self, "_frame_released", False):
+            self.get_logger().error(
+                "trial %d failed %s AFTER release: landed box retained "
+                "(map pending holds the obstacle)" % (seq, fail))
+            return "retained"
+        self._call(self._clear, self._clear_request(), timeout=15.0)
+        return "cleared"
+
+    def _await_map_confirmed(self, timeout_s=10.0):
+        """[B3] The next box waits for occupancy confirmation.
+
+        下一箱始终等待占用确认：a placed box leaves the map pending until
+        a settled view (or the gate-off semantics) confirms it; planning
+        the next box against an unconfirmed map violates the frozen-
+        snapshot contract. Reads the B1 GetCargoMapStats confirmation
+        headline; a missing/unavailable stats service (offline harnesses)
+        is not a blocker — the mapper itself gates what it publishes.
+        Returns "" or a fail code.
+        """
+        if not self._map_stats.wait_for_service(timeout_sec=1.0):
+            # No mapper stats in this harness: the mapper gates what it
+            # publishes, the wait is not this harness's contract.
+            return ""
+        deadline = time.time() + max(0.0, float(timeout_s))
+        while True:
+            stats = self._call(self._map_stats, GetCargoMapStats.Request(),
+                               timeout=5.0)
+            if stats is not None and stats.success \
+                    and bool(getattr(stats, "occupancy_confirmed", True)):
+                return ""
+            if time.time() >= deadline:
+                return "OCCUPANCY_UNCONFIRMED"
+            time.sleep(0.2)
+
+    def _refresh_pending_placed_from_selection(self):
+        """[commit-source fix] The Select winner is the slot that will be
+        executed; the cargo-map commit must describe THAT slot, not the
+        pre-select ComputePlacement preview stored when the pending record
+        was first written. Refresh record/size and the freshest map
+        identity available at selection time (witness_02: a 0.65 m
+        phantom footprint was committed because this refresh was missing).
+        The corridor audit and container-local center are re-derived too:
+        they feed _committed_ledger_boxes / corridor_audit.json downstream,
+        which must describe the executed slot rather than the preview.
+        """
+        record = getattr(self, "_frame_slot_record", None)
+        box_wdh = getattr(self, "_frame_box_wdh", None)
+        if record is None or not box_wdh:
+            return
+        slot = getattr(self, "_pending_slot", None)
+        if slot is not None:
+            audit, center_local = self._corridor_audit(slot)
+            self._pending_audit = audit
+            self._pending_center_local = center_local
+        surface_msg = getattr(self, "_surface_v2_msg", None)
+        self._pending_placed = {
+            "record": record,
+            "size_wdh": list(box_wdh),
+            "map_revision": int(
+                surface_msg.map_revision if surface_msg is not None else
+                (self._surface_2d or {}).get("map_revision") or 0),
+            "geometry_hash": str(
+                (surface_msg.geometry_hash if surface_msg is not None
+                 else "") or (self._surface_2d or {}).get("geometry_hash")
+                or ""),
+        }
+
+    #: [commit anchor] Verify-vs-slot match tolerance for cargo-map
+    #: commits (m). witness_02's phantom sat 0.65 m out; live verify noise
+    #: measured 0.033-0.038 m.
+    _COMMIT_VERIFY_TOLERANCE_M = 0.10
+
+    #: [release-failure contract] Declared source of the verify
+    #: measurement feeding the commit anchor. The sim driver reads the
+    #: Gazebo ground-truth model pose — a valid SIM-ONLY confirmation
+    #: source. A deployment driver MUST declare its real observation
+    #: source; the ledger trail records it on every anchored commit.
+    _COMMIT_VERIFY_SOURCE = "sim_gt_pose"
+
+    def _current_box_id(self):
+        """[release-failure contract] Correlation id shared by the
+        box_released fact and the confirming anchored commit."""
+        return str((getattr(self, "_frame_grasp", None) or {}).get(
+            "box_id") or "")
+
+    def _commit_anchor_kwargs(self, record):
+        """[commit anchor] add_placed_box kwargs tying the asserted slot
+        to the verify-measured pose. Returns {} when this cycle carries no
+        finite verify pose; production callers then refuse the commit
+        (_typed_commit_add), compat callers keep the un-anchored legacy
+        request."""
+        verify = ((getattr(record, "extras", None) or {}).get("verify")) \
+            or {}
+        pose = (verify.get("box_pose_after_drift_wait")
+                or verify.get("box_pose_after_release"))
+        if not pose or len(pose) < 3 \
+                or not all(map(math.isfinite, (pose[0], pose[1], pose[2]))):
+            return {}
+        try:
+            from luggage_planning.typed_driver_adapter import (
+                world_xyz_to_container)
+            center = world_xyz_to_container(
+                self._scene_config, pose[:3])
+        except Exception:  # noqa: BLE001 - anchor is best-effort only
+            return {}
+        return {
+            "verified_center_container": center,
+            "verify_tolerance_m": self._COMMIT_VERIFY_TOLERANCE_M,
+            "verify_source": self._COMMIT_VERIFY_SOURCE,
+        }
+
+    #: [commit anchor] Compat escape for flows without a verify phase
+    #: (replay/harness): keeps the legacy un-anchored commit. Production
+    #: must not set it — measured_source="verify_placed_box" asserts
+    #: geometry the run verified, and an un-anchored commit would write
+    #: exactly the witness_02 class of unverified geometry.
+    _COMMIT_ANCHOR_COMPAT_ENV = "ELFIN_PACK_COMMIT_ANCHOR_COMPAT"
+
+    def _commit_anchor_required(self):
+        return os.environ.get(self._COMMIT_ANCHOR_COMPAT_ENV, "") != "1"
+
+    def _prepare_return_observe(self, trial):
+        """Commit the verified box once, so return's frozen map includes it.
+
+        The suite ledger is finalized after HOME. A failed return keeps this
+        physical obstacle committed, without counting a completed pack cycle.
+        """
+        if getattr(self, "_typed", None) is None:
+            return True
+        pending = self._pending_placed or {}
+        committed = self._typed_commit_add(trial, pending)
+        trial.extras["cargo_map_commit_before_return"] = {
+            "committed": bool(committed),
+            "wall_s": time.time(),
+            "box_id": self._current_box_id(),
+            "expected_map_revision": int(pending.get("map_revision") or 0),
+        }
+        return committed
+
+    def _typed_commit_add(self, record, pending):
+        """[commit anchor + ledger convergence] Issue the typed cargo-map
+        commit for one placed box and mirror the mapper's verdict into the
+        driver's local placed ledger. Production requires a verify anchor:
+        a cycle whose executed slot record carries no finite verify pose
+        fails the commit instead of writing unverified geometry. The local
+        _frame_placed_records append happens only on an ACCEPTED commit, so
+        the next compute never sees a box the cargo map rejected (the
+        mapper-side anchor gate can refuse post-hoc). Returns True when
+        committed."""
+        from luggage_description.frame_contracts import ContractError
+        extras = getattr(record, "extras", None)
+        anchor_kwargs = self._commit_anchor_kwargs(record)
+        add = None
+        if not anchor_kwargs and self._commit_anchor_required():
+            if extras is not None:
+                extras["add_placed"] = (
+                    "COMMIT_ANCHOR_MISSING: executed slot record carries "
+                    "no finite verify pose")
+        else:
+            try:
+                add = self._typed.add_placed_box(
+                    slot=pending["record"],
+                    size_wdh=pending["size_wdh"],
+                    measured_source="verify_placed_box",
+                    expected_map_revision=int(
+                        pending.get("map_revision") or 0),
+                    geometry_hash=str(
+                        pending.get("geometry_hash") or ""),
+                    # [release-failure contract] Same box_id the
+                    # box_released fact carried — the store clears that
+                    # fact by IDENTITY (+ this evidence being later),
+                    # never by footprint proximity alone.
+                    box_id=self._current_box_id(),
+                    **anchor_kwargs)
+            except ContractError as error:
+                add = None
+                if extras is not None:
+                    extras["add_placed"] = "%s: %s" % (
+                        error.code, error.field)
+        committed = bool(add is not None and add.success)
+        if extras is not None:
+            extras["cargo_map_commit_result"] = {
+                "committed": committed,
+                "expected_map_revision": int(pending.get("map_revision") or 0),
+                "resulting_map_revision": getattr(add, "resulting_map_revision", None),
+            }
+        if committed:
+            if not hasattr(self, "_frame_placed_records"):
+                self._frame_placed_records = []
+            self._frame_placed_records.append({
+                "record": pending["record"],
+                "size_wdh": list(pending["size_wdh"])})
+        elif add is not None and extras is not None:
+            extras["add_placed"] = str(
+                getattr(add, "message", "") or "commit rejected")
+        return committed
 
     def _dump_json(self, folder, name, payload):
         os.makedirs(folder, exist_ok=True)
@@ -408,7 +685,7 @@ class PackEvalDriver(PlaceSmokeDriver):
             if err:
                 print("graph: %s" % err)
                 self._write_suite("ABORT", 0, self._sample_rtf())
-                return
+                return "ABORT"
         termination = "MAX_BOXES"
         seq = 0
         rtf_start = self._sample_rtf()
@@ -447,24 +724,49 @@ class PackEvalDriver(PlaceSmokeDriver):
             self._pending_slot_meta = None
             self._pending_audit = None
             self._pending_center_local = None
+            # [commit-source hygiene] A failed cycle must not leak its
+            # pending commit record or the previous cycle's selection
+            # into the next cycle's commit.
+            self._pending_placed = None
+            self._frame_slot_record = None
             self._last_result = {}
             args.dump_dir = self._box_dump_dir(seq, "pending")
             args.dump_exact = True
-            try:
-                record = self.run_trial(
-                    seq, slot=None, slot_meta=None,
-                    already_spawned=True, keep_placed=True)
-                commit_ok = place_ok(record)
-                fail = getattr(record, "fail_code", "") or ""
-                if fail and fail not in RETURN_FAIL_CODES:
-                    dump_slug = fail
+            record = None
+            fail = ""
+            commit_ok = True
+            if getattr(args, "await_map_confirmed", True):
+                # [B3] 下一箱始终等待占用确认：plan the next box only
+                # against a confirmed map (B1 confirmation headline).
+                wait_fail = self._await_map_confirmed()
+                if wait_fail:
                     commit_ok = False
-            except Exception as exc:  # noqa: BLE001 - ledger boundary
-                dump_slug = "DRIVER_EXC_%s" % type(exc).__name__
-                commit_ok = False
-                record = None
-                fail = dump_slug
-                self.get_logger().error("trial %d raised %s" % (seq, exc))
+                    fail = wait_fail
+                    dump_slug = wait_fail
+            if commit_ok:
+                try:
+                    record = self.run_trial(
+                        seq, slot=None, slot_meta=None,
+                        already_spawned=True, keep_placed=True)
+                    commit_ok = place_ok(record)
+                    fail = getattr(record, "fail_code", "") or ""
+                    if fail and fail not in RETURN_FAIL_CODES:
+                        dump_slug = fail
+                        commit_ok = False
+                except Exception as exc:  # noqa: BLE001 - ledger boundary
+                    dump_slug = "DRIVER_EXC_%s" % type(exc).__name__
+                    commit_ok = False
+                    record = None
+                    fail = dump_slug
+                    self.get_logger().error("trial %d raised %s" % (seq, exc))
+                    import traceback
+                    self.get_logger().error(traceback.format_exc())
+
+            diagnostic_exit = getattr(self, "_diagnostic_trial_exit", None)
+            if diagnostic_exit is not None:
+                # Opt-in capture run: preserve the ordinary startup/pick path,
+                # then return before commit, cleanup, retry or a second box.
+                return diagnostic_exit(record, fail, seq)
 
             slot = self._pending_slot
             slot_meta = self._pending_slot_meta
@@ -508,8 +810,7 @@ class PackEvalDriver(PlaceSmokeDriver):
                     size_wdh=size, mass_kg=self._mass(spawn),
                     t_ros_spawn=t_spawn, volume_m3=volume,
                     message=fail, dump=dump_path)
-                self._call(self._clear, ClearCurrentBox.Request(),
-                           timeout=15.0)
+                self._failure_cleanup(seq, fail)
                 break
 
             if slot is None or slot_meta is None:
@@ -526,32 +827,18 @@ class PackEvalDriver(PlaceSmokeDriver):
             if commit_ok:
                 if getattr(self, "_typed", None) is not None:
                     pending = getattr(self, "_pending_placed", None) or {}
-                    from luggage_description.frame_contracts import ContractError
-                    try:
-                        add = self._typed.add_placed_box(
-                            slot=pending["record"],
-                            size_wdh=pending["size_wdh"],
-                            measured_source="verify_placed_box",
-                            expected_map_revision=int(
-                                pending.get("map_revision") or 0),
-                            geometry_hash=str(
-                                pending.get("geometry_hash") or ""))
-                    except ContractError as error:
-                        add = None
-                        trial.extras["add_placed"] = "%s: %s" % (
-                            error.code, error.field)
-                    if add is not None:
-                        if not hasattr(self, "_frame_placed_records"):
-                            self._frame_placed_records = []
-                        self._frame_placed_records.append({
-                            "record": pending["record"],
-                            "size_wdh": list(pending["size_wdh"])})
+                    receipt = (getattr(record, "extras", None) or {}).get(
+                        "cargo_map_commit_before_return")
+                    # Production already committed after verify. Harnesses
+                    # without that hook retain the explicit legacy call.
+                    commit_ok = (bool(receipt["committed"]) if receipt is not None
+                                 else self._typed_commit_add(record, pending))
                 else:
                     add = self._call(
                         self._add_map,
                         self._add_request(self._slot_world_msg(slot)),
                         timeout=15.0)
-                commit_ok = bool(add and add.success)
+                    commit_ok = bool(add and add.success)
                 if commit_ok:
                     self._committed_ledger_boxes.append(
                         (center_local, [slot.width, slot.depth, slot.height]))
@@ -584,7 +871,7 @@ class PackEvalDriver(PlaceSmokeDriver):
             else:
                 self._consecutive_failures += 1
                 if fail not in RETURN_FAIL_CODES:
-                    self._call(self._clear, self._clear_request(), timeout=15.0)
+                    self._failure_cleanup(seq, fail)
 
             if commit_ok:
                 self._consecutive_failures = 0
@@ -630,10 +917,16 @@ class PackEvalDriver(PlaceSmokeDriver):
                 dump=dump_path,
             )
             seq += 1
+            if ((not commit_ok)
+                    and getattr(args, "stop_on_first_failure", False)):
+                if termination == "MAX_BOXES":
+                    termination = str(fail or dump_slug or "FIRST_FAILURE")
+                break
             if termination == "ABORT":
                 break
 
         self._write_suite(termination, seq, rtf_start)
+        return termination
 
     def _rename_dump_dir(self, seq, slug):
         pending = self._box_dump_dir(seq, "pending")
@@ -784,13 +1077,36 @@ def merge_args(argv=None):
                            "motion come from ComputePlacementV2 -> "
                            "SelectPlacePathV2 certified routes")
     pack.add_argument("--frame-peer", default="pack_eval_driver")
+    pack.add_argument(
+        "--verify-selected-route", dest="verify_selected_route",
+        action="store_true", default=True,
+        help="[B3] Re-verify the selected route (ValidateSelectedRoute) "
+             "and arm the per-leg execution admission before any leg "
+             "executes; a failed re-verify refuses the placement.")
+    pack.add_argument(
+        "--no-verify-selected-route", dest="verify_selected_route",
+        action="store_false",
+        help="Legacy harness mode: keep the pre-B3 no-admission behavior.")
+    pack.add_argument(
+        "--await-map-confirmed", dest="await_map_confirmed",
+        action="store_true", default=True,
+        help="[B3] The next box waits for the map's occupancy "
+             "confirmation before planning (OCCUPANCY_UNCONFIRMED on "
+             "timeout).")
+    pack.add_argument(
+        "--no-await-map-confirmed", dest="await_map_confirmed",
+        action="store_false",
+        help="Legacy harness mode: plan without the confirmation wait.")
+    pack.add_argument("--stop-on-first-failure", action="store_true",
+                      help="End the suite when the first box fails to commit")
     known, rest = pack.parse_known_args(argv)
     # The shared place parser rejects unknown options, so strip the
-    # frame flags the same way motion_occ_eval_driver does.
+    # flags this driver owns before parse_place_args sees them.
     local = argparse.ArgumentParser(add_help=False)
     local.add_argument("--frame-runtime", action="store_true")
     local.add_argument("--frame-peer", default="pack_eval_driver")
-    _frame_stripped, rest = local.parse_known_args(rest)
+    local.add_argument("--stop-on-first-failure", action="store_true")
+    _stripped, rest = local.parse_known_args(rest)
     smoke = parse_place_args([
         "--out", known.out,
         "--n", str(known.n if known.n is not None else known.max_boxes),
@@ -801,8 +1117,10 @@ def merge_args(argv=None):
     ] + rest)
     smoke.frame_runtime = bool(known.frame_runtime)
     smoke.frame_peer = str(known.frame_peer)
+    smoke.stop_on_first_failure = bool(known.stop_on_first_failure)
     for key, value in vars(known).items():
-        if key not in ("frame_runtime", "frame_peer"):
+        if key not in ("frame_runtime", "frame_peer",
+                       "stop_on_first_failure"):
             setattr(smoke, key, value)
     if smoke.n is not None and known.n is None:
         pass
@@ -826,15 +1144,19 @@ def main(argv=None):
     driver = PackEvalDriver(args)
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(driver)
-    import threading
-    spinner = threading.Thread(target=executor.spin, daemon=True)
-    spinner.start()
+    from luggage_gazebo.driver_executor import DriverExecutor
+    lifecycle = DriverExecutor(executor, driver, args.out)
+    driver._executor_lifecycle = lifecycle
+    lifecycle.start()
     try:
-        driver.run()
+        termination = driver.run()
     finally:
-        driver.destroy_node()
+        lifecycle.close()
         rclpy.shutdown()
-    return 0
+    if lifecycle.failure is not None:
+        return 1
+    packed = len(getattr(driver, "_committed_ledger_boxes", []) or [])
+    return process_exit_code(termination, packed, args.max_boxes)
 
 
 if __name__ == "__main__":
