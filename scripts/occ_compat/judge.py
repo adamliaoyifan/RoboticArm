@@ -497,11 +497,18 @@ def _k01_independent_oracle(events, ledger_dir):
     hull = payload.get("hull") or {}
     desc = surface.get("geometry_descriptor") or {}
     if desc.get("chamfer") and not hull.get("chamfer"):
-        # the hull comes from the MAP'S OWN descriptor (reviews 1355)
+        # the hull comes from the MAP'S OWN descriptor (reviews 1355).
+        # NAMING RULE (2026-11-10): the descriptor's ceiling_z/floor_z
+        # are container-ABSOLUTE coordinates and pass through under
+        # their frame-qualified names; inner_size[2] is the interior
+        # HEIGHT (ceiling - floor) — never a coordinate.
+        _floor = float(desc.get("floor_z", 0.53))
+        _ceiling = float(desc.get("ceiling_z", 2.01))
         hull = {"inner_size": [float(desc.get("length", 1.49)),
                                float(desc.get("width", 1.97)),
-                               float(desc.get("ceiling_z", 1.48))],
-                "floor_z_container": float(desc.get("floor_z", 0.53)),
+                               _ceiling - _floor],
+                "floor_z_container": _floor,
+                "ceiling_z_container": _ceiling,
                 "chamfer": desc["chamfer"]}
     verdict = _vr(
         type("R", (), {"candidates": payload.get("candidates", []),
@@ -1643,7 +1650,8 @@ def selftest(manifest_path, out_dir):
             "confidence_ratio": 0.9}], "reason_code": ""})(),
         surface=illegal_surface, box_size=(0.3, 0.2, 0.2),
         hull={"inner_size": [1.49, 1.97, 1.48],
-              "floor_z_container": 0.53})
+              "floor_z_container": 0.53,
+              "ceiling_z_container": 1.48})
     wiring["w18_illegal_candidate"] = (
         "REJECTED" if not bad_verdict["all_pass"] else "FALSE_PASS")
     # D1 FINAL-ruling controls (reviews 2026-11-08): occupied cells
@@ -1674,7 +1682,8 @@ def selftest(manifest_path, out_dir):
                 and -hy <= gy0 and gy0 + 0.02 <= hy)
 
     _d1_hull = {"inner_size": [1.49, 1.97, 1.48],
-                "floor_z_container": 0.53}
+                "floor_z_container": 0.53,
+                "ceiling_z_container": 1.48}
     _d1_box = (0.3, 0.2, 0.2)
     _d1_center = {"center_container": [0.0, 0.0, 0.63], "yaw": 0.0,
                   "confidence_ratio": 0.0}
@@ -1777,7 +1786,8 @@ def selftest(manifest_path, out_dir):
                   "confidence_ratio": 1.0},
                  surface=surf4, box_size=(1.0, 1.0, 1.0),
                  hull={"inner_size": [8.0, 8.0, 2.0],
-                       "floor_z_container": 0.0})
+                       "floor_z_container": 0.0,
+                       "ceiling_z_container": 2.0})
     wiring["w22_oracle_shrunk_coverage"] = (
         "REJECTED" if not shrunk["pass"] else "FALSE_PASS")
 
@@ -1950,7 +1960,8 @@ def selftest(manifest_path, out_dir):
     bad_payload = {
         "surface": surf_bad, "box_size": [1.0, 1.0, 1.0],
         "hull": {"inner_size": [8.0, 8.0, 2.0],
-                 "floor_z_container": 0.0},
+                 "floor_z_container": 0.0,
+                 "ceiling_z_container": 2.0},
         "candidates": [{"center_container": [0.0, 0.0, 1.03],
                         "yaw": 0.0, "ix0": 0, "iy0": 0,
                         "cells_x": 1, "cells_y": 1,

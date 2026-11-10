@@ -158,11 +158,20 @@ container carries translation `[0, -1.5, -0.86]` and yaw `-90 deg`
 | v1 `surface_map_2d` (topic / bridge / view) | container, floor-relative (height arrays) | z=0 at inner floor | [0, 1.48] |
 | v2 surface contract `surface_z_container` | container, ABSOLUTE | floor .. ceiling | [0.53, 2.01] |
 | G `query_cells_v2` grid.origin | container, ABSOLUTE | cell iz spans [origin.z+iz*r, ...) | [0.53, 2.01] |
-| oracle `verify_candidate` hull | container, ABSOLUTE | `hull.inner_size[2]` read as ABSOLUTE ceiling | [0.53, 2.01] |
+| oracle `verify_candidate` hull | container, ABSOLUTE | reads `hull.ceiling_z_container` | [0.53, 2.01] |
 | oracle `placed_clearance_leg` | container, floor-relative | scene-derived floor/height | [0, 1.48] |
-| K01 oracle payload hull (`_k01_hull`) | feeds the ORACLE convention | inner_size[2] = ABSOLUTE ceiling 2.01 | [0.53, 2.01] |
+| K01 oracle payload hull (`_k01_hull`, schema v4) | BOTH, named | `inner_size[2]`=HEIGHT 1.48 + `ceiling_z_container`=2.01 | both |
 
-The two `inner_size[2]` conventions (planner=height 1.48 vs oracle=
-absolute ceiling 2.01) are a NAMED trap: mixing them silently shifts the
-ceiling by `floor_z` (0.53 m). Any new consumer must state its frame
-here before reading a height datum.
+**NAMING RULE (user ruling 2026-11-10)**: a coordinate/bound field
+carries a frame qualifier (`floor_z_container`, `ceiling_z_container` —
+container-ABSOLUTE); a size field NEVER carries one (`inner_size`,
+z = interior HEIGHT 1.48). A coordinate never rides inside a
+size-named field. Historical offenders, all retired or documented:
+payload `inner_size[2]` carried the absolute ceiling until schema v4
+(oracle keeps a legacy read shim so v3 archives re-judge
+byte-identically); scene config `inner.height` is HISTORICALLY the
+absolute upper-Z (see `container_inner_dimensions` docstring — use
+`container_inner_ceiling_z` / `container_usable_dimensions` instead);
+the map descriptor's `ceiling_z`/`floor_z` are absolute and correctly
+named. Any new consumer must state its frame here before reading a
+height datum.

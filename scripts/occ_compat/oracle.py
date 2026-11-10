@@ -206,14 +206,21 @@ def verify_candidate(candidate, *, surface, box_size, hull,
     if any(v <= 0 for v in size):
         result["legs"]["decode"] = "non-positive box size"
         return result
-    # [FRAME MAP] z0/z1 below are CONTAINER-frame absolute z. The hull
-    # datum convention HERE: floor_z_container = inner floor elevation
-    # in container_link (scene inner.floor_z = 0.53); hull.inner_size[2]
-    # is read as the container-ABSOLUTE ceiling (2.01) — NOT the
-    # interior height. The planner/solver use inner_size[2] = height
-    # (1.48): never mix the two (AGENTS.md "ULD frames").
+    # [FRAME MAP] z0/z1 below are CONTAINER-frame absolute z. NAMING
+    # RULE (user ruling 2026-11-10): coordinates/bounds carry a frame
+    # qualifier (floor_z_container / ceiling_z_container, both
+    # container-ABSOLUTE); sizes never do (inner_size[2] = interior
+    # HEIGHT 1.48). The ceiling bound is read from the explicit
+    # ceiling_z_container key; the inner_size[2] fallback below is the
+    # LEGACY v3 payload shim (pre-explicit-key payloads carried the
+    # absolute ceiling inside inner_size[2]) and is the only place
+    # that dual convention survives — kept so old archives re-judge
+    # byte-identically (AGENTS.md "ULD frames").
     floor_container = float(hull.get("floor_z_container", 0.53))
-    ceiling_z = float(hull.get("inner_size", (0, 0, 1.48))[2])
+    if "ceiling_z_container" in (hull or {}):
+        ceiling_z = float(hull["ceiling_z_container"])
+    else:
+        ceiling_z = float(hull.get("inner_size", (0, 0, 2.01))[2])
     z0 = center[2] - size[2] / 2.0
     z1 = center[2] + size[2] / 2.0
     if z0 < floor_container - tol:
@@ -540,8 +547,10 @@ def placed_clearance_leg(payload):
     # container does not change: the frozen scene config IS the default
     # hull datum (user ruling 2026-11-09) — floor and inner height
     # (ceiling - floor) derive from the SAME source the planner builds
-    # its hull from. Never trust payload hull.inner_size[2] as a height:
-    # v3 payloads carried the ABSOLUTE ceiling (2.01) there.
+    # its hull from. This leg never reads payload hull.inner_size[2]:
+    # v4 hulls carry floor_z_container/ceiling_z_container explicitly,
+    # and this leg derives both from the scene directly (a coordinate
+    # never rides inside a size-named field — AGENTS.md naming rule).
     floor_z = float(container_inner_floor_z(scene))
     _dims = container_inner_dimensions(scene)
     inner_h = float(_dims[2]) - floor_z

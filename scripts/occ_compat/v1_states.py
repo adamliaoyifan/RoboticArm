@@ -219,16 +219,22 @@ def _placement(ctx, case, subprobe, box, **kwargs):
 
 
 def _k01_hull(ctx, surface):
-    """[user ruling 2026-11-09] hull datum for the K01 oracle pair.
+    """[user rulings 2026-11-09/11-10] hull datum for the K01 oracle pair.
 
     The container does not change: dims and floor derive from the
     FROZEN SCENE CONFIG (the same source the planner builds its hull
-    from) — inner_size[2] is the HEIGHT (ceiling - floor), never the
-    absolute ceiling the old descriptor path leaked there (2.01 vs
-    1.48). The map's own descriptor contributes only the chamfer faces
+    from). The map's own descriptor contributes only the chamfer faces
     + hash (reviews 1355: actual chamfer geometry, never a hardcoded
     rectangle). A run without a scene config keeps the historical
-    deployment literals as an explicit, named fallback."""
+    deployment literals as an explicit, named fallback.
+
+    NAMING RULE (2026-11-10): coordinates carry a frame qualifier,
+    sizes never do — inner_size[2] is now ALWAYS the interior HEIGHT
+    (ceiling - floor, 1.48); the absolute ceiling bound rides the
+    explicit ceiling_z_container key (2.01). This replaces the v3
+    dual convention (absolute ceiling smuggled into inner_size[2])
+    that twice misfired; the oracle reads ceiling_z_container by
+    name and keeps a legacy shim for old archives."""
     hull = None
     if getattr(ctx, "scene_tf_config", ""):
         from luggage_description.scene_tf_config_utils import (
@@ -237,20 +243,21 @@ def _k01_hull(ctx, surface):
         scene = load_scene_tf_config(ctx.scene_tf_config)
         floor = float(container_inner_floor_z(scene))
         length, width, ceiling = container_inner_dimensions(scene)
-        # CONVENTION TRAP: verify_candidate reads inner_size[2] as the
-        # container-ABSOLUTE ceiling (z1 > inner_size[2] against
-        # container-frame z), while the planner/solver use inner SIZE
-        # [2] = height (ceiling - floor). The oracle pair must feed the
-        # CEILING (2.01) — the historical 1.48 literal (and the height
-        # this helper briefly produced) made the collection-time
-        # clearance leg 0.53 m too low for tall stacks.
-        hull = {"inner_size": [float(length), float(width),
-                               float(ceiling)],
-                "floor_z_container": floor}
+        ceiling = float(ceiling)
+        hull = {
+            "inner_size": [float(length), float(width),
+                           ceiling - floor],
+            "floor_z_container": floor,
+            "ceiling_z_container": ceiling,
+        }
     else:
-        # no-scene fallback: the ORACLE convention (absolute ceiling)
-        hull = {"inner_size": [1.49, 1.97, 2.01],
-                "floor_z_container": 0.53}
+        # no-scene fallback: explicit deployment literals, both
+        # conventions named (height 1.48 / absolute ceiling 2.01)
+        hull = {
+            "inner_size": [1.49, 1.97, 1.48],
+            "floor_z_container": 0.53,
+            "ceiling_z_container": 2.01,
+        }
     descriptor = (surface or {}).get("geometry_descriptor") or {}
     if descriptor.get("chamfer"):
         hull = dict(hull)
@@ -312,7 +319,10 @@ def _k01(ctx, run_e3=None, run_e4=None):
         _selected = {"candidate_id": str(
             dump[0].get("candidate_id", dump[0].get("id", 0)))}
     oracle_payload = {
-        "schema": "k01-oracle-payload-v3",
+        # v4 (2026-11-10): hull block carries floor_z_container +
+        # ceiling_z_container explicitly; inner_size[2] is now always
+        # the interior HEIGHT (v3 carried the absolute ceiling there)
+        "schema": "k01-oracle-payload-v4",
         "surface": surface, "box_size": list(BOX_A),
         "hull": _hull,
         "candidates": dump, "verdicts": verdict["verdicts"],
