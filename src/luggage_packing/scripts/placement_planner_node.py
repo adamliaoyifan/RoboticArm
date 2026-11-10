@@ -1378,6 +1378,12 @@ class PlacementPlannerNode(Node):
                 msg, self._surface_context(expected_request, claimed_revision))
         except ContractError as error:
             self._rejected_maps += 1
+            if "GEOMETRY" in str(error.code):
+                # the contract layer's hull rejection (e.g.
+                # GEOMETRY_IDENTITY_MISMATCH on the geometry_hash field)
+                # is the SAME fact as the post-decode hash check below —
+                # it must trip the foreign-hull fail-closed gate too
+                self._geometry_rejected_maps += 1
             self.get_logger().error(
                 "rejected v2 cargo map (%s %s, rejected=%d)"
                 % (error.code, error.field, self._rejected_maps))
@@ -2033,11 +2039,15 @@ class PlacementPlannerNode(Node):
             response.reason_code = code
             response.message = "%s: %s" % (code, error)
             return response
-        if (self._surface is None and self._rejected_maps
+        if (self._surface is None and self._geometry_rejected_maps
                 and str(self.get_parameter(
                     "volume_evidence_source").value or "") != "observer"):
             # A live mapper published a hull we refused. Answering from the
             # floor prior here would be the silent fallback GEO-8 forbids.
+            # ONLY geometry rejections trip this (run15 K04/R10: a producer
+            # boot/reset legitimately emits validity_building maps and
+            # stale revisions — those rejections must answer in the
+            # validity vocabulary, never as a foreign-hull refusal).
             # Single-lease mode (observer): the request's map is the FRESH
             # LEASE surface (self._surface tracks only topic maps), which
             # carries its own fail-closed chain — the admission gate above
@@ -2048,7 +2058,8 @@ class PlacementPlannerNode(Node):
             response.reason_code = CODE_CARGO_MAP_GEOMETRY_MISMATCH
             response.message = (
                 "%s: %d cargo map(s) rejected, planner hull is %s"
-                % (CODE_CARGO_MAP_GEOMETRY_MISMATCH, self._rejected_maps,
+                % (CODE_CARGO_MAP_GEOMETRY_MISMATCH,
+                   self._geometry_rejected_maps,
                    self._geometry_hash))
             self._publish_last({
                 "success": False,
