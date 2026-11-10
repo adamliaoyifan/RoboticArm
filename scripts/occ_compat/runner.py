@@ -294,8 +294,13 @@ def run_matrices(freeze_path, matrices, out_dir, cases=None,
             for outcomes in group.values() if isinstance(outcomes, dict)
             for state in outcomes.values()]
     if flat:
-        verdict = ("PASS" if all(s == "PASS" for s in flat)
-                   else "PARTIAL" if any(s == "PASS" for s in flat)
+        # E2/E3/E4 legs record boolean true, main records the string
+        # "PASS" — both are pass states (run10/run16 were all-green but
+        # read PARTIAL because the bools never matched the string)
+        def _ok(s):
+            return s == "PASS" or s is True
+        verdict = ("PASS" if all(_ok(s) for s in flat)
+                   else "PARTIAL" if any(_ok(s) for s in flat)
                    else "FAIL")
     summary["verdict"] = verdict
     return summary

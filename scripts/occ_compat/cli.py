@@ -101,7 +101,11 @@ def cmd_judge(args):
     gates = result.get("gates", {})
     print("judge: " + " ".join("%s=%s" % (k, v)
                                for k, v in sorted(gates.items())))
-    ok = all(v == "PASS" for v in gates.values())
+    # Only the A0-A5 gate keys decide the exit code; detail keys like
+    # A0_verify_detail carry "PASS: probes=..." info strings that must
+    # not fail the all-pass check (run16 was all-PASS but exited 1)
+    a_gates = ("A0", "A1", "A2", "A3", "A4", "A5")
+    ok = all(gates.get(k) == "PASS" for k in a_gates)
     return 0 if ok else 1
 
 
