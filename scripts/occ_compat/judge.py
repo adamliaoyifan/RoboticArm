@@ -2759,8 +2759,12 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
         freeze, a0v,
         freeze_sha256=inputs_binding.get("freeze_sha256"),
         archive_binding=archive_binding)
+    # A0 verify detail belongs in gates_detail, never in gates: the
+    # gates dict carries ONLY the pure A0-A5 verdict strings (an info
+    # string in gates broke the exit-code check: all-PASS exited 1)
+    a0_verify_detail = None
     if a0v is not None:
-        gates["A0_verify_detail"] = "%s: probes=%s problems=%s" % (
+        a0_verify_detail = "%s: probes=%s problems=%s" % (
             a0v.get("verdict"), (a0v.get("checks") or {}).get("probes"),
             (a0v.get("problems") or [])[:2])
     gates["A1"] = _a1_gate(selftest, freeze)
@@ -2830,6 +2834,8 @@ def judge_archive(archive, out_dir, selftest_path=None, freeze_path=None,
     except NameError:
         a5_subchecks = None
     detail = ({"A5": a5_subchecks} if a5_subchecks else {})
+    if a0_verify_detail is not None:
+        detail["A0_verify"] = a0_verify_detail
     detail["per_id"] = {
         "A2": _scope_detail(
             [g for g in v2_groups if "-G-" in g[0]], V2_REQUIRED,
