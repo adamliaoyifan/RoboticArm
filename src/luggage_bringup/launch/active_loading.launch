@@ -45,6 +45,27 @@
   <arg name="unknown_threshold" default="0.15"/>
   <arg name="box_catalog_config" default="$(find luggage_description)/config/box_catalog.yaml.example"/>
   <arg name="scene_tf_config" default="$(find luggage_description)/config/scene_tf.yaml.example"/>
+  <!-- Cargo map v2 production wiring (user ruling 2026-11-10). The v2
+       mapper publishes the surface contract topic + validity stream and
+       serves the /cargo_map/* services; frame_scene_revision ENABLES the
+       v2 surface and MUST be one launch arg shared by mapper and planner
+       (identity binding by construction — a split scene/revision between
+       producer and consumer is the GEO-8 failure class). Values below are
+       the acceptance-frozen configuration (run09-run16: 2 cm grid, full
+       20k ray budget, 2.0 s freshness window; cargo_grid.yaml's 1 cm
+       deployment default remains available by overriding the arg). -->
+  <arg name="use_cargo_map" default="true"/>
+  <arg name="frame_scene_revision" default="deploy-v1"/>
+  <arg name="cargo_map_resolution" default="0.02"/>
+  <arg name="cargo_map_max_raycast_points" default="20000"/>
+  <arg name="cargo_map_freshness_window_sec" default="2.0"/>
+  <!-- Volume evidence backend for the placement planner, interface-
+       consistent with the observer (O) stack: "observer" (product
+       default, user ruling 2026-11-10) | "grid_g" (this stack's own
+       cargo map) | "" (legacy topic surface, explicit opt-out). The
+       validity stream wiring follows the selected backend. -->
+  <arg name="volume_evidence_source" default="observer"/>
+  <arg name="volume_observer_prefix" default="/uld_occ_observer"/>
   <!-- Arm model selector: s05 | s10 | s20 | s30. Selects the arm URDF/SRDF; the
        Elfin S series shares joints/links/group/kinematics/joint_limits, so only
        geometry + self-collision pairs change. Gazebo controller ns stays /S20. -->
@@ -260,20 +281,19 @@
 
   </group>
 
-  <node pkg="luggage_perception" type="cargo_volume_mapper_node.py" name="cargo_volume_mapper" output="screen">
-    <rosparam command="load" file="$(arg occupancy_fusion_config)"/>
-    <param name="motion_gate/enabled" value="$(arg motion_gate_enabled)"/>
-    <param name="motion_gate/velocity_threshold" value="$(arg motion_gate_velocity_threshold)"/>
-    <param name="occupancy/enabled" value="$(arg log_odds_enabled)"/>
-    <param name="voxel_resolution" value="$(arg voxel_resolution)"/>
-    <param name="publish_viz" value="true"/>
-    <param name="viz_frame_id" value="elfin_base_link"/>
-    <param name="viz_show_free" value="false"/>
-    <param name="viz_show_unknown" value="true"/>
-    <param name="depth_points_topic" value="$(eval '/camera/depth/points_robot_filtered' if arg('enable_urdf_self_filter') else '/camera/depth/points')"/>
-    <param name="self_filter/enabled" value="$(eval not arg('enable_urdf_self_filter'))"/>
-    <param name="self_filter_config" value="$(arg robot_self_filter_config)"/>
-    <param name="use_semantic_filter" value="$(arg enable_semantic)"/>
+  <node if="$(arg use_cargo_map)" pkg="luggage_perception" type="cargo_volume_mapper_node.py" name="cargo_volume_mapper" output="screen">
+    <!-- v2 parameter surface: the retired ROS1 params (voxel_resolution,
+         depth_points_topic, self_filter, motion_gate, occupancy rosparam)
+         were silently unused on this node. The SAME scene config and
+         frame revision as the planner (identity binding by
+         construction). -->
+    <param name="scene_tf_config" value="$(arg scene_tf_config)"/>
+    <param name="resolution" value="$(arg cargo_map_resolution)"/>
+    <param name="frame_scene_revision" value="$(arg frame_scene_revision)"/>
+    <param name="max_raycast_points" value="$(arg cargo_map_max_raycast_points)"/>
+    <param name="freshness_window_sec" value="$(arg cargo_map_freshness_window_sec)"/>
+    <param name="validity_max_age_ms" value="1000"/>
+    <param name="cargo_cloud_topic" value="$(eval '/luggage/semantic/cargo_points' if arg('enable_semantic') else '/luggage/semantic/cargo_points_untracked')"/>
   </node>
   <node pkg="luggage_perception" type="placed_pose_verifier_node.py"
         name="placed_pose_verifier" output="screen">
@@ -381,6 +401,15 @@
     <param name="atlas_basename" value="$(arg atlas_basename)"/>
     <param name="score/w_floor_first" value="$(arg score_w_floor_first)"/>
     <param name="scene_tf_config" value="$(arg scene_tf_config)"/>
+    <!-- Volume evidence + validity wiring (interface-consistent with the
+         observer stack): same arg surface for both backends; the
+         validity stream endpoints follow the selected backend. -->
+    <param name="frame_scene_revision" value="$(arg frame_scene_revision)"/>
+    <param name="volume_evidence_source" value="$(arg volume_evidence_source)"/>
+    <param name="volume_observer_prefix" value="$(arg volume_observer_prefix)"/>
+    <param name="validity_backend" value="$(eval 'grid_g' if arg('volume_evidence_source') == 'grid_g' else 'observer_o')"/>
+    <param name="validity_topic" value="$(eval '/cargo_map/validity' if arg('volume_evidence_source') == 'grid_g' else arg('volume_observer_prefix') + '/validity')"/>
+    <param name="validity_status_service" value="$(eval '/cargo_map/get_validity' if arg('volume_evidence_source') == 'grid_g' else arg('volume_observer_prefix') + '/get_validity')"/>
   </node>
   <node if="$(arg use_motion_filter)" pkg="luggage_planning" type="placement_motion_filter_node.py" name="placement_motion_filter" output="screen"
         launch-prefix="bash -c 'sleep 20; exec $0 $@' ">
