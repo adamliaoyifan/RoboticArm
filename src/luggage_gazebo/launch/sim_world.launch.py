@@ -88,6 +88,17 @@ def _default_launch_values():
         "last_result_max_candidates": "24",
         "use_cargo_map": "false",
         "require_confirmed_map": "false",
+        # [Volume evidence backend, 2026-11-10] explicit selection for
+        # the sim planner: "" keeps the historical topic-surface path
+        # (the sim's pre-default-change behavior; NOTE the PRODUCT
+        # default is "observer" — the sim passes this through so the
+        # observer default cannot silently break a sim without an
+        # observer node), "grid_g" = this sim's own cargo map (run
+        # with use_cargo_map:=true), "observer" = the observer stack.
+        "volume_evidence_source": "",
+        # Acceptance-frozen full-ray budget (run09-run16): the node's
+        # 2000 default subsamples large fans and thins observed support.
+        "cargo_map_max_raycast_points": "20000",
         "use_packing": "false",
         "use_vacuum": "false",
         "use_motion": "false",
@@ -1215,6 +1226,8 @@ def _launch_setup(context):
                 "base_frame": "container_link",
                 "cloud_buffer_size": 12,
                 "freshness_window_sec": 0.20,
+                "max_raycast_points": int(
+                    float(cfg["cargo_map_max_raycast_points"])),
                 "require_confirmed_map": _as_bool(
                     cfg["require_confirmed_map"]),
                 **frame_params,
@@ -1243,6 +1256,19 @@ def _launch_setup(context):
                     "structural_search", "false")),
                 "structural_budget_s": float(
                     cfg.get("structural_budget_s", "20.0")),
+                # [Volume evidence backend, 2026-11-10] explicit
+                # passthrough + validity wiring derived from the same
+                # selection (grid_g -> /cargo_map/*, observer -> the
+                # node's observer_o defaults) — interface-consistent
+                # with active_loading.launch. "" keeps the historical
+                # topic path AND the node's default validity wiring.
+                "volume_evidence_source": str(
+                    cfg.get("volume_evidence_source", "") or ""),
+                **({"validity_backend": "grid_g",
+                    "validity_topic": "/cargo_map/validity",
+                    "validity_status_service": "/cargo_map/get_validity"}
+                   if str(cfg.get("volume_evidence_source", "") or "")
+                   == "grid_g" else {}),
                 **frame_params,
             }, atlas_params],
             condition=IfCondition(_bool_text(cfg["use_packing"])),
