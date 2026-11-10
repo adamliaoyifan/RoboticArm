@@ -1,0 +1,22 @@
+luggage_msgs/CargoMapQueryRequestV2 query
+---
+luggage_msgs/CargoMapQueryMetaV2 meta
+bool occupancy_confirmed
+string index_status
+uint64 total_voxels
+uint64 inactive_count
+uint64 unknown_count
+uint64 free_count
+uint64 occupied_count
+uint64 frontier_count
+float64 unknown_ratio
+float64 occupancy_ratio
+float64 occupied_volume
+float64 free_volume
+int64[] semantic_labels
+uint64[] semantic_counts
+uint64 placed_count
+int64 acquisition_stamp_ns
+string map_source
+bool cargo_observed
+string change_event

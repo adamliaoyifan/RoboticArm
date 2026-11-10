@@ -8,7 +8,7 @@ Environment: run with the worktree's message library first on
 LD_LIBRARY_PATH (the V2 srv typesupport postdates the shared
 workspace install):
 
-  LD_LIBRARY_PATH=<repo>/install/swf/luggage_msgs/lib:$LD_LIBRARY_PATH \
+  LD_LIBRARY_PATH=<repo>/install/luggage_msgs/lib:$LD_LIBRARY_PATH \
   pytest src/luggage_perception/test/test_summary_wire_handover_chain.py
 """
 
@@ -21,7 +21,7 @@ import sys
 _HERE = os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))))
 _REPO = os.path.normpath(_HERE)
-for _rel in ('install/swf/luggage_msgs/local/lib/python3.10/dist-packages',
+for _rel in ('install/luggage_msgs/local/lib/python3.10/dist-packages',
              'src/luggage_description',
              'src/luggage_perception'):
     _path = os.path.join(_REPO, _rel)
@@ -44,7 +44,7 @@ def test_handover_single_real_chain_fixed_install(tmp_path):
     head, the named v1 rejection, the forced-FULL anchored recovery,
     the typed comparison again after recovery, and head identity ==
     writer's latest on-disk manifest."""
-    install = os.path.join(_REPO, 'install', 'swf')
+    install = os.path.join(_REPO, 'install')
     out = str(tmp_path / 'handover_chain')
     verdict = CHAIN.run_chain(
         install, out, source_repo=_REPO,

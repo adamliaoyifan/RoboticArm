@@ -1,0 +1,14 @@
+# Dense state-plane export (unlock ruling 2026-11-10): one uint8 per
+# cell instead of per-cell typed messages — the full 1 cm grid reads
+# as ~66 pages of 64 KiB instead of ~1060 pages whose per-cell
+# CargoMapCellV2 construction costs ~28 us/cell. States are the
+# CargoMapCellV2 enum verbatim: 0 unknown, 1 free, 2 occupied. Layout:
+# x-fastest row-major over the FULL grid shape (meta.grid):
+# idx = ix + sx*(iy + sy*iz). Paged by CELL count along that order
+# (limit 0 -> 65536 cells/page, max 262144); region queries are not
+# part of this contract yet (INVALID_FILTER). Tokens, cursors and
+# release semantics are the CargoMapQueryRequestV2 contract verbatim.
+luggage_msgs/CargoMapQueryRequestV2 query
+---
+luggage_msgs/CargoMapQueryMetaV2 meta
+uint8[] states

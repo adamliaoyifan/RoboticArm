@@ -1,0 +1,13 @@
+{
+  "after": true,
+  "_before_last": true,
+  "changed_fields": [
+    "_grid",
+    "_source",
+    "_sensor_seen",
+    "_sensor_values",
+    "logodds"
+  ],
+  "synthetic_case": true,
+  "capture_complete": true
+}

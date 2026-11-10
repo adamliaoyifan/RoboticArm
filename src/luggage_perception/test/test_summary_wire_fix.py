@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.join(
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__))))),
-    'install', 'swf', 'luggage_msgs', 'local', 'lib', 'python3.10',
+    'install', 'luggage_msgs', 'local', 'lib', 'python3.10',
     'dist-packages'))
 
 import numpy as np
@@ -938,7 +938,7 @@ def test_typed_summary_independent_reader_process(tmp_path):
     here = os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
     repo = os.path.normpath(here)
-    install = os.path.normpath(os.path.join(repo, 'install', 'swf'))
+    install = os.path.normpath(os.path.join(repo, 'install'))
     install_pkg = os.path.join(
         install, 'luggage_perception', 'local', 'lib', 'python3.10',
         'dist-packages', 'luggage_perception')
@@ -967,10 +967,17 @@ def test_typed_summary_independent_reader_process(tmp_path):
             env=env, cwd=install,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True)
-        assert_reader_version_locked(
-            wait_for_file(lock_path), install_pkg, source_pkg)
+        rclpy_live = False
         try:
+            # EVERY failure after spawn must reach the finally below:
+            # a leaked reader keeps serving /cargo_map/get_summary_v2
+            # in the default ROS domain on a deleted root and poisons
+            # every later run with REPLICA_NO_HEAD (observed 2026-11-10:
+            # a pre-try version-lock failure left five readers alive)
+            assert_reader_version_locked(
+                wait_for_file(lock_path), install_pkg, source_pkg)
             rclpy.init()
+            rclpy_live = True
             node = rclpy.create_node('swf_typed_client_proc')
             client = node.create_client(
                 GetCargoMapSummaryV2, '/cargo_map/get_summary_v2')
@@ -1024,6 +1031,7 @@ def test_typed_summary_independent_reader_process(tmp_path):
                 proc.wait(10)
             except subprocess.TimeoutExpired:
                 proc.kill()
-            rclpy.shutdown()
+            if rclpy_live:
+                rclpy.shutdown()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

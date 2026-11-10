@@ -1,0 +1,122 @@
+{
+  "scored": false,
+  "profile": "empty-map ROS wiring rehearsal",
+  "domain": 183,
+  "resolution": 0.01,
+  "source_modules": {
+    "luggage_perception": "/tmp/occ-query-g2-install/luggage_perception/local/lib/python3.10/dist-packages/luggage_perception/__init__.py",
+    "luggage_description": "/tmp/occ-query-g2-install/luggage_description/local/lib/python3.10/dist-packages/luggage_description/__init__.py",
+    "luggage_msgs": "/tmp/occ-query-g2-install/luggage_msgs/local/lib/python3.10/dist-packages/luggage_msgs/__init__.py",
+    "st09_contracts": "/tmp/occ-query-g2-install/st09_contracts/local/lib/python3.10/dist-packages/st09_contracts/__init__.py"
+  },
+  "node_path": "/tmp/occ-query-g2-install/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py",
+  "node_sha256": "7ae7a415e26580274c3209885f9792bdfcd09ee68935ab6bb4ffe23c0223bc22",
+  "scene_sha256": "2521035e87d9ddb84eda0bdae46d4592abc5af4aba067ac233e3990c292bedb9",
+  "created_clients": [
+    "/cargo_map/get_stats",
+    "/cargo_map/get_summary_v2",
+    "/cargo_map/query_cells_v2",
+    "/cargo_map/query_distance_v2",
+    "/cargo_map/get_surface_patch_v2"
+  ],
+  "created_nodes": [
+    "cargo_volume_mapper",
+    "occ_query_g2_read_rehearsal"
+  ],
+  "samples": [
+    {
+      "service": "/cargo_map/get_stats",
+      "iteration": 0,
+      "elapsed_ns": 927851,
+      "status": "OK"
+    },
+    {
+      "service": "/cargo_map/get_stats",
+      "iteration": 1,
+      "elapsed_ns": 678397,
+      "status": "OK"
+    },
+    {
+      "service": "/cargo_map/get_stats",
+      "iteration": 2,
+      "elapsed_ns": 475954,
+      "status": "OK"
+    },
+    {
+      "service": "/cargo_map/get_summary_v2",
+      "iteration": 0,
+      "elapsed_ns": 801281,
+      "status": "OK"
+    },
+    {
+      "service": "/cargo_map/get_summary_v2",
+      "iteration": 1,
+      "elapsed_ns": 626990,
+      "status": "OK"
+    },
+    {
+      "service": "/cargo_map/get_summary_v2",
+      "iteration": 2,
+      "elapsed_ns": 598907,
+      "status": "OK"
+    },
+    {
+      "service": "/cargo_map/query_cells_v2",
+      "iteration": 0,
+      "elapsed_ns": 1671091,
+      "status": "OK"
+    },
+    {
+      "service": "/cargo_map/query_cells_v2",
+      "iteration": 1,
+      "elapsed_ns": 1080230,
+      "status": "OK"
+    },
+    {
+      "service": "/cargo_map/query_cells_v2",
+      "iteration": 2,
+      "elapsed_ns": 984077,
+      "status": "OK"
+    },
+    {
+      "service": "/cargo_map/query_distance_v2",
+      "iteration": 0,
+      "elapsed_ns": 1451485,
+      "status": "OK"
+    },
+    {
+      "service": "/cargo_map/query_distance_v2",
+      "iteration": 1,
+      "elapsed_ns": 1147999,
+      "status": "OK"
+    },
+    {
+      "service": "/cargo_map/query_distance_v2",
+      "iteration": 2,
+      "elapsed_ns": 1230365,
+      "status": "OK"
+    },
+    {
+      "service": "/cargo_map/get_surface_patch_v2",
+      "iteration": 0,
+      "elapsed_ns": 37272009,
+      "status": "OK"
+    },
+    {
+      "service": "/cargo_map/get_surface_patch_v2",
+      "iteration": 1,
+      "elapsed_ns": 36423359,
+      "status": "OK"
+    },
+    {
+      "service": "/cargo_map/get_surface_patch_v2",
+      "iteration": 2,
+      "elapsed_ns": 35218281,
+      "status": "OK"
+    }
+  ],
+  "started_ns": 1792905351072117368,
+  "outcome": "rehearsal_complete",
+  "ended_ns": 1792905352462502897,
+  "rss_peak_kib": 721616
+}

@@ -1,0 +1,30 @@
+{
+  "captured_at": "2026-10-25T12:54:20.594190+08:00",
+  "parent_revision": "ae9281f0f6b731085d4cd765eeeb204e55a342d8",
+  "phase": "non-scored regression, mapper construction",
+  "observed": "ValueError: chamfer.wall_y must be inside the positive-y wall",
+  "inputs": {
+    "inner_size": [
+      0.4,
+      0.4,
+      0.4
+    ],
+    "hull_length": 0.2,
+    "hull_width": 0.2,
+    "floor_z": 0.0,
+    "ceiling_z": 0.4,
+    "chamfer": {
+      "side": "positive_y",
+      "floor_y": 0.1,
+      "wall_y": 0.2,
+      "wall_z": 0.1
+    }
+  },
+  "primary_state_created": false,
+  "capture_complete": true,
+  "replay_possible": true,
+  "raw_logs": [
+    "../../chamfer_failure.log",
+    "../../regression.log"
+  ]
+}

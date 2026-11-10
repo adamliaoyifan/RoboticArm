@@ -1,0 +1,12 @@
+string request_id
+string status
+string reason
+luggage_msgs/CargoMapQueryIdentityV2 identity
+luggage_msgs/CargoMapQueryGridV2 grid
+string snapshot_token
+bool complete
+string next_cursor
+uint64 returned_count
+uint64 examined_cells
+uint64 examined_blocks
+uint64 elapsed_ns

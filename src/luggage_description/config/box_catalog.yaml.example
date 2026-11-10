@@ -43,7 +43,11 @@ mass_model:
 
 box_catalog:
   - id: inch20
-    model: suitcase_loafbrr
+    # yaw180 campaign row normalized to 50% sampling weight (feedf5f5).
+    # model MUST name the sized mesh tier (suitcase_visual.INCH_SIZE_TIERS)
+    # or the spawner's mesh observable GT gate rejects the size; weight 0.50
+    # makes it the dominant sampled entry (sequence rows stay weight 0).
+    model: suitcase_loafbrr_inch20
     visual: suitcase_loafbrr
     size: [0.350, 0.530, 0.220]
     weight: 0.50
@@ -56,17 +60,6 @@ box_catalog:
     weight: 0.175
     mass_kg: 8.0
     allowed_yaws: [0.0, 1.5708]
-  - id: inch20
-    # 2026-10-12 yaw180 campaign sequence. model MUST name the sized mesh
-    # tier (suitcase_visual.INCH_SIZE_TIERS) or the spawner's mesh
-    # observable GT gate rejects the size.
-    model: suitcase_loafbrr_inch20
-    visual: suitcase_loafbrr
-    size: [0.35, 0.53, 0.22]
-    weight: 0.0
-    mass_kg: 5.67
-    allowed_yaws: [0.0, 1.5708]
-    yaw_mode: discrete
   - id: inch28
     # 28 in. checked case. Standing H = round(28*2.54)+2 cm; lying spawn
     # (W, H, D) continues the inch20-26 1 cm series. Web band: SafariBags

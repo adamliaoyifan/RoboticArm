@@ -56,6 +56,7 @@ def test_typed_summary_and_only_read_services_are_registered():
     s, node, service = boundary()
     assert {r[1] for r in node.services} == {
         '/cargo_map/get_summary_v2', '/cargo_map/query_cells_v2',
+        '/cargo_map/query_cells_dense_v2',
         '/cargo_map/query_distance_v2', '/cargo_map/get_surface_patch_v2'}
     before = s.identity
     response = invoke(service.summary, srv.GetCargoMapSummaryV2, request(srv.GetCargoMapSummaryV2))
@@ -232,4 +233,96 @@ def test_full_surface_flattening_and_bounded_patch_are_typed():
     assert len(result.patches) == 1
     assert (result.patches[0].ix, result.patches[0].iy) == (1, 2)
     assert result.patches[0].semantic_label == 7
+    assert not node.errors
+
+
+# --- dense state-plane export (unlock ruling 2026-11-10) ---------------------
+
+def _typed_plane(service):
+    """Full-grid states via the typed path: {flat_index: state}."""
+    req = request(srv.QueryCargoCellsV2, release=False)
+    req.query.limit = 4096
+    resp = invoke(service.cells, srv.QueryCargoCellsV2, req)
+    typed = {}
+    while True:
+        assert resp.meta.status == 'OK', resp.meta.reason
+        for cell in resp.cells:
+            typed[cell.flat_index] = cell.state
+        if resp.meta.complete:
+            return typed
+        req.query.use_current = False
+        req.query.snapshot_token = resp.meta.snapshot_token
+        req.query.expected_identity = resp.meta.identity
+        req.query.cursor = resp.meta.next_cursor
+        resp = invoke(service.cells, srv.QueryCargoCellsV2, req)
+
+
+def test_dense_plane_matches_typed_cells_exactly():
+    s, node, service = boundary()
+    s.mapper.mark_occupied_voxel(4, 4, 4)
+    s.mapper.mark_occupied_voxel(1, 2, 3)
+    publish(s)
+    typed = _typed_plane(service)
+    # dense read through REAL serialization, paged small so the cursor
+    # path is exercised, then reassembled
+    req = request(srv.QueryCargoCellsDenseV2, release=False)
+    req.query.limit = 500
+    resp = invoke(service.dense, srv.QueryCargoCellsDenseV2, req)
+    plane = bytearray()
+    pages = 0
+    while True:
+        assert resp.meta.status == 'OK', resp.meta.reason
+        plane += resp.states
+        pages += 1
+        if resp.meta.complete:
+            break
+        req.query.use_current = False
+        req.query.snapshot_token = resp.meta.snapshot_token
+        req.query.expected_identity = resp.meta.identity
+        req.query.cursor = resp.meta.next_cursor
+        resp = invoke(service.dense, srv.QueryCargoCellsDenseV2, req)
+    shape = resp.meta.grid.shape
+    volume = int(shape[0]) * int(shape[1]) * int(shape[2])
+    assert len(plane) == volume and pages > 1
+    expected = bytearray(volume)          # UNKNOWN = 0 default fill
+    for flat, state in typed.items():
+        expected[flat] = state
+    assert bytes(plane) == bytes(expected), (
+        'dense plane diverges from the typed cells at %d indices'
+        % sum(1 for i in range(volume) if plane[i] != expected[i]))
+    assert not node.errors
+
+
+def test_dense_contract_errors_and_release_semantics():
+    s, node, service = boundary()
+    req = request(srv.QueryCargoCellsDenseV2)
+    req.query.has_region = True
+    out = invoke(service.dense, srv.QueryCargoCellsDenseV2, req)
+    assert out.meta.reason == 'INVALID_FILTER'
+    req.query.has_region = False
+    req.query.limit = 0                    # 0 selects the 65536 default
+    out = invoke(service.dense, srv.QueryCargoCellsDenseV2, req)
+    shape = out.meta.grid.shape
+    assert out.meta.status == 'OK' and out.meta.complete
+    assert len(out.states) == int(shape[0]) * int(shape[1]) * int(shape[2])
+    # paged resume: tampered cursor named, good cursor continues,
+    # release_after_query retires the token (no lifetime renewal)
+    req = request(srv.QueryCargoCellsDenseV2, release=False)
+    req.query.limit = 100
+    page1 = invoke(service.dense, srv.QueryCargoCellsDenseV2, req)
+    assert page1.meta.status == 'OK' and not page1.meta.complete
+    assert len(page1.states) == 100
+    req.query.use_current = False
+    req.query.snapshot_token = page1.meta.snapshot_token
+    req.query.expected_identity = page1.meta.identity
+    good = page1.meta.next_cursor
+    req.query.cursor = 'tampered'
+    bad = invoke(service.dense, srv.QueryCargoCellsDenseV2, req)
+    assert bad.meta.reason == 'INVALID_CURSOR'
+    req.query.cursor = good
+    req.query.release_after_query = True
+    page2 = invoke(service.dense, srv.QueryCargoCellsDenseV2, req)
+    assert page2.meta.status == 'OK' and len(page2.states) == 100
+    again = invoke(service.dense, srv.QueryCargoCellsDenseV2, req)
+    assert again.meta.status == 'SNAPSHOT_EXPIRED' and len(again.states) == 0
     assert not node.errors

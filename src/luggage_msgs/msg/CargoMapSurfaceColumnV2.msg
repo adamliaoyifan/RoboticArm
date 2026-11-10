@@ -1,0 +1,20 @@
+uint8 UNKNOWN=0
+uint8 FREE=1
+uint8 OCCUPIED=2
+uint8 CONFIDENCE_NONE=0
+uint8 CONFIDENCE_SENSOR=1
+uint8 CONFIDENCE_GEOMETRY=2
+uint32 ix
+uint32 iy
+float64 height
+float64 clearance
+uint8 state
+float64 known_ratio
+uint8 confidence
+int64 semantic_label
+bool has_surface_z
+float64 surface_z_container
+bool has_height_above_floor
+float64 height_above_floor
+# 0 unknown, 1 sensor, 2 verified_geometry.
+uint8 contract_confidence

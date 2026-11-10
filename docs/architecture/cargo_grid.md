@@ -69,3 +69,61 @@ active-mask checks. Closed-face/terminal-band depth rules remain unchanged.
 `preprocess_counts` and `preprocess_timings` are returned in Store details.
 Reading a revision must use `map_revision`; calling full `stats()` also scans
 frontiers and is not appropriate in the hot integration path.
+
+OCC query indexes are derived state owned by OccupancyMapStore. Mapper mutation
+boundaries only record first-old/final-new evidence; primary buffers, fusion,
+ray ordering, shadow restoration, commits and revisions retain their semantics.
+The store applies net deltas before publication. Published status_bundle pairs
+the immutable map snapshot with counts/frontier membership of that exact identity.
+Hot summary reads visit zero voxels and never acquire the update transaction lock.
+The b33dda91 vectorized frontier count remains the unindexed mapper fallback;
+legacy enumeration retains ix/iy/iz order. Scalar enumeration is retained as an
+offline oracle. Index failure preserves the primary fact and publishes
+QUERY_INDEX_UNAVAILABLE; an explicit reset can rebuild the derived state.
+
+Read-only block queries (index schema 1)
+---------------------------------------
+
+`store.acquire_query_snapshot(expected_identity=None)` opens a five-second
+monotonic-wall-time handle to the current published bundle. Expected identity
+may be the existing three legs, or all five `(epoch, revision, content_digest,
+voxel_digest, index_schema_version)`; CURRENT/None selects the current bundle.
+Only two query generations are retained. An old handle expires explicitly when
+its epoch/generation is retired, its token expires, or it is closed. Query handle
+lifecycle uses a short registry lock independent of the write transaction lock.
+The registry publishes its data and the paired legacy snapshot/summary together.
+
+Python errors are `QueryError` with a stable `reason`; successful results are
+frozen DTOs with identity, layout, completeness, work counts and elapsed time.
+`summary`, `get_cell`, `query_cells`, `query_frontiers`, `count_frontiers`, and
+`query_instance` never reference the mutable mapper. Regions are finite
+container_link AABBs, half-open, selecting active cells by strictly positive
+volume intersection. Pages default to 1024, cap at 4096, and sort by flat index.
+Cursors bind query parameters and full identity using an HMAC; retrying the same
+cursor returns the same page while its generation remains pinned. Incomplete
+pages carry a cursor; empty successful complete pages mean no match.
+
+Sensor instance keys require an explicit `legacy:<epoch>` namespace because the
+existing observation protocol supplies no reliable producer session. Geometry
+instance membership uses only a real box_id supplied on an actually added
+commit, retaining overlapping memberships independently. Missing or ambiguous
+identity returns INSTANCE_BINDING_MISSING; ledger positions never become box IDs.
+Removed known box IDs remain queryable as empty for that epoch. No binding is
+written back into the old ledger or shadow. Reset invalidates prior-epoch keys.
+
+The index owner keeps canonical evidence blocks for incremental hashes. Published
+query generations hold compact immutable cell records, block counts, and reverse
+membership indexes, sharing unchanged blocks. Canonical evidence includes live
+log-odds, locks and sensor shadow without migrating their primary storage. The
+new voxel digest also binds publication provenance omitted by the old digest,
+so a pinned handle cannot silently switch acquisition/confirmation metadata.
+The legacy content_digest remains unchanged. Arrays exposed from index blocks
+are backed by immutable bytes. Registry sessions are bounded to 128 and retained
+index/history data to a conservatively charged 512MiB. Resource refusal rejects
+new query sessions and preserves already admitted old results; physical facts
+still commit, and an explicit reset rebuilds failed current derived indexes.
+RSS and retained-size estimates must still be measured in acceptance workloads.
+
+The existing legacy known_ratio row exports have a mutable-row alias. New query
+generations detach and tuple-freeze those rows in their metadata record; they do
+not inherit that legacy alias or change existing public read values/types.

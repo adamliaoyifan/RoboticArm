@@ -62,6 +62,7 @@ class MapQueryService:
                 (srv.GetCargoMapSummaryV2, '/cargo_map/get_summary_v2', self.summary),
                 (srv.QueryCargoCellsV2, '/cargo_map/query_cells_v2', self.cells),
                 (srv.QueryCargoDistanceV2, '/cargo_map/query_distance_v2', self.distance),
+                (srv.QueryCargoCellsDenseV2, '/cargo_map/query_cells_dense_v2', self.dense),
                 (srv.GetCargoSurfacePatchV2, '/cargo_map/get_surface_patch_v2', self.surface)))
 
     def _open(self, query):
@@ -260,6 +261,22 @@ class MapQueryService:
             cell.flat_index, cell.state, cell.source = source.flat_index, source.state, source.source
             cell.semantic_label, cell.sensor_instance_id = source.label, source.instance_id
             cell.geometry_membership = list(source.geometry_membership)
+
+    def dense(self, request, response):
+        return self._execute(request, response, self._dense)
+
+    def _dense(self, request, response, snapshot):
+        """Dense plane page: uint8 states over the full grid, no
+        per-cell message construction. ``limit`` counts CELLS here
+        (0 selects the 65536 default; the typed path's 4096 cap does
+        not apply — MAX_DENSE_PAGE bounds the response bytes)."""
+        query = request.query
+        if query.has_region:
+            raise QueryError('INVALID_FILTER')
+        result = snapshot.query_dense(
+            QueryPage(query.limit or 65536, query.cursor))
+        response.states = result.states
+        return result
 
     def distance(self, request, response):
         return self._execute(request, response, self._distance)

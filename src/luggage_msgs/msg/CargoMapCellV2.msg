@@ -1,0 +1,13 @@
+uint8 UNKNOWN=0
+uint8 FREE=1
+uint8 OCCUPIED=2
+uint8 SOURCE_NONE=0
+uint8 SOURCE_SENSOR=1
+uint8 SOURCE_GEOMETRY=2
+uint32[3] index
+uint64 flat_index
+uint8 state
+uint8 source
+int64 semantic_label
+int64 sensor_instance_id
+string[] geometry_membership
