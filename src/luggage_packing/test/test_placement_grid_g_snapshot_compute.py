@@ -104,20 +104,21 @@ def _patch():
         contract_confidence=[1] * count, patches=[])
 
 
-def _page(cells, *, complete=True, next_cursor="", identity=None,
-          status="OK"):
+def _dense_page(states, *, complete=True, next_cursor="",
+                identity=None, status="OK"):
+    """One dense-plane page: raw state bytes over the 3x2x2 grid."""
     return types.SimpleNamespace(
         meta=_meta(
             status=status, complete=complete, next_cursor=next_cursor,
             identity=identity or _identity(), snapshot_token="tok-1"),
-        cells=[
-            types.SimpleNamespace(index=list(index), state=state)
-            for index, state in cells],
-        count=len(cells))
+        states=bytes(states))
 
 
-def _cell(ix, iy, iz):
-    return ((ix, iy, iz), 1)   # FREE
+def _plane_bytes(free_indices=()):
+    plane = bytearray(NX * NY * NZ)
+    for index in free_indices:
+        plane[index] = 1        # FREE
+    return bytes(plane)
 
 
 def make_stub(module, patch, cells_pages, cells_mode=True):
@@ -135,10 +136,10 @@ def make_stub(module, patch, cells_pages, cells_mode=True):
         _grid_g_clients={
             "get_surface_patch_v2": _ScriptedClient("/cargo_map/get_surface_patch_v2",
                                              [patch]),
-            "query_cells_v2": _ScriptedClient(
-                "/cargo_map/query_cells_v2",
+            "query_cells_dense_v2": _ScriptedClient(
+                "/cargo_map/query_cells_dense_v2",
                 list(cells_pages) + [types.SimpleNamespace(
-                    meta=_meta(), cells=[], count=0)])},
+                    meta=_meta(), states=b"\x00")])},
         get_parameter=lambda name: types.SimpleNamespace(
             value={"volume_evidence_source": "grid_g",
                    "volume_service_timeout_s": 2.0,
@@ -169,10 +170,12 @@ def _candidate():
 
 def test_healthy_snapshot_builds_same_revision_surface_and_verifier():
     module = load_node_module()
+    plane = bytearray(_plane_bytes())
+    for index in (1, 4, 6, 11):
+        plane[index] = 1
     pages = [
-        _page([_cell(1, 0, 0), _cell(1, 1, 0)],
-              complete=False, next_cursor="c2"),
-        _page([_cell(0, 0, 1), _cell(2, 1, 1)], complete=True),
+        _dense_page(bytes(plane[:7]), complete=False, next_cursor="c2"),
+        _dense_page(bytes(plane[7:]), complete=True),
     ]
     stub = make_stub(module, _patch(), pages)
     surface, verifier = stub._grid_g_snapshot_compute()
@@ -181,21 +184,27 @@ def test_healthy_snapshot_builds_same_revision_surface_and_verifier():
     assert surface["height"] == [[0.2, 0.2], [0.2, 0.2], [0.2, 0.2]]
     # the queried box volume is observed FREE on the same snapshot
     assert verifier(_candidate()) is None
-    # every cell page carried the full pinned identity
-    cells_client = stub._grid_g_clients["query_cells_v2"]
-    for request in cells_client.requests:
+    # every resume page carried the full pinned identity; the FIRST
+    # page is a use_current acquire (no token by contract)
+    dense = stub._grid_g_clients["query_cells_dense_v2"]
+    assert dense.requests[0].query.use_current is True
+    assert dense.requests[0].query.snapshot_token == ""
+    for request in dense.requests[1:]:
         assert request.query.snapshot_token == "tok-1"
+        assert request.query.use_current is False
         assert request.query.expected_identity.epoch == EPOCH
         assert request.query.expected_identity.revision == REVISION
-    # the last scripted call is the explicit release
-    assert cells_client.requests[-1].query.release_after_query is True
+    # the last scripted call is the explicit one-byte release
+    assert dense.requests[-1].query.release_after_query is True
+    assert dense.requests[-1].query.limit == 1
 
 
 def test_absent_cells_default_unknown_and_fail_the_volume_gate():
     module = load_node_module()
     # no cell pages at all: the snapshot exists but the volume is
     # unobserved -> the verifier must fail closed, never pass.
-    stub = make_stub(module, _patch(), [_page([], complete=True)])
+    stub = make_stub(module, _patch(),
+                     [_dense_page(_plane_bytes(), complete=True)])
     _surface, verifier = stub._grid_g_snapshot_compute()
     reason = verifier(_candidate())
     assert reason and "volume_unknown" in reason, reason
@@ -203,7 +212,8 @@ def test_absent_cells_default_unknown_and_fail_the_volume_gate():
 
 def test_epoch_mismatch_fails_closed():
     module = load_node_module()
-    stub = make_stub(module, _patch(), [_page([], complete=True)])
+    stub = make_stub(module, _patch(),
+                     [_dense_page(_plane_bytes(), complete=True)])
     patch = stub._grid_g_clients["get_surface_patch_v2"]._responses[0]
     patch.meta.identity = _identity(epoch="ep-other")
     try:
@@ -216,7 +226,8 @@ def test_epoch_mismatch_fails_closed():
 
 def test_foreign_hull_is_rejected_with_geometry_attribution():
     module = load_node_module()
-    stub = make_stub(module, _patch(), [_page([], complete=True)])
+    stub = make_stub(module, _patch(),
+                     [_dense_page(_plane_bytes(), complete=True)])
     patch = stub._grid_g_clients["get_surface_patch_v2"]._responses[0]
     patch.meta.grid.geometry_hash = "hull-of-another-container"
     try:
@@ -229,30 +240,33 @@ def test_foreign_hull_is_rejected_with_geometry_attribution():
 
 def test_page_identity_drift_inside_one_snapshot_fails_closed():
     module = load_node_module()
+    plane = _plane_bytes((1,))
     pages = [
-        _page([_cell(1, 0, 0)], complete=False, next_cursor="c2"),
-        _page([_cell(1, 1, 0)], complete=True,
-              identity=_identity(revision=REVISION + 1)),
+        _dense_page(plane[:6], complete=False, next_cursor="c2"),
+        _dense_page(plane[6:], complete=True,
+                    identity=_identity(revision=REVISION + 1)),
     ]
     stub = make_stub(module, _patch(), pages)
     try:
         stub._grid_g_snapshot_compute()
     except RuntimeError as error:
-        assert "identity drift" in str(error), error
+        assert "identity" in str(error), error
     else:
         raise AssertionError("drifted page admitted")
 
 
-def test_cell_outside_planner_grid_fails_closed():
+def test_short_dense_plane_fails_closed():
     module = load_node_module()
-    stub = make_stub(
-        module, _patch(), [_page([((99, 1, 1), 1)])])
+    # a complete plane that is SHORT of nx*ny*nz must never be padded
+    # silently into evidence
+    stub = make_stub(module, _patch(),
+                     [_dense_page(b"\x00" * 5, complete=True)])
     try:
         stub._grid_g_snapshot_compute()
     except RuntimeError as error:
-        assert "outside planner grid" in str(error), error
+        assert "dense plane short" in str(error), error
     else:
-        raise AssertionError("out-of-grid cell admitted")
+        raise AssertionError("short plane admitted")
 
 
 def test_default_mode_is_snapshot_surface_without_cells():
@@ -268,12 +282,13 @@ def test_default_mode_is_snapshot_surface_without_cells():
     patch_client = stub._grid_g_clients["get_surface_patch_v2"]
     assert patch_client.requests[0].query.release_after_query is True
     # no cells calls at all were made
-    assert stub._grid_g_clients["query_cells_v2"].requests == []
+    assert stub._grid_g_clients["query_cells_dense_v2"].requests == []
 
 
 def test_compute_inputs_dispatches_grid_g_and_names_failures():
     module = load_node_module()
-    stub = make_stub(module, _patch(), [_page([], complete=True)])
+    stub = make_stub(module, _patch(),
+                     [_dense_page(_plane_bytes(), complete=True)])
     # dispatch: _compute_inputs routes grid_g to the snapshot compute
     surface, verifier = stub._compute_inputs()
     assert surface["map_revision"] == REVISION
@@ -296,6 +311,6 @@ if __name__ == "__main__":
     test_epoch_mismatch_fails_closed()
     test_foreign_hull_is_rejected_with_geometry_attribution()
     test_page_identity_drift_inside_one_snapshot_fails_closed()
-    test_cell_outside_planner_grid_fails_closed()
+    test_short_dense_plane_fails_closed()
     test_compute_inputs_dispatches_grid_g_and_names_failures()
     print("grid_g snapshot compute checks passed")

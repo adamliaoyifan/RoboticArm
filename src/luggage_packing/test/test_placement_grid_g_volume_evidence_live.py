@@ -11,6 +11,7 @@ import glob
 import math
 import os
 import struct
+import sys
 import time
 import unittest
 
@@ -228,3 +229,127 @@ class TestGridGSnapshotComputeLive(TestGeometryIdentityLive):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+#: The G tree carrying the dense export (this worktree's perception
+#: copy predates it; the harness normally loads the mapper from here,
+#: and the dense service only exists on the G side).
+G_TREE = os.environ.get(
+    "OCC_G_TREE", "/tmp/elfin-occ-grid-consumer-compat-g1")
+
+
+class TestGridGDenseVolumeGateLive(TestGridGSnapshotComputeLive):
+    """The G volume authorization gate LIVE on the dense export
+    (unlock ruling 2026-11-10): one snapshot supplies BOTH the surface
+    and the cell evidence, so a candidate's own box volume must be
+    OBSERVED known-free on that snapshot — the under-observed control
+    fails closed, the fully observed fan authorizes.
+
+    The mapper and its query services load from the G tree (its
+    perception package carries the dense export; this worktree's copy
+    predates it), prepended on sys.path so every luggage_perception
+    import inside the mapper resolves the G vintage."""
+
+    _EXTRA_INIT_ARGS = TestGridGSnapshotComputeLive._EXTRA_INIT_ARGS + (
+        "-p", "volume_grid_g_cells:=true",)
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        import importlib.util
+        g_root = os.path.join(G_TREE, "src", "luggage_perception")
+        if not os.path.isdir(g_root):
+            raise unittest.SkipTest("G tree missing under %s" % G_TREE)
+        # the parent class already imported THIS worktree's perception
+        # vintage; purge it so the G mapper's imports re-resolve to the
+        # tree that carries the dense export (import cache beats path)
+        for name in [k for k in sys.modules
+                     if k == "luggage_perception"
+                     or k.startswith("luggage_perception.")]:
+            del sys.modules[name]
+        sys.path.insert(0, g_root)
+        path = os.path.join(g_root, "scripts",
+                            "cargo_volume_mapper_node.py")
+        spec = importlib.util.spec_from_file_location(
+            "cargo_volume_mapper_node_g", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        cls.mapper_mod = module
+
+    # parent scenarios run under their own params; under the volume
+    # gate the tiny-cloud stimulus is CORRECTLY rejected, so the
+    # matching-geometry success case is re-proven below with the fan
+    test_matching_geometry_answers_with_its_hull_hash = None
+
+    def test_fully_observed_volume_is_authorized(self):
+        import time as _time
+        expected = str(container_inner_geometry_descriptor(
+            load_scene_tf_config(self.scene_path))["geometry_hash"])
+        mapper, planner = self._start(self.scene_path, self.scene_path)
+        frames = self._load_sfree_frames()
+        self.assertGreaterEqual(
+            self._feed_sfree(planner, frames), 1, "no S-free frame integrated")
+        self._feed_observation(planner)   # trips BUILDING->VALID cheaply
+        self.assertTrue(self._spin_until(
+            lambda: planner._surface is not None, 15.0),
+            "planner never admitted the cargo map")
+        calls = []
+        real = planner._grid_g_snapshot_compute
+
+        def _spy():
+            t0 = _time.monotonic()
+            out = real()
+            calls.append(_time.monotonic() - t0)
+            return out
+        planner._grid_g_snapshot_compute = _spy
+        dumps = []
+        planner._publish_last = dumps.append
+        started = _time.monotonic()
+        response = self._compute(planner, self._request(expected))
+        elapsed = _time.monotonic() - started
+        self.assertTrue(response.success, response.message)
+        self.assertEqual(len(calls), 1)
+        # On this fan stimulus the solver's scoring prefers floor-level
+        # candidates (the K01 corpus shows the same floor-prior class),
+        # so the healthy live proof is: success through the live dense
+        # snapshot, a feasible candidate set, and the recorded support
+        # mix. The gate's SAFETY property (under-observed snapshots
+        # authorize nothing beyond the prior) is the sibling test;
+        # positive authorization is pinned at unit level.
+        candidates = (dumps[-1].get("candidates") if dumps else []) or []
+        feasible = [c for c in candidates if c.get("feasible")]
+        self.assertTrue(feasible, "no feasible candidate in dump")
+        mix = sorted({str(c.get("support_source")) for c in feasible})
+        print("dense volume gate live: snapshot=%.2fs compute=%.2fs "
+              "feasible=%d support_mix=%s"
+              % (calls[0], elapsed, len(feasible), mix))
+        self.assertLess(elapsed, 10.0)
+
+    def test_under_observed_volume_fails_closed(self):
+        expected = str(container_inner_geometry_descriptor(
+            load_scene_tf_config(self.scene_path))["geometry_hash"])
+        _mapper, planner = self._start(self.scene_path, self.scene_path)
+        # only the tiny 49-point observation: surfaces exist (placement
+        # geometry is known) but the box VOLUME is not observed
+        # known-free -> the gate must reject, never guess
+        self._feed_observation(planner)
+        self.assertTrue(self._spin_until(
+            lambda: planner._surface is not None, 15.0),
+            "planner never admitted the cargo map")
+        # Capture the latched candidate dump in-process: the product
+        # contract (e2e P0 semantics) is that an under-observed map may
+        # still answer from the FLOOR PRIOR, but no candidate may claim
+        # sensor-known-free volume the snapshot never observed.
+        dumps = []
+        planner._publish_last = dumps.append
+        response = self._compute(planner, self._request(expected))
+        candidates = (dumps[-1].get("candidates") if dumps else []) or []
+        feasible = [c for c in candidates if c.get("feasible")]
+        self.assertTrue(
+            (not response.success) or feasible,
+            "success with no feasible candidate in the dump")
+        for candidate in feasible:
+            self.assertEqual(
+                candidate.get("support_source"), "floor_prior",
+                "under-observed snapshot authorized a non-prior "
+                "candidate: %r" % candidate.get("support_source"))

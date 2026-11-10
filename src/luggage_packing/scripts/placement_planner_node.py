@@ -968,10 +968,11 @@ class PlacementPlannerNode(Node):
         if self._grid_g_clients is None:
             prefix = str(
                 self.get_parameter("volume_grid_g_prefix").value)
+            from luggage_msgs.srv import QueryCargoCellsDenseV2
             self._grid_g_clients = {
                 name: self.create_client(srv, "%s/%s" % (prefix, name))
                 for name, srv in (
-                    ("query_cells_v2", QueryCargoCellsV2),
+                    ("query_cells_dense_v2", QueryCargoCellsDenseV2),
                     ("get_surface_patch_v2", GetCargoSurfacePatchV2))}
 
         timeout_s = float(
@@ -987,7 +988,17 @@ class PlacementPlannerNode(Node):
                 _time.sleep(0.02)
             return future.result()
 
-        for client in self._grid_g_clients.values():
+        cells_mode = bool(
+            self.get_parameter("volume_grid_g_cells").value)
+        # only the clients the CONFIGURED mode needs must be present:
+        # surface-only deployments run against mappers predating the
+        # dense export (their typed cells path cannot serve a full-grid
+        # read anyway) — requiring the dense service there would break
+        # the surface-only mode that needs nothing beyond the patch.
+        needed = ("get_surface_patch_v2",) if not cells_mode else (
+            "get_surface_patch_v2", "query_cells_dense_v2")
+        for name in needed:
+            client = self._grid_g_clients[name]
             if not client.wait_for_service(timeout_sec=timeout_s):
                 raise RuntimeError(
                     "service missing: %s" % client.srv_name)
@@ -1001,8 +1012,6 @@ class PlacementPlannerNode(Node):
             _time.monotonic_ns(),)
         request.query.frame_id = "container_link"
         request.query.use_current = True
-        cells_mode = bool(
-            self.get_parameter("volume_grid_g_cells").value)
         request.query.release_after_query = not cells_mode
         patch = call(self._grid_g_clients["get_surface_patch_v2"], request)
         meta = patch.meta
@@ -1107,10 +1116,14 @@ class PlacementPlannerNode(Node):
                 % (snapshot_epoch, int(ident.revision), nx, ny))
             return view, None
 
-        # 3) page the SAME snapshot's cells (token + full expected
-        #    identity on every call). The evidence grid is anchored on
-        #    the snapshot's OWN grid origin, so cell z and the verifier's
-        #    container-z candidates stay in one frame by construction.
+        # 3) pull the SAME snapshot's DENSE state plane (dense export,
+        #    unlock ruling 2026-11-10): one uint8 per cell, x-fastest —
+        #    byte-for-byte the evidence layout. The typed per-cell path
+        #    (~28 us/cell) could not serve a 4.3M-cell 1 cm read inside
+        #    the service's five-second token window; the dense plane is
+        #    ~66 pages of 64 KiB. Anchored on the snapshot's OWN grid
+        #    origin, so cell z and the verifier's container-z candidates
+        #    stay in one frame by construction.
         resolution = float(meta.grid.resolution)
         grid_shape = [int(v) for v in meta.grid.shape]
         if grid_shape[0] != nx or grid_shape[1] != ny:
@@ -1130,66 +1143,67 @@ class PlacementPlannerNode(Node):
                                   "voxel_digest", "index_schema_version")}
 
         expected = _identity_fields(ident)
-        states = [0] * (nx * ny * nz)   # UNKNOWN until observed otherwise
+        from luggage_msgs.srv import QueryCargoCellsDenseV2
+        states = bytearray()          # x-fastest plane bytes accumulate here
         cursor, pages = "", 0
         try:
             while True:
-                request = QueryCargoCellsV2.Request()
-                request.mode = QueryCargoCellsV2.Request.CELLS
-                request.query.request_id = "planner-cells-%d" % (
+                request = QueryCargoCellsDenseV2.Request()
+                request.query.request_id = "planner-dense-%d" % (
                     _time.monotonic_ns(),)
                 request.query.frame_id = "container_link"
-                request.query.use_current = False
-                request.query.snapshot_token = token
+                request.query.use_current = pages == 0
+                request.query.snapshot_token = "" if pages == 0 else token
                 request.query.cursor = cursor
-                request.query.limit = 4096
-                for field in ("epoch", "revision", "content_digest",
-                              "voxel_digest", "index_schema_version"):
-                    setattr(request.query.expected_identity, field,
-                            getattr(ident, field))
-                page = call(self._grid_g_clients["query_cells_v2"], request)
+                request.query.limit = 65536
+                if pages:
+                    for field in ("epoch", "revision", "content_digest",
+                                  "voxel_digest", "index_schema_version"):
+                        setattr(request.query.expected_identity, field,
+                                getattr(ident, field))
+                page = call(
+                    self._grid_g_clients["query_cells_dense_v2"], request)
                 pages += 1
                 if str(page.meta.status) != "OK":
-                    raise RuntimeError("query_cells %s (%s)"
+                    raise RuntimeError("query_cells_dense %s (%s)"
                                        % (page.meta.status,
                                           page.meta.reason))
                 if _identity_fields(page.meta.identity) != expected:
                     raise RuntimeError(
-                        "query_cells identity drift inside one snapshot")
-                for cell in page.cells:
-                    ix, iy, iz = (int(cell.index[0]), int(cell.index[1]),
-                                  int(cell.index[2]))
-                    if not (0 <= ix < nx and 0 <= iy < ny
-                            and 0 <= iz < nz):
-                        raise RuntimeError(
-                            "cell index %s outside planner grid"
-                            % list(cell.index))
-                    states[ix + nx * (iy + ny * iz)] = int(cell.state)
+                        "dense plane identity != the surface snapshot")
+                states += page.states
                 if bool(page.meta.complete) or not str(
                         page.meta.next_cursor):
                     break
                 cursor = str(page.meta.next_cursor)
-                if pages > 512:
-                    raise RuntimeError("query_cells paging did not finish")
+                if pages > 128:
+                    raise RuntimeError(
+                        "query_cells_dense paging did not finish")
         finally:
-            # Best-effort explicit release (a single-cell lookup with
+            # Best-effort explicit release (a one-byte page with
             # release_after_query): if this call is lost the server
             # expires the token within its five-second window anyway.
-            release = QueryCargoCellsV2.Request()
-            release.mode = QueryCargoCellsV2.Request.CELL
+            release = QueryCargoCellsDenseV2.Request()
             release.query.request_id = "planner-release-%d" % (
                 _time.monotonic_ns(),)
             release.query.frame_id = "container_link"
             release.query.use_current = False
             release.query.snapshot_token = token
             release.query.release_after_query = True
-            release.cell_index = [0, 0, 0]
+            release.query.limit = 1
             for field in ("epoch", "revision", "content_digest",
                           "voxel_digest", "index_schema_version"):
                 setattr(release.query.expected_identity, field,
                         getattr(ident, field))
-            self._grid_g_clients["query_cells_v2"].call_async(release)
+            self._grid_g_clients["query_cells_dense_v2"].call_async(release)
 
+        if len(states) < nx * ny * nz:
+            raise RuntimeError(
+                "dense plane short: %d of %d cells"
+                % (len(states), nx * ny * nz))
+        # iz is the SLOWEST axis of the x-fastest plane, so the first
+        # nx*ny*nz bytes are exactly the planner's nz layers.
+        states = bytes(states[:nx * ny * nz])
         identity = {
             "geometry_hash": str(meta.grid.geometry_hash),
             "map_revision": int(ident.revision),
@@ -1205,8 +1219,9 @@ class PlacementPlannerNode(Node):
             raise RuntimeError(
                 "cells evidence: %s" % evidence["error"])
         self.get_logger().info(
-            "grid_g snapshot epoch=%s rev=%d -> surface %dx%d, %d cell "
-            "pages" % (ident.epoch, int(ident.revision), nx, ny, pages))
+            "grid_g snapshot epoch=%s rev=%d -> surface %dx%d, %d dense "
+            "pages (%d bytes)" % (ident.epoch, int(ident.revision),
+                                  nx, ny, pages, len(states)))
         return view, make_volume_verifier(evidence)
 
     def _evidence_unavailable_code(self):
