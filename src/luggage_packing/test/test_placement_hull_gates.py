@@ -837,7 +837,10 @@ class TestH3NodeAdapterLive(unittest.TestCase):
         from rclpy.executors import SingleThreadedExecutor
 
         self.rclpy = rclpy
-        rclpy.init()
+        # the topic-map v1 handler is the subject under test; the
+        # product default became "observer" (user ruling 2026-11-10)
+        rclpy.init(args=[
+            "--ros-args", "-p", 'volume_evidence_source:=""'])
         self.executor = SingleThreadedExecutor()
         self.nodes = []
         self.addCleanup(self._shutdown)

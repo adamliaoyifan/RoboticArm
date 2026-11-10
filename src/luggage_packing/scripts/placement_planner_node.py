@@ -314,14 +314,15 @@ class PlacementPlannerNode(Node):
         self._robot_max_age_ns = int(max(0, int(
             self.get_parameter("robot_state_max_age_ms").value)) * 1_000_000)
         # [Volume authorization + single-lease compute, user ruling
-        # 2026-11-08] volume_evidence_source "" (default) keeps the
-        # legacy topic-surface path with no volume gate. "observer" =
-        # SINGLE-LEASE compute: every request pulls BOTH the surface AND
-        # the volume evidence from ONE fresh observer lease (the latest
-        # map) — plan and verify against the same revision by
-        # construction; the two-reader identity-drift class is
-        # structurally impossible and there is no mixed mode.
-        self.declare_parameter("volume_evidence_source", "")
+        # 2026-11-08; DEFAULT=observer, user ruling 2026-11-10]
+        # volume_evidence_source "observer" (default): SINGLE-LEASE
+        # compute — every request pulls BOTH the surface AND the volume
+        # evidence from ONE fresh observer lease (the latest map), so
+        # plan and verify run against the same revision by construction;
+        # the two-reader identity-drift class is structurally impossible
+        # and there is no mixed mode. "" keeps the legacy topic-surface
+        # path with no volume gate (explicit opt-out only).
+        self.declare_parameter("volume_evidence_source", "observer")
         self.declare_parameter("volume_observer_prefix",
                                "/uld_occ_observer")
         self.declare_parameter("volume_max_age_ms", 1000)
@@ -751,13 +752,13 @@ class PlacementPlannerNode(Node):
     def _compute_inputs(self):
         """(surface, volume_verifier) for one compute request.
 
-        volume_evidence_source "" (default): the admitted topic surface,
-        no volume gate (legacy path). "observer": SINGLE-LEASE compute
-        (user ruling 2026-11-08 — no mixed two-reader mode): one fresh
-        observer lease supplies BOTH the surface (ReadSurface ->
-        conservative bridge mapping over this planner's own hull) and
-        the volume evidence (paged ReadCells), so the solver plans and
-        the verifier verifies against the same revision by construction
+        volume_evidence_source "observer" (default, user ruling
+        2026-11-10): SINGLE-LEASE compute (user ruling 2026-11-08 — no
+        mixed two-reader mode): one fresh observer lease supplies BOTH
+        the surface (ReadSurface -> conservative bridge mapping over
+        this planner's own hull) and the volume evidence (paged
+        ReadCells), so the solver plans and the verifier verifies
+        against the same revision by construction
         and every compute takes the observer's latest map. Failures
         raise; the caller fails the request closed — never a silent
         fallback to the topic surface."""

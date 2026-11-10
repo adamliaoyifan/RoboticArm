@@ -83,6 +83,10 @@ class TestGeometryIdentityLive(unittest.TestCase):
             "--ros-args", "-p", "validity_backend:=grid_g",
             "-p", "validity_topic:=/cargo_map/validity",
             "-p", "validity_status_service:=/cargo_map/get_validity",
+            # the topic cargo-map path is the subject under test here —
+            # the product default became "observer" (user ruling
+            # 2026-11-10), so opt back into the legacy path explicitly
+            "-p", 'volume_evidence_source:=""',
             "-p", "frame_scene_revision:=gil-test-scene",
             # no reachability atlas in the unit env: identity would
             # hard-reject before the geometry assertions (same as e2e)
