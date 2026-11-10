@@ -206,6 +206,12 @@ def verify_candidate(candidate, *, surface, box_size, hull,
     if any(v <= 0 for v in size):
         result["legs"]["decode"] = "non-positive box size"
         return result
+    # [FRAME MAP] z0/z1 below are CONTAINER-frame absolute z. The hull
+    # datum convention HERE: floor_z_container = inner floor elevation
+    # in container_link (scene inner.floor_z = 0.53); hull.inner_size[2]
+    # is read as the container-ABSOLUTE ceiling (2.01) — NOT the
+    # interior height. The planner/solver use inner_size[2] = height
+    # (1.48): never mix the two (AGENTS.md "ULD frames").
     floor_container = float(hull.get("floor_z_container", 0.53))
     ceiling_z = float(hull.get("inner_size", (0, 0, 1.48))[2])
     z0 = center[2] - size[2] / 2.0
@@ -527,12 +533,15 @@ def placed_clearance_leg(payload):
         container_inner_dimensions, container_inner_floor_z,
         load_scene_tf_config)
     scene = load_scene_tf_config(scene_path)
-    # The container does not change: the frozen scene config IS the
-    # default hull datum (user ruling 2026-11-09) — floor and inner
-    # height (ceiling - floor) derive from the SAME source the planner
-    # builds its hull from. Never trust payload hull.inner_size[2] as a
-    # height: v3 payloads carried the ABSOLUTE ceiling (2.01) there,
-    # not the inner height (1.48).
+    # [FRAME MAP] all z in this leg is FLOOR-RELATIVE container z (0 at
+    # the inner floor), matching the solver's candidate frame exactly:
+    # placed records arrive as elfin_base_link poses, convert through
+    # the frozen scene into container_link, then z - floor_z. The
+    # container does not change: the frozen scene config IS the default
+    # hull datum (user ruling 2026-11-09) — floor and inner height
+    # (ceiling - floor) derive from the SAME source the planner builds
+    # its hull from. Never trust payload hull.inner_size[2] as a height:
+    # v3 payloads carried the ABSOLUTE ceiling (2.01) there.
     floor_z = float(container_inner_floor_z(scene))
     _dims = container_inner_dimensions(scene)
     inner_h = float(_dims[2]) - floor_z

@@ -519,6 +519,12 @@ class PlacementPlannerNode(Node):
     # Scene-derived bounds
 
     def _inner_dimensions(self):
+        """[FRAME MAP] inner_size[2] is the interior HEIGHT
+        (ceiling_z - floor_z = 1.48), and every z in the solver chain is
+        FLOOR-RELATIVE container z (0 at the inner floor). This is a
+        DIFFERENT convention from the oracle pair, whose
+        hull.inner_size[2] is read as the container-ABSOLUTE ceiling
+        (2.01) — see v1_states._k01_hull and AGENTS.md "ULD frames"."""
         inner = container_inner_dimensions(self._scene)
         floor_z = container_inner_floor_z(self._scene)
         ceiling_z = container_inner_ceiling_z(self._scene)
@@ -1811,7 +1817,14 @@ class PlacementPlannerNode(Node):
     # Feasibility gates (G2 + corridor)
 
     def _placed_aabbs(self, placed_slots):
-        """Floor-relative container AABBs from elfin_base_link SlotSpecs."""
+        """Floor-relative container AABBs from elfin_base_link SlotSpecs.
+
+        [FRAME MAP] input poses are elfin_base_link (the v1 wire
+        contract); each converts through the FROZEN scene transform into
+        container_link, then z becomes floor-relative (container z -
+        scene inner floor 0.53). Output AABBs are exactly the frame the
+        solver compares candidates in."""
+        
         aabbs = []
         inner_h = self._inner_size[2]
         for slot in placed_slots or []:

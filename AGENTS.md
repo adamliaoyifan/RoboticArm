@@ -139,3 +139,30 @@ criteria needed for its unit; never use a full-history fork by default.
 
 If you produce a decision, code change, plan, or eval, write a role note.
 Skip ack-only turns. Test evidence stays under `docs/status/evidence/`.
+
+
+## ULD interior frames and height consumers (frozen map, 2026-11-10)
+
+Frozen scene values (deployment geometry, `scene_tf` config): inner
+`floor_z=0.53`, `ceiling_z=2.01`, `1.49 x 1.97` — so the interior HEIGHT
+is `ceiling - floor = 1.48`. `container_link` origin sits at the
+container's OUTER datum, NOT the inner floor; in `elfin_base_link` the
+container carries translation `[0, -1.5, -0.86]` and yaw `-90 deg`
+(world = base on top of that). `0.53` is container-frame ONLY.
+
+| Consumer | Frame | Height semantics | Range |
+|---|---|---|---|
+| solver `candidate_aabb` / constraint chain | container, FLOOR-relative | z=0 at inner floor | [0, 1.48] |
+| planner `_inner_dimensions` / `_placed_aabbs` output | container, floor-relative | inner_size[2] = HEIGHT 1.48 | [0, 1.48] |
+| planner `_placed_aabbs` INPUT (v1 wire) | elfin_base_link poses | converts via frozen scene | — |
+| v1 `surface_map_2d` (topic / bridge / view) | container, floor-relative (height arrays) | z=0 at inner floor | [0, 1.48] |
+| v2 surface contract `surface_z_container` | container, ABSOLUTE | floor .. ceiling | [0.53, 2.01] |
+| G `query_cells_v2` grid.origin | container, ABSOLUTE | cell iz spans [origin.z+iz*r, ...) | [0.53, 2.01] |
+| oracle `verify_candidate` hull | container, ABSOLUTE | `hull.inner_size[2]` read as ABSOLUTE ceiling | [0.53, 2.01] |
+| oracle `placed_clearance_leg` | container, floor-relative | scene-derived floor/height | [0, 1.48] |
+| K01 oracle payload hull (`_k01_hull`) | feeds the ORACLE convention | inner_size[2] = ABSOLUTE ceiling 2.01 | [0.53, 2.01] |
+
+The two `inner_size[2]` conventions (planner=height 1.48 vs oracle=
+absolute ceiling 2.01) are a NAMED trap: mixing them silently shifts the
+ceiling by `floor_z` (0.53 m). Any new consumer must state its frame
+here before reading a height datum.

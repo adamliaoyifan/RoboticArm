@@ -130,6 +130,22 @@ def run_r02(ctx):
                   healthy))
 
 
+def _placed_fields(response):
+    """[placed-leg data, user ruling 2026-11-10] the inspectable placed
+    trio on every V2-chain placement row: the selected-candidate marker
+    (candidates[0] on success, the node contract) and the deployed
+    same-layer policy. ``placed_records`` rides along the moment a race
+    request carries a placed copy — today's race requests carry none
+    (reset/race semantics do not need it), recorded by absence."""
+    from luggage_packing.placement_solver import SAME_LAYER_CLEARANCE_M
+    candidates = list(getattr(response, "candidates", None) or [])
+    selected = ""
+    if getattr(response, "success", False) and candidates:
+        selected = str(getattr(candidates[0], "candidate_id", "") or "")
+    return {"selected_candidate_id": selected,
+            "same_layer_clearance_m": float(SAME_LAYER_CLEARANCE_M)}
+
+
 def _placement_probe(ctx, case, link_override=None):
     """Healthy-recovery control: wait for the CURRENT identity to be
     admitted, stream a fresh robot sample, then a placement must pass.
@@ -169,7 +185,8 @@ def _placement_probe(ctx, case, link_override=None):
             epoch=str((ctx.client.validity_record() or {}).get(
                 "epoch", "")),
             reason=str(getattr(response, "reason_code", "")),
-            message=str(getattr(response, "message", ""))[:120])
+            message=str(getattr(response, "message", ""))[:120],
+            **_placed_fields(response))
         if ok:
             break
         time.sleep(1.5)
@@ -386,7 +403,8 @@ def run_r05(ctx, service="v1", case="R05"):
         event_kind="placement_request", stage="consumer", state="REPLIED",
         **budget_fields(_r05_start, request_link=_r05_link),
         reason=str(getattr(response, "reason_code", "")),
-        message=message[:120])
+        message=message[:120],
+        **_placed_fields(response))
     # Healthy control: a fresh request in the recovered state succeeds.
     time.sleep(0.3)
     healthy = _placement_probe(ctx, case)
@@ -935,7 +953,8 @@ def run_r03(ctx, case="R03"):
         **budget_fields(_r03_stale_start,
                         request_link=_r03_stale_link),
         reason=str(getattr(stale, "reason_code", "")),
-        message=str(getattr(stale, "message", "") or "")[:120])
+        message=str(getattr(stale, "message", "") or "")[:120],
+        **_placed_fields(stale))
     _leg("old-revision-request-refused",
          not getattr(stale, "success", False),
          "reason=%s" % getattr(stale, "reason_code", ""))
