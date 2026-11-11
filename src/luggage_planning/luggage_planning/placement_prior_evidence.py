@@ -32,3 +32,4 @@ class PriorEvidenceRecorder:
                     monotonic_ns=monotonic_ns, wall_time_ns=wall_time_ns,
                     type=type(message).__module__+'.'+type(message).__name__,
                     bytes=len(data)))+'\n')
+        return data

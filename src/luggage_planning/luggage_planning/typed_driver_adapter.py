@@ -482,7 +482,9 @@ class TypedDriverAdapter:
                                 "v2 service", "unavailable")
         recorder = getattr(self, '_boundary_recorder', None)
         if recorder is not None:
-            recorder(client.srv_name + ':request', request)
+            recorded = recorder(client.srv_name + ':request', request)
+            if client is getattr(self, "_select", None):
+                self._capture_select_replay_scene(request.request_id, recorded)
         future = client.call_async(request)
         import time as _time
         deadline = _time.monotonic() + float(timeout_sec)
@@ -495,6 +497,35 @@ class TypedDriverAdapter:
         if recorder is not None:
             recorder(client.srv_name + ':response', response)
         return response
+
+    def _capture_select_replay_scene(self, request_id, recorded):
+        import os
+
+        directory = os.environ.get("ELFIN_SELECT_REPLAY_DIR")
+        if not directory:
+            return
+        from pathlib import Path
+        if (Path(directory) / "identity.json").is_file():
+            return
+        from moveit_msgs.msg import PlanningSceneComponents
+        from luggage_planning.planning_scene_client import PlanningSceneClient
+        from luggage_planning.select_replay_capture import capture_select_scene
+
+        if not hasattr(self, "_select_capture_scene_client"):
+            self._select_capture_scene_client = PlanningSceneClient(self.node)
+        parts = (
+            PlanningSceneComponents.SCENE_SETTINGS
+            | PlanningSceneComponents.ROBOT_STATE
+            | PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS
+            | PlanningSceneComponents.WORLD_OBJECT_NAMES
+            | PlanningSceneComponents.WORLD_OBJECT_GEOMETRY
+            | PlanningSceneComponents.OCTOMAP
+            | PlanningSceneComponents.TRANSFORMS
+            | PlanningSceneComponents.ALLOWED_COLLISION_MATRIX
+            | PlanningSceneComponents.LINK_PADDING_AND_SCALING)
+        capture_select_scene(
+            directory, request_id, recorded,
+            lambda: self._select_capture_scene_client.get_scene(parts, timeout=5.0))
 
     def set_boundary_recorder(self, recorder):
         """Opt-in exact service capture before caller remapping or mutation."""

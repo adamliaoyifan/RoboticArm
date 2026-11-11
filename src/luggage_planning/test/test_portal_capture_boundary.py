@@ -284,3 +284,43 @@ def test_capture_write_failure_is_recorded_not_raised(tmp_path):
     MoveItEdgeAdapter._keep_portal_failure(
         host, _Node([0.0] * 6), goal, -27, _scene(), _constraints(goal.q))
     assert host._portal_capture_errors  # incomplete evidence is visible
+
+
+def test_joint_rejection_records_retime_and_interpolation_separately(monkeypatch):
+    from collections import defaultdict
+    from types import SimpleNamespace
+    from moveit_msgs.action import MoveGroup
+    from trajectory_msgs.msg import JointTrajectoryPoint
+    from luggage_planning.grid_path_search import RoutePlanningError
+    from luggage_planning.moveit_edge_adapter import EdgeClass
+
+    monkeypatch.delenv("ST09_PORTAL_CAPTURE_DIR", raising=False)
+    response = MoveGroup.Result()
+    response.error_code.val = 1
+    response.planned_trajectory.joint_trajectory.points = [JointTrajectoryPoint()]
+    events = []
+
+    def retime(_trajectory, *, densify):
+        assert densify
+        events.append("retime")
+        return object()
+
+    def refuse(*_args):
+        events.append("check")
+        raise RoutePlanningError("EDGE_BUILD_FAILED", {"kind": "interpolated_collision"})
+
+    host = SimpleNamespace(
+        _move_group_type=MoveGroup, _group="elfin", _planner_id="RRTConnect",
+        _allowed_planning_time=1., _num_planning_attempts=1,
+        _call_counts=defaultdict(int), _call_durations=defaultdict(list),
+        _stage_timings=defaultdict(list), _request_dumps=[],
+        _send_action_goal=lambda _goal: response, _retime=retime,
+        _refuse_interpolated_collision=refuse,
+    )
+    q = _Node([0.] * 6)
+    with pytest.raises(RoutePlanningError):
+        MoveItEdgeAdapter._plan_joint(host, q, q, EdgeClass.PORTAL_TRANSIT)
+    assert events == ["retime", "check"]
+    timings = host._stage_timings
+    assert timings["retime_and_interpolation"][0] == pytest.approx(
+        timings["joint_retime"][0] + timings["joint_interpolation_gate"][0])

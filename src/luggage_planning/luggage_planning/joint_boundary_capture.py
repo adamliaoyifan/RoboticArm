@@ -3,6 +3,10 @@
 import hashlib
 import json
 from pathlib import Path
+import time
+
+
+MAX_BOUNDARY_BYTES = 100 * 1024**2
 
 
 def capture_boundary(directory, index, scene, goal, result):
@@ -26,13 +30,17 @@ def _capture(directory, index, prefix, records):
     folder.mkdir(parents=True, exist_ok=False)
     manifest = {"when": "scene queried before action; result before retiming",
                 "scope": "planning-scene query snapshot, not server-internal acknowledgement",
-                "artifacts": {}, "capture_complete": all(v is not None for v in records.values())}
-    for name, message in records.items():
-        if message is None:
-            continue
-        data = serialize_message(message)
+                "written_monotonic_ns": time.monotonic_ns(), "artifacts": {},
+                "missing": [name for name, value in records.items() if value is None]}
+    payload = {name: serialize_message(message) for name, message in records.items()
+               if message is not None}
+    if sum(map(len, payload.values())) > MAX_BOUNDARY_BYTES:
+        manifest["missing"].append("capture_budget_exhausted")
+        payload.clear()
+    for name, data in payload.items():
         (folder / (name + ".cdr")).write_bytes(data)
         manifest["artifacts"][name] = {"sha256": hashlib.sha256(data).hexdigest(),
                                        "bytes": len(data)}
+    manifest["capture_complete"] = not manifest["missing"]
     (folder / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     return True

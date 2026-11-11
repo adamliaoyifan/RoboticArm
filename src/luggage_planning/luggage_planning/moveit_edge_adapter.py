@@ -419,7 +419,8 @@ class MoveItEdgeAdapter(object):
         # server timings are in the action result's planning_time.
         self._stage_timings: Dict[str, List[float]] = {
             "scene_apply": [], "move_group": [],
-            "retime_and_interpolation": [], "cartesian": []}
+            "retime_and_interpolation": [], "joint_retime": [],
+            "joint_interpolation_gate": [], "cartesian": []}
         self._call_durations: Dict[str, List[float]] = {
             "move_group": [], "cartesian": [], "scene_apply": []}
         self._request_dumps: List[dict] = []
@@ -982,8 +983,12 @@ class MoveItEdgeAdapter(object):
             constraints.joint_constraints.append(joint)
         goal.request.goal_constraints.append(constraints)
         submission_scene = None
-        if klass == EdgeClass.PORTAL_TRANSIT and os.environ.get(
-                "ST09_PORTAL_CAPTURE_DIR"):
+        capture_index = getattr(self, "_carrying_capture_index", 0)
+        capture_dir = os.environ.get("ST09_PORTAL_CAPTURE_DIR")
+        capture_joint = (capture_dir and klass == EdgeClass.PORTAL_TRANSIT
+                         and capture_index < 4 and str(from_node.load_state) == "carrying")
+        if capture_joint:
+            self._carrying_capture_index = capture_index + 1
             submission_scene = self._portal_submission_scene()
         self._call_counts["move_group"] += 1
         began = time.monotonic()
@@ -1002,12 +1007,9 @@ class MoveItEdgeAdapter(object):
             "server_planning_time_s": (
                 float(getattr(result, "planning_time", 0.0) or 0.0)
                 if result else None)})  # [G1]
-        if submission_scene is not None and str(from_node.load_state) == "carrying":
+        if capture_joint:
             from luggage_planning.joint_boundary_capture import capture_boundary
-            capture_index = getattr(self, "_carrying_capture_index", 0)
-            if capture_boundary(os.environ.get("ST09_PORTAL_CAPTURE_DIR"),
-                                capture_index, submission_scene, goal, result):
-                self._carrying_capture_index = capture_index + 1
+            capture_boundary(capture_dir, capture_index, submission_scene, goal, result)
         trajectory = getattr(result, "planned_trajectory", None) if result \
             else None
         joint_trajectory = getattr(trajectory, "joint_trajectory", None) \
@@ -1034,10 +1036,17 @@ class MoveItEdgeAdapter(object):
                 "kind": "moveit_error",
                 "error_code": code})
         _rt_began = time.monotonic()
-        timed = self._retime(joint_trajectory, densify=True)
-        self._refuse_interpolated_collision(from_node, to_node, klass, timed)
-        self._stage_timings["retime_and_interpolation"].append(
-            round(time.monotonic() - _rt_began, 6))  # [G1]
+        try:
+            timed = self._retime(joint_trajectory, densify=True)
+        finally:
+            _rt_ended = time.monotonic()
+            self._stage_timings["joint_retime"].append(_rt_ended - _rt_began)
+        try:
+            self._refuse_interpolated_collision(from_node, to_node, klass, timed)
+        finally:
+            ended = time.monotonic()
+            self._stage_timings["joint_interpolation_gate"].append(ended - _rt_ended)
+            self._stage_timings["retime_and_interpolation"].append(ended - _rt_began)
         outcome = EdgeOutcome(
             edge_class=klass.value, planner="joint", ok=True,
             moveit_error_code=int(result.error_code.val), attempts=1)
