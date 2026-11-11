@@ -185,19 +185,39 @@ def round_robin(streams):
         except StopIteration:pass
 
 
+def support_ordered_positions(positions,x,z,rotation,dimensions,patches,config,com_local):
+    """Try stronger measured support first, retaining every lateral position.
+
+    A global row midpoint may straddle an actual gap between cargo. This is a
+    geometry-only search heuristic, not a stability or collision certificate.
+    Final eligible-plan ranking still prioritizes full-arm collision clearance.
+    """
+    if not positions:return ()
+    center=(min(positions)+max(positions))/2
+    def key(y):
+        metrics=measure_support(pose([x,y,z],rotation),dimensions,patches,config,com_local)
+        # Ignore sub-nanometre arithmetic noise when geometries have equal area
+        # or margin; never let it choose an arbitrary edge over an interior.
+        return (-round(metrics.contact_area_ratio,10),-round(metrics.com_margin_m,10),
+                abs(y-center),y)
+    return tuple(sorted(positions,key=key))
+
+
 def generate_actions(assets, snapshot, state, config, emit=None, deadline=None):
     """Interleave orientations, positions, handoffs and grasps before repeats.
 
-    Interior lateral/depth samples and the grasp with greatest tool/support
-    clearance are tried first. No known successful pose or arm result is fed in.
+    Stronger geometric support then interior lateral/depth samples and the grasp
+    with greatest tool/support clearance are tried first. No successful pose or
+    arm result is fed in; gaps are measured from this snapshot.
     Full trajectory validation and final scoring remain separate gates.
     """
     started=time.monotonic();reasons=Counter();witnesses=[];candidates=[]
     deadline=min(started+config.search_budget_s,float('inf') if deadline is None else deadline)
     top=max(p.surface_z_container for p in snapshot.surfaces)
-    patches=[polygon_box(*p.bounds_xy) for p in snapshot.surfaces
-             if abs(p.surface_z_container-top)<=config.contact_tolerance_m]
-    _,ymin,_,ymax=unary_union(patches).bounds
+    surfaces=tuple(p for p in snapshot.surfaces
+                   if abs(p.surface_z_container-top)<=config.contact_tolerance_m)
+    patches=[polygon_box(*p.bounds_xy) for p in surfaces]
+    xmin,ymin,_,ymax=unary_union(patches).bounds
     orientations=[];size=np.array(state.dimensions)
     contact=np.array(assets['contact']['footprint_size_xy_m'])
     edge=assets['contact']['boundary_margin_m']
@@ -215,7 +235,10 @@ def generate_actions(assets, snapshot, state, config, emit=None, deadline=None):
             if high<low or float(np.abs(rt[1,:2])@contact)+2*edge>width:
                 reasons['HANDOFF_WINDOW_EMPTY']+=1;continue
             positions=[]
-            for y in ys:
+            lateral_order=support_ordered_positions(ys,xmin+(low+high)/2-length/2,
+                top+size[2]/2,rz@Rotation.from_euler('x',np.pi).as_matrix(),size,
+                surfaces,config,state.com_local)
+            for y in lateral_order:
                 variants=[]
                 for depth in interior_samples(low,high,config.handoff_step_m):
                     # Greater b leaves more clearance between tool and support;
