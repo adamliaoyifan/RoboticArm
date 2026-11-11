@@ -2,6 +2,7 @@
 // or applies them. Output is untimed geometric evidence, not execution
 // authority.
 #include "luggage_msgs/srv/check_grasp_local_paths.hpp"
+#include "luggage_planning/snapshot_tool_ik.hpp"
 #include <algorithm>
 #include <chrono>
 #include <geometric_shapes/shapes.h>
@@ -298,6 +299,13 @@ int main(int argc, char **argv) {
   node->get_parameter("robot_description", xml);
   node->get_parameter("robot_description_semantic", semantic);
   auto hash = sha(xml + semantic);
+  luggage_planning::SnapshotToolIK snapshot_ik(model, hash);
+  auto ik_service = node->create_service<luggage_planning::SnapshotIKService>(
+      "/joint_operation/refine_snapshot_tool_target",
+      [&](luggage_planning::SnapshotIKService::Request::SharedPtr req,
+          luggage_planning::SnapshotIKService::Response::SharedPtr res) {
+        snapshot_ik.handle(*req, *res);
+      });
   auto service = node->create_service<Service>(
       "/placement_prior/check_local_paths",
       [&](Service::Request::SharedPtr req, Service::Response::SharedPtr res) {

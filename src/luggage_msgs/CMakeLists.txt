@@ -54,6 +54,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/EvaluateDirectedSuctionV2.srv"
   "srv/PrepareJointOperationV2.srv"
   "srv/PlanSnapshotJointPathV2.srv"
+  "srv/RefineSnapshotToolTargetV2.srv"
   "srv/PreparePlacementPriorV2.srv"
   "msg/PlacementPriorChoiceV2.msg"
   "srv/ValidateSelectedRoute.srv"

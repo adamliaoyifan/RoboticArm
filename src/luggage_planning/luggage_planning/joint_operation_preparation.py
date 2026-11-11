@@ -34,19 +34,22 @@ class PreparationInputs:
 
 class JointOperationPreparation:
     def __init__(self, contacts, planner, contact_model, envelope_limits, *,
-                 max_center_checks, clock=time.monotonic):
+                 max_center_checks, atlas=None, atlas_unavailable_reason='ATLAS_UNAVAILABLE_ONLINE_IK',
+                 clock=time.monotonic):
         if type(max_center_checks) is not int or not 1 <= max_center_checks <= 4096:
             raise ValueError('bounded geometric centre checks required')
         self.contacts,self.planner = contacts,planner
         self.model,self.limits = contact_model,envelope_limits
         self.max_center_checks,self.clock = max_center_checks,clock
+        self.atlas = atlas
+        self.atlas_unavailable_reason = atlas_unavailable_reason
 
     def prepare(self, request, response, inputs, *, deadline, revalidate, cancelled=lambda:False):
         from luggage_msgs.msg import JointOperationPlanV2
         began = self.clock()
         response.success,response.reason = False,'SEARCH_INCOMPLETE'
         response.plan = JointOperationPlanV2()
-        trace = [('atlas','ATLAS_UNAVAILABLE_ONLINE_IK')]
+        trace = [('atlas','QUALIFIED_PROPOSALS' if self.atlas else self.atlas_unavailable_reason)]
         def stopped(): return cancelled() or self.clock() >= deadline
         def finish(reason):
             response.reason = reason
@@ -93,8 +96,13 @@ class JointOperationPreparation:
                     if not evidence.complete: continue
                     for rank,contact in enumerate(evidence.contacts):
                         if stopped() or self.clock() >= planning_deadline: return
-                        yield candidate_for_contact(snapshot,domain,contact,placement,self.limits,
+                        candidate = candidate_for_contact(snapshot,domain,contact,placement,self.limits,
                             pickup_object_id=inputs.pickup_object_id,observation_id=request.observation_id,rank=rank)
+                        if self.atlas is not None:
+                            candidate,atlas_trace = self.atlas.augment(candidate,request_id=request.request_id,
+                                deadline=planning_deadline,cancelled=cancelled,clock=self.clock)
+                            trace.extend(atlas_trace)
+                        yield candidate
             if stopped(): return finish('CANCELLED_OR_DEADLINE')
             result = self.planner.prepare(identity,tuple(float(v) for v in request.start_joints),candidates(),
                 budget_s=max(1e-9,deadline-self.clock()),absolute_deadline=deadline,cancelled=cancelled)

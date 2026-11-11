@@ -1,0 +1,22 @@
+# Read-only exact-target IK with full-arm/payload checks on original scene bytes.
+string request_id
+string snapshot_id
+string model_sha256
+string scene_sha256
+uint8[] scene_cdr
+geometry_msgs/Pose world_from_tool
+# Proposal only, canonical six joints, winding retained. No clamping/repair.
+float64[6] seed_joints
+float64 budget_s
+---
+string request_id
+string snapshot_id
+string model_sha256
+string scene_sha256
+bool complete
+bool success
+string reason
+float64[6] joints
+uint32 checked_states
+string diagnostics_json
+float64 elapsed_s

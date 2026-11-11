@@ -31,6 +31,7 @@ install(TARGETS placement_tool_check_node DESTINATION lib/${PROJECT_NAME})
 
 find_package(moveit_ros_planning REQUIRED)
 add_executable(grasp_local_check_node src/grasp_local_check_node.cpp)
+target_include_directories(grasp_local_check_node PRIVATE include)
 ament_target_dependencies(grasp_local_check_node rclcpp moveit_core moveit_ros_planning moveit_msgs geometry_msgs luggage_msgs)
 target_link_libraries(grasp_local_check_node OpenSSL::Crypto)
 target_compile_options(grasp_local_check_node PRIVATE -Wall -Wextra)

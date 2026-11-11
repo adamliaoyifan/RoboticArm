@@ -567,10 +567,25 @@ directed-quality publication remains explicitly enabled by its own deployment
 profile. `evidence_dir`, when supplied, must be a fresh directory; it records
 original boundary CDR with hashes under a 256 MiB per-process bound.
 
-This entry currently reports `ATLAS_UNAVAILABLE_ONLINE_IK`. An old deployment
-NPZ/YAML is not an admitted atlas, and merely starting this service does not
-qualify one. Atlas-guided proposals and production execution consumption remain
-required before claiming the full atlas/operation closed loop is deployed.
+The optional `atlas_npz`, `atlas_yaml`, `atlas_qualification_file` and
+`atlas_scene_tf_config` parameters admit only a reviewed, byte-bound artifact.
+The receipt binds the complete runtime model and scene revision; the loader also
+checks the original builder dependency hashes and current container transform.
+Absent or refused artifacts give an explicit online-IK fallback, with no negative
+reachability verdict. Historical deployment files are not qualified implicitly.
+
+For each admitted candidate, the consumer records settled-contact and actual
+release TCP queries, their metrics, sample poses and original paired branch IDs.
+It refines both paired seeds at their exact targets in the current attached-load
+scene and validates their connection through native MoveIt. At most three
+original branches are considered; atlas work consumes at most its configured
+one-second cap and half the remaining planning time by default. The existing
+certification reserve remains intact. The resulting seed hints retain branch
+provenance in the preparation trace. Actual endpoint paths, start/carry joins and
+whole-chain timed certification remain mandatory. A checked atlas pair edge is
+currently proposal validation, not direct reuse of an operative trajectory.
+Production execution consumption and actual deployment qualification remain
+required before claiming the atlas/operation closed loop is deployed.
 
 ## Initial measured-map prerequisite
 

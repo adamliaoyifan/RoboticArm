@@ -31,6 +31,8 @@ from luggage_planning.joint_operation_connection import NativeSnapshotConnection
 from luggage_planning.joint_operation_contacts import DirectedContactPort
 from luggage_planning.joint_operation_contracts import OPERATION_JOINTS
 from luggage_planning.joint_operation_endpoints import NativeOperationEndpointPort
+from luggage_planning.joint_operation_ik import NativeSnapshotIKPort
+from luggage_planning.joint_operation_atlas import AtlasOperationHints, load_operation_atlas
 from luggage_planning.joint_operation_planner import JointOperationPlanner
 from luggage_planning.joint_operation_preparation import JointOperationPreparation, PreparationInputs
 from luggage_planning.pickup_collision import pickup_collision_aabb
@@ -85,8 +87,25 @@ class JointOperationPrepareNode(Node):
         planner = JointOperationPlanner(endpoints,connections,certifier,velocity_scale=velocity,
             acceleration_scale=acceleration,certification_reserve_s=float(param('certification_reserve_s',5.)),
             max_candidates=8,max_branch_attempts=3,max_branch_attempts_per_candidate=2)
+        atlas,atlas_reason = None,'ATLAS_UNAVAILABLE_ONLINE_IK'
+        atlas_paths = [str(param(name,'')) for name in
+            ('atlas_npz','atlas_yaml','atlas_qualification_file','atlas_scene_tf_config')]
+        if any(atlas_paths):
+            try:
+                if not all(atlas_paths): raise ValueError('all four explicit atlas paths required')
+                reader = load_operation_atlas(*atlas_paths,robot_description=xml,
+                    model_sha256=self.model.model_sha256,scene_revision=self.revision,
+                    world_from_container=self.container)
+                atlas = AtlasOperationHints(reader,NativeSnapshotIKPort(self,self.model,
+                    recorder=recorder('atlas_ik')),connections,scene_revision=self.revision,
+                    model_sha256=self.model.model_sha256,
+                    max_refinement_s=float(param('atlas_refinement_budget_s',1.)),
+                    fallback_time_fraction=float(param('atlas_fallback_time_fraction',.5)))
+            except (OSError,TypeError,ValueError,KeyError) as error:
+                atlas_reason = 'ATLAS_REFUSED_ONLINE_IK:'+type(error).__name__+':'+str(error)
         self.preparation = JointOperationPreparation(contacts,planner,contact_model,self.limits,
-            max_center_checks=int(param('max_center_checks',256)))
+            max_center_checks=int(param('max_center_checks',256)),atlas=atlas,
+            atlas_unavailable_reason=atlas_reason)
         self.scene_client = self.create_client(GetPlanningScene,'/get_planning_scene')
         self.volume_client = self.create_client(GetCargoVolumeV2,'/cargo_map/get_volume_v2')
         self.map_parameters = self.create_client(GetParameters,param('map_parameter_service','/cargo_volume_mapper/get_parameters'))
