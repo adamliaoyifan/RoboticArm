@@ -1,0 +1,12 @@
+{
+  "qualification": {
+    "artifact_sha256": "cc74b9a0bf69fdb65a3ddb882dc094e005f3a0d0f61212a7935f08ce21919de5",
+    "scene_tf_hash": "413055f4740a733fb8ef18867db86adb",
+    "urdf_hash": "530c8d49116814e96f516a1ecf511e28",
+    "geometry_hash": "3460c2f23aa597efe71ad8e66b6b5faf",
+    "payload_hash": "76c68297d76f4daa84ab4ac2bea08a84",
+    "validation_id": "deploy_freeze_01:all_seed_fk_and_native"
+  },
+  "model_sha256": "c84ae5e7b0ff95154c312869f64636ae6444907326a89d9018b6b0fe62c42e99",
+  "scene_revision": "413055f4740a733fb8ef18867db86adb"
+}

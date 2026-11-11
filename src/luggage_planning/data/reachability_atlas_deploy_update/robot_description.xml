@@ -261,47 +261,47 @@
   </joint>
   <ros2_control name="ElfinSystem" type="system">
     <hardware>
-      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+      <plugin>mock_components/GenericSystem</plugin>
     </hardware>
     <joint name="elfin_joint1">
       <command_interface name="position" />
       <state_interface name="position">
-        <param name="initial_value">1.8806</param>
+        <param name="initial_value">0.0</param>
       </state_interface>
       <state_interface name="velocity" />
     </joint>
     <joint name="elfin_joint2">
       <command_interface name="position" />
       <state_interface name="position">
-        <param name="initial_value">-1.7736</param>
+        <param name="initial_value">-0.5</param>
       </state_interface>
       <state_interface name="velocity" />
     </joint>
     <joint name="elfin_joint3">
       <command_interface name="position" />
       <state_interface name="position">
-        <param name="initial_value">-1.0491</param>
+        <param name="initial_value">0.0</param>
       </state_interface>
       <state_interface name="velocity" />
     </joint>
     <joint name="elfin_joint4">
       <command_interface name="position" />
       <state_interface name="position">
-        <param name="initial_value">4.4439</param>
+        <param name="initial_value">0.0</param>
       </state_interface>
       <state_interface name="velocity" />
     </joint>
     <joint name="elfin_joint5">
       <command_interface name="position" />
       <state_interface name="position">
-        <param name="initial_value">1.7721</param>
+        <param name="initial_value">0.0</param>
       </state_interface>
       <state_interface name="velocity" />
     </joint>
     <joint name="elfin_joint6">
       <command_interface name="position" />
       <state_interface name="position">
-        <param name="initial_value">1.8473</param>
+        <param name="initial_value">0.0</param>
       </state_interface>
       <state_interface name="velocity" />
     </joint>
@@ -585,7 +585,6 @@
     <child link="camera_color_optical_frame" />
     <origin rpy="-1.5707963267948966 0 -1.5707963267948966" xyz="0 0 0" />
   </joint>
-  
   <gazebo reference="camera_link">
     <sensor name="d435" type="rgbd_camera">
       <always_on>true</always_on>
@@ -607,12 +606,20 @@
         </clip>
         <lens>
           <intrinsics>
-            <fx>323.1775</fx>
-            <fy>322.8994</fy>
-            <cx>317.7526</cx>
-            <cy>178.0294</cy>
+            <fx>323.4574352118316</fx>
+            <fy>323.4574352118316</fy>
+            <cx>319.5</cx>
+            <cy>179.5</cy>
             <s>0</s>
           </intrinsics>
+          <projection>
+            <p_fx>323.4574352118316</p_fx>
+            <p_fy>323.4574352118316</p_fy>
+            <p_cx>319.5</p_cx>
+            <p_cy>179.5</p_cy>
+            <tx>0</tx>
+            <ty>0</ty>
+          </projection>
         </lens>
         <depth_camera>
           <output>depths</output>
@@ -623,33 +630,5 @@
   <gazebo reference="camera_link">
     <gravity>false</gravity>
     <selfCollide>false</selfCollide>
-  </gazebo>
-  <gazebo reference="elfin_link1">
-    <gravity>false</gravity>
-  </gazebo>
-  <gazebo reference="elfin_link2">
-    <gravity>false</gravity>
-  </gazebo>
-  <gazebo reference="elfin_link3">
-    <gravity>false</gravity>
-  </gazebo>
-  <gazebo reference="elfin_link4">
-    <gravity>false</gravity>
-  </gazebo>
-  <gazebo reference="elfin_link5">
-    <gravity>false</gravity>
-  </gazebo>
-  <gazebo reference="elfin_link6">
-    <gravity>false</gravity>
-  </gazebo>
-  <gazebo reference="elfin_end_link">
-    <gravity>false</gravity>
-  </gazebo>
-  <gazebo>
-    <plugin filename="ign_ros2_control-system" name="ign_ros2_control::IgnitionROS2ControlPlugin">
-      <robot_param>robot_description</robot_param>
-      <robot_param_node>robot_state_publisher</robot_param_node>
-      <parameters>/home/adamliao/work/elfin_humble_ws/install/elfin_control/share/elfin_control/config/elfin_controllers_sim.yaml</parameters>
-    </plugin>
   </gazebo>
 </robot>

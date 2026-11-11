@@ -147,8 +147,13 @@ Frozen scene values (deployment geometry, `scene_tf` config): inner
 `floor_z=0.53`, `ceiling_z=2.01`, `1.49 x 1.97` — so the interior HEIGHT
 is `ceiling - floor = 1.48`. `container_link` origin sits at the
 container's OUTER datum, NOT the inner floor; in `elfin_base_link` the
-container carries translation `[0, -1.5, -0.86]` and yaw `-90 deg`
-(world = base on top of that). `0.53` is container-frame ONLY.
+container in the active `scene_tf_deploy_update.yaml` carries translation
+approximately `[0, -1.059, -0.86]` and yaw `-90 deg` in `elfin_base_link`.
+User reconfirmed the current deploy-update source geometry on 2026-11-11; the
+older `[0, -1.5, -0.86]` entry does not describe this cell. The exact configured
+translation is `[-0.0000116698, -1.0589999999, -0.86]` (rounded RPY constants
+introduce the small X term). World/base transforms must come from the active
+scene; world and base do not coincide in this cell. `0.53` is container-frame ONLY.
 
 | Consumer | Frame | Height semantics | Range |
 |---|---|---|---|
