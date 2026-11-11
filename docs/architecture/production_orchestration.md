@@ -123,6 +123,18 @@ map-write capability. Production adapters still need to implement the required
 owner callbacks and consume its receipts before actual controller submission;
 native fixture/consumer tests do not certify that adoption.
 
+The preparation owner retains a bounded process-local issuance registry only
+after the final complete response has been captured. Its read-only
+`/joint_operation/check_prepared` service decodes the submitted plan against
+the independently retained identity/digest. An arbitrary nonempty certificate
+field is not issuance evidence. Checks do not renew retention. Restart, expiry,
+capacity eviction or a successfully replaced plan makes the old plan fail
+liveness. Failed preparation or response capture cannot issue a plan. The
+default retention is 16 plans / 16 MiB canonical payload / 300 monotonic seconds,
+with explicit node parameters; these are storage limits, not geometric or
+observation thresholds. A liveness success still requires every current-source,
+actual-contact, occupancy and native suffix gate before controller submission.
+
 Failure handling must distinguish pre-pick, carrying, release, verification,
 abort, and recovery boundaries.
 

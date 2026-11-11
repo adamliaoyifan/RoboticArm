@@ -1,0 +1,6 @@
+# Read-only check against the preparation owner's retained issued plan.
+# This does not assert current source/attachment/path validity or execute motion.
+luggage_msgs/JointOperationPlanV2 plan
+---
+bool current
+string reason

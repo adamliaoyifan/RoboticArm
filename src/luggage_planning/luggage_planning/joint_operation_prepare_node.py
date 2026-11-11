@@ -17,7 +17,7 @@ from rcl_interfaces.srv import GetParameters
 from moveit_msgs.msg import PlanningSceneComponents
 from moveit_msgs.srv import GetPlanningScene
 from luggage_msgs.msg import SuctionTopDomainV2, SurfaceContractV2
-from luggage_msgs.srv import GetCargoVolumeV2, PrepareJointOperationV2
+from luggage_msgs.srv import CheckPreparedOperationV2, GetCargoVolumeV2, PrepareJointOperationV2
 
 from luggage_description.frame_diagnostics import BoundaryContext
 from luggage_description.ros_frame_bindings.poses import pose_from_message
@@ -29,7 +29,9 @@ from luggage_planning.attachment_geometry_policy import load_attachment_geometry
 from luggage_planning.joint_operation_certification import EndpointModel, NativeOperationCertificationPort
 from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
 from luggage_planning.joint_operation_contacts import DirectedContactPort
-from luggage_planning.joint_operation_contracts import OPERATION_JOINTS
+from luggage_planning.joint_operation_contracts import OPERATION_JOINTS, OperationIdentity
+from luggage_planning.joint_operation_adapters import operation_plan_from_message
+from luggage_planning.joint_operation_issuance import IssuedOperationRegistry
 from luggage_planning.joint_operation_endpoints import NativeOperationEndpointPort
 from luggage_planning.joint_operation_ik import NativeSnapshotIKPort
 from luggage_planning.joint_operation_atlas import AtlasOperationHints, load_operation_atlas
@@ -72,6 +74,10 @@ class JointOperationPrepareNode(Node):
         self.pickup_id = str(param('pickup_object_id',BOX_OBJECT_ID))
         self.store,self.domain,self.joints = ConfirmedSurfaceStore(),None,None
         self._active,self._state_lock = threading.Lock(),threading.Lock()
+        self.issued = IssuedOperationRegistry(
+            max_plans=param('issued_plan_limit',16),
+            max_bytes=param('issued_plan_byte_limit',16*1024*1024),
+            lifetime_s=param('issued_plan_lifetime_s',300.))
         self._inflight = {}
         self._evidence = str(param('evidence_dir',''))
         self._evidence_seq,self._evidence_bytes = 0,0
@@ -116,6 +122,22 @@ class JointOperationPrepareNode(Node):
         self.create_subscription(JointState,'/joint_states',self._joints,10)
         self.create_service(PrepareJointOperationV2,'/joint_operation/prepare',self._prepare,
                             callback_group=ReentrantCallbackGroup())
+        self.create_service(CheckPreparedOperationV2,'/joint_operation/check_prepared',self._check_prepared,
+                            callback_group=ReentrantCallbackGroup())
+
+    def _check_prepared(self,request,response):
+        response.current = False
+        response.reason = 'PLAN_NOT_CURRENTLY_ISSUED'
+        try:
+            issued = self.issued.lookup(request.plan.plan_digest)
+            if issued is not None:
+                # Expectations come from the owner, not the client's fields.
+                plan = operation_plan_from_message(request.plan,issued.identity,issued.plan_digest)
+                response.current = self.issued.current(plan)
+                response.reason = 'OWNER_ISSUANCE_CURRENT' if response.current else 'PLAN_NOT_CURRENTLY_ISSUED'
+        except Exception as error:
+            response.reason = 'ISSUANCE_CHECK_REFUSED:'+type(error).__name__
+        return response
 
     def _record(self,boundary,value):
         if not self._evidence: return
@@ -226,6 +248,7 @@ class JointOperationPrepareNode(Node):
     def _prepare(self,request,response):
         from luggage_msgs.msg import JointOperationPlanV2
         started = time.monotonic();response.success = False;response.plan = JointOperationPlanV2()
+        issued_plan = None
         response.trace_json,response.elapsed_s = '[]',0.
         if not self._active.acquire(blocking=False):
             response.reason = 'OPERATION_PREPARATION_BUSY';return response
@@ -272,6 +295,12 @@ class JointOperationPrepareNode(Node):
                     and self._current(request).digest()==current.domain.digest()
                     and proposal_scene_hash(scene)==expected_world)
             self.preparation.prepare(request,response,inputs,deadline=deadline,revalidate=revalidate)
+            if response.success:
+                # Internal owner output, before publication; external check
+                # requests instead decode against the retained owner identity.
+                identity = OperationIdentity(**{name:getattr(response.plan,name)
+                    for name in OperationIdentity.__dataclass_fields__})
+                issued_plan = operation_plan_from_message(response.plan,identity,response.plan.plan_digest)
         except Exception as error:
             response.success = False;response.plan = JointOperationPlanV2()
             response.reason = 'PREPARATION_REFUSED:'+type(error).__name__+':'+str(error)
@@ -284,6 +313,15 @@ class JointOperationPrepareNode(Node):
                 response.success = False;response.plan = JointOperationPlanV2()
                 response.reason = 'PREPARATION_EVIDENCE_FAILED:'+type(error).__name__
                 self.get_logger().error(response.reason+':'+str(error))
+            else:
+                if response.success:
+                    try: self.issued.issue(issued_plan)
+                    except Exception as error:
+                        response.success = False;response.plan = JointOperationPlanV2()
+                        response.reason = 'PREPARATION_ISSUANCE_FAILED:'+type(error).__name__
+                        self.get_logger().error(response.reason+':'+str(error))
+                        try: self._record('issuance_failure_response',response)
+                        except Exception: pass
             finally: self._active.release()
         return response
 

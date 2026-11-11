@@ -126,6 +126,13 @@ barriers and every trajectory knot. Consumers compare against an independently
 retained identity and approved digest. Post-plan changes require a newly checked
 and bound plan, including any J6 change.
 
+`CheckPreparedOperationV2` is read-only. It submits the complete plan for
+comparison with the preparation owner's retained identity/digest; client fields
+cannot establish their own expected identity. A positive response proves only
+current owner issuance, not current observation, attachment, collision or
+controller admission. Retention/restart semantics are specified in
+`production_orchestration.md`.
+
 The pure contract and ROS adapters verify binding and structure. They do not
 prove FK, collision freedom, controller readiness or certificate liveness. The
 whole-chain planner must certify empty/world-box, attached and released/world-box

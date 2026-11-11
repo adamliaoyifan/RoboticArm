@@ -602,6 +602,30 @@
    ],
    "migration_state": "isolated",
    "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-graph/runtime_F24.json"
+  },
+  {
+   "id": "F25",
+   "producer": "complete-operation preparation owner",
+   "consumer": "complete-operation execution admission",
+   "transport": "PrepareJointOperationV2 / CheckPreparedOperationV2",
+   "scope": "production",
+   "current": "independent preparation and read-only owner issuance check; execution adoption pending",
+   "target": "full directed plan binding against independently retained owner identity and digest; no client self-issued certificate",
+   "sources": [
+    "src/luggage_msgs/msg/JointOperationPlanV2.msg",
+    "src/luggage_msgs/srv/PrepareJointOperationV2.srv",
+    "src/luggage_msgs/srv/CheckPreparedOperationV2.srv",
+    "src/luggage_planning/luggage_planning/joint_operation_contracts.py",
+    "src/luggage_planning/luggage_planning/joint_operation_adapters.py",
+    "src/luggage_planning/luggage_planning/joint_operation_prepare_node.py",
+    "src/luggage_planning/luggage_planning/joint_operation_issuance.py"
+   ],
+   "checks": [
+    "old_version",
+    "missing_version",
+    "wrong_frame"
+   ],
+   "migration_state": "pending"
   }
  ]
 }

@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import shutil
 import subprocess
 import threading
 import time
@@ -64,6 +65,11 @@ def native_stack():
     parameters.write_text(yaml.safe_dump(config))
     executables = (('local',EXECUTABLE),('connection',os.environ['JOINT_NATIVE_CONNECTOR_EXECUTABLE']),
                    ('certification',os.environ['JOINT_NATIVE_CERTIFIER_EXECUTABLE']))
+    executable_hashes = {}
+    for name, executable in executables:
+        frozen = directory/(name+'_executable')
+        shutil.copy2(executable,frozen)
+        executable_hashes[name] = hashlib.sha256(frozen.read_bytes()).hexdigest()
     processes,logs,records = [],[],[]
     for name,executable in executables:
         log = (directory/(name+'.log')).open('wb')
@@ -112,7 +118,10 @@ def native_stack():
         (directory/'manifest.json').write_text(json.dumps({'model_sha256':model.model_sha256,
             'scope':'isolated full-pose KDL+OMPL+native certification; not deployment qualification',
             'commands':[(name,path) for name,path in executables],'records':records,
+            'executable_sha256':executable_hashes,'worker_joined':not worker.is_alive(),
             'teardown_exit_codes':[p.returncode for p in processes],'capture_complete':True},indent=2))
+        assert not worker.is_alive(), 'endpoint fixture executor did not stop'
+        assert all(p.returncode==0 for p in processes), 'native endpoint backend teardown failed'
 
 
 def candidate_for(model):
