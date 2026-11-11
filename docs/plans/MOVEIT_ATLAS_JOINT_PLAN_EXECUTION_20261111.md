@@ -212,3 +212,67 @@ execution acceptance remains unverified.
 - `.cursor/rules/debug-evidence.mdc`
 - `.cursor/rules/sim-lifecycle.mdc`
 - `scripts/stop_sim.sh`
+
+
+### 2026-11-11 production-source checkpoint resolved
+
+The user explicitly confirmed: (1) the box can be treated as stationary from
+pre-grasp acquisition until confirmed suction, and the supplied input xyz is
+the box suction/contact point, not its centre; (2) use the default O observer
+map; G need not be enabled in this iteration. Preserve the original box
+acquisition stamp and the actual confirmation-time TCP stamp independently.
+The stationary premise does not authorize timestamp relabelling, unobserved
+geometry, changed box identity or replacement of the frozen full-cup evidence.
+The observed dimensions, actual top attitude/domain and full-six-joint plan
+remain required. A contact-point input must never populate a box-centre field.
+
+Production map adoption for stages0-4 is O-only. The existing G fixture path
+may remain explicitly selectable for compatibility, but no G process or flag
+is a prerequisite for the default complete-operation entry. One immutable O
+lease supplies both surface and volume. Require VALID response generation,
+epoch, exact snapshot/config/hull identities and complete bounded pagination;
+unknown active volume is blocked. New ordinary map revisions are allowed only
+through fresh native checking of the original remaining timed trajectories;
+changed epoch/config/model/hull invalidates the original source binding.
+Fresh post-release O observations, joined by their real acquisition stamps,
+provide observed-map adoption. Planned geometry cannot count as observation.
+
+ST-3-O-SOURCE is the first production integration unit (codex/gpt-6, base
+ a9a334189ff9c3ddcab71d669843f454457885f7, dependency ST-4-PREP-OBS).
+It replaces the preparation root's unconditional G dependency with default O
+lease ownership and an explicit legacy G option. Inputs include the observer's
+exact geometry/config files; recompute its config digest using the native
+loader's byte contract, never assume a grid resolution. Source identity must
+be bound to the produced snapshot and prepared issuance. All calls share the
+original request deadline, including source revalidation. Release every lease
+on success and failure; uncertain transport retains single-flight ownership.
+
+Acceptance: deterministic ROS tests, one run per named case, AND across
+functional cases (not a reliability claim). Actual O observer + actual prepare
+root + actual frozen quality and native MoveIt ports must return at least one
+complete six-leg plan without any G services/publications. Native O leases
+must match surface/volume config/epoch/revision and preserve unknown cells.
+Reject non-VALID/reset generation, stale/no observation, mismatched config or
+hull/epoch/revision, incomplete/duplicate/nonprogressing pages and late source
+change; all reject with inactive plans and zero motion/map-write effects.
+Retain explicit G compatibility tests. Pure conversion tests cover x-fastest
+indexing, partial knowledge, clipped inactive hull cells, dimensions and
+malformed pages; they do not substitute for the actual O-root positive.
+Run source-first Humble pytest on test_joint_operation_observer.py and
+ test_joint_operation_observer_native.py plus existing preparation/issuance
+and frozen-contact regressions after changes. Build changed installs in /tmp,
+verify source/install parity. Evidence under
+ docs/status/evidence/moveit_atlas_joint_plan/g1/ST-3-O-SOURCE/ (<=128 MiB):
+T0 revision/dirty/config/model/executable hashes, exact command and inputs;
+T1 per-RPC stage, identity, cursor, clock/stamp and duration; T2 full failed
+case original CDR, immutable source files/clouds, scene and native request/
+response before cleanup; one case is the bounded pre/post capture window.
+Require durable hashes, complete capture and joined workers/native exit0.
+Missing native positive or missing evidence is not_evaluated, never pass.
+
+ST-4-INTEGRATION generation1's two source questions are resolved by this
+checkpoint. Supersede it with generation2 before dispatching its final whole
+operation execution and regression; retain its six positive witness matrix
+and negative effect invariants. Do not close stages0-4 on source adoption or
+component counts alone. ST5-7 and performance/capacity campaigns remain outside
+this implementation scope.
