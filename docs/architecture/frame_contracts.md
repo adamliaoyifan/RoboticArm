@@ -129,6 +129,24 @@ scenes before sealing. Execution must check actual q and live admission, confirm
 attachment and revalidate carrying paths at the barrier. Schema availability
 does not imply that the service or execution path has been adopted at runtime.
 
+`PlanSnapshotJointPathV2` is the internal joint-connection primitive for that
+private planning path. The full scene travels as its original serialized CDR
+bytes with SHA256; it must not be decoded and reserialized to reproduce a byte
+identity, because serialization padding is not a canonical semantic encoding.
+The node hashes and deserializes those same bytes, matches its robot model
+(URDF+SRDF SHA256), then creates a fresh private MoveIt PlanningScene. It plans
+joint-space connections with OMPL, no endpoint-repair adapters, and rechecks
+interpolated joint states at <=0.01 rad. The configurable check cap is <=50000
+states. Deadline/cap/failed search do not prove spatial unreachability.
+
+Successful output preserves exact canonical start/goal and winding, and contains
+positions only. It is geometric evidence, never an executable timed trajectory
+or an operation certificate. The Python port retains one in-flight request even
+after cancellation/timeout, binds response identity to consumer-held expectations,
+and rejects incomplete, timed, undersampled or endpoint-shifted responses. Timing,
+controller-interpolated whole-chain checking and execution liveness remain the
+responsibility of operation assembly/certification and execution adapters.
+
 `frame_transforms.transform_pose` accepts an explicit source/target transform:
 translation, unit quaternion, scene_revision and stamp_ns. An explicit null
 transform stamp means static for that scene revision; a dynamic transform stamp

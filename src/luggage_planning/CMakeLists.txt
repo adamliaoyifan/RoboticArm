@@ -36,6 +36,12 @@ target_link_libraries(grasp_local_check_node OpenSSL::Crypto)
 target_compile_options(grasp_local_check_node PRIVATE -Wall -Wextra)
 install(TARGETS grasp_local_check_node DESTINATION lib/${PROJECT_NAME})
 
+add_executable(snapshot_joint_path_node src/snapshot_joint_path_node.cpp)
+ament_target_dependencies(snapshot_joint_path_node rclcpp moveit_core moveit_ros_planning moveit_msgs geometry_msgs luggage_msgs)
+target_link_libraries(snapshot_joint_path_node OpenSSL::Crypto)
+target_compile_options(snapshot_joint_path_node PRIVATE -Wall -Wextra)
+install(TARGETS snapshot_joint_path_node DESTINATION lib/${PROJECT_NAME})
+
 ament_python_install_package(${PROJECT_NAME})
 
 install(DIRECTORY data

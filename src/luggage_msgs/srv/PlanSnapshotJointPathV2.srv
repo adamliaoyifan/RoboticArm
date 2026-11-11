@@ -1,0 +1,26 @@
+# Internal plan-only connector on a private full scene. No live scene mutation.
+string request_id
+string snapshot_id
+string model_sha256
+# SHA256 of scene_cdr; independent of publisher labels. Carry original bytes:
+# reserializing a typed PlanningScene can change CDR padding without changing it.
+string scene_sha256
+# Serialized moveit_msgs/PlanningScene, full scene, not a diff.
+uint8[] scene_cdr
+float64[6] start_joints
+float64[6] goal_joints
+float64 budget_s
+---
+string request_id
+string snapshot_id
+string model_sha256
+string scene_sha256
+bool complete
+bool success
+string reason
+# Geometric positions only. NEVER a controller trajectory or admission claim.
+# Canonical elfin_joint1..elfin_joint6 order, preserving winding and endpoints.
+trajectory_msgs/JointTrajectory geometric_path
+uint32 checked_states
+string diagnostics_json
+float64 elapsed_s

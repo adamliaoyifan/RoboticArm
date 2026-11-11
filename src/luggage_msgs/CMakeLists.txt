@@ -49,6 +49,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/JointOperationBarrierV2.msg"
   "msg/JointOperationPlanV2.msg"
   "srv/PrepareJointOperationV2.srv"
+  "srv/PlanSnapshotJointPathV2.srv"
   "srv/PreparePlacementPriorV2.srv"
   "msg/PlacementPriorChoiceV2.msg"
   "srv/ValidateSelectedRoute.srv"
