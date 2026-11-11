@@ -64,6 +64,34 @@ only from live depth integration and explicit placement commits.
 
 ## Failure Boundaries
 
+### Bound complete-plan consumer
+
+The independently prepared complete-operation path uses
+`JointOperationExecution` as a pure effect/state contract. It requires consumer
+identity/digest admission and live start validation before issuing motion. Its
+node adapter dispatches each correlated effect once. An `execute_leg` effect
+consumes the original frozen timed path, without J6 edits or replanning.
+
+Before carrying, `confirm_attachment` must produce a valid, confirmed measured
+attachment from the existing attachment provider. Then `validate_attached_suffix`
+checks provider freshness, actual q, actual frozen geometry, current scene,
+certificate liveness and intended placement under the actual grasp. A mismatch
+may pass only through that actual-geometry revalidation; refusal enters a carry
+fault for bounded repair/recovery. It must not rewrite the prediction or release.
+
+Before retreat, release confirmation must precede application of the released
+box as a world obstacle and retreat validation. A failed release confirmation
+retains payload responsibility. A confirmed release followed by blocked retreat
+stops motion. Cancellation during controller execution waits for its terminal
+result; transport errors alone cannot establish that motion has stopped.
+Duplicate/stale callbacks issue no new effects.
+
+This consumer has no ROS, global planner or vacuum dependency. Production node
+adoption must implement and verify its effects against the native scene and
+controller; pure consumer tests do not certify that adoption. Existing startup,
+operator correlation and map ownership requirements apply to the complete-plan
+path as well as the nominal cycle above.
+
 Failure handling must distinguish pre-pick, carrying, release, verification,
 abort, and recovery boundaries.
 
