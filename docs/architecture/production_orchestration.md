@@ -202,6 +202,32 @@ nodes or direct controller clients; the production launch/driver must route ever
 motion entry through the owning node. Complete-operation and driver adoption
 remain required; ownership wiring alone is not a completed execution chain.
 
+Before suction, input contact xyz is a proposal on the observed box face. The
+planner may select another fully supported contact and directed attitude to
+serve the target placement, but must return the final pick pose, J6 and bound
+complete trajectories before motion. After suction the rigid box/tool relation
+is fixed. Rotating the arm moves that fixed box and tool together; it never
+selects another contact or edits the issued joint trajectories.
+
+For the user-confirmed stationary pre-seal box, the complete-operation
+`StationaryOperationAttachmentPort` qualifies the actual VacuumCommandV2
+request/response against the original issued plan and perception-owner token.
+It requires current nonrenewing retention plus an actual full-footprint and
+surface-quality result under the returned actual G. The existing measured
+attachment provider has a separate `record_stationary_attachment` entry for
+this qualified source; ordinary `record_attachment` still requires zero skew.
+The record acquisition stamp remains the original box stamp. Its independent
+StationaryAttachmentEvidence binds the later actual TCP confirmation stamp,
+both measured poses, every typed request/response field, original frozen binding, actual
+footprint result, conservative geometry, box identity and generation. Neither
+storage retention nor confirmation time renews the existing acquisition age.
+A valid stationary seal cannot be overwritten through either provider entry;
+a replay after invalidation cannot revive it. This read-only qualification
+layer does not command vacuum, certify a changed grasp's remaining path or
+complete production execution; those event and native admission gates remain.
+Raw CDR is retained for replay; stable receipt hashes use canonical typed ROS
+fields because DDS alignment padding can change for identical messages.
+
 Actual full-footprint contact revalidation may use the same box's retained,
 frozen pre-grasp RGB-D top observation and the measured attachment relation.
 Its acquisition frame/pose remain fixed; a new wrist-camera frame must not

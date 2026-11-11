@@ -64,8 +64,9 @@ PURE_GEOMETRY_TOLERANCE = 1e-9
 class AttachmentSourceKind(str, Enum):
     """Where the frozen transform came from (5.1)."""
 
-    #: Same-stamp measured box pose + live TCP TF after attach
-    #: confirmation. The only source valid for carried routes.
+    #: Measured box pose + actual TCP at confirmed attach. Ordinary sources
+    #: are same-stamp; the explicitly qualified stationary-box source retains
+    #: both real stamps and owner evidence separately. Route-grade after seal.
     MEASURED_ATTACH_CONFIRMED = "measured_attach_confirmed"
     #: Pre-attach measured pose used for contact-time estimation. Must
     #: carry its estimation method; legal only for pre-attach initial

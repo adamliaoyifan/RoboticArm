@@ -432,7 +432,7 @@
   {
    "id": "F18",
    "producer": "measured box and tool at attach",
-   "consumer": "attached collision / physical attachment / detach",
+   "consumer": "attached collision / physical attachment / detach / qualified stationary complete-operation attachment",
    "transport": "link-relative payload transform",
    "scope": "production",
    "current": "world box inputs and link attachment; separate physical backend",
@@ -444,14 +444,17 @@
     "src/luggage_msgs/srv/VacuumCommandV2.srv",
     "src/luggage_planning/luggage_planning/attachment_frame_contracts.py",
     "src/luggage_planning/luggage_planning/attachment_frame_adapters.py",
-    "src/luggage_planning/scripts/vacuum_controller_node.py"
+    "src/luggage_planning/scripts/vacuum_controller_node.py",
+    "src/luggage_planning/luggage_planning/joint_operation_attachment.py",
+    "src/luggage_planning/luggage_planning/attachment_provider.py",
+    "st09_contracts/stationary_attachment.py"
    ],
    "checks": [
     "offcenter_grasp",
     "center_grasp",
     "tool_sign_equivalent"
    ],
-   "migration_state": "verified",
+   "migration_state": "pending",
    "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F18.json"
   },
   {
@@ -618,7 +621,8 @@
     "src/luggage_planning/luggage_planning/joint_operation_actual_contact.py",
     "src/luggage_msgs/msg/OperationMapSourceV2.msg",
     "src/luggage_planning/luggage_planning/joint_operation_map_source.py",
-    "src/luggage_planning/luggage_planning/joint_operation_observer.py"
+    "src/luggage_planning/luggage_planning/joint_operation_observer.py",
+    "src/luggage_planning/luggage_planning/joint_operation_attachment.py"
    ],
    "checks": [
     "old_version",

@@ -14,6 +14,11 @@ confirmation (duplicates idempotent by digest), new incarnation per
 confirmed re-attach, invalidation for slip / re-attach / frame or
 calibration change / expiry. GT, planned-slot and PCA-yaw-only sources are
 never accepted as measured.
+
+An explicitly qualified stationary-box path preserves the original acquisition
+and later confirmation-time TCP stamps in StationaryAttachmentEvidence. It
+requires actual vacuum and frozen-footprint admission; it cannot rebind a valid
+sealed relation or relax the legacy same-stamp path.
 """
 
 from __future__ import annotations
@@ -41,6 +46,10 @@ except ImportError:  # pragma: no cover - import guard for non-contract envs
     raise ImportError(
         "attachment_provider requires the st09_contracts package "
         "(repo root on sys.path, e.g. via tests/st09_parallel/conftest.py)")
+
+from st09_contracts.stationary_attachment import (
+    StationaryAttachmentEvidence, measured_pose_digest,
+)
 
 GRASP_BINDING_TOLERANCE_M = 0.01
 GRASP_BINDING_TOLERANCE_RAD = 0.10
@@ -100,6 +109,7 @@ class MeasuredAttachmentProvider:
         self._records: Dict[str, AttachmentRecord] = {}
         self._incarnations: Dict[str, int] = {}
         self._generations: Dict[str, int] = {}
+        self._stationary_evidence: Dict[str, StationaryAttachmentEvidence] = {}
         self._active_request: Optional[str] = None
         self._invalidations: Tuple[AttachmentInvalidation, ...] = ()
 
@@ -211,7 +221,81 @@ class MeasuredAttachmentProvider:
         allow_pre_attach: bool = False,
         conservative_geometry=None,
     ) -> AttachmentRecord:
+        return self._record_attachment(request_id, box_pose, tcp_pose,
+            attach_confirmed=attach_confirmed, source_kind=source_kind,
+            source_method=source_method, dimensions_wdh=dimensions_wdh,
+            cargo_id=cargo_id, box_id=box_id, cycle_id=cycle_id, symmetry=symmetry,
+            evidence_digest=evidence_digest, allow_pre_attach=allow_pre_attach,
+            conservative_geometry=conservative_geometry)
+
+    def stationary_evidence_for(self, request_id):
+        """Original two-stamp provenance, without renewing physical freshness."""
+        return self._stationary_evidence.get(str(request_id))
+
+    def record_stationary_attachment(self, request_id, box_pose, tcp_pose, *,
+                                     evidence, conservative_geometry, now_ns, cycle_id):
+        """Freeze once under the explicitly qualified stationary-box premise.
+
+        The complete-operation adapter owns actual vacuum and frozen-footprint
+        checks before producing this evidence. No arbitrary skew allowance is
+        exposed; legacy record_attachment remains strictly same-stamp.
+        """
+        if (type(evidence) is not StationaryAttachmentEvidence
+                or box_pose is None or tcp_pose is None
+                or conservative_geometry is None):
+            raise ContractViolation('STATIONARY_ATTACHMENT_EVIDENCE_REQUIRED')
+        evidence.__post_init__()
+        conservative_geometry.__post_init__()
+        if ((str(request_id), self._scene_revision, box_pose.stamp_ns, tcp_pose.stamp_ns,
+                measured_pose_digest(box_pose), measured_pose_digest(tcp_pose),
+                conservative_geometry.digest()) !=
+                (evidence.request_id, evidence.scene_revision, evidence.box_acquisition_stamp_ns,
+                 evidence.tcp_confirmation_stamp_ns, evidence.box_pose_sha256,
+                 evidence.tcp_pose_sha256, evidence.geometry_sha256)):
+            raise ContractViolation('STATIONARY_ATTACHMENT_SOURCE_BINDING_MISMATCH')
+        if (type(now_ns) is not int or now_ns < tcp_pose.stamp_ns
+                or now_ns - box_pose.stamp_ns > self._max_age_ns):
+            raise ContractViolation('STATIONARY_ATTACHMENT_ACQUISITION_NOT_CURRENT')
+        previous = self._records.get(str(request_id))
+        if previous is not None:
+            if (previous.validity is not AttachmentValidity.VALID
+                    or self._stationary_evidence.get(str(request_id)) != evidence):
+                raise ContractViolation('SEALED_ATTACHMENT_REBIND_REFUSED')
+            return previous
+        record = self._record_attachment(request_id, box_pose, tcp_pose,
+            attach_confirmed=True, source_kind=AttachmentSourceKind.MEASURED_ATTACH_CONFIRMED,
+            source_method='stationary_box:frozen_top+confirmed_vacuum_actual_tcp',
+            dimensions_wdh=conservative_geometry.measured_dimensions_wdh,
+            cargo_id=evidence.box_id, box_id=evidence.box_id, cycle_id=cycle_id,
+            evidence_digest=evidence.digest(), conservative_geometry=conservative_geometry,
+            stationary_evidence=evidence)
+        self._stationary_evidence[str(request_id)] = evidence
+        self.bind_generation(request_id, evidence.generation)
+        return record
+
+    def _record_attachment(
+        self,
+        request_id: str,
+        box_pose: Optional[MeasuredPose],
+        tcp_pose: Optional[MeasuredPose],
+        *,
+        attach_confirmed: bool,
+        source_kind: AttachmentSourceKind,
+        source_method: str,
+        dimensions_wdh: Sequence[float],
+        cargo_id: str,
+        box_id: str,
+        cycle_id: str,
+        symmetry: str = "pi",
+        evidence_digest: str = "",
+        allow_pre_attach: bool = False,
+        conservative_geometry=None,
+        stationary_evidence=None,
+    ) -> AttachmentRecord:
         request_id = str(request_id)
+        sealed = self._stationary_evidence.get(request_id)
+        if sealed is not None and stationary_evidence != sealed:
+            raise ContractViolation('SEALED_ATTACHMENT_REBIND_REFUSED')
         self._active_request = request_id
 
         # -- source qualification (before any transform math) ------------
@@ -245,7 +329,7 @@ class MeasuredAttachmentProvider:
                     box_pose.frame, tcp_pose.frame,
                     self._box_frame, self._tcp_frame))
         skew = abs(int(tcp_pose.stamp_ns) - int(box_pose.stamp_ns))
-        if skew > TF_SYNC_MAX_SKEW_NS:
+        if stationary_evidence is None and skew > TF_SYNC_MAX_SKEW_NS:
             raise ContractViolation(
                 "%s: measured poses are not same-stamp (skew %d ns)" % (
                     Reason.ATTACHMENT_SOURCE_UNQUALIFIED.value, skew))
@@ -353,6 +437,8 @@ class MeasuredAttachmentProvider:
             collision_envelope=envelope,
         )
         self._records[request_id] = record
+        if stationary_evidence is None:
+            self._stationary_evidence.pop(request_id, None)
         return record
 
     # -- carry-time slip recheck -------------------------------------------
