@@ -135,6 +135,29 @@ with explicit node parameters; these are storage limits, not geometric or
 observation thresholds. A liveness success still requires every current-source,
 actual-contact, occupancy and native suffix gate before controller submission.
 
+The strict operation motion transport submits one original timed leg through
+MoveIt ExecuteTrajectory. It retains every joint coordinate (including full
+turns), timestamp, derivative and effort value. A native receipt must bind the
+original identity/certificate/index and actual carry geometry; source liveness
+and fresh measured raw joint coordinates are checked again immediately before
+submission. SUCCEEDED alone is insufficient: MoveIt SUCCESS and a fresh measured
+endpoint within the owner's explicit joint tolerance are also required.
+
+The production owner must share one motion lock with every other motion entry
+point. Pending acceptance, timeout, cancellation acknowledgement and transport
+exceptions do not prove a stopped controller. The transport retains that lock
+until a real rejection or terminal result is consumed, cancels late accepted
+goals after a stop request, and refuses overlapping submissions. Uncertain
+transport has no force-clear shortcut. This port has no vacuum, planner, scene
+or map writes; fixture coverage does not certify production owner adoption.
+
+Actual full-footprint contact revalidation may use the same box's retained,
+frozen pre-grasp RGB-D top observation and the measured attachment relation.
+Its acquisition frame/pose remain fixed; a new wrist-camera frame must not
+replace this evidence. Invalidated box identity, model or observation refuses
+continuation. Re-evaluate the actual footprint against those measured samples;
+the original planned-grasp quality verdict is not sufficient after an offset.
+
 Failure handling must distinguish pre-pick, carrying, release, verification,
 abort, and recovery boundaries.
 
