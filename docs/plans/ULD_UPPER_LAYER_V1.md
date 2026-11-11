@@ -1908,3 +1908,48 @@ period和1mm位移步共同约束，行程越界拒绝。本例为56.25/140.625s
 同stamp/无准入输出、严格拒绝与校准身份、实际轨迹速度/采样/行程/
 端点/连续性。下一步接入工具完整原生碰撞观测、实际关节参考发布和
 解除/分离/撤出预演；释放54/细化、接触管、C5及剩余A/D仍open。
+
+
+### 19.30 全工具原生接触与持久关节发布（撤出前接线门槛）
+
+IdealVacuum可选observed_parent_collision，解析完整tool link的8个
+源碰撞身份，在同一native step读取每个ContactSensorData，明确输出
+available和contacts（空值同样保留），不根据无topic消息猜无接触。
+release_scene为每个原collision增加contact sensor，更新率来自1/
+physics_step_s；只增加观测，不改碰撞几何/质量/摩擦/积分器。
+缺省六轴场景未声明该列表，保持原输出与动作逻辑。
+
+ReleaseObservationReader显式接收完整collision列表时，集合缺失/
+component不可用/身份不匹配均拒绝；输出不可变tool_contacts与
+tool_contact_components_complete。每点记录自身/另一collision、
+container绝对点、朝向自身工具的有符号法向及depth。与payload共享
+通用几何解码，保持原payload接触字段和错误语义；未声明工具列表的
+历史数据只输出complete=false，不能冒充已检查全部工具。
+
+新增独立C++ uld_carriage_joint_command和Python CarriageCommandPublisher。
+它们仅向指定X/Z关节Double topic发布，不实现规划/动力学/箱体/吸附
+命令。持久连接避免每个轨迹采样启动CLI。stdin协议sequence/x/z，
+序号严格连续、有限数值、完整3字段；等待两端真实subscriber后ready，
+逐命令输出publication ack。Python另检查原夹具行程、有限stamp并保存
+request/response，超时/错误ack拒绝；明确tracking_confirmed=false。
+该ack不能证明控制器接收、完成或跟踪，必须由native实际状态另验。
+
+carriage_command_transport_g12_01仅真实Ignition通信、无Gazebo或
+actuator：3对正负/小幅数值均由独立Double订阅端精确收到，Python越
+行程拒绝；native NaN/错误序号/额外字段均exit2且无发布。4项检查
+通过，原始输入、双端捕获、协议日志、源码/二进制保留。
+第一次165项测试通过但发现stdout句柄ResourceWarning，已关闭句柄
+并重验，不改变动作或阈值。
+
+下一非计分验证沿19.27/28固定ratio .60/yaw0/repetition0、fixture05、
+policy50Hz、新独立插件/tmp/uld-upper-vacuum-release-g12_02/
+libuld_upper_vacuum.so，场景/tmp/uld_upper_release_scene_g12_02。
+release_rehearsal.py --scene-dir <该场景> --policy
+/tmp/upper_monitor_50hz_g12.yaml --evidence <primary>/docs/status/evidence/
+uld_upper_layer_v1/release_tool_contacts_hold_g12_01。原14项检查加每帧
+8个源工具contact component全部可用、保持阶段无工具接触，共16项
+AND门槛；不足/缺失不得按空contact通过。仍只保持吸附3s，不发送
+关节移动或解除，不是释放/下层动作合格样本。沿用60s startup wall、
+完整短单元1ms gzip采集、200MB/20MB预留预算与先持久化再owned teardown。
+新二进制与原source模型hash冻结归档，不覆盖历史实验。之后才进入
+独立碰撞认证、关节跟踪及解除/分离/撤出；正式校准/接触管/C5仍open。

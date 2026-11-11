@@ -58,6 +58,16 @@ class IdealVacuum : public sim::System, public sim::ISystemConfigure,
         observedNames.push_back(name);
       }
     }
+    if (sdf->HasElement("observed_parent_collision")) {
+      unique.clear();
+      for (auto node=sdf->FindElement("observed_parent_collision");node;
+           node=node->GetNextElement("observed_parent_collision")) {
+        auto name=node->Get<std::string>();
+        if (name.empty() || !unique.insert(name).second)
+          throw std::invalid_argument("INVALID_VACUUM_OBSERVED_PARENT_COLLISIONS");
+        observedCollisionNames.push_back(name);
+      }
+    }
     // Fixture-only initial condition: establish the native constraint before
     // the first physics step, so below-policy calibration cases do not fall
     // while a transport subscriber is discovering the state topic.
@@ -96,6 +106,12 @@ class IdealVacuum : public sim::System, public sim::ISystemConfigure,
         auto model=ecm.EntityByComponents(comp::Model(),comp::Name(name));
         if (model==sim::kNullEntity) return;
         observedModels.push_back(model);
+      }
+      observedCollisions.clear();
+      for (const auto &name:observedCollisionNames) {
+        auto collision=sim::Link(link).CollisionByName(ecm,name);
+        if (collision==sim::kNullEntity) return;
+        observedCollisions.push_back(collision);
       }
       ready.store(true);
     }
@@ -191,6 +207,21 @@ class IdealVacuum : public sim::System, public sim::ISystemConfigure,
           contacts->Data(),&contactJson).ok();
       json<<",\"contacts_component_available\":"<<(contactAvailable?"true":"false");
       if (contactAvailable) json<<",\"payload_contacts\":"<<contactJson;
+      if (!observedCollisions.empty()) {
+        json<<",\"parent_collision_contacts\":{";
+        for (size_t i=0;i<observedCollisions.size();++i) {
+          if (i) json<<",";
+          const auto component=ecm.Component<comp::ContactSensorData>(observedCollisions[i]);
+          std::string data;
+          const bool available=component && google::protobuf::util::MessageToJsonString(
+              component->Data(),&data).ok();
+          json<<"\""<<observedCollisionNames[i]<<"\":{\"available\":"
+              <<(available?"true":"false");
+          if (available) json<<",\"contacts\":"<<data;
+          json<<"}";
+        }
+        json<<"}";
+      }
     }
     json<<"}";message.set_data(json.str());state.Publish(message);
   }
@@ -199,6 +230,8 @@ class IdealVacuum : public sim::System, public sim::ISystemConfigure,
   std::vector<sim::Entity> joints;
   std::vector<std::string> jointNames,observedNames;
   std::vector<sim::Entity> observedModels;
+  std::vector<std::string> observedCollisionNames;
+  std::vector<sim::Entity> observedCollisions;
   sim::Entity payload=sim::kNullEntity,link=sim::kNullEntity;
   sim::Entity payloadLink=sim::kNullEntity,attachmentJoint=sim::kNullEntity;
   sim::Entity payloadCollision=sim::kNullEntity;

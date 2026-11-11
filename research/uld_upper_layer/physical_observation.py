@@ -50,13 +50,22 @@ class PhysicalSample:
     attachment_joint_component_present: bool | None = None
 
 
-def read_payload_contacts(message,box_id,container_T_world):
-    """Decode signed native contact geometry once for arm and carriage readers."""
+@dataclass(frozen=True)
+class CollisionContact:
+    other_collision: str
+    point_container: tuple
+    normal_toward_observed_container: tuple
+    depth_m: float
+
+
+def _decode_collision_contacts(message,identity,container_T_world,*,exact):
     contacts=[]
     for contact in message.get('contact',[]):
         a=contact['collision1']['name'];b=contact['collision2']['name']
-        first=a.startswith(box_id+'::');second=b.startswith(box_id+'::')
-        if first==second:raise ValueError('CONTACT_PAYLOAD_IDENTITY_MISMATCH')
+        first=a==identity if exact else a.startswith(identity+'::')
+        second=b==identity if exact else b.startswith(identity+'::')
+        if first==second:
+            raise ValueError('CONTACT_COLLISION_IDENTITY_MISMATCH' if exact else 'CONTACT_PAYLOAD_IDENTITY_MISMATCH')
         points=contact.get('position',[]);normals=contact.get('normal',[]);depths=contact.get('depth',[])
         if not points or not len(points)==len(normals)==len(depths):
             raise ValueError('NATIVE_CONTACT_GEOMETRY_INCOMPLETE')
@@ -67,8 +76,19 @@ def read_payload_contacts(message,box_id,container_T_world):
                 raise ValueError('INVALID_NATIVE_CONTACT_GEOMETRY')
             point=container_T_world@np.r_[point,1.]
             normal=container_T_world[:3,:3]@normal
-            contacts.append(ObservedContact(b if first else a,tuple(point[:3]),tuple(normal),float(depth)))
+            contacts.append(CollisionContact(b if first else a,tuple(point[:3]),tuple(normal),float(depth)))
     return tuple(contacts)
+
+
+def read_payload_contacts(message,box_id,container_T_world):
+    """Decode signed native contact geometry once for arm and carriage readers."""
+    return tuple(ObservedContact(c.other_collision,c.point_container,c.normal_toward_observed_container,c.depth_m)
+        for c in _decode_collision_contacts(message,box_id,container_T_world,exact=False))
+
+
+def read_exact_collision_contacts(message,collision_name,container_T_world):
+    """Decode one exact tool collision identity, with signed inward normals."""
+    return _decode_collision_contacts(message,collision_name,container_T_world,exact=True)
 
 
 

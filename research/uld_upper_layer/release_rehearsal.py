@@ -70,7 +70,7 @@ def main():
         capture_complete=False, replay_possible=False, teardown_complete=False)
     save(out / 'manifest.json', manifest)
     lock = threading.Lock(); metrics = dict(samples=0, max_gap_s=0., contacts_available=0,
-        invalid_hold_samples=0)
+        invalid_hold_samples=0, complete_tool_samples=0, tool_contact_samples=0)
     latest = None; first = None; failure = None
     def accept(row):
         nonlocal latest, first
@@ -96,6 +96,14 @@ def main():
                 and native.get('attachment_joint_component_present')
                 and native.get('pose_command_count') == 0
                 and not native.get('payload_pose_command_component_present'))
+            tool_names = spec.get('tool_collision_names', [])
+            if tool_names:
+                components = native.get('parent_collision_contacts', {})
+                complete = set(components) == set(tool_names) and all(
+                    row.get('available') is True and 'contacts' in row for row in components.values())
+                metrics['complete_tool_samples'] += complete
+                metrics['tool_contact_samples'] += any(
+                    row.get('contacts', {}).get('contact') for row in components.values())
         return stamp
     capture = JsonTopicCapture(env, out, 'native', '/upper_layer/vacuum/state', accept,
         max_bytes=policy.max_case_bytes - policy.failure_capture_reserve_bytes)
@@ -143,6 +151,9 @@ def main():
             one_native_publisher=info.returncode == 0 and info.stdout.split('Subscribers')[0].count('ignition.msgs.StringMsg') == 1,
             one_clock_publisher=clock.returncode == 0 and clock.stdout.split('Subscribers')[0].count('ignition.msgs.Clock') == 1,
             all_contacts_available=observation['contacts_available'] == observation['samples'])
+        if spec.get('tool_collision_names'):
+            checks.update(all_source_tool_contacts_available=observation['complete_tool_samples'] == observation['samples'],
+                          no_source_tool_contacts_in_hold=observation['tool_contact_samples'] == 0)
         result = dict(checks=checks, valid=all(checks.values()), metrics=observation,
             physical_release='not_evaluated', controller_motion='not_evaluated', scored_units=0)
         if not result['valid']:

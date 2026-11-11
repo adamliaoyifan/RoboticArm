@@ -56,6 +56,11 @@ class ReleaseWorldContracts(unittest.TestCase):
             self.assertEqual(native.findtext('initially_attached'), 'true')
             self.assertEqual([n.text for n in native.findall('joint_name')], ['release_x', 'release_z'])
             self.assertEqual(len(native.findall('observed_model')), 24)
+            observed = [n.text for n in native.findall('observed_parent_collision')]
+            tool = result.find("model[@name='release_carriage']/link[@name='tool']")
+            self.assertEqual(set(observed), {c.get('name') for c in tool.findall('collision')})
+            self.assertEqual({s.findtext('contact/collision') for s in tool.findall('sensor')}, set(observed))
+            self.assertEqual(set(manifest['tool_collision_names']), set(observed))
             self.assertEqual(manifest['physical_stability'], 'not_evaluated')
             with self.assertRaisesRegex(ValueError, 'ALREADY_EXISTS'):
                 write_release_scene(self.assets, self.snapshot, self.state, self.config,

@@ -82,6 +82,37 @@ class ReleaseInputContracts(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.reader.read(row)
 
+    def test_complete_tool_contact_components_are_required_when_declared(self):
+        reader = ReleaseObservationReader(np.eye(4), {'lower0': (.6, 1., 1.)}, 'payload',
+                                          tool_collision_names=('panel', 'camera'))
+        row = native()
+        with self.assertRaisesRegex(ValueError, 'TOOL_CONTACT_SET_INCOMPLETE'):
+            reader.read(row)
+        row['parent_collision_contacts'] = dict(panel=dict(available=True, contacts={}),
+                                                camera=dict(available=True, contacts={}))
+        sample = reader.read(row)
+        self.assertTrue(sample.tool_contact_components_complete)
+        self.assertEqual(sample.tool_contacts, ())
+        row['parent_collision_contacts']['camera']['available'] = False
+        with self.assertRaisesRegex(ValueError, 'COMPONENT_UNAVAILABLE'):
+            reader.read(row)
+
+    def test_exact_tool_identity_and_normal_sign_survive_collision_order(self):
+        reader = ReleaseObservationReader(np.eye(4), {'lower0': (.6, 1., 1.)}, 'payload',
+                                          tool_collision_names=('panel',))
+        row = native()
+        contact = dict(collision1=dict(name='release_carriage::tool::panel'),
+            collision2=dict(name='wall::link::collision'), position=[dict(z=1.)], normal=[dict(x=1.)], depth=[.0001])
+        row['parent_collision_contacts'] = dict(panel=dict(available=True, contacts=dict(contact=[contact])))
+        first = reader.read(row).tool_contacts
+        contact['collision1'], contact['collision2'] = contact['collision2'], contact['collision1']
+        contact['normal'] = [dict(x=-1.)]
+        self.assertEqual(first, reader.read(row).tool_contacts)
+        self.assertEqual(first[0].normal_toward_tool_container, (1., 0., 0.))
+        contact['collision2']['name'] += '_different'
+        with self.assertRaisesRegex(ValueError, 'IDENTITY_MISMATCH'):
+            reader.read(row)
+
     def test_readiness_retains_strict_normal_and_runtime_support_limits(self):
         row = native(); row['payload_contacts']['contact'][0]['normal'] = [dict(x=1.)]
         sample = self.reader.read(row)

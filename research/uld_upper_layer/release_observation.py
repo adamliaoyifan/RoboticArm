@@ -8,7 +8,16 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from physical_observation import ObservedBody, pose_matrix, read_payload_contacts
+from physical_observation import ObservedBody, pose_matrix, read_payload_contacts, read_exact_collision_contacts
+
+
+@dataclass(frozen=True)
+class ObservedToolContact:
+    tool_collision: str
+    other_collision: str
+    point_container: tuple
+    normal_toward_tool_container: tuple
+    depth_m: float
 
 
 @dataclass(frozen=True)
@@ -25,6 +34,8 @@ class ReleaseObservation:
     attachment_detach_count: int
     processed_commands: int
     tool_T_box_at_attach: tuple
+    tool_contacts: tuple = ()
+    tool_contact_components_complete: bool = False
 
 
 def checked_pose(row):
@@ -39,7 +50,7 @@ def checked_pose(row):
 
 
 class ReleaseObservationReader:
-    def __init__(self, world_T_container, lower_dimensions, payload_id):
+    def __init__(self, world_T_container, lower_dimensions, payload_id, *, tool_collision_names=()):
         frame = np.asarray(world_T_container, dtype=float).reshape(4, 4).copy()
         if (not np.isfinite(frame).all() or not np.allclose(frame[3], [0, 0, 0, 1]) or
                 not np.allclose(frame[:3, :3].T @ frame[:3, :3], np.eye(3)) or
@@ -51,6 +62,9 @@ class ReleaseObservationReader:
                 min(size) <= 0 for size in self._lower.values()):
             raise ValueError('RELEASE_LOWER_DIMENSIONS_INVALID')
         self._payload_id = payload_id
+        self._tool_collisions = tuple(tool_collision_names)
+        if len(set(self._tool_collisions)) != len(self._tool_collisions):
+            raise ValueError('RELEASE_TOOL_COLLISION_NAMES_INVALID')
 
     def read(self, native):
         flags = ('ready', 'attached', 'joint_positions_complete', 'contacts_component_available',
@@ -88,7 +102,20 @@ class ReleaseObservationReader:
             raise ValueError('RELEASE_ATTACHMENT_RELATION_INVALID')
         relation[:3, 3] = xyz; relation[:3, :3] = Rotation.from_quat(quat).as_matrix()
         contacts = read_payload_contacts(native['payload_contacts'], self._payload_id, self._container_T_world)
+        tool_contacts = []
+        if self._tool_collisions:
+            components = native.get('parent_collision_contacts')
+            if not isinstance(components, dict) or set(components) != set(self._tool_collisions):
+                raise ValueError('RELEASE_TOOL_CONTACT_SET_INCOMPLETE')
+            for name in self._tool_collisions:
+                component = components[name]
+                if component.get('available') is not True or 'contacts' not in component:
+                    raise ValueError('RELEASE_TOOL_CONTACT_COMPONENT_UNAVAILABLE:' + name)
+                identity = 'release_carriage::tool::' + name
+                for contact in read_exact_collision_contacts(component['contacts'], identity, self._container_T_world):
+                    tool_contacts.append(ObservedToolContact(identity, contact.other_collision,
+                        contact.point_container, contact.normal_toward_observed_container, contact.depth_m))
         return ReleaseObservation(float(stamp), q, tuple(box.ravel()), tuple(tool.ravel()),
             tuple(lower), contacts, native['attached'], native['attachment_joint_component_present'],
             native['attachment_create_count'], native['attachment_detach_count'],
-            native['processed_commands'], tuple(relation.ravel()))
+            native['processed_commands'], tuple(relation.ravel()), tuple(tool_contacts), bool(self._tool_collisions))

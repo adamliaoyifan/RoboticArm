@@ -64,11 +64,22 @@ def write_release_scene(assets, snapshot, state, config, case, policy,
         text(vacuum, 'joint_name', name)
     for body in fixture['boxes']:
         text(vacuum, 'observed_model', body['name'])
+    tool_link = model.find("link[@name='tool']")
+    collision_names = [part['sdf_collision'] for part in ledger['parts']]
+    for name in collision_names:
+        text(vacuum, 'observed_parent_collision', name)
+        sensor = ET.SubElement(tool_link, 'sensor', name=name + '_contact', type='contact')
+        text(sensor, 'always_on', 'true')
+        text(sensor, 'update_rate', 1. / fixture['physics_step_s'])
+        contact = ET.SubElement(sensor, 'contact')
+        text(contact, 'collision', name)
+        text(contact, 'topic', '/upper_layer/release/tool_contacts/' + name)
     output.mkdir(parents=True, exist_ok=False)
     ET.indent(root)
     ET.ElementTree(root).write(output / 'release.sdf', encoding='utf-8', xml_declaration=True)
     shutil.copyfile(source_scene / 'fixture.json', output / 'source_fixture.json')
     manifest = dict(profile='independent_release_fixture', case=asdict(case), tool=ledger,
+        tool_collision_names=collision_names,
         fixture_policy=asdict(policy), configuration=asdict(config),
         source_world_sha256=sha256(source_scene / 'standalone.sdf'),
         source_fixture_sha256=sha256(source_scene / 'fixture.json'),

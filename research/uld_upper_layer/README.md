@@ -408,3 +408,18 @@ velocities and analytic speed/acceleration bounds. Geometry distances, timing,
 rail limits and sampling derive from those policies. Collision certification,
 native detach acknowledgement, actual tracking and post-withdraw stability
 remain required consumers; generated references are never executable arm plans.
+
+Release worlds add a contact sensor for each source tool collision. Optional
+native `observed_parent_collision` rows export same-step component availability
+and complete contacts, including empty values. Supplying that full list to
+`ReleaseObservationReader` makes missing components fail closed and produces
+immutable tool contacts with signed normals toward the observed collision.
+Without the list, old recordings explicitly have incomplete tool coverage.
+
+`native/uld_carriage_joint_command` is a persistent two-Double publisher. Its
+stdin protocol is `sequence x z`; it waits for both subscribers, validates the
+message and acknowledges publication. `CarriageCommandPublisher` owns one
+process per fixture run, checks configured rail bounds and records requests/
+responses with their observation stamps. Acknowledgements always leave tracking
+unconfirmed. Actual controller feedback and certified trajectories remain the
+consumer's responsibility; neither adapter can command a payload or attachment.
