@@ -1,0 +1,49 @@
+"""Externally loaded immutable physical experiment policy, never force feedback."""
+from dataclasses import dataclass,asdict,fields
+from pathlib import Path
+import math
+import yaml
+from planning_types import digest
+
+
+@dataclass(frozen=True)
+class ExecutionPolicy:
+    sim_budget_s: float
+    wall_budget_s: float
+    monitor_period_s: float
+    monitor_max_gap_s: float
+    observation_max_age_s: float
+    contact_dwell_s: float
+    condition_wait_budget_s: float
+    stability_dwell_s: float
+    stability_translation_m: float
+    stability_rotation_deg: float
+    lower_translation_m: float
+    lower_rotation_deg: float
+    push_lateral_error_m: float
+    push_rotation_error_deg: float
+    no_progress_window_s: float
+    no_progress_tool_advance_m: float
+    no_progress_box_advance_m: float
+    final_translation_m: float
+    final_rotation_deg: float
+    initial_joint_error_rad: float
+    initial_rotation_deg: float
+    trigger_pre_s: float
+    trigger_post_s: float
+    max_case_bytes: int
+
+    def __post_init__(self):
+        for field in fields(self):
+            value=getattr(self,field.name)
+            if isinstance(value,bool) or not math.isfinite(value) or value<=0:
+                raise ValueError('INVALID_EXECUTION_POLICY:'+field.name)
+        if self.monitor_period_s>self.monitor_max_gap_s or self.monitor_max_gap_s>self.observation_max_age_s:
+            raise ValueError('INCONSISTENT_MONITOR_PERIOD')
+
+    @classmethod
+    def load(cls,path=None):
+        return cls(**yaml.safe_load(Path(path or Path(__file__).with_name('execution_policy.yaml')).read_text()))
+
+    @property
+    def revision(self):return digest(asdict(self))

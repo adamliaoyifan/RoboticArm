@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import threading
 import time
+from collections import deque
 
 
 class RuntimeIO:
@@ -20,6 +21,7 @@ class RuntimeIO:
                       ROS_LOG_DIR=str(self.output/'ros_logs'))
         self.contact_topic='/upper_layer_payload/contacts'
         self.vacuum_spec=None;self.vacuum_capture=None;self.vacuum_state=None
+        self._native_history=deque(maxlen=256)
         if scene_dir:
             self.env['ULD_UPPER_SCENE']=str(scene_dir)
             fixture=json.loads((Path(scene_dir)/'fixture.json').read_text())
@@ -120,9 +122,14 @@ class RuntimeIO:
 
     def _accept_vacuum(self,row):
         state=json.loads(row['data'])
-        with self.pose_lock:self.vacuum_state=state
+        with self.pose_lock:
+            self.vacuum_state=state;self._native_history.append(state)
 
-    def toggle_vacuum(self,attached,timeout_s=5.):
+    def native_samples_after(self,stamp_s):
+        with self.pose_lock:
+            return tuple(state for state in self._native_history if state['sim_time_s']>stamp_s)
+
+    def toggle_vacuum(self,attached,timeout_s=5.,monitor=None):
         """Queue ideal attachment; wait for physics-step state acknowledgement.
 
         Caller verifies the ideal cup seal-frame gap and footprint before attaching.
@@ -133,19 +140,34 @@ class RuntimeIO:
         if not self.vacuum_spec:raise RuntimeError('IDEAL_VACUUM_NOT_CONFIGURED')
         before=self.snapshot()['vacuum']
         previous_commands=before['processed_commands'] if before else -1
-        result=subprocess.run(['ign','service','-s',self.vacuum_spec['service'],
+        process=subprocess.Popen(['ign','service','-s',self.vacuum_spec['service'],
             '--reqtype','ignition.msgs.Boolean','--reptype','ignition.msgs.Boolean',
             '--timeout','2000','--req','data: '+str(bool(attached)).lower()],
-            env=self.env,capture_output=True,text=True,timeout=3.)
+            env=self.env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        import rclpy
+        deadline=time.monotonic()+timeout_s
+        try:
+            while process.poll() is None:
+                rclpy.spin_once(self.node,timeout_sec=.01)
+                if monitor:
+                    reason=monitor(self.snapshot())
+                    if reason:raise RuntimeError(reason)
+                if time.monotonic()>deadline:raise TimeoutError('IDEAL_VACUUM_SERVICE_TIMEOUT')
+            stdout,stderr=process.communicate()
+        except BaseException:
+            if process.poll() is None:process.terminate()
+            process.communicate(timeout=3.)
+            raise
         with (self.output/'vacuum_commands.jsonl').open('a') as trace:
             trace.write(json.dumps(dict(attached=attached,wall=time.time(),
-                returncode=result.returncode,stdout=result.stdout,stderr=result.stderr))+'\n')
-        if result.returncode or 'data: true' not in result.stdout:
+                returncode=process.returncode,stdout=stdout,stderr=stderr))+'\n')
+        if process.returncode or 'data: true' not in stdout:
             raise RuntimeError('IDEAL_VACUUM_SERVICE_REJECTED')
-        deadline=time.monotonic()+timeout_s
-        import rclpy
         while time.monotonic()<deadline:
             rclpy.spin_once(self.node,timeout_sec=.01)
+            if monitor:
+                reason=monitor(self.snapshot())
+                if reason:raise RuntimeError(reason)
             state=self.snapshot()['vacuum']
             if (state and state['ready'] and state['attached']==attached
                     and state['processed_commands']>previous_commands):return state
