@@ -1,5 +1,7 @@
 """Behavioural geometry and dynamic-body contracts for the synthetic fixture."""
 import json
+from copy import deepcopy
+from unittest.mock import patch
 from pathlib import Path
 import sys
 import tempfile
@@ -11,7 +13,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from assets import load
 from check_scene import measure
-from scene import ROOT, fixture, write_scene
+from scene import ROOT, fixture, intersecting_triangles, write_scene
 
 
 class SceneTests(unittest.TestCase):
@@ -59,6 +61,20 @@ class SceneTests(unittest.TestCase):
             self.assertIsNone(ET.parse(output/'overlay.sdf').find("world/model[@name='airport_container_real']"))
             with self.assertRaises(ValueError):
                 write_scene(ROOT,output)
+
+    def test_mesh_guard_rejects_rib_intersection_inside_semantic_hull(self):
+        bad = deepcopy(self.spec)
+        box = next(b for b in bad['boxes'] if b['name']=='lower_l3_x1_y1')
+        # Still within semantic Y=0.985, but intersects the real inward rail.
+        box['center_container_m'][1] += .04
+        with tempfile.TemporaryDirectory() as directory, patch('scene.fixture',return_value=bad):
+            with self.assertRaisesRegex(ValueError,'intersects source collision mesh'):
+                write_scene(ROOT,Path(directory)/'invalid')
+
+    def test_triangle_guard_uses_more_than_axis_aligned_bounds(self):
+        triangles = np.array([[[.9,2,0],[2,.9,0],[2,2,0]],
+                              [[0,0,0],[2,0,0],[0,2,0]]])
+        self.assertEqual(intersecting_triangles([0,0,0],[1,1,1],triangles),[1])
 
     def test_scoring_detects_transient_motion_and_missing_capture(self):
         spec = dict(boxes=[dict(name='lower_1',pose_world=[0,0,0,0,0,0])])

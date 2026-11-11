@@ -3,8 +3,8 @@
 set -eo pipefail
 UPPER_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 UPPER_COORD=/home/adamliao/work/elfin_humble_ws
-UPPER_INSTALL="${ULD_UPPER_INSTALL:-/tmp/uld-upper-build/install}"
-UPPER_SCENE="${ULD_UPPER_SCENE:-/tmp/uld_upper_layer_aligned_scene}"
+UPPER_INSTALL="${ULD_UPPER_INSTALL:-$UPPER_REPO/install}"
+UPPER_SCENE="${ULD_UPPER_SCENE:-/tmp/uld_upper_layer_scene_v1_aligned}"
 UPPER_GUI=true
 if [[ "${1:-}" == --headless ]]; then UPPER_GUI=false; shift; fi
 if (( $# )); then echo 'Usage: launch_scene.sh [--headless]' >&2; exit 2; fi

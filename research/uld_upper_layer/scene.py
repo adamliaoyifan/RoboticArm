@@ -13,9 +13,10 @@ import sys
 import xml.etree.ElementTree as ET
 
 import numpy as np
+import trimesh
 from scipy.spatial.transform import Rotation
 
-from assets import load
+from assets import load, sha256
 from geometry import axis_box, separated
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -53,18 +54,19 @@ def fixture(assets, ceiling_gap=.03, layers=4, columns=3):
     if pitch_z <= .05 or ceiling_gap <= 0:
         raise ValueError('invalid support height or ceiling gap')
     wall_gap, seam_gap, vertical_gap = .006, .004, .001
-    pitch_x = (hull.length - 2 * wall_gap) / columns
+    # Mesh ribs/jambs protrude beyond the semantic hull; measured source margins.
+    x_min, x_max = -hull.half_x+.015, hull.half_x-.025
+    pitch_x = (x_max-x_min) / columns
     boxes = []
     for layer in range(layers):
         bottom = hull.floor_z + layer * pitch_z + vertical_gap
         height = pitch_z - vertical_gap
         ymin, ymax = y_bounds_for_z_interval(hull, bottom, bottom+height, margin=wall_gap)
-        # Source collision wall is at Y~0.970; the semantic bound is 0.985.
-        # Keep 10 mm clear of that measured wall, rather than starting in contact.
-        ymax = min(ymax, hull.half_y-.025)
+        # The wall has an inward rail at Y~0.930 around Z=1.5 m.
+        ymax = min(ymax, hull.half_y-.065)
         for col in range(columns):
             for row, (ya, yb) in enumerate(((ymin, -seam_gap/2), (seam_gap/2, ymax))):
-                xa = -hull.half_x + wall_gap + col*pitch_x + seam_gap/2
+                xa = x_min + col*pitch_x + seam_gap/2
                 xb = xa + pitch_x - seam_gap
                 size = [xb-xa, yb-ya, height]
                 center = [(xa+xb)/2, (ya+yb)/2, bottom+height/2]
@@ -89,7 +91,7 @@ def fixture(assets, ceiling_gap=.03, layers=4, columns=3):
                        if b.name.startswith('suction_panel:'))
     if fill < .90 or ceiling_gap >= panel_depth:
         raise ValueError('fixture must be dense and exclude downward panel clearance')
-    return dict(schema_version=1, physics_step_s=.005, world='airport_loading', frame='container_link',
+    return dict(schema_version=1, physics_step_s=.001, world='airport_loading', frame='container_link',
                 geometry_hash=hull.geometry_hash, support_z_m=top,
                 ceiling_z_m=hull.ceiling_z, upper_headroom_m=hull.ceiling_z-top,
                 lower_fill_fraction=fill, boxes=boxes,
@@ -142,15 +144,51 @@ def original_model(repo, name, pose):
     return model
 
 
+def intersecting_triangles(center, half, triangles):
+    """Exact box/triangle SAT at the initial, axis-aligned fixture pose.
+
+    Hull containment alone omits mesh ribs. Check actual source triangles;
+    mesh AABB or center-ray checks do not establish non-intersection.
+    """
+    center, half = np.asarray(center), np.asarray(half)
+    mask = np.all(triangles.max(axis=1) >= center-half, axis=1)
+    mask &= np.all(triangles.min(axis=1) <= center+half, axis=1)
+    hits = []
+    for index in np.flatnonzero(mask):
+        triangle = triangles[index]-center
+        edges = [triangle[1]-triangle[0], triangle[2]-triangle[1], triangle[0]-triangle[2]]
+        axes = [*np.eye(3), np.cross(edges[0], edges[1])]
+        axes += [np.cross(edge, axis) for edge in edges for axis in np.eye(3)]
+        for axis in axes:
+            if np.linalg.norm(axis) < 1e-12:
+                continue
+            projection = triangle @ axis
+            radius = np.abs(axis) @ half
+            if projection.min() > radius+1e-9 or projection.max() < -radius-1e-9:
+                break
+        else:
+            hits.append(int(index))
+    return hits
+
+
 def write_scene(repo, output):
     if output.exists() and any(output.iterdir()):
         raise ValueError('output must be new or empty; do not overwrite a previous scene')
     assets = load(repo)
     spec = fixture(assets)
+    container_model = assets['scene']['gazebo']['container_model']
+    mesh = repo/f'src/luggage_gazebo/models/{container_model}/meshes/container_collision_physics.stl'
+    triangles = np.asarray(trimesh.load_mesh(mesh, process=False).triangles)
+    spec['source_hashes'][str(mesh.relative_to(repo))] = sha256(mesh)
+    for box in spec['boxes']:
+        hits = intersecting_triangles(box['center_container_m'], np.array(box['size_m'])/2, triangles)
+        if hits:
+            raise ValueError(f"{box['name']} intersects source collision mesh triangles {hits[:8]}")
+    spec['initial_mesh_intersections'] = 0
     output.mkdir(parents=True, exist_ok=True)
     root = ET.parse(repo/'src/luggage_gazebo/worlds/airport_loading.sdf').getroot()
     world = root.find('world')
-    # Preserve collision physics; use a declared 5 ms research stepping profile.
+    # Preserve collision physics; use a declared 1 ms research stepping profile.
     world.find('physics/max_step_size').text = str(spec['physics_step_s'])
     # The default world contains off-scene mesh-cache preloads; omit them.
     for include in list(world.findall('include')):

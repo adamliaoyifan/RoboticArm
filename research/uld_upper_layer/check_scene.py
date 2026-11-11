@@ -64,7 +64,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scene-dir', type=Path, required=True)
     parser.add_argument('--evidence', type=Path, required=True)
-    parser.add_argument('--wall-timeout', type=float, default=180.)
+    parser.add_argument('--wall-timeout', type=float, default=300.)
     args = parser.parse_args()
     out = args.evidence.resolve()
     expected_root = COORD/'docs/status/evidence'

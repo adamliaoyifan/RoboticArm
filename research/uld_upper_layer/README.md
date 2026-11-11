@@ -41,13 +41,14 @@ The fixture uses the original ceiling, opening, chamfered ULD mesh and scene
 transforms. Twenty-four **dynamic** cuboids form four aligned layers. The top
 is at container Z=1.73 m; 0.28 m remains to the ceiling. A blue 0.55 x 0.40 x
 0.25 m carryon is on the normal pickup platform. Lower boxes are synthetic
-fixture geometry, not detected real luggage. They fill about 93% of the
+fixture geometry, not detected real luggage. They fill about 91% of the
 canonical hull volume below the support plane. There is no elevated support shelf or joint locking them together.
 A declared planar contact at the canonical ULD floor (Z=0.53 m) sits above the
 slightly uneven decimated floor mesh; the original ULD mesh remains intact.
-Positive-Y boxes stop at 0.960 m because the source collision wall is near
-0.970 m while the semantic hull bound is 0.985 m. All contacts retain collision geometry.
-The declared research physics step is 0.005 s; contact tests at other step
+Source mesh rails/jambs require positive Y <=0.920 m and X between
+-0.730 and 0.720 m. An exact initial box/triangle check rejects mesh
+intersections; semantic hull containment alone misses those protrusions. All contacts retain collision geometry.
+The declared research physics step is 0.001 s; contact tests at other step
 sizes need separate validation.
 
 Only 0.03 m remains above the inserted test box. The source panel alone extends
@@ -68,7 +69,7 @@ source /home/adamliao/work/elfin_humble_ws/install/setup.bash
 colcon --log-base /tmp/uld-upper-build/log build \
   --base-paths src/luggage_description src/luggage_gazebo \
   --build-base /tmp/uld-upper-build/build \
-  --install-base /tmp/uld-upper-build/install --symlink-install \
+  --install-base /tmp/elfin_uld_upper_layer_g1/install --symlink-install \
   --cmake-args -DBUILD_TESTING=OFF
 ```
 
@@ -80,7 +81,7 @@ bash research/uld_upper_layer/launch_scene.sh
 # Or: bash research/uld_upper_layer/launch_scene.sh --headless
 ```
 
-The script checks sim exclusivity, generates `/tmp/uld_upper_layer_aligned_scene` if
+The script checks sim exclusivity, generates `/tmp/uld_upper_layer_scene_v1_aligned` if
 absent, and stops only its own process group on Ctrl+C. It sends no automatic
 pick/place commands. `ULD_UPPER_SCENE` overrides the generated scene directory;
 use a new/empty directory when regenerating. `ULD_UPPER_INSTALL` overrides
@@ -106,3 +107,8 @@ contains that static environment, for a bounded gravity check without a robot.
 The standalone check preserves the full short pose trace and stops its own
 Gazebo before returning. Its tolerances measure setup settling, not the V1
 requirement that supports remain stationary during actual pushing.
+
+Use the standard `<worktree>/install` layout: the existing GPU gate locates
+its helper in `<worktree>/scripts`. Lower-box collision geometry is present
+in Gazebo; scene-only startup does not inject fixture truth into MoveIt.
+Future placement planning must obtain those obstacles from the measured map.
