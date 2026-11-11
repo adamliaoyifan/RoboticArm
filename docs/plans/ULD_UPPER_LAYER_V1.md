@@ -1953,3 +1953,36 @@ AND门槛；不足/缺失不得按空contact通过。仍只保持吸附3s，不�
 完整短单元1ms gzip采集、200MB/20MB预留预算与先持久化再owned teardown。
 新二进制与原source模型hash冻结归档，不覆盖历史实验。之后才进入
 独立碰撞认证、关节跟踪及解除/分离/撤出；正式校准/接触管/C5仍open。
+
+
+### 19.31 完整工具原生观测保持与关节通信独立通过
+
+冻结研究60452563、新插件5d9cefd45bf631fd2beb2d17e8d7b44943eb8128e194562291ab511119c94d08。
+release_tool_contacts_hold_g12_01按19.30单Gazebo入口运行：3.013s
+门槛窗口3014帧，16项运行检查全通过。完整采集0.001..6.764s共6764
+个连续1ms native step，8个源工具contact component每帧均available，
+工具接触点0，未将topic静默当作空值。保持阶段仍附着、create1/detach0、
+无箱体命令，state/clock各1 publisher，不发送关节运动或解除。
+完整采集持久化后owned PGID3603446停止，manifest确认teardown。
+
+独立audit从归档源码经ReleaseObservationReader逐帧读取全部6764
+帧和完整8碰撞列表，14检查通过，包含26,252个原生下层接触点严格
+bottom/top/normal/depth检查、native每步、同stamp下层、源hash、世界
+hash与owned teardown。对真实首帧删除camera组件或置available=false
+均拒绝；补充输入身份2检查确认source fixture hash及全部共享asset
+hash，框架来自该研究场景，不假定world/base/container重合。
+本次工具contacts为空，尚未覆盖工具真实正接触或移动PID跟踪；不能
+把组件可用/通信ack解释成碰撞裕量证明或执行完成。
+
+carriage_command_transport_g12_01的4项实际通信检查均通过；逐文件
+确认其归档源码与60452563提交一致（原运行在该提交前dirty源码，
+保留原revision并补记匹配提交）。3对数值由独立订阅端实际收到，
+非法native输入无发布；无Gazebo、无actuator，仅验证发布链路。
+165完整行为测试最终通过，初次stdout句柄告警日志仍保留，修复后
+3项协议测试在ResourceWarning检查下干净通过。二进制/源码/日志
+均在primary evidence，所有产物hash已验证，不在worktree新建证据。
+
+当前已具备完整工具观测与持久命令接口；独立连续碰撞认证、实际
+控制器跟踪/停止、原生解除确认、分离/撤出及解除后3s稳定仍待闭环。
+不得跳过19.29的参考轨迹非准入边界。此次没有释放校准样本或正式C，
+54/细化、接触误差管、C5和剩余A/D继续open。
