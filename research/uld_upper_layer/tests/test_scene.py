@@ -62,6 +62,23 @@ class SceneTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 write_scene(ROOT,output)
 
+    def test_explicit_material_tangent_changes_only_friction_basis(self):
+        from fixture_material import BoxContactMaterial
+        from scene import box_model
+        from dataclasses import replace
+        spec=dict(name='material_case',size_m=[.55,.4,.25],mass_kg=8.,pose_world=[0,0,1.,0,0,0])
+        baseline=BoxContactMaterial.load()
+        material=replace(baseline,first_friction_direction_local=(1.,0.,0.))
+        a=box_model(spec,'1 1 1 1',material=baseline)
+        b=box_model(spec,'1 1 1 1',material=material)
+        path='link/collision/surface/friction/ode'
+        self.assertIsNone(a.find(path+'/fdir1'))
+        direction=b.find(path+'/fdir1');self.assertEqual(direction.text,'1 0 0')
+        b.find(path).remove(direction)
+        self.assertEqual(ET.tostring(a),ET.tostring(b))
+        for direction in ((0.,0.,0.),(2.,0.,0.),(float('nan'),0.,1.)):
+            with self.assertRaises(ValueError):replace(baseline,first_friction_direction_local=direction)
+
     def test_mesh_guard_rejects_rib_intersection_inside_semantic_hull(self):
         bad = deepcopy(self.spec)
         box = next(b for b in bad['boxes'] if b['name']=='lower_l3_x1_y1')

@@ -1213,3 +1213,29 @@ BoundedTrace独立负责归档/环形窗口，transport只解析和投递；无�
 capture_rehearsal_g12_01：实际接收9224native，基线462；失败窗口
 3001样本覆盖3s，最大1ms；103次实际决策输入重放一致，总2466622bytes。
 该演练显式DIAGNOSTIC_CAPTURE_REHEARSAL、未执行上层动作，不算物理成功。
+
+### 19.12 固定材料摩擦轴的受控实验（尚未判因果）
+
+09真推33.98mm后因横向5.01mm停止，箱体转角仅0.00060deg；
+工具Y范围21.87um，下层1965接触法向均近竖直，p04法向横分量
+最大1.14e-4。故排除工具自身5mm横向轨迹误差；切向摩擦来源未直接测力。
+DART6.12.1 ContactConstraint默认UnitZ，getTangentBasisMatrixODE对
+几乎平行法向归一化极小切向量；计算实际法向得到摩擦金字塔基底相对
+XY角中位19.67deg、86.16%超过5deg。固定材料X轴时该角最大4.8e-9deg。
+这提供模型侧漂机制假设，不把基底分析当实际接触力或已证因果。
+
+新增fixture_material.py/YAML显式材质profile，默认mu/mu2=.8且方向null，
+保持原始基线可重放。试验profile材料局部X单位向量，与目标/当前误差
+无关；同样适用于所有24下层箱、payload与canonical floor，共26体。
+源码匹配安装的gz-physics5.4.0 SDFFeatures使用fdir1并调用DART
+setFirstFrictionDirection，DART6.12.1支持该功能。
+新fixture05和旧04除26个fdir1外解析SDF结构/值完全一致，几何、μ、
+质量/惯量、掩码、重力、步长、插件均不变；80单元测试通过。
+材质不提供任何控制反馈/箱体命令，pose支持/碰撞/横向5mm等门槛不变。
+
+受控profile试验使用connected_paths_g12_04同一真实证书轨迹，运行前
+仍需实际初始q/box/lower重验证；仅物理材质轴改变，不借新轨迹混淆因素。
+一轮不计分完整动作，前进/横向序列、法向与基底、下层变化和终态门槛
+均保留。对比共同约30mm前进处横偏和停止/完成结果；无共同进度样本
+时该对比not_evaluated。单次结果只说明该profile下存在性或失败，不声明
+成功率改善；若仍侧漂，保留失败并继续摩擦/视觉纠偏机制调查，不放宽阈值。

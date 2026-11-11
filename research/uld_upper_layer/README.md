@@ -296,3 +296,10 @@ baseline uses the monitor period and `_trigger.jsonl.gz` retains the complete
 raw pre/post failure window. `native_capture_metrics.json` reports coverage and
 gaps. `--capture-rehearsal` deliberately fails after a hold to verify this path;
 it cannot execute a nominal plan and never represents upper-action success.
+
+`scene.py --contact-profile <yaml>` configures generated boxes/floor material.
+The default `fixture_material.yaml` preserves the original null friction
+direction. An explicit unit vector is in each collision's material frame,
+independent of a target trajectory; the fixture archives the parsed material
+and profile hash. It changes simulation contact properties, never box poses
+or controller feedback. Controlled comparisons must state the material profile.

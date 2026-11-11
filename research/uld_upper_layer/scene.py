@@ -8,6 +8,8 @@ scene assets for an independent gravity-settling check (no robot motion).
 import argparse
 from copy import deepcopy
 import json
+from dataclasses import asdict
+import shutil
 from pathlib import Path
 import sys
 import xml.etree.ElementTree as ET
@@ -17,6 +19,7 @@ import trimesh
 from scipy.spatial.transform import Rotation
 
 from assets import load, sha256
+from fixture_material import BoxContactMaterial,DEFAULT_PROFILE
 from geometry import axis_box, separated
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -103,7 +106,8 @@ def fixture(assets, ceiling_gap=.03, layers=4, columns=3):
                 source_hashes=assets['hashes'])
 
 
-def box_model(spec, color, contact_topic=None):
+def box_model(spec, color, contact_topic=None,material=None):
+    material=material or BoxContactMaterial.load()
     model = ET.Element('model', name=spec['name'])
     text(model, 'static', 'false')
     text(model, 'pose', numbers(spec['pose_world']))
@@ -127,8 +131,10 @@ def box_model(spec, color, contact_topic=None):
         else:
             friction = ET.SubElement(ET.SubElement(part, 'surface'), 'friction')
             ode = ET.SubElement(friction, 'ode')
-            text(ode, 'mu', .8)
-            text(ode, 'mu2', .8)
+            text(ode, 'mu', material.primary_friction)
+            text(ode, 'mu2', material.secondary_friction)
+            if material.first_friction_direction_local is not None:
+                text(ode,'fdir1',numbers(material.first_friction_direction_local))
     if contact_topic:
         sensor=ET.SubElement(link,'sensor',name='box_contact',type='contact')
         text(sensor,'always_on','true')
@@ -178,11 +184,13 @@ def intersecting_triangles(center, half, triangles):
     return hits
 
 
-def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None):
+def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None,contact_profile=None):
     if output.exists() and any(output.iterdir()):
         raise ValueError('output must be new or empty; do not overwrite a previous scene')
     assets = load(repo)
     spec = fixture(assets)
+    material=BoxContactMaterial.load(contact_profile)
+    spec['contact_material']=asdict(material)
     container_model = assets['scene']['gazebo']['container_model']
     mesh = repo/f'src/luggage_gazebo/models/{container_model}/meshes/container_collision_physics.stl'
     triangles = np.asarray(trimesh.load_mesh(mesh, process=False).triangles)
@@ -193,6 +201,8 @@ def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None):
             raise ValueError(f"{box['name']} intersects source collision mesh triangles {hits[:8]}")
     spec['initial_mesh_intersections'] = 0
     output.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(contact_profile or DEFAULT_PROFILE,output/'contact_material.yaml')
+    spec['source_hashes'][str((output/'contact_material.yaml').resolve())]=sha256(output/'contact_material.yaml')
     root = ET.parse(repo/'src/luggage_gazebo/worlds/airport_loading.sdf').getroot()
     world = root.find('world')
     if physics_plugin is not None:
@@ -221,7 +231,7 @@ def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None):
         world.remove(include)
     colors = ['0.65 0.34 0.16 1', '0.76 0.49 0.23 1', '0.48 0.32 0.20 1']
     for box in spec['boxes']:
-        world.append(box_model(box, colors[box['layer']%len(colors)]))
+        world.append(box_model(box, colors[box['layer']%len(colors)],material=material))
     # The usual spawner remains a service, so this named test payload is explicit.
     pickup = gazebo_pickup_platform_spawn_pose(assets['scene'])
     platform = assets['scene']['pickup_platform']
@@ -231,7 +241,7 @@ def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None):
                               +spec['payload']['size_m'][2]/2+.001, 0,0,0])
     spec['pickup_payload'] = target
     spec['payload_contact_topic']='/upper_layer_payload/contacts'
-    world.append(box_model(target, '0.15 0.55 0.85 1',spec['payload_contact_topic']))
+    world.append(box_model(target, '0.15 0.55 0.85 1',spec['payload_contact_topic'],material=material))
     # Add a slow all-model pose stream without changing dynamics.
     for model in world.findall('model'):
         if model.get('name', '').startswith('lower_'):
@@ -247,7 +257,7 @@ def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None):
     hull = assets['hull']
     center = (assets['world_container'] @ np.array([0,0,hull.floor_z-.005,1]))[:3]
     floor = box_model(dict(name='canonical_cargo_floor', size_m=[hull.length,hull.width,.01],
-                           mass_kg=1., pose_world=[*center,0,0,0]), '0.25 0.35 0.45 1')
+                           mass_kg=1., pose_world=[*center,0,0,0]), '0.25 0.35 0.45 1',material=material)
     floor.find('static').text = 'true'
     world.append(floor)
     ET.indent(root)
@@ -270,8 +280,9 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--physics-plugin',type=Path)
     parser.add_argument('--vacuum-plugin',type=Path)
+    parser.add_argument('--contact-profile',type=Path)
     args = parser.parse_args()
-    spec = write_scene(args.repo.resolve(), args.output.resolve(),args.physics_plugin,args.vacuum_plugin)
+    spec = write_scene(args.repo.resolve(), args.output.resolve(),args.physics_plugin,args.vacuum_plugin,args.contact_profile)
     print(json.dumps({k:spec[k] for k in ('support_z_m','upper_headroom_m','lower_fill_fraction',
                                           'payload_ceiling_gap_m','suction_panel_depth_from_contact_m')}, indent=2))
     print(f"Scene: {args.output.resolve()} (24 dynamic support boxes; no action commands)")

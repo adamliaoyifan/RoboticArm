@@ -1,0 +1,4 @@
+# Baseline preserves the original Gazebo/DART default friction basis.
+primary_friction: 0.8
+secondary_friction: 0.8
+first_friction_direction_local: null
