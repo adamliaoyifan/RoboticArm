@@ -372,3 +372,14 @@ joint limits without recompilation. The fixture is for independent release
 calibration; it proves neither arm reachability nor physical release stability.
 Native attachment, observation/capture wiring and live calibration are pending.
 Public-command help smoke tests load each CLI without starting simulation.
+
+`release_scene.write_release_scene` binds one release case to the original
+standalone world and an independently built native-vacuum library. It preserves
+source lower boxes, ULD and physics; it only places the initial payload and adds
+the carriage. Explicit native joint names and same-step observed-model poses
+serve the two-axis fixture. Optional initial native attachment prevents IPC
+discovery delay from becoming an accidental pre-test fall. Existing arm scenes
+retain their original default joint list and explicit attachment requests.
+`release_rehearsal.py` checks a short attached hold with lossless native capture
+and owned teardown. It requests neither joint motion nor release and supplies no
+release-stability, arm-reachability or full-action verdict.

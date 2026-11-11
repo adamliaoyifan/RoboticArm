@@ -4,6 +4,8 @@
 #include <atomic>
 #include <iomanip>
 #include <sstream>
+#include <set>
+#include <stdexcept>
 #include <vector>
 #include <ignition/gazebo/System.hh>
 #include <ignition/gazebo/Model.hh>
@@ -34,6 +36,32 @@ class IdealVacuum : public sim::System, public sim::ISystemConfigure,
     linkName=sdf->Get<std::string>("parent_link");
     payloadLinkName=sdf->Get<std::string>("payload_link");
     payloadCollisionName=sdf->Get<std::string>("payload_collision");
+    // An explicit joint list supports the independent release carriage. Keep
+    // the six-arm default byte-for-byte in name/order for existing fixtures.
+    if (sdf->HasElement("joint_name")) {
+      for (auto node=sdf->FindElement("joint_name");node;
+           node=node->GetNextElement("joint_name")) jointNames.push_back(node->Get<std::string>());
+    } else {
+      for (int i=1;i<=6;++i) jointNames.push_back("elfin_joint"+std::to_string(i));
+    }
+    std::set<std::string> unique;
+    for (const auto &name:jointNames)
+      if (name.empty() || !unique.insert(name).second)
+        throw std::invalid_argument("INVALID_VACUUM_JOINT_NAMES");
+    if (sdf->HasElement("observed_model")) {
+      unique.clear();
+      for (auto node=sdf->FindElement("observed_model");node;
+           node=node->GetNextElement("observed_model")) {
+        auto name=node->Get<std::string>();
+        if (name.empty() || !unique.insert(name).second)
+          throw std::invalid_argument("INVALID_VACUUM_OBSERVED_MODELS");
+        observedNames.push_back(name);
+      }
+    }
+    // Fixture-only initial condition: establish the native constraint before
+    // the first physics step, so below-policy calibration cases do not fall
+    // while a transport subscriber is discovering the state topic.
+    if (sdf->Get<bool>("initially_attached",false).first) requested.store(1);
     auto service=sdf->Get<std::string>("service");
     state=transport.Advertise<ignition::msgs::StringMsg>(sdf->Get<std::string>("state_topic"));
     std::function<bool(const ignition::msgs::Boolean &,ignition::msgs::Boolean &)> callback=
@@ -56,12 +84,18 @@ class IdealVacuum : public sim::System, public sim::ISystemConfigure,
       payloadCollision=sim::Link(payloadLink).CollisionByName(ecm,payloadCollisionName);
       if (payloadCollision==sim::kNullEntity) return;
       joints.clear();
-      for (int i=1;i<=6;++i) {
-        auto joint=sim::Model(parent).JointByName(ecm,"elfin_joint"+std::to_string(i));
+      for (const auto &name:jointNames) {
+        auto joint=sim::Model(parent).JointByName(ecm,name);
         if (joint==sim::kNullEntity) return;
         joints.push_back(joint);
         if (!ecm.Component<comp::JointPosition>(joint))
           ecm.CreateComponent(joint,comp::JointPosition());
+      }
+      observedModels.clear();
+      for (const auto &name:observedNames) {
+        auto model=ecm.EntityByComponents(comp::Model(),comp::Name(name));
+        if (model==sim::kNullEntity) return;
+        observedModels.push_back(model);
       }
       ready.store(true);
     }
@@ -119,6 +153,25 @@ class IdealVacuum : public sim::System, public sim::ISystemConfigure,
           <<",\"z\":"<<pose.Rot().Z()<<",\"w\":"<<pose.Rot().W()<<"}}";
       };
       appendPose("payload_pose_world",payloadPose);appendPose("link_pose_world",linkPose);
+      json<<",\"joint_names\":[";
+      for (size_t i=0;i<jointNames.size();++i) {
+        if (i) json<<",";
+        json<<"\""<<jointNames[i]<<"\"";
+      }
+      json<<"]";
+      if (!observedNames.empty()) {
+        json<<",\"observed_model_poses_world\": {";
+        bool first=true;
+        for (size_t i=0;i<observedNames.size();++i) {
+          // All lower poses and contacts carry this same native step stamp.
+          if (!first) json<<",";
+          first=false;
+          json<<"\""<<observedNames[i]<<"\":{\"valid\":true";
+          appendPose("pose",sim::worldPose(observedModels[i],ecm));
+          json<<"}";
+        }
+        json<<"}";
+      }
       json<<",\"q\":[";
       bool complete=true;
       for (size_t i=0;i<joints.size();++i) {
@@ -144,6 +197,8 @@ class IdealVacuum : public sim::System, public sim::ISystemConfigure,
  private:
   std::string payloadName,parentName,linkName,payloadLinkName,payloadCollisionName;
   std::vector<sim::Entity> joints;
+  std::vector<std::string> jointNames,observedNames;
+  std::vector<sim::Entity> observedModels;
   sim::Entity payload=sim::kNullEntity,link=sim::kNullEntity;
   sim::Entity payloadLink=sim::kNullEntity,attachmentJoint=sim::kNullEntity;
   sim::Entity payloadCollision=sim::kNullEntity;

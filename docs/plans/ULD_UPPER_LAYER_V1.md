@@ -1779,3 +1779,46 @@ release_fixture_build_g12_01首轮数值位姿回读测试失败于通用9位有
 计正式C或释放样本。下一步仍需原生吸附接入两轴夹具、完整原场景/观测
 与失败采集、非计分控制器启动及撤出预演，再冻结运行入口完成释放54/
 1%细化。完整接触管、C5和剩余A/D继续open。
+
+
+### 19.27 两轴夹具原生吸附/观测保持预演入口（非释放评分）
+
+native IdealVacuum支持显式joint_name列表，缺省仍为原六轴顺序；
+可指定observed_model，将24个下层model pose与载荷、工具、关节和
+接触component在同一原生物理步输出。可选initially_attached仅用于
+独立fixture，在第一物理步前建立原生DetachableJoint，避免低支撑
+面积单元因IPC发现延迟而在吸附前坠落；不包含箱体命令。原六轴场景
+无此标志，继续由原调用方验证seal后请求吸附。
+
+release_scene从冻结fixture05的standalone.sdf构建独立世界，只修改
+实验箱的初始pose并增加完整工具X/Z夹具，保留所有下层/ULD/材质/
+物理步和系统，替换吸附插件为新构建的独立二进制。源hash、case完整
+身份变化或输出目录已存在均拒绝；归档case、几何、二进制和世界hash。
+该构建输入仍显式ideal fixture，不接入生产感知。
+
+下一预演固定ratio=.60/yaw=0/repetition=0、fixture05、默认
+release_fixture.yaml、/tmp/upper_monitor_50hz_g12.yaml；独立构建
+/tmp/uld-upper-vacuum-release-g12_01/libuld_upper_vacuum.so，不覆盖
+任何历史二进制。源冻结后用release_rehearsal.py --scene-dir
+/tmp/uld_upper_release_scene_g12_01 --policy /tmp/upper_monitor_50hz_g12.yaml
+--evidence <primary>/docs/status/evidence/uld_upper_layer_v1/release_attached_hold_g12_01。
+不发送关节运动或解除请求。完整原场景单Gazebo，-s/-r无GUI，
+ROS_DOMAIN_ID=7、独立IGN partition。初始原生约束属于fixture初始条件，
+不构成实测吸取或机械臂到达证明。
+
+单次非计分startup单元wall上限60s，至少持续原policy稳定窗3s的
+同源原生观测：始终ready/attached/constraint-present、create=1/
+detach=0、无箱体命令、关节名release_x/z且两轴数据完整、下层集合
+24对象完整、每帧原生contacts可用、相邻物理stamp差<=1ms+1e-9；
+state及world clock各恰1 publisher。全部AND才通过，是确定接线门槛，
+不表示释放成功率、重复可靠性或释放后稳定。位姿/接触观测保留供
+之后测量重力下垂和接触，不能把附着保持当成释放校准样本。
+
+采集边界为启动→native ready/attached→3s hold→检查/teardown。
+每帧完整native JSON包含所有接触及同stamp下层pose，gzip无采样；
+失败保留整个短startup单元、first/last输入、错误栈、启动/topic/clock
+日志、源码/config/世界/插件hash，阈值沿用200MB/20MB预留预算。
+解析/时钟倒退触发时另存原始坏消息；无数据或缺帧不得称健康。
+先关闭并持久化采集与manifest，再调用主工作区stop_sim.sh
+--owned-pgid，并记录teardown。读取native.jsonl.gz即可按stamp回放，
+不需要重新启动Gazebo。未完成撤出或释放的结果仍not_evaluated。
