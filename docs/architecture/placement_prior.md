@@ -482,6 +482,24 @@ must not be used as offset-grasp acceptance evidence. Zero accepted patches
 remain zero; do not mint a centre fallback. Contact model thresholds remain
 unchanged by this integration.
 
+### Full footprint containment for joint pick/place planning
+
+Each directed grasp proposed by the joint operation planner must keep the
+entire suction footprint, enlarged by the configured boundary margin, inside
+one observed box's valid top domain. Percentage coverage, four accepted corners,
+or an accepted centre do not establish containment across holes or concavities.
+Changing the tool angle requires a fresh directed-footprint check. Preserve the
+existing surface quality gates after this geometric necessary condition.
+
+`suction_footprint_containment` is a pure top-plane geometry kernel. Its boolean
+domain must conservatively identify whole cells belonging to the same observed
+face; majority mask membership alone is not that contract. Every cell with
+positive area overlap with the rotated footprint plus margin must be valid;
+unobserved/out-of-grid cells reject. The caller retains observation identity and
+resolves world/tool/top-plane transforms. The kernel neither authorizes contact
+nor performs IK, vacuum, or motion. Adoption into the live evaluator and typed
+joint-plan path is a separate integration gate, not implied by kernel tests.
+
 `--prior-acquisition-only` in the motion/OCC driver requires a non-scored
 rehearsal and prior enabled. It returns at the detected-input hook before pickup;
 it is an input capture tool, not a successful cycle. `--dump-dir` also captures
