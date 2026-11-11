@@ -1641,3 +1641,34 @@ plan/source/model/config/policy/端点/其他阶段一致性检查全部通过�
 原接缝微小侧接触仍按禁止接触处理，没有豁免或降低门槛。因此不运行新
 全动作/正式C。下一步先将非接触包络修复接入联合规划，再完善源接缝的
 接触条件误差验证；释放54/细化、正式C5及剩余A/D仍open。
+
+
+### 19.23 非接触包络接入联合规划与消费者（待真实入口验证）
+
+free_box_validation接收相同只读模型/快照/箱体/配置及完整名义方案；先独立
+检查6阶段非接触包络，再评分。生产者明确记录motion_kind、box_motion_model
+和固定箱体container-absolute参考pose，并纳入plan digest。只有joint、
+fixed_world、无工具接触的阶段允许保留起终q重新RRT搜索；每个失败阶段
+最多修复一次，随后普通FullArmScene独立复验。Cartesian释放、撤出与
+推入语义不能因包络失败被改成任意关节路径；禁止变更端点或设置箱体状态。
+失败保留名义方案、包络输入/结果、新轨迹及边界，不评分、不计入解数。
+
+联合搜索显式输入ExecutionPolicy，经--execution-policy加载与归档，无需
+编译。worker与选择器都需要完整非接触证明；消费者校验快照/模型/配置/
+执行与数值参数版本、完整阶段覆盖、plan digest、误差域与5mm下界。执行
+probe也核对policy归档hash/版本及新增模块源码。旧评分不能绕过新准入；
+此证明仍是非接触部分，intended_contact_uncertainty未评估，不声称完整
+误差管或物理准入。新实现没有新增接触豁免或改变支撑阈值。
+
+136项行为测试通过，包含修复独立复验/输入不变/端点固定、禁止重写接触/
+Cartesian/移动箱阶段、重复未证明与deadline拒绝，以及worker包络失败不
+调用评分、选择器拒绝缺失/过期/部分/不足证明；随后4项worker定向检查
+验证即使内部失败结果误留valid，边界也强制拒绝。
+
+下一非计分验证用motion_feasibility真实--plan-paths入口：fixture05，
+归档scored_search_g12_01的准确observation/candidates/config/selection，
+50Hz执行policy，seed0（worker显式映射OMPL1），目标3/最低1、cap400、
+搜索总预算600s，不启动Gazebo。通过要求：预算内至少1条完整评分且6阶段
+非接触证明通过的去重方案，选择器接纳；归档模型/快照/config/policy与
+plan绑定一致。未证明/超时候选不计数并保留阶段输入和失败；目标3不是
+强制3条。该运行不消耗正式C，不代表支撑接缝或物理重复已通过。

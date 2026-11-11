@@ -9,6 +9,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from planning_worker import _worker
 from planning_types import UpperConfig
 from selection_policy import SelectionPolicy
+from execution_policy import ExecutionPolicy
 
 
 class WorkerScoreAdmission(unittest.TestCase):
@@ -19,8 +20,27 @@ class WorkerScoreAdmission(unittest.TestCase):
             def __init__(self,*args):pass
         with patch('ompl.util.RNG'),patch('assets.load',return_value={}),patch('full_arm.FullArmScene',Scene),\
              patch('stage_planner.plan_action',return_value=dict(valid=True,stages=[])),\
+             patch('free_box_validation.prepare_free_box_motion',return_value=dict(valid=True,plan=dict(valid=True,stages=[]))),\
              patch('plan_clearance.score_plan',return_value=score,side_effect=error):
-            _worker('.',None,None,None,[],[],UpperConfig.load(),SelectionPolicy.load(),directory,5.,0)
+            _worker('.',None,None,None,[],[],UpperConfig.load(),SelectionPolicy.load(),ExecutionPolicy.load(),directory,5.,0)
+
+    def test_envelope_failure_preserves_nominal_but_never_calls_score(self):
+        class Scene:
+            minimum_clearance_m=.04;clearance_witness=('search','obstacle')
+            def __init__(self,*args):pass
+        with tempfile.TemporaryDirectory() as directory,patch('ompl.util.RNG'),\
+             patch('assets.load',return_value={}),patch('full_arm.FullArmScene',Scene),\
+             patch('stage_planner.plan_action',return_value=dict(valid=True,stages=[])),\
+             patch('free_box_validation.prepare_free_box_motion',return_value=dict(valid=False,
+                plan=dict(valid=True,stages=[]),diagnostic=dict(reason='TUBE_UNPROVED'))),\
+             patch('plan_clearance.score_plan') as score:
+            _worker('.',None,None,None,[],[],UpperConfig.load(),SelectionPolicy.load(),ExecutionPolicy.load(),directory,5.,0)
+            score.assert_not_called()
+            self.assertTrue((Path(directory)/'nominal_result.json').exists())
+            self.assertTrue((Path(directory)/'envelope_result.json').exists())
+            result=json.loads((Path(directory)/'result.json').read_text())
+            self.assertFalse(result['valid'])
+            self.assertEqual(result['reason'],'FREE_BOX_ENVELOPE_REJECTED')
 
     def test_failed_score_preserves_path_but_denies_admission(self):
         with tempfile.TemporaryDirectory() as directory:

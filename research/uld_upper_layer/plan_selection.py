@@ -8,6 +8,7 @@ import math
 import numpy as np
 from scipy.spatial.transform import Rotation
 from plan_clearance import plan_digest
+from noncontact_admission import noncontact_rejection
 
 
 def _same_pose(a,b,translation_m,rotation_deg):
@@ -30,7 +31,7 @@ def equivalent_actions(a,b,policy):
             all(_same_pose(x,y,limit,policy.pose_dedup_rotation_deg) for x,y,limit in pairs))
 
 
-def _rejection(plan,snapshot_id,config,policy,model_identity):
+def _rejection(plan,snapshot_id,config,policy,model_identity,execution_policy):
     from physical_executor import STAGES
     try:
         score=plan['clearance_score']
@@ -64,10 +65,10 @@ def _rejection(plan,snapshot_id,config,policy,model_identity):
         if not score.get('robot_witness'):return 'MISSING_COLLISION_SCORE_WITNESS'
         if not equivalent_actions(plan['action'],plan['action'],policy):return 'INVALID_ACTION_POSE'
     except (KeyError,TypeError,ValueError):return 'SCORE_OR_PLAN_CONTRACT_INVALID'
-    return None
+    return noncontact_rejection(plan,snapshot_id,config,policy,execution_policy,model_identity)
 
 
-def rank_nominal_plans(plans,snapshot_id,config,policy,model_identity):
+def rank_nominal_plans(plans,snapshot_id,config,policy,model_identity,execution_policy):
     """Form collision tiers anchored at each remaining best proved clearance.
 
     Tier span is <= collision_tie_m. This avoids the nontransitive pairwise
@@ -76,7 +77,7 @@ def rank_nominal_plans(plans,snapshot_id,config,policy,model_identity):
     """
     pending=[];rejected=[]
     for index,plan in enumerate(plans):
-        reason=_rejection(plan,snapshot_id,config,policy,model_identity)
+        reason=_rejection(plan,snapshot_id,config,policy,model_identity,execution_policy)
         if reason:rejected.append(dict(index=index,reason=reason))
         else:pending.append(index)
     ordered=[];tiers=[]

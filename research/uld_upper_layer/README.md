@@ -306,9 +306,25 @@ uncertainty; the result always has `execution_admitted=false`.
 rows into the existing OMPL joint-motion interval validator for fixed free-box
 routing. It rejects attached boxes or mutation of the fixed box during a route.
 The independent validator uses a plain `FullArmScene` afterwards. This is a
-research route-repair component; automatic adoption in the joint search and
-contact-conditioned whole-tube admission remain unfinished. It neither moves
+research route-repair component used by the joint-search preparation below;
+contact-conditioned whole-tube admission remains unfinished. It neither moves
 the simulated box nor changes a source mesh/contact exception.
+
+The joint-search worker now runs `free_box_validation.prepare_free_box_motion`
+before full-path scoring. Producer stage records declare motion kind, fixed or
+moving box model and the fixed box pose; those fields participate in the plan
+digest. Only a declared fixed-world, no-contact joint route can be rerouted,
+once per failed stage, without changing endpoints. Cartesian stage semantics
+are retained. Repaired paths are independently rechecked in a plain source
+scene before scoring. Original nominal paths, preparation results and route
+boundaries remain durable if any later phase fails.
+
+`motion_feasibility.py --execution-policy <yaml>` loads and archives the same
+immutable policy used for uncertainty bounds. Selection requires a complete,
+current noncontact certificate as well as a score; `physical_probe --policy`
+must match that policy revision and archive hash. Missing, stale, partial or
+undersized envelopes cannot be counted as solutions. This integration still
+provides no intended-contact uncertainty or whole-action execution admission.
 
 Native physical probes archive contacts once in vacuum_state.jsonl.gz; legacy
 contact topic capture is used only without the native fixture. Failure trigger

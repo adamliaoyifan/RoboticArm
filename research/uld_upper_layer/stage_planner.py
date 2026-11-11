@@ -115,6 +115,11 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
             result=dict(reason='SWEEP_REJECTED',**boundary,certificate=certificate)
             emit(dict(event='stage_rejected',**result));return result
         record=dict(name=name,trajectory=timed,certificate=certificate,planning_diagnostic=detail,
+                    motion_kind=kind,
+                    box_motion_model=('straight_push' if box_motion is not None else
+                        'fixed_world' if scene.payload['mode']=='world' else 'attached'),
+                    box_reference_container=((scene.container_world@scene.payload_transform()).ravel().tolist()
+                        if scene.payload['mode']=='world' and box_motion is None else None),
                     payload_mode=scene.payload['mode'],contact_tool=contact,
                     target_container=target.tolist())
         stages.append(record);q=path[-1]

@@ -18,6 +18,7 @@ from ideal_snapshot import capture_fixture,from_observation
 from planning_types import UpperConfig,action_from_record,digest
 from runtime_io import RuntimeIO
 from selection_policy import SelectionPolicy
+from execution_policy import ExecutionPolicy
 from plan_clearance import model_identity
 from plan_selection import rank_nominal_plans
 
@@ -38,12 +39,14 @@ def main():
     parser.add_argument('--seed',type=int,default=0)
     parser.add_argument('--config',type=Path)
     parser.add_argument('--selection-policy',type=Path)
+    parser.add_argument('--execution-policy',type=Path)
     parser.add_argument('--plan-paths',action='store_true')
     args=parser.parse_args()
     output=args.evidence.resolve()
     if not output.is_relative_to(EVIDENCE):raise ValueError('primary evidence required')
     output.mkdir(parents=True,exist_ok=False)
-    config=UpperConfig.load(args.config);selection_policy=SelectionPolicy.load(args.selection_policy);runtime=None
+    config=UpperConfig.load(args.config);selection_policy=SelectionPolicy.load(args.selection_policy)
+    execution_policy=ExecutionPolicy.load(args.execution_policy);runtime=None
     source=output/'source';source.mkdir()
     hashes={}
     for p in Path(__file__).parent.glob('*.py'):
@@ -52,7 +55,10 @@ def main():
     hashes['upper_config.yaml']=sha256(source/'upper_config.yaml')
     shutil.copy2(args.selection_policy or Path(__file__).with_name('selection_policy.yaml'),source/'selection_policy.yaml')
     hashes['selection_policy.yaml']=sha256(source/'selection_policy.yaml')
-    if (UpperConfig.load(source/'upper_config.yaml')!=config or
+    shutil.copy2(args.execution_policy or Path(__file__).with_name('execution_policy.yaml'),source/'execution_policy.yaml')
+    hashes['execution_policy.yaml']=sha256(source/'execution_policy.yaml')
+    if (ExecutionPolicy.load(source/'execution_policy.yaml')!=execution_policy or
+        UpperConfig.load(source/'upper_config.yaml')!=config or
         SelectionPolicy.load(source/'selection_policy.yaml')!=selection_policy):
         raise ValueError('CONFIG_CHANGED_DURING_CAPTURE')
     for native in Path(__file__).with_name('native').glob('*'):
@@ -61,6 +67,7 @@ def main():
         ['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),source_hashes=hashes,
         config=asdict(config),selection_policy=asdict(selection_policy),
         selection_policy_revision=selection_policy.revision,
+        execution_policy=asdict(execution_policy),execution_policy_revision=execution_policy.revision,
         seed=args.seed,command=list(os.sys.argv),capture_complete=False,replay_possible=False,
         dirty_count=len(subprocess.check_output(['git','-C',str(ROOT),'status','--porcelain'],text=True).splitlines()),
         dependency_versions={name:importlib.metadata.version(name) for name in ('python-fcl','ompl','numpy','scipy','shapely','trimesh')},
@@ -140,7 +147,7 @@ def main():
             from planning_worker import plan_bounded
             from action_screen import push_screen_key
             plans=[];attempted=set();screen_rejections={};reused_screens=0;start=planning_started
-            selection=rank_nominal_plans(plans,snapshot.snapshot_id,config,selection_policy,model_identity(scene))
+            selection=rank_nominal_plans(plans,snapshot.snapshot_id,config,selection_policy,model_identity(scene),execution_policy)
             with (output/'stage_boundaries.jsonl').open('w') as trace:
                 def emit(row):
                     trace.write(json.dumps(row)+'\n');trace.flush()
@@ -157,7 +164,7 @@ def main():
                             source_action_id=screen_rejections[screen_key],key=screen_key,
                             exhaustive=False,valid=False))
                         continue
-                    result=plan_bounded(ROOT,snapshot,state,action,observation['q'],seeds,config,selection_policy,
+                    result=plan_bounded(ROOT,snapshot,state,action,observation['q'],seeds,config,selection_policy,execution_policy,
                         output/f'action_{len(attempted):04d}',remaining,args.seed)
                     emit(dict(event='action_output',action_id=action.action_id,
                               valid=result['valid'],reason=result.get('reason'),
@@ -166,7 +173,7 @@ def main():
                         screen_rejections[screen_key]=action.action_id
                     if result['valid']:
                         plans.append(result)
-                        selection=rank_nominal_plans(plans,snapshot.snapshot_id,config,selection_policy,model_identity(scene))
+                        selection=rank_nominal_plans(plans,snapshot.snapshot_id,config,selection_policy,model_identity(scene),execution_policy)
                         # Persist completed evidence before trying another action.
                         save(output/'plans.json',plans)
                         save(output/'selection.json',selection)

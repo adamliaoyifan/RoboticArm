@@ -18,17 +18,19 @@ def atomic_json(path,value):
     temporary.replace(path)
 
 
-def _worker(repo,snapshot,state,action,start_q,seeds,config,selection_policy,output,budget_s,seed):
+def _worker(repo,snapshot,state,action,start_q,seeds,config,selection_policy,execution_policy,output,budget_s,seed):
     from assets import load
     from full_arm import FullArmScene
     from stage_planner import plan_action
     from plan_clearance import score_plan
+    from free_box_validation import prepare_free_box_motion
     from ompl import util as ou
     ou.RNG.setSeed(seed+1)
     output=Path(output)
     deadline=time.monotonic()+budget_s
     try:
-        scene=FullArmScene(load(repo),snapshot,config)
+        assets=load(repo)
+        scene=FullArmScene(assets,snapshot,config)
         scene.query_observer=lambda row:atomic_json(output/'last_query.json',row)
         with (output/'stage_boundaries.jsonl').open('w') as stream:
             def emit(row):
@@ -39,7 +41,18 @@ def _worker(repo,snapshot,state,action,start_q,seeds,config,selection_policy,out
                 # Preserve the complete nominal path even if scoring times out.
                 # A nominal path without its completed score is never admitted.
                 atomic_json(output/'nominal_result.json',result)
-                score_scene=FullArmScene(load(repo),snapshot,config)
+                prepared=prepare_free_box_motion(assets,snapshot,state,result,config,selection_policy,
+                    execution_policy,deadline,emit,scene.query_observer)
+                atomic_json(output/'envelope_result.json',prepared)
+                if not prepared['valid']:
+                    result=prepared['plan'];result['reason']='FREE_BOX_ENVELOPE_REJECTED'
+                    result['valid']=False
+                    result['envelope_diagnostic']=prepared.get('diagnostic')
+                else:
+                    result=prepared['plan']
+                    atomic_json(output/'envelope_prepared_result.json',result)
+            if result.get('valid'):
+                score_scene=FullArmScene(assets,snapshot,config)
                 score_scene.query_observer=scene.query_observer
                 with (output/'clearance_intervals.jsonl').open('w') as clearance_stream:
                     def score_emit(row):
@@ -59,13 +72,13 @@ def _worker(repo,snapshot,state,action,start_q,seeds,config,selection_policy,out
         raise
 
 
-def plan_bounded(repo,snapshot,state,action,start_q,seeds,config,selection_policy,output,budget_s,seed):
+def plan_bounded(repo,snapshot,state,action,start_q,seeds,config,selection_policy,execution_policy,output,budget_s,seed):
     output=Path(output);output.mkdir()
     atomic_json(output/'input.json',dict(snapshot=asdict(snapshot),box=asdict(state),
         action=asdict(action),start_q=start_q,seeds=[list(q) for q in seeds],
-        config=asdict(config),selection_policy=asdict(selection_policy),budget_s=budget_s,seed=seed))
+        config=asdict(config),selection_policy=asdict(selection_policy),execution_policy=asdict(execution_policy),budget_s=budget_s,seed=seed))
     process=multiprocessing.get_context('spawn').Process(target=_worker,
-        args=(repo,snapshot,state,action,start_q,seeds,config,selection_policy,output,budget_s,seed))
+        args=(repo,snapshot,state,action,start_q,seeds,config,selection_policy,execution_policy,output,budget_s,seed))
     process.start();started=time.monotonic();abort=None
     try:
         while process.is_alive():
