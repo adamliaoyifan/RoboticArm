@@ -39,7 +39,10 @@ class FrozenSuctionService:
         from luggage_msgs.msg import FrozenSuctionObservationV2
         response.retained,response.reason,response.binding = False,'FROZEN_OBSERVATION_UNAVAILABLE',FrozenSuctionObservationV2()
         try:
-            context = self.context_provider()
+            epoch = self.store.current_epoch()
+            expected = (binding_from_message(request.expected_binding)
+                        if request.expected_binding.binding_sha256 else None)
+            context = self.store.lookup(expected) if expected else self.context_provider()
             if context is None or request.domain_sha256 != context.domain_sha256:
                 raise ValueError('CURRENT_MEASURED_ACQUISITION_MISMATCH')
             require_matching_detection(context.domain,request.detection,generation=int(request.generation),
@@ -48,15 +51,56 @@ class FrozenSuctionService:
                     or (request.expected_quality_policy_sha256
                         and request.expected_quality_policy_sha256 != context.policy_sha256)):
                 raise ValueError('CURRENT_CONTACT_POLICY_MISMATCH')
-            binding = self.store.retain(request.request_id,request.observation_id,context)
+            if expected is not None:
+                if (request.request_id,request.observation_id) != (expected.request_id,expected.observation_id):
+                    raise ValueError('FROZEN_RETENTION_CHECK_IDENTITY_MISMATCH')
+                binding = expected
+            else:
+                binding = self.store.retain(request.request_id,request.observation_id,context,expected_epoch=epoch)
             # Model can change during copying; never publish a stale policy pin.
-            if _digest(self.model_provider().as_dict()) != binding.quality_policy_sha256:
+            if (self.store.lookup(binding) is None
+                    or _digest(self.model_provider().as_dict()) != binding.quality_policy_sha256):
                 self.store.revoke(binding.request_id,binding.observation_id)
                 raise ValueError('CURRENT_CONTACT_POLICY_CHANGED')
             response.binding = binding_to_message(binding)
             response.retained,response.reason = True,'MEASURED_OBSERVATION_RETAINED'
         except Exception as error:
             response.reason = 'FROZEN_OBSERVATION_REFUSED:'+type(error).__name__+':'+str(error)
+        return response
+
+    def evaluate(self, request, response):
+        """Reuse the existing directed kernel on one retained sampling context."""
+        from luggage_msgs.srv import EvaluateDirectedSuctionV2
+        from luggage_perception.directed_suction_service import DirectedSuctionService
+        response.success,response.contacts = False,[]
+        response.header.frame_id = ''
+        response.header.stamp.sec = response.header.stamp.nanosec = 0
+        response.domain_sha256 = response.quality_policy_sha256 = response.samples_sha256 = ''
+        response.elapsed_s = 0.
+        try:
+            started = self.clock()
+            if not math.isfinite(request.budget_s) or not 0 < request.budget_s <= 10:
+                raise ValueError('BOUNDED_FROZEN_QUALITY_BUDGET_REQUIRED')
+            deadline = started+request.budget_s
+            binding = binding_from_message(request.binding)
+            context = self.store.lookup(binding)
+            if context is None or _digest(self.model_provider().as_dict()) != binding.quality_policy_sha256:
+                raise ValueError('FROZEN_QUALITY_SOURCE_NOT_CURRENT')
+            forwarded = EvaluateDirectedSuctionV2.Request(domain_sha256=binding.domain_sha256,
+                detection=request.detection,generation=binding.generation,
+                expected_quality_policy_sha256=binding.quality_policy_sha256,
+                queries=request.queries,max_refinements=request.max_refinements,
+                budget_s=deadline-self.clock())
+            worker = DirectedSuctionService(clock=self.clock)
+            worker.replace_context(context)
+            worker.handle(forwarded,response)
+            if (self.clock() >= deadline or self.store.lookup(binding) is not context
+                    or _digest(self.model_provider().as_dict()) != binding.quality_policy_sha256):
+                raise ValueError('FROZEN_QUALITY_SOURCE_CHANGED_OR_DEADLINE')
+            response.elapsed_s = max(0.,self.clock()-started)
+        except Exception as error:
+            response.success,response.contacts = False,[]
+            response.reason = 'FROZEN_QUALITY_REFUSED:'+type(error).__name__+':'+str(error)
         return response
 
     def check(self, request, response):
@@ -96,7 +140,7 @@ class FrozenSuctionService:
 
 def register_frozen_suction_services(node, *, context_provider, model_provider):
     """Same registration used by the detector and isolated behavioral tests."""
-    from luggage_msgs.srv import RetainSuctionObservationV2, CheckFrozenSuctionContactV2
+    from luggage_msgs.srv import RetainSuctionObservationV2, CheckFrozenSuctionContactV2, EvaluateFrozenSuctionV2
     store = FrozenSuctionObservations(
         max_records=node.declare_parameter('frozen_suction_record_limit',16).value,
         max_bytes=node.declare_parameter('frozen_suction_byte_limit',64*1024*1024).value,
@@ -105,5 +149,6 @@ def register_frozen_suction_services(node, *, context_provider, model_provider):
     # Keep service objects with their owner. These callbacks never execute motion.
     handler.services = (
         node.create_service(RetainSuctionObservationV2,'/luggage/retain_suction_observation_v2',handler.retain),
-        node.create_service(CheckFrozenSuctionContactV2,'/luggage/check_frozen_suction_contact_v2',handler.check))
+        node.create_service(CheckFrozenSuctionContactV2,'/luggage/check_frozen_suction_contact_v2',handler.check),
+        node.create_service(EvaluateFrozenSuctionV2,'/luggage/evaluate_frozen_suction_v2',handler.evaluate))
     return handler

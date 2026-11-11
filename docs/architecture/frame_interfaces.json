@@ -604,7 +604,7 @@
    "consumer": "complete-operation execution admission",
    "transport": "PrepareJointOperationV2 / CheckPreparedOperationV2",
    "scope": "production",
-   "current": "independent preparation and read-only owner issuance check; execution adoption pending",
+   "current": "preparation retains observed evidence and returns owner-issued plan/provenance; execution adoption pending",
    "target": "full directed plan binding against independently retained owner identity and digest; no client self-issued certificate",
    "sources": [
     "src/luggage_msgs/msg/JointOperationPlanV2.msg",
@@ -613,7 +613,9 @@
     "src/luggage_planning/luggage_planning/joint_operation_contracts.py",
     "src/luggage_planning/luggage_planning/joint_operation_adapters.py",
     "src/luggage_planning/luggage_planning/joint_operation_prepare_node.py",
-    "src/luggage_planning/luggage_planning/joint_operation_issuance.py"
+    "src/luggage_planning/luggage_planning/joint_operation_issuance.py",
+    "src/luggage_msgs/msg/FrozenSuctionObservationV2.msg",
+    "src/luggage_planning/luggage_planning/joint_operation_actual_contact.py"
    ],
    "checks": [
     "old_version",
@@ -628,7 +630,7 @@
    "consumer": "complete-operation actual contact admission",
    "transport": "RetainSuctionObservationV2 / CheckFrozenSuctionContactV2",
    "scope": "production",
-   "current": "detector registration and read-only port; preparation/execution adoption pending",
+   "current": "detector and production preparation use explicit frozen evidence; execution adoption pending",
    "target": "same-box acquisition-bound samples and actual full measured contact pose; necessary observed support and quality only",
    "sources": [
     "src/luggage_msgs/msg/FrozenSuctionObservationV2.msg",
@@ -636,7 +638,9 @@
     "src/luggage_msgs/srv/CheckFrozenSuctionContactV2.srv",
     "src/luggage_perception/luggage_perception/frozen_suction_observation.py",
     "src/luggage_perception/luggage_perception/frozen_suction_service.py",
-    "src/luggage_planning/luggage_planning/joint_operation_actual_contact.py"
+    "src/luggage_planning/luggage_planning/joint_operation_actual_contact.py",
+    "src/luggage_msgs/srv/EvaluateFrozenSuctionV2.srv",
+    "src/luggage_planning/luggage_planning/joint_operation_prepare_node.py"
    ],
    "checks": [
     "wrong_frame"

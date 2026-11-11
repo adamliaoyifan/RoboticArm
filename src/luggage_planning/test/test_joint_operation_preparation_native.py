@@ -4,6 +4,7 @@ Synthetic full-pose robot/measurements; no Gazebo, controller or deployment
 qualification. Boundary CDR, model, quality samples and teardown are durable.
 """
 from dataclasses import replace
+import dataclasses
 import copy
 import json
 import math
@@ -44,6 +45,7 @@ def prepare_stack(native_stack):
     from luggage_perception.suction_height_map import HeightMap
     from luggage_perception.directed_suction_quality import DirectedSuctionContext
     from luggage_perception.directed_suction_service import DirectedSuctionService
+    from luggage_perception.frozen_suction_service import register_frozen_suction_services
     from luggage_perception.ros_suction_domain import domain_to_message
     from luggage_planning.joint_operation_prepare_node import JointOperationPrepareNode
     from luggage_planning.joint_operation_contracts import OPERATION_JOINTS
@@ -73,8 +75,11 @@ def prepare_stack(native_stack):
         np.array([],float),np.empty((0,2)))
     quality_context = DirectedSuctionContext(domain,hmap,model)
     quality = DirectedSuctionService();quality.replace_context(quality_context)
-    np.savez_compressed(directory/'quality_samples.npz',support=domain.cells(),
-        valid_count=hmap.valid_count,smooth_h=hmap.smooth_h,local_normal=hmap.local_normal)
+    np.savez_compressed(directory/'quality_samples.npz',support=domain.cells(),**{
+        f.name:getattr(hmap,f.name) for f in dataclasses.fields(hmap)
+        if isinstance(getattr(hmap,f.name),np.ndarray)})
+    metadata=dataclasses.asdict(domain);metadata.pop('support')
+    (directory/'quality_acquisition.json').write_text(json.dumps(metadata,indent=2))
     descriptor = cuboid_from_inner_size((1.6,1.6,1.),floor_z=.6).descriptor()
     record = dict(contract_version=2,kind='surface',frame_id='container_link',length_unit='m',
         stamp_ns=12_000_000_000,time_basis='scene',scene_revision='scene',request_id='map',
@@ -97,6 +102,8 @@ def prepare_stack(native_stack):
     scene.robot_state.joint_state.name=list(OPERATION_JOINTS)
     scene.robot_state.joint_state.position=list(q)
     owner = stack.node
+    frozen = register_frozen_suction_services(owner,context_provider=quality.context_snapshot,
+        model_provider=lambda:quality_context._model)
     state = SimpleNamespace(scene=scene,volume=volume,scene_calls=0,on_scene=None)
     def serve_scene(request,response):
         state.scene_calls += 1
@@ -141,6 +148,11 @@ def prepare_stack(native_stack):
         stamp_ns=0,time_basis='scene',scene_revision='scene',request_id=request.request_id,reference='box_center',
         orientation_semantics='box_axis_pi',position=slot.container_from_box.translation,
         quaternion_xyzw=slot.container_from_box.quaternion_xyzw))]
+    for name,message in zip(('surface','confirmation','top_domain','joints'),messages):
+        (directory/('original_'+name+'.cdr')).write_bytes(serialize_message(message))
+    (directory/'original_detection.cdr').write_bytes(serialize_message(request.detection))
+    (directory/'original_volume.cdr').write_bytes(serialize_message(volume))
+    (directory/'original_scene.cdr').write_bytes(serialize_message(scene))
     def call(current):
         future=client.call_async(current);limit=time.monotonic()+15.
         while not future.done() and time.monotonic()<limit: time.sleep(.01)
@@ -153,6 +165,8 @@ def prepare_stack(native_stack):
             assert port.client.wait_for_service(timeout_sec=5.)
         for client_ in (root.scene_client,root.volume_client,root.map_parameters):
             assert client_.wait_for_service(timeout_sec=5.)
+        for client_ in (root.observed_contacts.retain_client,root.preparation.contacts.frozen_client):
+            assert client_.wait_for_service(timeout_sec=5.)
         limit=time.monotonic()+5.
         while time.monotonic()<limit:
             for pub,msg in zip(publishers,messages):pub.publish(msg)
@@ -161,14 +175,14 @@ def prepare_stack(native_stack):
         assert root.store.current() and root.domain and root.joints
         yield SimpleNamespace(request=request,call=call,root=root,state=state,domain=domain,
             publishers=publishers,messages=messages,directory=directory,quality=quality,
-            quality_context=quality_context,owner=owner)
+            quality_context=quality_context,owner=owner,frozen=frozen)
     finally:
         executor.shutdown(timeout_sec=3.);worker.join(timeout=3.)
         (directory/'root_teardown.json').write_text(json.dumps(dict(worker_stopped=not worker.is_alive(),
             scope='synthetic measured fixture; no controllers/vacuum/scene writes')))
         root.destroy_node()
         owner.destroy_client(client)
-        for service in services:owner.destroy_service(service)
+        for service in (*services,*frozen.services):owner.destroy_service(service)
         for pub in publishers:owner.destroy_publisher(pub)
 
 
@@ -198,7 +212,7 @@ def test_invalid_prepare_inputs_return_inactive_plan(prepare_stack,damage):
         prepare_stack.quality.replace_context(prepare_stack.quality_context)
 
 
-@pytest.mark.parametrize('change',['world','domain','occ','joints'])
+@pytest.mark.parametrize('change',['world','frozen_revoked','occ','joints'])
 def test_inputs_changing_during_final_scene_read_refuse_certified_result(prepare_stack,change):
     """Exercise the race after certification, while scene RPC is pending."""
     from std_msgs.msg import String
@@ -212,13 +226,9 @@ def test_inputs_changing_during_final_scene_read_refuse_certified_result(prepare
             from moveit_msgs.msg import LinkPadding
             fixture.state.scene.link_padding=[LinkPadding(link_name='suction_contact_frame',padding=.001)]
             return
-        if change=='domain':
-            from luggage_perception.ros_suction_domain import domain_to_message
-            changed_domain=replace(fixture.domain,support=bytes([0])+fixture.domain.support[1:])
-            message=domain_to_message(changed_domain)
-            fixture.publishers[2].publish(message)
-            changed=lambda:(fixture.root.domain is not None
-                            and fixture.root.domain.digest()==changed_domain.digest())
+        if change=='frozen_revoked':
+            fixture.frozen.store.revoke_all()
+            return
         elif change=='occ':
             confirmation=json.loads(fixture.messages[1].data);confirmation['pending_changes']=[{'event':'observed_change'}]
             fixture.publishers[1].publish(String(data=json.dumps(confirmation)))

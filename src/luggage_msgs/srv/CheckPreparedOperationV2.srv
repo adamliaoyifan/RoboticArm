@@ -4,3 +4,5 @@ luggage_msgs/JointOperationPlanV2 plan
 ---
 bool current
 string reason
+# Independently retained owner provenance; not current observation/path permission.
+luggage_msgs/FrozenSuctionObservationV2 frozen_observation

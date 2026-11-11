@@ -12,6 +12,7 @@ import threading
 import time
 
 from luggage_planning.joint_operation_contracts import JointOperationPlan, admit_operation_plan
+from luggage_perception.frozen_suction_observation import FrozenObservationBinding
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,7 @@ class _IssuedPlan:
     plan: JointOperationPlan
     expires_at: float
     size_bytes: int
+    contact_binding: object = None
 
 
 class IssuedOperationRegistry:
@@ -47,7 +49,7 @@ class IssuedOperationRegistry:
             if now >= entry.expires_at:
                 self._remove(digest)
 
-    def issue(self, plan):
+    def issue(self, plan, *, contact_binding=None):
         """Owner-only publication; callers cannot issue through the check RPC.
 
         Repeating an identical publication does not extend its lifetime. A new
@@ -57,12 +59,24 @@ class IssuedOperationRegistry:
         admit_operation_plan(plan, plan.identity, plan.plan_digest)
         size = len(json.dumps(asdict(plan), sort_keys=True, separators=(',', ':'),
                               allow_nan=False).encode())
+        if contact_binding is not None:
+            identity = plan.identity
+            if (type(contact_binding) is not FrozenObservationBinding
+                    or (identity.request_id,identity.observation_id,identity.box_id,identity.generation,
+                        identity.observation_stamp_ns,identity.contact_model_hash) !=
+                       (contact_binding.request_id,contact_binding.observation_id,contact_binding.box_id,
+                        contact_binding.generation,contact_binding.stamp_ns,contact_binding.contact_model_hash)):
+                raise ValueError('ISSUED_CONTACT_BINDING_IDENTITY_MISMATCH')
+            size += len(json.dumps(asdict(contact_binding),sort_keys=True,separators=(',',':'),
+                                   allow_nan=False).encode())
         if size > self.max_bytes:
             raise ValueError('ISSUED_PLAN_EXCEEDS_BYTE_LIMIT')
         with self._lock:
             now = self._now()
             self._expire(now)
             if plan.plan_digest in self._entries:
+                if self._entries[plan.plan_digest].contact_binding != contact_binding:
+                    raise ValueError('ISSUED_CONTACT_BINDING_REBIND_REFUSED')
                 return
             key = (plan.identity.request_id, plan.identity.box_id)
             previous = [(digest, entry) for digest, entry in self._entries.items()
@@ -75,7 +89,7 @@ class IssuedOperationRegistry:
             while (len(self._entries) >= self.max_plans
                    or self._bytes + size > self.max_bytes):
                 self._remove(next(iter(self._entries)))
-            self._entries[plan.plan_digest] = _IssuedPlan(plan, now + self.lifetime_s, size)
+            self._entries[plan.plan_digest] = _IssuedPlan(plan, now + self.lifetime_s, size,contact_binding)
             self._bytes += size
 
     def lookup(self, digest):
@@ -96,3 +110,12 @@ class IssuedOperationRegistry:
         # Digest validation can take time; expiry or replacement during it
         # cannot leave a stale positive admission.
         return self.lookup(plan.plan_digest) is issued
+
+    def contact_binding(self, plan):
+        """Independent owner provenance, never a client-provided replacement."""
+        if not self.current(plan):
+            return None
+        with self._lock:
+            self._expire(self._now())
+            entry = self._entries.get(plan.plan_digest)
+            return entry.contact_binding if entry is not None and entry.plan == plan else None

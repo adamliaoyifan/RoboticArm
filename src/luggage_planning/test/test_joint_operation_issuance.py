@@ -22,6 +22,43 @@ def registry(**settings):
     return IssuedOperationRegistry(**options)
 
 
+def contact_binding(p):
+    from luggage_perception.frozen_suction_observation import FrozenObservationBinding
+    i=p.identity
+    return FrozenObservationBinding(i.request_id,i.observation_id,'a'*32,i.box_id,i.generation,
+        i.observation_stamp_ns,i.contact_model_hash,'b'*64,'c'*64,'d'*64)
+
+
+def test_owner_preserves_independent_contact_provenance_without_read_renewal():
+    now=[10.];store=registry(clock=lambda:now[0],lifetime_s=5.);p=plan();b=contact_binding(p)
+    store.issue(p,contact_binding=b)
+    assert store.contact_binding(p) is b
+    now[0]=14.;store.issue(p,contact_binding=b);assert store.contact_binding(p)==b
+    now[0]=15.;assert store.contact_binding(p) is None and not store.current(p)
+
+
+@pytest.mark.parametrize('field,value',[('request_id','other'),('observation_id','other'),
+    ('box_id','other'),('generation',4),('stamp_ns',999),('contact_model_hash','other')])
+def test_issuance_cannot_bind_a_different_contact_observation(field,value):
+    store=registry();p=plan();b=replace(contact_binding(p),**{field:value})
+    with pytest.raises(ValueError,match='BINDING_IDENTITY_MISMATCH'):store.issue(p,contact_binding=b)
+    assert not store.current(p)
+
+
+def test_existing_issued_plan_cannot_silently_change_or_drop_its_observation():
+    store=registry();p=plan();b=contact_binding(p);store.issue(p,contact_binding=b)
+    for different in (None,replace(b,retention_id='e'*32)):
+        with pytest.raises(ValueError,match='REBIND_REFUSED'):store.issue(p,contact_binding=different)
+    assert store.contact_binding(p) is b
+
+
+def test_issued_byte_budget_includes_observation_provenance():
+    p=plan();size=len(json.dumps(asdict(p),sort_keys=True,separators=(',',':'),allow_nan=False).encode())
+    store=registry(max_bytes=size)
+    with pytest.raises(ValueError,match='EXCEEDS_BYTE_LIMIT'):store.issue(p,contact_binding=contact_binding(p))
+    assert not store.current(p)
+
+
 def test_only_owner_publication_makes_exact_plan_current():
     store=registry();p=plan()
     assert not store.current(p) and store.lookup(p.plan_digest) is None

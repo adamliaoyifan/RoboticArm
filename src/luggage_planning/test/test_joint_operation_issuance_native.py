@@ -110,6 +110,8 @@ def test_successful_same_request_reprepare_retires_previous(prepare_stack):
     observed=replace(fixture.domain,generation=fixture.domain.generation+1)
     fixture.quality.replace_context(DirectedSuctionContext(observed,
         fixture.quality_context._height_map,fixture.quality_context._model))
+    # The production detector invalidates evidence at this identity epoch.
+    fixture.frozen.store.revoke_all()
     fixture.publishers[2].publish(domain_to_message(observed))
     try:
         deadline=time.monotonic()+2.
@@ -131,7 +133,7 @@ def test_successful_same_request_reprepare_retires_previous(prepare_stack):
 
 def test_issuance_failure_returns_inactive_response_and_keeps_owner_available(prepare_stack):
     fixture=prepare_stack;original=fixture.root.issued.issue
-    def fail(plan):raise RuntimeError('fixture registry storage unavailable')
+    def fail(plan,**kwargs):raise RuntimeError('fixture registry storage unavailable')
     fixture.root.issued.issue=fail
     request=copy.deepcopy(fixture.request);request.request_id='not-issued-registry'
     try:

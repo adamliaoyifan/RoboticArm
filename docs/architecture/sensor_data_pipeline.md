@@ -101,6 +101,20 @@ refuses subsequent checks. Resource defaults are 16 records / 64 MiB sampled
 payload and metadata / 300 monotonic seconds, exposed as detector parameters.
 These are retention limits, not a calibrated physical freshness policy.
 
+`/luggage/evaluate_frozen_suction_v2` evaluates directed candidate queries on
+that exact retained context, with the same existing quality kernel and effective
+policy. It never falls back to the current frame. A nonempty `expected_binding`
+on retention checks only the existing token; it cannot recreate or renew an
+expired/revoked record. Model and token liveness are checked after work too.
+The existing current-frame quality service retains its original wire contract.
+
+The existing current-box ID/generation callback clears the current quality
+context and revokes retained evidence when identity changes or becomes invalid.
+A repeat of the same identity does not revoke it. Retention carries an identity
+epoch barrier across sample copying; a late result from an old identity cannot
+be retained via the detector's current-context provider. Ordinary new camera
+publication within the same identity does not mutate the frozen acquisition.
+
 Actual contact checks compose the frozen acquisition box pose with the inverse
 of the measured contact-from-box relation in the same measured body axes. They
 keep that full pose, check the complete physical footprint plus existing margin

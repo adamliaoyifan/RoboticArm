@@ -29,6 +29,8 @@ from luggage_planning.attachment_geometry_policy import load_attachment_geometry
 from luggage_planning.joint_operation_certification import EndpointModel, NativeOperationCertificationPort
 from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
 from luggage_planning.joint_operation_contacts import DirectedContactPort
+from luggage_planning.joint_operation_actual_contact import FrozenActualContactPort
+from luggage_perception.frozen_suction_service import binding_to_message
 from luggage_planning.joint_operation_contracts import OPERATION_JOINTS, OperationIdentity
 from luggage_planning.joint_operation_adapters import operation_plan_from_message
 from luggage_planning.joint_operation_issuance import IssuedOperationRegistry
@@ -84,6 +86,7 @@ class JointOperationPrepareNode(Node):
         if self._evidence: Path(self._evidence).mkdir(parents=True,exist_ok=False)
         def recorder(port): return lambda kind,value:self._record(port+'_'+kind,value)
         contacts = DirectedContactPort(self,recorder=recorder('quality'))
+        self.observed_contacts = FrozenActualContactPort(self,recorder=recorder('observation'))
         endpoints = NativeOperationEndpointPort(self,recorder=recorder('local'))
         connections = NativeSnapshotConnectionPort(self,recorder=recorder('connection'))
         velocity,acceleration = float(param('velocity_scale',.2)),float(param('acceleration_scale',.1))
@@ -126,7 +129,9 @@ class JointOperationPrepareNode(Node):
                             callback_group=ReentrantCallbackGroup())
 
     def _check_prepared(self,request,response):
+        from luggage_msgs.msg import FrozenSuctionObservationV2
         response.current = False
+        response.frozen_observation = FrozenSuctionObservationV2()
         response.reason = 'PLAN_NOT_CURRENTLY_ISSUED'
         try:
             issued = self.issued.lookup(request.plan.plan_digest)
@@ -134,6 +139,8 @@ class JointOperationPrepareNode(Node):
                 # Expectations come from the owner, not the client's fields.
                 plan = operation_plan_from_message(request.plan,issued.identity,issued.plan_digest)
                 response.current = self.issued.current(plan)
+                binding = self.issued.contact_binding(plan) if response.current else None
+                if binding is not None:response.frozen_observation = binding_to_message(binding)
                 response.reason = 'OWNER_ISSUANCE_CURRENT' if response.current else 'PLAN_NOT_CURRENTLY_ISSUED'
         except Exception as error:
             response.reason = 'ISSUANCE_CHECK_REFUSED:'+type(error).__name__
@@ -179,8 +186,9 @@ class JointOperationPrepareNode(Node):
         except (TypeError,ValueError,KeyError): current = None
         with self._state_lock: self.joints = current
 
-    def _current(self,request):
+    def _current(self,request,*,frozen_domain=None):
         with self._state_lock: domain,joints = self.domain,self.joints
+        if frozen_domain is not None:domain = frozen_domain
         if domain is None or joints is None: raise ValueError('OBSERVATION_OR_JOINTS_UNAVAILABLE')
         require_matching_detection(domain,request.detection,generation=int(request.generation),
                                    contact_model_hash=self.preparation.model.identity_hash)
@@ -249,6 +257,7 @@ class JointOperationPrepareNode(Node):
         from luggage_msgs.msg import JointOperationPlanV2
         started = time.monotonic();response.success = False;response.plan = JointOperationPlanV2()
         issued_plan = None
+        observed = None
         response.trace_json,response.elapsed_s = '[]',0.
         if not self._active.acquire(blocking=False):
             response.reason = 'OPERATION_PREPARATION_BUSY';return response
@@ -262,6 +271,11 @@ class JointOperationPrepareNode(Node):
             deadline = started+request.budget_s
             pickup_collision_aabb(request.detection)
             domain = self._current(request)
+            retained = self.observed_contacts.retain(domain,request.detection,
+                request_id=request.request_id,observation_id=request.observation_id,
+                deadline=deadline,cancelled=lambda:False)
+            if not retained.retained:raise ValueError(retained.reason)
+            observed = retained.observation
             parameters = self._call(self.map_parameters,GetParameters.Request(names=['require_confirmed_map']),deadline,'map_parameters')
             if len(parameters.values)!=1 or parameters.values[0].type!=1:
                 raise ValueError('MAP_CONFIRMATION_CONFIGURATION_UNAVAILABLE')
@@ -285,14 +299,18 @@ class JointOperationPrepareNode(Node):
                                               collision_margin_m=self.margin,volume=volume)
             placements = self._placements(request,confirmed,volume)
             reference = Transform.from_matrix(self.model.urdf.tcp(list(request.start_joints),self.model.path))
-            inputs = PreparationInputs(snapshot,domain,placements,reference,self.pickup_id)
+            inputs = PreparationInputs(snapshot,domain,placements,reference,self.pickup_id,observed)
             def revalidate(current,limit):
                 # Check again after the asynchronous scene read: subscriptions
                 # can advance the map/domain/joints while that read is pending.
                 scene = self._scene(limit)
+                checked = self.observed_contacts.retain(domain,request.detection,
+                    request_id=request.request_id,observation_id=request.observation_id,
+                    expected_observation=observed,deadline=limit,cancelled=lambda:False)
                 latest = self.store.current()
                 return (latest is not None and latest.identity==confirmed.identity
-                    and self._current(request).digest()==current.domain.digest()
+                    and checked.retained and checked.observation.binding==observed.binding
+                    and self._current(request,frozen_domain=domain).digest()==current.domain.digest()
                     and proposal_scene_hash(scene)==expected_world)
             self.preparation.prepare(request,response,inputs,deadline=deadline,revalidate=revalidate)
             if response.success:
@@ -315,7 +333,7 @@ class JointOperationPrepareNode(Node):
                 self.get_logger().error(response.reason+':'+str(error))
             else:
                 if response.success:
-                    try: self.issued.issue(issued_plan)
+                    try: self.issued.issue(issued_plan,contact_binding=observed.binding)
                     except Exception as error:
                         response.success = False;response.plan = JointOperationPlanV2()
                         response.reason = 'PREPARATION_ISSUANCE_FAILED:'+type(error).__name__

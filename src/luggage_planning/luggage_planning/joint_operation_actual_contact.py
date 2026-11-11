@@ -80,7 +80,7 @@ class FrozenActualContactPort:
         return response
 
     def retain(self, domain, detection, *, request_id, observation_id,
-               expected_policy_sha256='', deadline, cancelled):
+               expected_policy_sha256='', expected_observation=None, deadline, cancelled):
         if not self._active.acquire(blocking=False):
             return ContactRetention(False,'FROZEN_CONTACT_PORT_BUSY')
         try:
@@ -89,6 +89,10 @@ class FrozenActualContactPort:
             request = self.retain_service.Request(request_id=request_id,observation_id=observation_id,
                 domain_sha256=domain.digest(),detection=copy.deepcopy(detection),generation=domain.generation,
                 expected_quality_policy_sha256=expected_policy_sha256)
+            if expected_observation is not None:
+                if type(expected_observation) is not RetainedContactObservation:
+                    raise ValueError('TYPED_EXPECTED_OBSERVATION_REQUIRED')
+                request.expected_binding = binding_to_message(expected_observation.binding)
             response = self._call(self.retain_client,request,deadline=deadline,cancelled=cancelled,name='retain')
             if response.retained is not True:
                 return ContactRetention(False,response.reason)
@@ -102,6 +106,8 @@ class FrozenActualContactPort:
                     or any(len(value)!=64 or any(c not in '0123456789abcdef' for c in value)
                         for value in (binding.quality_policy_sha256,binding.samples_sha256))):
                 raise ValueError('FROZEN_RETENTION_BINDING_MISMATCH')
+            if expected_observation is not None and binding != expected_observation.binding:
+                raise ValueError('FROZEN_RETENTION_REISSUED_OR_CHANGED')
             return ContactRetention(True,response.reason,RetainedContactObservation(binding,domain))
         except Exception as error:
             return ContactRetention(False,'FROZEN_RETENTION_REFUSED:'+type(error).__name__+':'+str(error))

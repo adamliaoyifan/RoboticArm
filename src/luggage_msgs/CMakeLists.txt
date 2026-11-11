@@ -13,6 +13,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/FrozenSuctionObservationV2.msg"
   "srv/RetainSuctionObservationV2.srv"
   "srv/CheckFrozenSuctionContactV2.srv"
+  "srv/EvaluateFrozenSuctionV2.srv"
   "msg/CargoMapQueryIdentityV2.msg"
   "msg/CargoMapQueryGridV2.msg"
   "msg/CargoMapQueryRequestV2.msg"

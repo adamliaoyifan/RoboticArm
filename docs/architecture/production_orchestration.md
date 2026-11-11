@@ -135,6 +135,22 @@ with explicit node parameters; these are storage limits, not geometric or
 observation thresholds. A liveness success still requires every current-source,
 actual-contact, occupancy and native suffix gate before controller submission.
 
+Production preparation first retains its exact measured acquisition through the
+perception owner. Candidate quality queries use the independent
+`EvaluateFrozenSuctionV2` service; the existing current-frame service is unchanged.
+Later camera frames cannot substitute samples or replace the retained acquisition
+identity. After certification and the final full-scene read, preparation checks
+the same non-renewing owner token, live six-joint start and pinned confirmed OCC.
+Unavailable, revoked, expired or changed-model evidence cannot issue PLAN_READY.
+
+Issuance stores the immutable contact binding with the exact issued plan and
+counts its metadata in the bounded byte budget. A duplicate publication cannot
+replace or drop that binding. The read-only issuance check returns this owner
+provenance, independently of the submitted plan. It still does not assert
+observation liveness or physical seal; execution must check the actual perception
+and attachment owners before native/controller admission. A stored binding is
+not a new view, a pose correction or a reason to skip any execution gate.
+
 The strict operation motion transport submits one original timed leg through
 MoveIt ExecuteTrajectory. It retains every joint coordinate (including full
 turns), timestamp, derivative and effort value. A native receipt must bind the

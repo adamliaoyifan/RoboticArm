@@ -21,6 +21,7 @@ class PreparationInputs:
     placements: tuple
     world_from_reference_tool: Transform
     pickup_object_id: str
+    retained_observation: object = None
 
     def __post_init__(self):
         placements = tuple(self.placements)
@@ -91,7 +92,8 @@ class JointOperationPreparation:
                         if proposal.reason == 'OBSERVED_FOOTPRINT_PROPOSAL': proposed.append(proposal)
                     if not proposed: continue
                     evidence = self.contacts.evaluate(domain,request.detection,
-                        [p.to_message() for p in proposed],self.model,deadline=planning_deadline,cancelled=cancelled)
+                        [p.to_message() for p in proposed],self.model,deadline=planning_deadline,cancelled=cancelled,
+                        retained_observation=inputs.retained_observation)
                     trace.append((placement.slot_id,evidence.reason,evidence.verdicts))
                     if not evidence.complete: continue
                     for rank,contact in enumerate(evidence.contacts):

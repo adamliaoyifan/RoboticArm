@@ -5,6 +5,8 @@ string domain_sha256
 luggage_msgs/DetectedLuggage detection
 uint64 generation
 string expected_quality_policy_sha256
+# Nonempty binding checks that existing retention only; never recreates/renews it.
+luggage_msgs/FrozenSuctionObservationV2 expected_binding
 ---
 bool retained
 string reason

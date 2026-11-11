@@ -172,13 +172,15 @@ def grasp_for_contact(domain, contact, *, observation_id, rank, pick_clearances=
 class DirectedContactPort:
     """Read-only ROS transport, one in-flight request and a shared deadline."""
     def __init__(self, node, *, recorder=None):
-        from luggage_msgs.srv import EvaluateDirectedSuctionV2
+        from luggage_msgs.srv import EvaluateDirectedSuctionV2, EvaluateFrozenSuctionV2
         self.service = EvaluateDirectedSuctionV2
         self.client = node.create_client(self.service, '/luggage/evaluate_directed_suction_v2')
+        self.frozen_service = EvaluateFrozenSuctionV2
+        self.frozen_client = node.create_client(EvaluateFrozenSuctionV2, '/luggage/evaluate_frozen_suction_v2')
         self.recorder, self.inflight = recorder, None
 
     def evaluate(self, domain, detection, queries, model, *, deadline, cancelled,
-                 max_refinements=3, expected_policy_sha256=''):
+                 max_refinements=3, expected_policy_sha256='',retained_observation=None):
         from rclpy.serialization import serialize_message
         def stopped():
             return cancelled() or time.monotonic() >= deadline
@@ -190,11 +192,21 @@ class DirectedContactPort:
             return refused('CANCELLED_OR_DEADLINE')
         if self.inflight is not None and not self.inflight.done():
             return refused('CONTACT_QUALITY_BACKEND_BUSY')
-        if not self.client.service_is_ready():
+        client = self.frozen_client if retained_observation is not None else self.client
+        if not client.service_is_ready():
             return refused('CONTACT_QUALITY_BACKEND_UNAVAILABLE')
         try:
             # Keep physical geometry stable while the service is in flight.
             model = deepcopy(model)
+            if retained_observation is not None:
+                from luggage_planning.joint_operation_actual_contact import RetainedContactObservation
+                if (type(retained_observation) is not RetainedContactObservation
+                        or retained_observation.domain != domain
+                        or retained_observation.binding.domain_sha256 != domain.digest()
+                        or (expected_policy_sha256 and expected_policy_sha256 !=
+                            retained_observation.binding.quality_policy_sha256)):
+                    raise ValueError('FROZEN_DIRECTED_OBSERVATION_MISMATCH')
+                expected_policy_sha256 = retained_observation.binding.quality_policy_sha256
             request = contact_query(domain, detection, queries, model,
                 budget_s=min(10., deadline-time.monotonic()), max_refinements=max_refinements,
                 expected_policy_sha256=expected_policy_sha256)
@@ -203,18 +215,25 @@ class DirectedContactPort:
         if stopped():
             return refused('CANCELLED_OR_DEADLINE')
         request.budget_s = min(10., deadline-time.monotonic())
+        wire_request = request
+        if retained_observation is not None:
+            from luggage_perception.frozen_suction_service import binding_to_message
+            wire_request = self.frozen_service.Request(binding=binding_to_message(retained_observation.binding),
+                detection=request.detection,queries=request.queries,
+                max_refinements=request.max_refinements,budget_s=request.budget_s)
+        prefix = 'frozen_' if retained_observation is not None else ''
         if self.recorder:
-            self.recorder('request', serialize_message(request))
+            self.recorder(prefix+'request', serialize_message(wire_request))
         event = threading.Event()
         try:
-            self.inflight = self.client.call_async(request)
+            self.inflight = client.call_async(wire_request)
             self.inflight.add_done_callback(lambda _: event.set())
             while not event.wait(min(.01, max(0., deadline-time.monotonic()))):
                 if stopped():
                     return refused('CANCELLED_OR_DEADLINE')
             response = self.inflight.result()
             if self.recorder:
-                self.recorder('response', serialize_message(response))
+                self.recorder(prefix+'response', serialize_message(response))
             if stopped():
                 return refused('CANCELLED_OR_DEADLINE')
             result = contact_evidence(response, request, domain, model)

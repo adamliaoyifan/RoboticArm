@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from luggage_msgs.srv import RetainSuctionObservationV2,CheckFrozenSuctionContactV2
+from luggage_msgs.srv import RetainSuctionObservationV2,CheckFrozenSuctionContactV2,EvaluateFrozenSuctionV2
 from luggage_perception.frozen_suction_observation import FrozenSuctionObservations
 from luggage_perception.frozen_suction_service import (
     FrozenSuctionService,binding_from_message,register_frozen_suction_services,
@@ -59,7 +59,8 @@ def handler_case(request):
         root.mkdir(parents=True,exist_ok=False);capture_context(root,context)
     def call(name,message,response=None):
         nonlocal counter
-        service=RetainSuctionObservationV2 if name=='retain' else CheckFrozenSuctionContactV2
+        service={'retain':RetainSuctionObservationV2,'check':CheckFrozenSuctionContactV2,
+                 'evaluate':EvaluateFrozenSuctionV2}[name]
         raw=serialize_message(message)
         if root:(root/('%02d_%s_request.cdr'%(counter,name))).write_bytes(raw)
         result=getattr(handler,name)(deserialize_message(raw,service.Request),response or service.Response())
@@ -84,6 +85,75 @@ def test_generated_round_trip_and_new_frame_do_not_replace_frozen_samples(handle
     assert result.binding.samples_sha256==binding.samples_sha256
     assert np.array(result.world_from_contact_frame_at_observation).reshape(4,4)==pytest.approx(contact(),abs=1e-15)
     assert result.evidence_sha256
+
+
+def test_existing_binding_check_uses_frozen_owner_and_never_recreates_revoked_record(handler_case):
+    f=handler_case;saved=f.call('retain',f.retain_request);assert saved.retained
+    f.current.context=None
+    request=copy.deepcopy(f.retain_request);request.expected_binding=saved.binding
+    verified=f.call('retain',request)
+    assert verified.retained and verified.binding==saved.binding
+    f.handler.store.revoke_all()
+    f.current.context=f.context
+    missing=f.call('retain',request)
+    assert not missing.retained,'must not recreate the revoked token from the current frame'
+
+
+def test_directed_queries_use_exact_frozen_samples_after_current_frame_disappears(handler_case):
+    f=handler_case;saved=f.call('retain',f.retain_request);assert saved.retained
+    f.current.context=None
+    request=EvaluateFrozenSuctionV2.Request(binding=saved.binding,detection=f.original.detection,
+        queries=f.original.queries,max_refinements=3,budget_s=1.)
+    result=f.call('evaluate',request)
+    assert result.success,result.reason
+    assert [v.accepted for v in result.contacts]==[True,False]
+    assert result.samples_sha256==saved.binding.samples_sha256
+    assert result.header==saved.binding.header
+    f.handler.store.revoke_all()
+    rejected=f.call('evaluate',request,result)
+    assert not rejected.success and not rejected.contacts
+
+
+def test_epoch_change_during_copy_cannot_publish_an_old_frozen_observation(handler_case,monkeypatch):
+    f=handler_case;original=f.handler.store.retain
+    def changing(*args,**kwargs):
+        f.handler.store.revoke_all()
+        return original(*args,**kwargs)
+    monkeypatch.setattr(f.handler.store,'retain',changing)
+    result=f.call('retain',f.retain_request)
+    assert not result.retained
+
+
+@pytest.mark.parametrize('change',['same','generation','box_id','invalid'])
+def test_real_detector_identity_callback_revokes_old_frozen_evidence(handler_case,change):
+    import importlib.util
+    from luggage_perception.directed_suction_service import DirectedSuctionService
+    f=handler_case;saved=f.call('retain',f.retain_request);assert saved.retained
+    directed=DirectedSuctionService();directed.replace_context(f.context)
+    path=Path(__file__).parents[1]/'scripts/luggage_detector_node.py'
+    spec=importlib.util.spec_from_file_location('detector_frozen_epoch',path)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    fake=SimpleNamespace(_box_generation=f.context.domain.generation,_box_id=f.context.domain.instance_id,
+        _box_epoch_seen=True,_gc_on_epoch=None,_directed_suction_service=directed,
+        _frozen_suction_service=f.handler,_join=SimpleNamespace(clear=lambda:None),
+        _frame_window=[],_raw_lock=threading.Lock(),_raw_buffer=[],_instance_mask_buffer=[],
+        _pipeline=SimpleNamespace(epoch_carry=lambda:None),_view_lock=threading.Lock(),
+        _latest_rgb=None,_view_wait=SimpleNamespace(note_box_id=lambda *args:False))
+    assert module.LuggageDetector._current_directed_suction_context(fake) is f.context
+    payload={'id':f.context.domain.instance_id,'generation':f.context.domain.generation}
+    if change in ('box_id','generation'):
+        key='id' if change=='box_id' else change
+        payload[key]=payload[key]+1 if change=='generation' else 'next-box'
+    module.LuggageDetector._on_current_box(fake,SimpleNamespace(data='invalid' if change=='invalid' else json.dumps(payload)))
+    if change=='same':
+        assert directed.context_snapshot() is f.context
+        assert f.handler.store.lookup(binding_from_message(saved.binding)) is not None
+        return
+    assert directed.context_snapshot() is None
+    assert f.handler.store.lookup(binding_from_message(saved.binding)) is None
+    # An old in-flight detector result must not restore the old epoch context.
+    directed.replace_context(f.context)
+    assert module.LuggageDetector._current_directed_suction_context(fake) is None
 
 
 @pytest.mark.parametrize('kind',['request','observation','domain','generation','dimensions','no_context','model'])

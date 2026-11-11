@@ -1,0 +1,15 @@
+# Directed queries against an explicitly retained acquisition; no latest fallback.
+luggage_msgs/FrozenSuctionObservationV2 binding
+luggage_msgs/DetectedLuggage detection
+luggage_msgs/DirectedSuctionQueryV2[<=8] queries
+uint32 max_refinements
+float64 budget_s
+---
+bool success
+string reason
+std_msgs/Header header
+string domain_sha256
+string quality_policy_sha256
+string samples_sha256
+luggage_msgs/DirectedSuctionContactV2[<=8] contacts
+float64 elapsed_s

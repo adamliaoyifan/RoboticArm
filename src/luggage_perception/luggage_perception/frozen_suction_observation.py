@@ -82,6 +82,11 @@ class FrozenSuctionObservations:
         self.max_records, self.max_bytes, self.lifetime_s = max_records, max_bytes, lifetime_s
         self.clock, self._entries, self._bytes = clock, OrderedDict(), 0
         self._lock = threading.Lock()
+        self._epoch = 0
+
+    def current_epoch(self):
+        with self._lock:
+            return self._epoch
 
     def _now(self):
         now = self.clock()
@@ -92,11 +97,12 @@ class FrozenSuctionObservations:
     def _remove(self, key):
         self._bytes -= self._entries.pop(key).size_bytes
 
-    def retain(self, request_id, observation_id, context):
+    def retain(self, request_id, observation_id, context, *, expected_epoch=None):
         if (not isinstance(request_id,str) or not request_id.strip()
                 or not isinstance(observation_id,str) or not observation_id.strip()
                 or type(context) is not DirectedSuctionContext):
             raise ValueError('request/observation identity and measured context required')
+        epoch = self.current_epoch() if expected_epoch is None else expected_epoch
         # Own the sampling buffers and model even if a caller retains its input.
         owned = DirectedSuctionContext(context.domain,context._height_map,context._model)
         if (owned.domain_sha256,owned.policy_sha256,owned.samples_sha256) != (
@@ -114,6 +120,8 @@ class FrozenSuctionObservations:
             raise ValueError('FROZEN_OBSERVATION_EXCEEDS_BYTE_LIMIT')
         key = request_id,observation_id
         with self._lock:
+            if epoch != self._epoch:
+                raise ValueError('FROZEN_IDENTITY_CHANGED_DURING_RETENTION')
             now = self._now()
             old = self._entries.get(key)
             if old is not None:
@@ -150,6 +158,13 @@ class FrozenSuctionObservations:
             key = request_id,observation_id
             if key in self._entries:
                 self._remove(key)
+
+    def revoke_all(self):
+        """Explicit upstream identity-epoch invalidation, not a new-frame event."""
+        with self._lock:
+            self._entries.clear()
+            self._bytes = 0
+            self._epoch += 1
 
     def check(self, binding, *, attachment_geometry_sha256, measured_box_wdh,
               box_from_contact_frame, current_model, deadline):

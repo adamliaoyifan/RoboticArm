@@ -737,7 +737,7 @@ class LuggageDetector(Node):
                 callback_group=self._group)
             from luggage_perception.frozen_suction_service import register_frozen_suction_services
             self._frozen_suction_service = register_frozen_suction_services(self,
-                context_provider=self._directed_suction_service.context_snapshot,
+                context_provider=self._current_directed_suction_context,
                 model_provider=lambda:self._suction_evaluator.contact_model)
         # ST03: v2 pose-contract publishers exist only when an explicit
         # scene revision enables the boundary; a rejected conversion warns
@@ -1319,6 +1319,12 @@ class LuggageDetector(Node):
     def _on_current_box(self, msg):
         box_id, generation = parse_current_box_payload(msg.data)
         epoch_changed = int(generation) != int(self._box_generation)
+        identity_changed = epoch_changed or str(box_id) != str(self._box_id)
+        if identity_changed:
+            directed = getattr(self,'_directed_suction_service',None)
+            frozen = getattr(self,'_frozen_suction_service',None)
+            if directed is not None:directed.replace_context(None)
+            if frozen is not None:frozen.store.revoke_all()
         self._box_epoch_seen = True
         self._box_id = box_id
         if epoch_changed and self._gc_on_epoch:
@@ -1350,6 +1356,14 @@ class LuggageDetector(Node):
             self.get_logger().info(
                 "luggage_detector: waiting for suitcase RGB update (%s)"
                 % box_id)
+
+    def _current_directed_suction_context(self):
+        context = self._directed_suction_service.context_snapshot()
+        if (context is not None and getattr(self,'_box_epoch_seen',False)
+                and (context.domain.generation != int(self._box_generation)
+                     or context.domain.instance_id != str(self._box_id))):
+            return None
+        return context
 
     def _on_filter_stats(self, msg):
         if not msg.data:
