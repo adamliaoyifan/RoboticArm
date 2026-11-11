@@ -30,6 +30,7 @@ class RuntimeIO:
         self.launch=None;self.pose_capture=None;self.contact_capture=None
         self.contacts=None;self.contact_stamp=None;self.contact_count=0
         self.positive_contact_messages=0;self.complete_contact_messages=0
+        self.native_contact_samples=0;self.native_empty_contact_samples=0
         self.pose_lock=threading.Lock();self.poses={};self.pose_stamps={};self.pose_stamp=None
         self.pose_count=0;self.q=None;self.q_stamp=None;self.clocks=[]
         self.first_clock=None
@@ -113,7 +114,8 @@ class RuntimeIO:
         header=row.get('header',{}).get('stamp',{})
         stamp=float(header.get('sec',0))+float(header.get('nsec',0))*1e-9
         with self.pose_lock:
-            self.contacts=row;self.contact_stamp=stamp;self.contact_count+=1
+            if not self.vacuum_spec:self.contacts=row;self.contact_stamp=stamp
+            self.contact_count+=1
             contacts=row.get('contact',[])
             if contacts:self.positive_contact_messages+=1
             if contacts and all(len(c.get('normal',[]))==len(c.get('position',[]))>0
@@ -124,6 +126,12 @@ class RuntimeIO:
         state=json.loads(row['data'])
         with self.pose_lock:
             self.vacuum_state=state;self._native_history.append(state)
+            if state.get('contacts_component_available') and 'payload_contacts' in state:
+                self.contacts=state['payload_contacts'];self.contact_stamp=state['sim_time_s']
+                self.native_contact_samples+=1
+                if not self.contacts.get('contact'):self.native_empty_contact_samples+=1
+            elif self.vacuum_spec:
+                self.contacts=None;self.contact_stamp=None
 
     def native_samples_after(self,stamp_s):
         with self.pose_lock:
@@ -183,7 +191,10 @@ class RuntimeIO:
                             or (self.contact_capture.error if self.contact_capture else None)
                             or (self.vacuum_capture.error if self.vacuum_capture else None),
                         contact_topic=self.contact_topic,contacts=self.contacts,contact_stamp=self.contact_stamp,contact_messages=self.contact_count,positive_contact_messages=self.positive_contact_messages,
-                        complete_contact_messages=self.complete_contact_messages)
+                        complete_contact_messages=self.complete_contact_messages,
+                        contact_source='native_physics_component' if self.vacuum_spec else 'legacy_contact_topic',
+                        native_contact_samples=self.native_contact_samples,
+                        native_empty_contact_samples=self.native_empty_contact_samples)
 
     def stop(self):
         if self.pose_capture:self.pose_capture.stop()

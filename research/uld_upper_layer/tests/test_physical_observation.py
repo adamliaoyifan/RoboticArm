@@ -81,5 +81,16 @@ class ObservationReaderContracts(unittest.TestCase):
             row=self.row();change(row)
             with self.assertRaisesRegex(ValueError,reason):reader.read(row)
 
+    def test_empty_native_component_is_current_contact_evidence_not_topic_silence(self):
+        reader=ObservationReader(self.assets,self.snapshot,'payload',.1)
+        row=self.row();row['contact_stamp']=1.
+        with self.assertRaisesRegex(ValueError,'STALE_PHYSICAL_STREAM'):reader.read(row)
+        row['vacuum'].update(contacts_component_available=True,payload_contacts={})
+        sample=reader.read(row)
+        self.assertEqual(sample.contacts,())
+        self.assertEqual(sample.contact_stamp_s,2.)
+        row['vacuum']['contacts_component_available']=False
+        with self.assertRaisesRegex(ValueError,'NATIVE_PHYSICAL_CONTACT_COMPONENT_UNAVAILABLE'):reader.read(row)
+
 
 if __name__=='__main__':unittest.main()

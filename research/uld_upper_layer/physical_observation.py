@@ -45,6 +45,7 @@ class PhysicalSample:
     attached: bool
     pose_command_count: int
     processed_commands: int
+    payload_pose_command_component_present: bool | None = None
 
 
 class ObservationReader:
@@ -67,7 +68,12 @@ class ObservationReader:
         def age(other,name):
             if other is None or not np.isfinite(other) or abs(stamp-other)>self._max_age_s:
                 raise ValueError('STALE_PHYSICAL_STREAM:'+name)
-        age(row.get('clock'),'clock');age(row.get('contact_stamp'),'contacts')
+        contact_message=row.get('contacts') or {};contact_stamp=row.get('contact_stamp')
+        if 'contacts_component_available' in native:
+            if not native['contacts_component_available'] or 'payload_contacts' not in native:
+                raise ValueError('NATIVE_PHYSICAL_CONTACT_COMPONENT_UNAVAILABLE')
+            contact_message=native['payload_contacts'];contact_stamp=stamp
+        age(row.get('clock'),'clock');age(contact_stamp,'contacts')
         if 'native_latest_stamp_s' in row:age(row['native_latest_stamp_s'],'native_processing_backlog')
         lower=[]
         for name,dimensions in self._lower:
@@ -75,7 +81,7 @@ class ObservationReader:
             if name not in row['poses']:raise ValueError('MISSING_LOWER_BODY:'+name)
             lower.append(ObservedBody(name,dimensions,tuple((self._container_T_world@pose_matrix(row['poses'][name])).ravel()),row['pose_stamps'][name]))
         contacts=[]
-        for contact in row.get('contacts',{}).get('contact',[]):
+        for contact in contact_message.get('contact',[]):
             a=contact['collision1']['name'];b=contact['collision2']['name']
             first=a.startswith(self._box_id+'::');second=b.startswith(self._box_id+'::')
             if first==second:raise ValueError('CONTACT_PAYLOAD_IDENTITY_MISMATCH')
@@ -93,5 +99,6 @@ class ObservationReader:
         box=self._container_T_world@pose_matrix(native['payload_pose_world'])
         tool=self._container_T_world@pose_matrix(native['link_pose_world'])@self._link_T_tool
         return PhysicalSample(stamp,q,tuple(box.ravel()),tuple(tool.ravel()),tuple(lower),tuple(contacts),
-                              float(row['contact_stamp']),bool(native['attached']),
-                              int(native['pose_command_count']),int(native['processed_commands']))
+                              float(contact_stamp),bool(native['attached']),
+                              int(native['pose_command_count']),int(native['processed_commands']),
+                              native.get('payload_pose_command_component_present'))

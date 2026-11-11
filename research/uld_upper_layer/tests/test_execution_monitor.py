@@ -51,6 +51,9 @@ class MonitorContracts(unittest.TestCase):
         monitor.begin_phase('withdraw',False,False,True)
         self.assertEqual(monitor.observe(replace(self.initial,stamp_s=1.02,pose_command_count=13)),
                          'DETACHED_PAYLOAD_POSE_COMMAND')
+        monitor=self.create()
+        self.assertEqual(monitor.observe(replace(self.initial,payload_pose_command_component_present=True)),
+                         'DETACHED_PAYLOAD_POSE_COMMAND_COMPONENT_REMAINS')
 
     def test_push_stall_and_lateral_error_use_observed_box_motion(self):
         monitor=self.create();monitor.begin_phase('push','push_plate',False,True)

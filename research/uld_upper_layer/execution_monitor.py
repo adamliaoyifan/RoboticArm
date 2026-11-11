@@ -81,6 +81,8 @@ class ExecutionMonitor:
         self._prior_attached=sample.attached
         if not sample.attached and sample.pose_command_count!=self._detached_commands:
             return self._stop('DETACHED_PAYLOAD_POSE_COMMAND')
+        if not sample.attached and sample.payload_pose_command_component_present is True:
+            return self._stop('DETACHED_PAYLOAD_POSE_COMMAND_COMPONENT_REMAINS')
         for body in sample.lower:
             distance,angle=pose_error(self._baseline[body.name],body.container_T_body)
             if distance>self._policy.lower_translation_m or angle>self._policy.lower_rotation_deg:

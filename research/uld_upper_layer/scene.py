@@ -206,6 +206,7 @@ def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None):
         plugin=ET.SubElement(world,'plugin',filename=str(vacuum_plugin),
                              name='uld_upper::KinematicVacuum')
         parameters=dict(payload_model='upper_layer_payload',parent_model='S20',
+                        payload_link='body',payload_collision='collision',
                         parent_link='elfin_link6',service='/upper_layer/vacuum',
                         state_topic='/upper_layer/vacuum/state')
         for name,value in parameters.items():text(plugin,name,value)
