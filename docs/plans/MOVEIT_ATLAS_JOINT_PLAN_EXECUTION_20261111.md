@@ -327,3 +327,77 @@ CDRs, frozen inputs, plan and native requests/responses before teardown/rerun.
 One case is the bounded trigger window. Verify complete joinable capture and
 worker/native exit0; missing real positive is not_evaluated, never pass. Reuse
 existing tolerances and acquisition-age policy; no performance claim.
+
+
+### ST-4-INTEGRATION generation2: actual complete-operation adoption
+
+Source checkpoints are resolved: stationary pre-seal box, contact xyz may change
+before suction, sealed G is fixed, current deploy_update geometry, O default,
+G unnecessary. Implementation owner codex/gpt-6; baseaca85896aa1c35bae230c4eb6666ccd71eb0943b.
+Dependencies ST-4-OWNER, ST-4-PREP-OBS, ST-3-O-SOURCE and ST-4-STATIONARY-ATTACH
+are complete. This final integration also carries forward every unclosed
+ST-3-ASSEMBLY producer/native acceptance; neither that broad stage nor0-4 is
+closed until this whole-chain gate passes. This replaces generation1's source
+block and avoids its producer/execution dependency overlap without dropping
+producer requirements.
+
+Implement one typed complete-operation execution entry under the actual
+MotionPlannerNode's existing MotionOwnership, plus a driver that prepares the
+entire chain before any align/J6/pick motion. Goal carries the issued plan and
+original measured detection/domain. Independently check the real preparation
+owner's original identity, frozen token and original O source. Consume original
+six timed trajectories through StrictOperationMotionPort, actual vacuum
+request/response, qualified stationary actual attachment and actual frozen
+full-cup check. Native-check the entire remaining original path in current O
+and full MoveIt scene at each motion/event boundary. No global replanning or
+post-seal G/J6 rewrite. Real release precedes released world obstacle admission,
+empty retreat and fresh post-release observed O adoption. G remains off.
+
+Current-map snapshots may advance ordinary revisions, including unchanged
+classified occupancy. Bind original and current typed O source independently;
+epoch/config/hull/model/validity generation changes refuse. A changed current
+volume needs native validation of the same remaining knots. Before submission,
+require either the same checked map or a freshly verified collision-equivalent
+classified volume; bounded retry/refusal if changing obstacles prevent admission.
+Never treat GetValidity transition-time version as latest. Preserve ordinary
+source association and original issued certificate; current native receipts are
+separate evidence. Unknown active cells stay obstacles. No guessed floor free,
+planned-slot O commit, timestamp relabelling or unqualified source callbacks.
+
+Retain generation1's six positive matrix: centered, fully contained offset,
+directed90, directed180, alternate branch, nonempty ULD. Each must complete
+through actual prepare/frozen/O owners and native MoveIt with a synthetic
+actuator/controller boundary; at least one complete current deploy_update
+whole-chain witness must use the newly qualified atlas. Every original knot,
+full six-joint winding and derivative/time remains byte/field identical at the
+controller. Global planner calls during execution=0; motion before PLAN_READY=0;
+map writes before confirmed release=0; automatic release on carrying fault,
+cancel or shutdown=0. Uncertain action transport retains ownership until actual
+terminal consumption, and blocks new legacy/operation motion in between.
+
+Negative matrix: forged/expired/revoked owner evidence, changed box/model/cup,
+wrong winding/stale q, actual-G target miss, new obstacle, ordinary O update,
+new epoch/config/hull, release failure, blocked retreat, cancel/late acceptance/
+uncertain transport, stale post-release observation, duplicate completion and
+shutdown carrying. Each named deterministic case once; functional AND, not
+physical reliability. Refusal stage and forbidden-effect counts must be captured.
+Post-release success requires actual O acquisition newer than confirmed release
+and settled view, not the planned world obstacle. Preserve existing age/contact/
+endpoint/settle/timing policies. No new hardware/Gazebo launch.
+
+Procedure: source-first Humble test_joint_operation_cycle_native.py actual-owner
+fixture plus focused changed module tests; unchanged existing native/source/
+attachment/strict-motion/ownership regressions once after final behavior edits.
+Build generated interfaces and Python in isolated /tmp; prove installed/source
+parity. Record exact revision+unrelated dirty files and only commit owned files.
+Evidence under ST-4-INTEGRATION/g2/ <=256MiB. T0 commands/config/input matrix,
+source/model/atlas/binary hashes, counts and shutdown. T1 every prepare/issuance/
+map capture/native check/controller goal+terminal/vacuum/settle/post-release
+boundary with real stamps, IDs and state. T2 on any unexpected refusal/error:
+freeze that complete case, original plan/detection/domain/clouds, full scenes,
+all native/owner/vacuum/action requests/results and raw measured q before
+teardown/fix/rerun; one case is the bounded trigger window. Preserve raw CDR for
+replay, canonical complete typed fields for identities (native padding
+counterexample established in ST-4-STATIONARY-ATTACH/native_01). Assert complete
+hash/UUID joins and all workers/native exits. Missing positive or missing capture
+is not_evaluated. Do not substitute component counts for full execution.
