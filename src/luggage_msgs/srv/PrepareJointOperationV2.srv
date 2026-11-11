@@ -1,0 +1,24 @@
+# Plan only. Must not move joints, change vacuum, attach, release or commit OCC.
+string request_id
+luggage_msgs/DetectedLuggage detection
+string observation_id
+uint64 generation
+string geometry_hash
+uint64 expected_map_revision
+string expected_model_sha256
+# Measured robot state at observation, canonical elfin_joint1..elfin_joint6 order.
+bool robot_state_stamp_valid
+uint64 robot_state_stamp_ns
+float64[6] start_joints
+# Empty slots asks the placement solver to enumerate on the pinned snapshot.
+luggage_msgs/PoseContractV2[] slots
+uint32 candidate_limit
+float64 budget_s
+---
+# PLAN_READY requires complete certified pick/carry/place/retreat trajectories.
+# Other outcomes keep plan at its inactive default, including SEARCH_INCOMPLETE.
+bool success
+string reason
+luggage_msgs/JointOperationPlanV2 plan
+string trace_json
+float64 elapsed_s

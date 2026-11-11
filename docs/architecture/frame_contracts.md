@@ -97,6 +97,38 @@ future API, not an alias for a concrete tool-pose atlas.
 
 ## Transform and reference-point boundaries
 
+### Complete operation plan binding
+
+`PrepareJointOperationV2` is an independent plan-only boundary. Its result binds
+the measured observation, current robot-state stamp, pinned map/snapshot,
+container geometry, robot model, contact model, request, box and generation.
+Acquisition and robot-state stamps remain distinct; epoch zero is valid only
+with the corresponding validity flag set. A response claiming `PLAN_READY`
+must contain all pick, carrying/place and released retreat trajectories.
+
+`JointOperationPlanV2` contains four directed world-frame poses in metres/xyzw:
+nominal box centre and suction_contact_frame at pick and place. Full box axes
+are retained. The same predicted attachment must compose each tool pose into
+its corresponding box pose. Attachment geometry reuses `AttachmentGeometryV2`
+without re-expanding its conservative dimensions. It is a prediction until
+actual attachment confirmation, not a measured-attachment declaration.
+
+All legs carry existing timed `JointTrajectoryContractV2` records, in canonical
+elfin_joint1..elfin_joint6 order. Exact winding and trajectory continuity are
+preserved. Ordered barriers before first carry and first retreat require
+attachment and release confirmation, respectively, with stationary endpoints.
+The complete plan digest covers identity, poses, predicted geometry, event
+barriers and every trajectory knot. Consumers compare against an independently
+retained identity and approved digest. Post-plan changes require a newly checked
+and bound plan, including any J6 change.
+
+The pure contract and ROS adapters verify binding and structure. They do not
+prove FK, collision freedom, controller readiness or certificate liveness. The
+whole-chain planner must certify empty/world-box, attached and released/world-box
+scenes before sealing. Execution must check actual q and live admission, confirm
+attachment and revalidate carrying paths at the barrier. Schema availability
+does not imply that the service or execution path has been adopted at runtime.
+
 `frame_transforms.transform_pose` accepts an explicit source/target transform:
 translation, unit quaternion, scene_revision and stamp_ns. An explicit null
 transform stamp means static for that scene revision; a dynamic transform stamp
