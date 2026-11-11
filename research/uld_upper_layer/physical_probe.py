@@ -72,7 +72,8 @@ def main():
         source_hashes=hashes,started_wall=time.time(),command=list(__import__('sys').argv),
         capture_complete=False,replay_possible=False)
     save(out/'manifest.json',manifest)
-    runtime=RuntimeIO(ROOT,out,args.scene_dir);monitor=None;observe=None;trace=None;failed=False
+    runtime=RuntimeIO(ROOT,out,args.scene_dir,capture_budget_bytes=policy.max_case_bytes,
+                      capture_reserve_bytes=policy.failure_capture_reserve_bytes);monitor=None;observe=None;trace=None;failed=False
     try:
         assets=load(ROOT);runtime.start();row=runtime.snapshot();save(out/'initial_observation.json',row)
         snapshot,state=capture_fixture(args.scene_dir,assets,config)
@@ -141,7 +142,7 @@ def main():
                 if native:
                     tail.append((native['sim_time_s'],row))
                     if native['sim_time_s']-stamp>=policy.trigger_post_s:break
-        if monitor:monitor.save_trigger(out/'trigger_window.jsonl',tail)
+        if monitor:monitor.save_trigger(out/'trigger_window.jsonl.gz',tail)
         save(out/'summary.json',dict(status='failed',monitor=monitor.metrics() if monitor else None,
                                     stream=observe.metrics() if observe else None,
                                     post_window_captured=bool(tail and tail[-1][0]-stamp>=policy.trigger_post_s)))
@@ -157,7 +158,9 @@ def main():
         if manifest['total_bytes']>policy.max_case_bytes:
             manifest['capture_complete']=False;manifest['replay_possible']=False
             failed=True
-            save(out/'summary.json',dict(status='failed',reason='CASE_CAPTURE_BUDGET_EXCEEDED',total_bytes=manifest['total_bytes']))
+            summary=json.loads((out/'summary.json').read_text()) if (out/'summary.json').exists() else {}
+            summary.update(status='failed',capture_budget_error='CASE_CAPTURE_BUDGET_EXCEEDED',total_bytes=manifest['total_bytes'])
+            save(out/'summary.json',summary)
         save(out/'manifest.json',manifest)
     if failed:raise SystemExit(1)
 

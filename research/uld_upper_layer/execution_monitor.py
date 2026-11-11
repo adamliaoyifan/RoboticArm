@@ -120,7 +120,8 @@ class ExecutionMonitor:
             patch=self._scene.contact_polygon(mode).buffer(self._config.contact_tolerance_m)
             alignment=float(normal@frame[:3,2])
             if (not patch.covers(Point(point[:2])) or abs(point[2])>self._config.contact_tolerance_m or
-                alignment<np.cos(np.deg2rad(self._policy.contact_normal_alignment_deg)) or
+                alignment<np.cos(np.deg2rad(min(self._policy.contact_normal_alignment_deg,
+                                                self._config.contact_normal_alignment_deg))) or
                 contact.depth_m>self._config.contact_penetration_m):
                 return self._stop('NATIVE_CONTACT_OUTSIDE_DECLARED_PANEL_PATCH',point_contact_frame=point[:3].tolist(),normal_alignment=alignment,depth_m=contact.depth_m)
             intended.append(asdict(contact))
@@ -170,7 +171,8 @@ class ExecutionMonitor:
         return self._scene.check_payload(contact_tool=False,margin=self._config.collision_margin_m) is None
 
     def save_trigger(self,path,tail):
-        with path.open('w') as stream:
+        import gzip
+        with gzip.open(path,'wt',compresslevel=3) as stream:
             for stamp,row in list(self._ring)+tail:
                 stream.write(json.dumps(dict(stamp_s=stamp,observation=row))+'\n')
 

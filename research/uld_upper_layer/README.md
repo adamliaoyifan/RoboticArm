@@ -281,3 +281,11 @@ and real native gaps still reject. ROS clock capture has its own observation-onl
 executor, independently of action feedback. Failures preserve stage/window data
 and always tear down the owned stack. A nominal probe is not the G12 acceptance:
 robust tube, release calibration, candidate scoring and five-seed campaign remain.
+
+Native physical probes archive contacts once in vacuum_state.jsonl.gz; legacy
+contact topic capture is used only without the native fixture. Failure trigger
+windows are lossless trigger_window.jsonl.gz (historical cases may be plaintext).
+The external execution policy reserves failure_capture_reserve_bytes within
+max_case_bytes; the runtime checks the sum of all case files before consuming
+the reserve. Intended push/support normal tolerance comes from UpperConfig;
+native checks also enforce the execution policy's stricter normal limit.

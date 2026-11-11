@@ -15,8 +15,12 @@ from collections import deque
 
 
 class RuntimeIO:
-    def __init__(self,repo,evidence,scene_dir=None):
+    def __init__(self,repo,evidence,scene_dir=None,capture_budget_bytes=None,capture_reserve_bytes=0):
         self.repo=Path(repo);self.output=Path(evidence)
+        self._capture_limit=(capture_budget_bytes-capture_reserve_bytes if capture_budget_bytes else None)
+        if self._capture_limit is not None and self._capture_limit<=0:
+            raise ValueError('INVALID_CAPTURE_BUDGET_OR_RESERVE')
+        self._next_capture_check=0.;self._budget_error=None
         self.env=dict(os.environ,ROS_DOMAIN_ID='7',IGN_PARTITION='uld_upper_layer_closed_loop',
                       ROS_LOG_DIR=str(self.output/'ros_logs'))
         self.contact_topic='/upper_layer_payload/contacts'
@@ -80,14 +84,15 @@ class RuntimeIO:
         self.clock_capture.start()
         from transport_capture import JsonTopicCapture
         self.pose_capture=JsonTopicCapture(self.env,self.output,'poses',
-            '/world/airport_loading/pose/info',self._accept_poses)
+            '/world/airport_loading/pose/info',self._accept_poses,max_bytes=self._capture_limit or 75_000_000)
         self.pose_capture.start()
-        self.contact_capture=JsonTopicCapture(self.env,self.output,'payload_contacts',
-            self.contact_topic,self._accept_contacts)
-        self.contact_capture.start()
+        if not self.vacuum_spec:
+            self.contact_capture=JsonTopicCapture(self.env,self.output,'payload_contacts',
+                self.contact_topic,self._accept_contacts,max_bytes=self._capture_limit or 75_000_000)
+            self.contact_capture.start()
         if self.vacuum_spec:
             self.vacuum_capture=JsonTopicCapture(self.env,self.output,'vacuum_state',
-                self.vacuum_spec['state_topic'],self._accept_vacuum)
+                self.vacuum_spec['state_topic'],self._accept_vacuum,max_bytes=self._capture_limit or 75_000_000)
             self.vacuum_capture.start()
         deadline=time.monotonic()+25
         while time.monotonic()<deadline:
@@ -188,13 +193,25 @@ class RuntimeIO:
                     and state['processed_commands']>previous_commands):return state
         raise TimeoutError('IDEAL_VACUUM_STATE_ACK')
 
+    def _capture_budget_error(self):
+        if self._capture_limit is not None and time.monotonic()>=self._next_capture_check:
+            self._next_capture_check=time.monotonic()+.5
+            used=0
+            for path in self.output.rglob('*'):
+                try:
+                    if path.is_file():used+=path.stat().st_size
+                except FileNotFoundError:pass  # concurrent log rotation
+            if used>self._capture_limit:self._budget_error='CASE_CAPTURE_RESERVE_REACHED:'+str(used)
+        return self._budget_error
+
     def snapshot(self):
+        budget_error=self._capture_budget_error()
         with self.pose_lock:
             return dict(vacuum=self.vacuum_state,poses=dict(self.poses),pose_stamps=dict(self.pose_stamps),pose_stamp=self.pose_stamp,
                         messages=self.pose_count,q=self.q,q_stamp=self.q_stamp,
                         clock=self.clocks[-1] if self.clocks else None,
                         first_clock=self.first_clock,
-                        capture_error=self.capture_error or (self.pose_capture.error if self.pose_capture else None)
+                        capture_error=self.capture_error or budget_error or (self.pose_capture.error if self.pose_capture else None)
                             or (self.contact_capture.error if self.contact_capture else None)
                             or (self.vacuum_capture.error if self.vacuum_capture else None)
                             or (self.clock_capture.error if self.clock_capture else None),

@@ -40,6 +40,7 @@ class UpperConfig:
     contact_penetration_m: float
     support_contact_stroke_m: float
     push_contact_stroke_m: float
+    contact_normal_alignment_deg: float
     sweep_step_m: float
     cartesian_step_m: float
     push_speed_mps: float
@@ -81,6 +82,8 @@ class UpperConfig:
         for name in ('support_contact_stroke_m','push_contact_stroke_m'):
             if getattr(self,name) > self.contact_penetration_m:
                 raise ValueError(name+' exceeds modeled contact penetration')
+        if self.contact_normal_alignment_deg>=90:
+            raise ValueError('contact_normal_alignment_deg must be below 90')
         if self.minimum_executable_solutions > self.solution_count_target:
             raise ValueError('minimum exceeds target')
 

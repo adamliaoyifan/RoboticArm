@@ -297,7 +297,7 @@ class FullArmScene:
             other_mesh,other_tf=self.world_parts[name]
             other_top=float((np.array(other_mesh.vertices)@other_tf[:3,:3].T+other_tf[:3,3])[:,2].max())
             support=(p['allow_support'] and (name.startswith('lower_') or name.startswith('pickup_platform:'))
-                     and abs(abs(transform[2,2])-1)<1e-7
+                     and abs(transform[2,2])>=np.cos(np.deg2rad(self.config.contact_normal_alignment_deg))
                      and bottom>=other_top-self.config.contact_penetration_m)
             if support:continue
             distance=self.bounds_distance(self.transformed_bounds(mesh,transform),self.world_bounds[name])
@@ -349,7 +349,9 @@ class FullArmScene:
         if mode is None:return False
         tool_in_box=np.linalg.inv(box_pose)@self.contact_frame(mode)
         normal=tool_in_box[:3,2];axis=int(np.argmax(np.abs(normal)))
-        if abs(normal[axis])<1-1e-7:return False
+        minimum_alignment=(np.cos(np.deg2rad(self.config.contact_normal_alignment_deg))
+                           if mode=='push_plate' else 1-1e-7)
+        if abs(normal[axis])<minimum_alignment:return False
         sign=np.sign(normal[axis]);half=self.payload['size']/2
         gap=-sign*(tool_in_box[axis,3]+sign*half[axis])
         if gap < -self.config.contact_penetration_m:return False

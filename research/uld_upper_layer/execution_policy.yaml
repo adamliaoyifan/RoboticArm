@@ -24,3 +24,6 @@ contact_normal_alignment_deg: 1.0
 trigger_pre_s: 2.0
 trigger_post_s: 1.0
 max_case_bytes: 200000000
+
+# Reserved for compressed failure trigger, post-window and final metadata.
+failure_capture_reserve_bytes: 20000000

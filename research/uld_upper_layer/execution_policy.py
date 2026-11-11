@@ -34,12 +34,15 @@ class ExecutionPolicy:
     trigger_pre_s: float
     trigger_post_s: float
     max_case_bytes: int
+    failure_capture_reserve_bytes: int
 
     def __post_init__(self):
         for field in fields(self):
             value=getattr(self,field.name)
             if isinstance(value,bool) or not math.isfinite(value) or value<=0:
                 raise ValueError('INVALID_EXECUTION_POLICY:'+field.name)
+        if self.failure_capture_reserve_bytes>=self.max_case_bytes:
+            raise ValueError('CAPTURE_RESERVE_EXCEEDS_CASE_BUDGET')
         if self.monitor_period_s>self.monitor_max_gap_s or self.monitor_max_gap_s>self.observation_max_age_s:
             raise ValueError('INCONSISTENT_MONITOR_PERIOD')
 

@@ -54,6 +54,27 @@ class FullArmContracts(unittest.TestCase):
         q=np.zeros(6);q[0]=self.scene.urdf.joint_limits()[0][1]+1
         self.assertEqual(self.scene.check_robot(q)['reason'],'JOINT_LIMIT')
 
+    def test_bounded_push_normal_contract_retains_patch_checks_and_strict_seal(self):
+        from scipy.spatial.transform import Rotation
+        from dataclasses import replace
+        scene=self.scene;original=scene.config;scene.set_joints(np.zeros(6))
+        frame=scene.contact_frame('push_plate')
+        angle=original.contact_normal_alignment_deg/2
+        box_pose=frame@pose([0,0,.125],Rotation.from_euler('x',angle,degrees=True).as_matrix())
+        scene.set_payload((.55,.4,.25),'world',box_pose)
+        try:
+            self.assertTrue(scene.contact_patch_valid(box_pose,'push_plate'))
+            self.assertFalse(scene.contact_patch_valid(box_pose,'seal'))
+            scene.config=replace(original,contact_normal_alignment_deg=angle/2)
+            self.assertFalse(scene.contact_patch_valid(box_pose,'push_plate'))
+            scene.config=original
+            outside=frame@pose([.4,0,.125],Rotation.from_euler('x',angle,degrees=True).as_matrix())
+            self.assertFalse(scene.contact_patch_valid(outside,'push_plate'))
+            tilted=frame@pose([0,0,.125],Rotation.from_euler('x',original.contact_normal_alignment_deg*1.1,degrees=True).as_matrix())
+            self.assertFalse(scene.contact_patch_valid(tilted,'push_plate'))
+        finally:
+            scene.config=original;scene.set_payload((.55,.4,.25),'absent')
+
     def test_source_push_face_touches_payload_while_seal_reference_leaves_gap(self):
         from tool_contact_geometry import derive_push_surface
         from trimesh.collision import CollisionManager

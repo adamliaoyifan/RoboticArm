@@ -1173,3 +1173,25 @@ ActionCandidate另记push_start_control_tool_pose/push_end_control_tool_pose，
 保留原生接触0.1s驻留，不因有界行程而假定接触或绕过确认。
 下一轮不计分接触演练profile目标1条完整计划，以先定位物理接触；
 生产默认及正式联合搜索目标仍3、minimum1，评分/鲁棒管/校准未完成。
+
+### 19.10 指定接触法向契约与采集预算修正
+
+08已建立p04原生接触且开始真实推入，约16.16mm后停止：实际法向
+夹角0.03395deg，FCL源代码沿用1e-7余弦（约0.02562deg）轴对齐
+限制，将既定1deg法向容差内的指定面接触判为禁止碰撞。FCL接触点位于
+p04平面内，穿透0.216um。完整失败输入回放复现该机制。
+新增共享配置contact_normal_alignment_deg=1deg用于指定推压面与
+支撑底面姿态检查；native检查取该值与执行policy更严格者。seal仍严格
+面对齐。指定面polygon、点到面1mm、深度0.5mm、其他碰撞对5mm均不变；
+超过角度/越界的接触继续拒绝。更改YAML真实改变相同输入的判断。
+用实际被拒q/箱pose/所有下层pose完整重放：新契约通过，另有越界/超角度
+负例。源哈希变化后仍重新生成候选并规划整条轨迹，不移植旧轨迹。
+
+08总量207708204bytes超过200MB，预算失败与实际碰撞事件分别保留，
+不能算物理通过。原生每步ContactSensorData已完整包含接触topic数据；
+有native fixture时停止第二份legacy contact topic采集，无native时保留
+legacy。失败窗口改gzip无损压缩，前2s后1s不变。ExecutionPolicy新增
+failure_capture_reserve_bytes=20000000；RuntimeIO每0.5wall秒检查全部
+已有文件，在max_case_bytes-reserve处停止执行，为窗口/尾流/元数据留额。
+每流预算使用该共享采集额度，总硬门槛仍200MB；最终超额不得覆盖原始
+失败原因/monitor指标。行为测试检验跨文件累计与窗口逐样本无损。

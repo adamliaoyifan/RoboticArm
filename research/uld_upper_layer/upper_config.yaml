@@ -23,6 +23,8 @@ contact_penetration_m: 0.0005
 # Preplanned contact establishment; native contact is still mandatory before release.
 support_contact_stroke_m: 0.00005
 push_contact_stroke_m: 0.00005
+# Shared bounded push/support normal contract; seal remains face aligned.
+contact_normal_alignment_deg: 1.0
 sweep_step_m: 0.001
 cartesian_step_m: 0.005
 push_speed_mps: 0.010
