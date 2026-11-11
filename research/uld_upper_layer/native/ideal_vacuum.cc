@@ -65,6 +65,13 @@ class IdealVacuum : public sim::System, public sim::ISystemConfigure,
       }
       ready.store(true);
     }
+    // A queued entity removal is not a completed physics detach. Keep the
+    // identity and attached acknowledgement until the next step observes the
+    // native component gone; never remove the component before EachRemoved.
+    if (detachPending && !ecm.Component<comp::DetachableJoint>(attachmentJoint)) {
+      attached=false;detachPending=false;attachmentJoint=sim::kNullEntity;
+      ++attachmentDetachCount;
+    }
     const auto tool=sim::worldPose(link,ecm);
     const int command=requested.exchange(-1);
     if (command!=-1) ++processedCommands;
@@ -75,13 +82,13 @@ class IdealVacuum : public sim::System, public sim::ISystemConfigure,
       ecm.CreateComponent(attachmentJoint,comp::DetachableJoint(
           comp::DetachableJointInfo{link,payloadLink,"fixed"}));
       attached=true;++epoch;++attachmentCreateCount;
-    } else if (command==0) {
-      attached=false;
+    } else if (command==0 && !detachPending) {
       if (attachmentJoint!=sim::kNullEntity) {
-        ecm.RemoveComponent<comp::DetachableJoint>(attachmentJoint);
+        // Same ownership protocol as Gazebo's DetachableJoint system:
+        // RequestRemoveEntity alone preserves removed-view component data.
         ecm.RequestRemoveEntity(attachmentJoint);
-        attachmentJoint=sim::kNullEntity;++attachmentDetachCount;
-      }
+        detachPending=true;
+      } else attached=false;
     }
   }
   void PostUpdate(const sim::UpdateInfo &info,const sim::EntityComponentManager &ecm) override {
@@ -141,7 +148,7 @@ class IdealVacuum : public sim::System, public sim::ISystemConfigure,
   sim::Entity payloadLink=sim::kNullEntity,attachmentJoint=sim::kNullEntity;
   sim::Entity payloadCollision=sim::kNullEntity;
   std::atomic<int> requested{-1};std::atomic<bool> ready{false};
-  bool attached=false;uint64_t poseCommands=0,epoch=0,processedCommands=0;
+  bool attached=false,detachPending=false;uint64_t poseCommands=0,epoch=0,processedCommands=0;
   uint64_t attachmentCreateCount=0,attachmentDetachCount=0;
   ignition::math::Pose3d relation;
   ignition::transport::Node transport;

@@ -1143,3 +1143,16 @@ support_contact_tool_pose：名义 handoff_tool_pose 沿容器重力方向的
 保持相同；超范围/旧记录拒绝；重新生成全链路计划后进行不计分物理演练，
 保留原生接触、最大下层位移/转角、解除后漂移与实际推移。未解除/未推入
 必须报告 not_evaluated，不得用几何贴合或完成控制器命令代替物理成功。
+
+### 19.8 固定约束释放生命周期修复
+
+06次演练已实际建立原生下层接触并通过释放前驻留，但解除固定约束时
+Gazebo EachRemoved<DetachableJoint> 因组件数据缺失抛出out_of_range，
+故未完成解除/推压；后窗口不足1s记capture incomplete。
+按Gazebo官方DetachableJoint实现仅RequestRemoveEntity，保留removed-view数据，
+不预先RemoveComponent；保留约束身份并等原生组件消失后的下一步才确认
+attached=false。不得用超时放宽或状态假回执绕过。
+先独立运行wiring_rehearsal --attachment-lifecycle：当前真实起始姿态
+及平台箱，不声称合法吸取；3次固定约束创建/释放，每次创建组件存在、
+解除确认时组件消失、继续物理步至少0.1s且无箱体pose命令；最后真实
+controller hold关节误差<0.001rad。通过后才重跑上层动作。

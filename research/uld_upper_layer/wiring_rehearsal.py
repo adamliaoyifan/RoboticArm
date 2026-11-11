@@ -21,6 +21,8 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scene-dir',type=Path,required=True)
     parser.add_argument('--evidence',type=Path,required=True)
+    parser.add_argument('--attachment-lifecycle',action='store_true',
+        help='Diagnostic only: fixed constraints at the observed relation, no seal/product claim')
     args=parser.parse_args();output=args.evidence.resolve()
     if not output.is_relative_to(EVIDENCE):raise ValueError('PRIMARY_EVIDENCE_REQUIRED')
     fixture=json.loads((args.scene_dir/'fixture.json').read_text())
@@ -54,6 +56,28 @@ def main():
         save('native_fk_consistency.json',dict(position_error_m=error_m,rotation_error_rad=error_rad,
             expected_world_link=expected.tolist(),native_observation=native))
         if error_m>1e-5 or error_rad>1e-4:raise RuntimeError('NATIVE_FK_FRAME_MISMATCH')
+        cycles=[]
+        if args.attachment_lifecycle:
+            # The box stays on its source pickup platform; the arm holds its
+            # actual starting pose. This tests native entity removal only,
+            # never a valid suction grasp or upper-layer physical action.
+            import rclpy
+            for index in range(3):
+                attached_state=runtime.toggle_vacuum(True)
+                if not attached_state['attachment_joint_component_present']:
+                    raise RuntimeError('ATTACH_CONSTRAINT_NOT_PRESENT')
+                detached_state=runtime.toggle_vacuum(False)
+                if detached_state['attachment_joint_component_present']:
+                    raise RuntimeError('DETACH_ACK_WITH_CONSTRAINT_REMAINING')
+                initial_stamp=detached_state['sim_time_s'];deadline=time.monotonic()+5.
+                while runtime.snapshot()['vacuum']['sim_time_s']-initial_stamp<.1:
+                    rclpy.spin_once(runtime.node,timeout_sec=.01)
+                    if time.monotonic()>deadline:raise TimeoutError('PHYSICS_DID_NOT_ADVANCE_AFTER_DETACH')
+                after_detach=runtime.snapshot()['vacuum']
+                if after_detach['pose_command_count']!=0:raise RuntimeError('PAYLOAD_POSE_COMMAND')
+                cycles.append(dict(cycle=index,attached=attached_state,detached=detached_state,
+                                   after_detach=after_detach))
+                save('attachment_cycles.json',cycles)
         first=runtime.toggle_vacuum(False)
         second=runtime.toggle_vacuum(False)
         if second['processed_commands']<=first['processed_commands']:
@@ -69,7 +93,8 @@ def main():
         after=runtime.snapshot();save('after.json',after)
         drift=max(abs(a-b) for a,b in zip(after['q'],q))
         if drift>=.001:raise RuntimeError('JOINT_HOLD_DRIFT:'+str(drift))
-        save('summary.json',dict(status='pass',scope='wiring_only_no_attachment_or_upper_action',
+        save('summary.json',dict(status='pass',scope=('native_attachment_lifecycle_only_no_seal_or_upper_action' if args.attachment_lifecycle
+                   else 'wiring_only_no_attachment_or_upper_action'),attachment_cycles=len(cycles),
             scored_units=0,joint_hold_max_drift_rad=drift,detached_pose_commands=0,
             native_fk_error_m=error_m,native_fk_error_rad=error_rad,
             processed_detach_commands=second['processed_commands'],controller_error_code=result['error_code']))
