@@ -23,6 +23,26 @@ flowchart TD
   topics --> map["cargo / scene mapping"]
 ```
 
+## Observed suction support export
+
+The detector's opt-in `publish_suction_top_domain` publishes
+`/luggage/suction_top_domain_v2` (`SuctionTopDomainV2`) beside the exact detection
+frame. The record binds integer acquisition nanoseconds, world frame, box and
+instance/generation, measured support-derived box geometry, contact-model file
+identity, top-plane basis and an immutable whole-cell support bitmap. A bbox
+only selects the input region; it is never converted into a rectangular valid
+top. A cell is admitted only by the same-acquisition depth, instance region,
+winning connected patch and winning plane label together. Missing depth stays
+unknown; no plane/rectangle filling or multi-view fusion is implied by export.
+
+The semantic digest covers metadata and every support byte. The one-million-cell
+wire cap is a resource bound, not a hole-filling threshold. Missing, mismatched
+or unmeasured inputs publish an invalid result for that frame; no previous valid
+result is substituted. Joint consumers compare against their independently
+supplied detection/model/generation. Observed support alone neither proves seal
+quality for a new directed footprint nor authorizes execution. Legacy quality
+evaluation stays separate, and existing detection messages are unchanged.
+
 ## Canonical colour-aligned RGBD acquisition (PF-R9 g2)
 
 The camera product is a **payload-identical RGBD set**. The preprocessor no

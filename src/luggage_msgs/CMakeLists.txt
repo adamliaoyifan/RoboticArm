@@ -48,6 +48,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/JointOperationLegV2.msg"
   "msg/JointOperationBarrierV2.msg"
   "msg/JointOperationPlanV2.msg"
+  "msg/SuctionTopDomainV2.msg"
   "srv/PrepareJointOperationV2.srv"
   "srv/PlanSnapshotJointPathV2.srv"
   "srv/PreparePlacementPriorV2.srv"

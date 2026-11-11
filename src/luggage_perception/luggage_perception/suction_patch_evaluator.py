@@ -42,6 +42,7 @@ from typing import Optional
 import numpy as np
 
 from luggage_perception.suction_height_map import build_height_map
+from luggage_perception.suction_top_domain import TopDomain, build_top_domain
 
 SUCTION_PATCH_NO_TOP = "SUCTION_PATCH_NO_TOP"
 SUCTION_PATCH_NO_CELLS = "SUCTION_PATCH_NO_CELLS"
@@ -121,6 +122,9 @@ class SuctionPatchEvaluation:
     model_version: int = 0
     model_hash: str = ""
     timing_ms: float = 0.0
+    # Optional strict observed-support export. It does not change acceptance or
+    # infer support from the fitted rectangle/legacy majority coverage.
+    observed_top_domain: TopDomain | None = None
 
 
 def center_suction_evaluation(top, stamp, frame_id, instance_id, generation,
@@ -370,7 +374,8 @@ class SuctionPatchEvaluator(object):
 
     def update(self, depth_mm, intrinsics, optical_to_world, top,
                instance_region=None, stamp=0.0, frame_id="world",
-               instance_id="", generation=0, timing=None):
+               instance_id="", generation=0, timing=None,
+               capture_observed_domain=False):
         """Evaluate one acquisition; state is replaced, never fused.
 
         Every input belongs to the same acquisition identity (the caller
@@ -398,13 +403,26 @@ class SuctionPatchEvaluator(object):
             height_map, top, stamp, frame_id, instance_id, generation,
             timing, instance_region=instance_region,
             intrinsics=intrinsics, optical_to_world=optical_to_world)
+        domain = None
+        if capture_observed_domain:
+            domain_started = time.monotonic()
+            try:
+                domain = build_top_domain(height_map, top, depth_mm, instance_region,
+                    intrinsics, optical_to_world, stamp=stamp, frame_id=frame_id)
+            except ValueError:
+                # Export cannot invent an all-valid grid on a provenance miss.
+                # Existing quality output stays separate; joint consumers need
+                # a valid observed domain and will reject its absence.
+                timing['suction_observed_domain_invalid'] = True
+            timing['suction_observed_domain_ms'] = (time.monotonic()-domain_started)*1000.
         self._output = SuctionPatchEvaluation(
             ok=True, reason="ok", accepted=accepted, rejected=rejected,
             stamp=float(stamp), frame=str(frame_id),
             instance_id=str(instance_id), generation=int(generation),
             model_version=int(self._model.model_version),
             model_hash=str(self._model.identity_hash),
-            timing_ms=(time.monotonic() - t0) * 1000.0)
+            timing_ms=(time.monotonic() - t0) * 1000.0,
+            observed_top_domain=domain)
 
     def copy_output(self):
         """Independent copy; caller mutation cannot corrupt state."""

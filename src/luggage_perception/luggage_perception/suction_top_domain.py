@@ -20,6 +20,10 @@ class TopDomain:
     cell_size_m: float
     stamp: float
     frame_id: str
+    u_axis_world: tuple = ()
+    v_axis_world: tuple = ()
+    normal_world: tuple = ()
+    plane_offset_world_m: float | None = None
 
 
 def build_top_domain(hmap, top, depth_mm, instance_region, intrinsics,
@@ -54,7 +58,10 @@ def build_top_domain(hmap, top, depth_mm, instance_region, intrinsics,
         optical_to_world=optical_to_world)
     cells.setflags(write=False)
     return TopDomain(cells, (hmap.origin_u, hmap.origin_v),
-                     float(hmap.cell_size_m), float(stamp), str(frame_id))
+                     float(hmap.cell_size_m), float(stamp), str(frame_id),
+                     tuple(float(v) for v in hmap.u_axis),
+                     tuple(float(v) for v in hmap.v_axis),
+                     tuple(float(v) for v in hmap.normal), float(hmap.plane_d))
 
 
 def project_supported_cells(admitted_pixels, *, origin_uv, shape, cell_size_m,

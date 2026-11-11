@@ -570,6 +570,9 @@ class LuggageDetector(Node):
         # fails startup); the absolute path and SHA-256 are logged once.
         self._suction_evaluator = None
         self._last_suction_eval = None
+        self._publish_observed_suction_domain = bool(
+            self.declare_parameter('publish_suction_top_domain', False).value)
+        self._suction_top_domain_pub = None
         if self._top_surface_mode == "dynamic":
             self.declare_parameter("suction_contact_model_config", "")
             model_path = str(
@@ -721,6 +724,10 @@ class LuggageDetector(Node):
             DetectionFrame,
             self.get_parameter("detection_frame_topic").value,
             stream_qos)
+        if self._publish_observed_suction_domain:
+            from luggage_msgs.msg import SuctionTopDomainV2
+            self._suction_top_domain_pub = self.create_publisher(
+                SuctionTopDomainV2, '/luggage/suction_top_domain_v2', stream_qos)
         # ST03: v2 pose-contract publishers exist only when an explicit
         # scene revision enables the boundary; a rejected conversion warns
         # with its diagnostic and never disturbs the v1 stream.
@@ -1092,7 +1099,8 @@ class LuggageDetector(Node):
             stamp=cloud_stamp_sec, frame_id=self._world_frame,
             instance_id=str(getattr(yolo_msg, "instance_id", "") or ""),
             generation=int(getattr(yolo_msg, "generation", 0) or 0),
-            timing=self._timing)
+            timing=self._timing,
+            capture_observed_domain=getattr(self, '_publish_observed_suction_domain', False))
         suction = self._suction_evaluator.copy_output()
         capture_root = os.environ.get('ELFIN_SUCTION_INPUT_CAPTURE', '').strip()
         if capture_root:
@@ -2027,6 +2035,7 @@ class LuggageDetector(Node):
         frame = self._make_detection_frame(
             yolo_msg, cloud_msg, fields, box, support)
         self._frame_pub.publish(frame)
+        self._publish_suction_top_domain(frame)
         self._frame_window.push(
             adapters.stamp_to_sec(cloud_msg.header.stamp), frame)
         self._publish_frame_contracts_v2(frame, cloud_msg)
@@ -2035,6 +2044,33 @@ class LuggageDetector(Node):
             yolo_msg, cloud_msg, cloud_key, fields, n_det, inst_px,
             target_association_ambiguous(
                 n_det, inst_px, stamps_aligned=aligned))
+
+    def _publish_suction_top_domain(self, frame):
+        """Publish strict observed support beside this exact detection frame."""
+        publisher = getattr(self, '_suction_top_domain_pub', None)
+        if publisher is None:
+            return
+        from luggage_msgs.msg import SuctionTopDomainV2
+        from luggage_perception.ros_suction_domain import (
+            observed_domain_for_detection, domain_to_message,
+        )
+        output = SuctionTopDomainV2()
+        output.header = frame.header
+        output.box_id = frame.box.id
+        output.instance_id, output.generation = frame.instance_id, int(frame.generation)
+        output.reason = 'OBSERVED_TOP_DOMAIN_UNAVAILABLE'
+        try:
+            evaluation = getattr(self, '_last_suction_eval', None)
+            if (not frame.pca_valid or frame.box.header != frame.header or evaluation is None
+                    or evaluation.instance_id != frame.instance_id
+                    or evaluation.generation != frame.generation):
+                raise ValueError('frame/evaluation acquisition identity mismatch')
+            output = domain_to_message(observed_domain_for_detection(frame.box, evaluation))
+        except (TypeError, ValueError) as error:
+            # Publish this frame's invalid result; never silently reuse the
+            # previous frame or turn fitted box dimensions into support.
+            output.reason = 'OBSERVED_TOP_DOMAIN_UNAVAILABLE:'+str(error)
+        publisher.publish(output)
 
     def _publish_frame_contracts_v2(self, frame, cloud_msg):
         """Emit detection/contact v2 records beside the v1 frame (F03/F04).
