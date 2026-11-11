@@ -1,0 +1,182 @@
+"""Joint grasp/handoff/push geometry search; no arm or execution success claims."""
+from collections import Counter
+import time
+import numpy as np
+from scipy.spatial.transform import Rotation
+from shapely.geometry import Point
+from shapely.ops import unary_union
+from shapely.geometry import box as polygon_box
+from geometry import Box, pose
+from ideal_snapshot import query_box
+from planning_types import ActionCandidate, PlacementCandidate, digest
+from support_geometry import measure_support
+from action import boundary_failure
+
+
+def matrix(value):
+    return np.asarray(value, float).reshape(4,4)
+
+
+def flat(value):
+    return tuple(np.asarray(value, float).ravel())
+
+
+def samples(low, high, step):
+    if high < low - 1e-9:
+        return ()
+    count = int(np.floor((high-low)/step + 1e-7))
+    return tuple(low + np.arange(count+1)*step)
+
+
+def tool_collision(assets, snapshot, tcp, clearance):
+    for tool in assets['tool']:
+        body = tool.moved(tcp)
+        failure = boundary_failure(body, assets)
+        if failure:
+            return failure
+        status, hits = query_box(snapshot, body, clearance)
+        if status != 'FREE':
+            return dict(reason='TOOL_'+status, body=body.name, hits=hits,
+                        tcp=tcp.tolist())
+    return None
+
+
+def generate_actions(assets, snapshot, state, config):
+    """Return immutable geometric candidates and bounded diagnostic records.
+
+    Grasp is selected on the original top face. The final box is inverted by
+    Rx(pi), so that same material face rests on the upward panel and supports.
+    All fixed tool bodies must stay clear of actual lower cuboids, not a shelf.
+    """
+    started = time.monotonic()
+    reasons, witnesses, candidates = Counter(), [], []
+    windows = handoff_windows(assets, state, config)
+    top = max(p.surface_z_container for p in snapshot.surfaces)
+    patches = tuple(p for p in snapshot.surfaces if abs(p.surface_z_container-top)<1e-8)
+    support_union = unary_union([polygon_box(*p.bounds_xy) for p in patches])
+    xmin, ymin, xmax, ymax = support_union.bounds
+    size = np.array(state.dimensions)
+    contact_width = np.array(assets['contact']['footprint_size_xy_m'])
+    edge = assets['contact']['boundary_margin_m']
+    state_pose = matrix(state.container_T_box)
+    # Necessary windows are a complete cheap matrix, even when later search budgets expire.
+    for yaw in config.box_yaws_deg:
+        rz = Rotation.from_euler('z', yaw, degrees=True).as_matrix()
+        box_rotation = rz @ Rotation.from_euler('x', np.pi).as_matrix()
+        projected = np.abs(rz[:2,:2]) @ size[:2]
+        length, width = projected
+        # Final positions are inside actual top envelope, not a hidden answer.
+        final_xs = samples(xmin+length/2+config.collision_margin_m,
+                          xmax-length/2-config.collision_margin_m, config.placement_step_m)
+        ys = samples(ymin+width/2+config.collision_margin_m,
+                     ymax-width/2-config.collision_margin_m, config.placement_step_m)
+        for tool_yaw in config.tool_yaws_deg:
+            rt = Rotation.from_euler('z', tool_yaw, degrees=True).as_matrix()
+            footprint_x = np.abs(rt[0,:2]) @ contact_width
+            footprint_y = np.abs(rt[1,:2]) @ contact_width
+            bmax = length-footprint_x/2-edge
+            forward = max(body.moved(pose([0,0,0],rt)).corners()[:,0].max()
+                          for body in assets['tool'])
+            dmin = max(config.support_area_ratio_min*length,
+                       length/2+config.support_com_margin_m)
+            dmax = bmax-forward-config.collision_margin_m
+            if dmax < dmin or footprint_y+2*edge > width:
+                reasons['HANDOFF_WINDOW_EMPTY'] += 1; continue
+            # Interleave spatial placements and grasp/depth rather than exhaust
+            # expensive final-pose paths at one point. Further expansion occurs
+            # in the full trajectory search, using this bounded geometry list.
+            for y in ys:
+                for depth in samples(dmin, dmax, config.handoff_step_m):
+                    front = xmin+depth
+                    handoff = pose([front-length/2,y,top+size[2]/2], box_rotation)
+                    failure = boundary_failure(Box('payload', handoff[:3,3], box_rotation, size/2),assets)
+                    if failure:
+                        reasons['HANDOFF_APERTURE']+=1;continue
+                    metrics = measure_support(handoff,size,patches,config,state.com_local)
+                    if not metrics.accepted:
+                        reasons[metrics.reason]+=1;continue
+                    for b in samples(depth+forward+config.collision_margin_m,
+                                     bmax, config.grasp_step_m):
+                        tcp = pose([front-b,y,top],rt)
+                        failure = tool_collision(assets,snapshot,tcp,config.collision_margin_m)
+                        # Verify the actual withdrawal legs including downward
+                        # separation. Upward-carried box remains on lower cargo.
+                        if not failure:
+                            end = tcp.copy(); end[2,3] -= config.release_drop_m
+                            end2 = end.copy(); end2[0,3] -= config.withdraw_m
+                            for start,finish in ((tcp,end),(end,end2)):
+                                count=max(1,int(np.ceil(np.linalg.norm(finish[:3,3]-start[:3,3])/
+                                                       config.handoff_step_m)))
+                                for t in np.linspace(0,1,count+1):
+                                    waypoint = start.copy()
+                                    waypoint[:3,3] = (1-t)*start[:3,3]+t*finish[:3,3]
+                                    failure=tool_collision(assets,snapshot,waypoint,config.collision_margin_m)
+                                    if failure: break
+                                if failure:break
+                        if failure:
+                            reasons[failure['reason']]+=1
+                            if len(witnesses)<32:witnesses.append(failure)
+                            continue
+                        box_to_tool=np.linalg.inv(handoff)@tcp
+                        pick=state_pose@box_to_tool
+                        for final_x in final_xs:
+                            if final_x < handoff[0,3]+config.collision_margin_m:continue
+                            final=pose([final_x,y,top+size[2]/2],box_rotation)
+                            final_metrics=measure_support(final,size,patches,config,state.com_local)
+                            if not final_metrics.accepted:continue
+                            payload=Box('payload',final[:3,3],box_rotation,size/2)
+                            if boundary_failure(payload,assets):
+                                reasons['PAYLOAD_HULL']+=1;continue
+                            # Panel contact normal +X and panel footprint inside
+                            # the rear face. Contact is intentional; all other
+                            # fixed bodies must clear cargo and the actual hull.
+                            push_r=Rotation.from_euler('y',np.pi/2).as_matrix()
+                            low=top+contact_width[0]/2+edge
+                            high=top+size[2]-contact_width[0]/2-edge
+                            for z in samples(low,high,config.push_height_step_m):
+                                push_start=pose([front-length,y,z],push_r)
+                                distance=final_x-handoff[0,3]
+                                push_end=push_start.copy();push_end[0,3]+=distance
+                                failure=tool_collision(assets,snapshot,push_start,config.collision_margin_m)
+                                if not failure:failure=tool_collision(assets,snapshot,push_end,config.collision_margin_m)
+                                if failure:
+                                    reasons[failure['reason']]+=1;continue
+                                pid=digest(dict(pose=flat(final),snapshot=snapshot.snapshot_id,
+                                                config=config.revision))[:20]
+                                placement=PlacementCandidate(pid,snapshot.snapshot_id,
+                                    config.revision,flat(final),final_metrics)
+                                aid=digest(dict(pid=pid,grasp=flat(box_to_tool),
+                                                handoff=flat(handoff),push=flat(push_start)))[:20]
+                                candidates.append(ActionCandidate(aid,placement,flat(box_to_tool),
+                                    flat(pick),flat(handoff),flat(tcp),metrics,flat(push_start),
+                                    flat(push_end),(1.,0.,0.),distance,tool_yaw,
+                                    ('SUPPORT_AND_FIXED_TOOL_CHECKED',
+                                     'FULL_ARM_NOT_EVALUATED','PUSH_PHYSICS_NOT_EVALUATED')))
+                                if len(candidates)>=config.max_action_candidates:
+                                    return candidates,dict(windows=windows,reasons=dict(reasons),
+                                        witnesses=witnesses,termination='BUDGET_EXHAUSTED',
+                                        elapsed_s=time.monotonic()-started)
+                    if time.monotonic()-started>=config.search_budget_s:
+                        return candidates,dict(windows=windows,reasons=dict(reasons),witnesses=witnesses,
+                            termination='BUDGET_EXHAUSTED',elapsed_s=time.monotonic()-started)
+    return candidates,dict(windows=windows,reasons=dict(reasons),witnesses=witnesses,
+        termination='SEARCH_EXHAUSTED',elapsed_s=time.monotonic()-started)
+
+
+def handoff_windows(assets, state, config):
+    """Complete cheap necessary-condition matrix, independent of search budget."""
+    result=[]
+    footprint=np.array(assets['contact']['footprint_size_xy_m'])
+    for yaw in config.box_yaws_deg:
+        r=Rotation.from_euler('z',yaw,degrees=True).as_matrix()
+        length=float(np.abs(r[0,:2])@np.array(state.dimensions[:2]))
+        for tool_yaw in config.tool_yaws_deg:
+            rt=Rotation.from_euler('z',tool_yaw,degrees=True).as_matrix()
+            bmax=length-float(np.abs(rt[0,:2])@footprint)/2-assets['contact']['boundary_margin_m']
+            forward=max(body.moved(pose([0,0,0],rt)).corners()[:,0].max() for body in assets['tool'])
+            low=max(config.support_area_ratio_min*length,length/2+config.support_com_margin_m)
+            high=float(bmax-forward-config.collision_margin_m)
+            result.append(dict(box_yaw_deg=yaw,tool_yaw_deg=tool_yaw,
+                insertion_min_m=low,insertion_max_m=high,feasible=bool(high>=low),
+                source='full_width_necessary_condition'))
+    return result

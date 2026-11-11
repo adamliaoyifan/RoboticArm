@@ -1,0 +1,20 @@
+# One source of defaults for the independent ideal-input experiment. SI units.
+support_area_ratio_min: 0.60
+support_com_margin_m: 0.020
+collision_margin_m: 0.005
+contact_tolerance_m: 0.001
+grid_resolution_m: 0.010
+placement_step_m: 0.020
+handoff_step_m: 0.005
+grasp_step_m: 0.010
+push_height_step_m: 0.010
+withdraw_m: 0.150
+release_drop_m: 0.060
+placement_lift_m: 0.005
+box_yaws_deg: [0, 90, 180, 270]
+tool_yaws_deg: [0, 90, 180, 270]
+solution_count_target: 3
+minimum_executable_solutions: 1
+max_action_candidates: 2000
+search_budget_s: 600.0
+path_attempt_budget_s: 5.0

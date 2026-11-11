@@ -112,3 +112,27 @@ Use the standard `<worktree>/install` layout: the existing GPU gate locates
 its helper in `<worktree>/scripts`. Lower-box collision geometry is present
 in Gazebo; scene-only startup does not inject fixture truth into MoveIt.
 Future placement planning must obtain those obstacles from the measured map.
+
+
+## V1 ideal-input geometry contracts
+
+`upper_config.yaml` is the single default configuration. `planning_types.py`
+contains immutable boundary records, `ideal_snapshot.py` is explicitly fixture
+sourced, and `support_geometry.py` separates actual overlap area from the static
+rigid-box support polygon. `candidates.py` jointly enumerates final placements,
+offset grasps, handoff and panel pushing poses. Candidate records explicitly
+state that full-arm collision/path/physics have not yet been evaluated.
+
+Run the source-bound geometry experiment (new evidence directory required):
+
+```bash
+source /opt/ros/humble/setup.bash
+python3 research/uld_upper_layer/feasibility.py \
+  --scene-dir /tmp/uld_upper_layer_scene_v1_aligned \
+  --evidence /home/adamliao/work/elfin_humble_ws/docs/status/evidence/uld_upper_layer_v1/NEW_GEOMETRY_RUN
+```
+
+This does not drive ROS or change simulation objects. The sparse ideal snapshot
+represents dynamic lower-cargo occupancy; static hull/platform/robot collision
+models remain mandatory additional inputs for whole-arm planning. A reported
+geometry candidate is not an executable plan.
