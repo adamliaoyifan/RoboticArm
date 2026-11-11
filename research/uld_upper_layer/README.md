@@ -289,3 +289,10 @@ The external execution policy reserves failure_capture_reserve_bytes within
 max_case_bytes; the runtime checks the sum of all case files before consuming
 the reserve. Intended push/support normal tolerance comes from UpperConfig;
 native checks also enforce the execution policy's stricter normal limit.
+
+For physical probes, native callbacks remain full rate. `monitor.jsonl.gz`
+includes each accepted decision's exact `input_observation`; the native archive
+baseline uses the monitor period and `_trigger.jsonl.gz` retains the complete
+raw pre/post failure window. `native_capture_metrics.json` reports coverage and
+gaps. `--capture-rehearsal` deliberately fails after a hold to verify this path;
+it cannot execute a nominal plan and never represents upper-action success.

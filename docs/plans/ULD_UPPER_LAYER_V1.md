@@ -1195,3 +1195,21 @@ failure_capture_reserve_bytes=20000000；RuntimeIO每0.5wall秒检查全部
 已有文件，在max_case_bytes-reserve处停止执行，为窗口/尾流/元数据留额。
 每流预算使用该共享采集额度，总硬门槛仍200MB；最终超额不得覆盖原始
 失败原因/monitor指标。行为测试检验跨文件累计与窗口逐样本无损。
+
+### 19.11 实测采集吞吐与逐次决策输入归档
+
+08原生推压1s实测1000条、原始17.19MB、gzip3.03MB，按剩余45s
+外推无重复流也约256MB，故不以完整动作试探预算。采集回调仍全量接收
+1ms源状态，NativeSampleMonitor仍按原策略逐样本检查；只改变归档。
+每次有效执行监控记录附带input_observation，可用原ObservationReader
+逐次精确重放q/箱体/工具/下层/原生接触/时戳。失败拒绝输入亦保留。
+native全程基线按monitor_period归档，另有完整频率的前2s+允许延迟环形
+缓冲；失败时写vacuum_state_trigger.jsonl.gz，接收后1s原生样本后关闭，
+记录实际首尾/样本数/最大间隔和完整性。该窗口不完整时manifest不得
+判capture_complete。poses与clock原流继续保留，monitor/输入链路不降采样。
+
+BoundedTrace独立负责归档/环形窗口，transport只解析和投递；无触觉/
+力矩依赖，无机器人/箱体命令。79单元测试通过。主动诊断失败演练
+capture_rehearsal_g12_01：实际接收9224native，基线462；失败窗口
+3001样本覆盖3s，最大1ms；103次实际决策输入重放一致，总2466622bytes。
+该演练显式DIAGNOSTIC_CAPTURE_REHEARSAL、未执行上层动作，不算物理成功。

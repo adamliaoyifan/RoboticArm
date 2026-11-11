@@ -5,7 +5,7 @@ lower/contact stamps. Geometry remains separate from native contact evidence.
 This monitor neither changes cargo poses nor supplies force/torque feedback.
 """
 from collections import deque
-from dataclasses import asdict
+from dataclasses import asdict,is_dataclass
 import json
 import time
 import numpy as np
@@ -136,7 +136,7 @@ class ExecutionMonitor:
             container_T_box=sample.container_T_box,container_T_tool=sample.container_T_tool,
             attached=sample.attached,pose_command_count=sample.pose_command_count,
             intended_contact_trace=intended,
-            support=asdict(self._support))
+            support=asdict(self._support),input_observation=(asdict(row) if is_dataclass(row) else row))
         self._trace.write(json.dumps(record)+'\n');self._trace.flush()
         return None
 

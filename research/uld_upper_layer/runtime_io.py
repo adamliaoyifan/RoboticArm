@@ -1,7 +1,7 @@
 """ROS/Gazebo adapter for the explicitly ideal-input research experiment.
 
 Capture uses a private partition and owned launch. No observation callback moves
-the robot or cargo. All raw transport traces survive failures before teardown.
+the robot or cargo. Actual decision inputs and the bounded full-rate failure window survive teardown.
 """
 import json
 import os
@@ -15,9 +15,11 @@ from collections import deque
 
 
 class RuntimeIO:
-    def __init__(self,repo,evidence,scene_dir=None,capture_budget_bytes=None,capture_reserve_bytes=0):
+    def __init__(self,repo,evidence,scene_dir=None,capture_policy=None):
         self.repo=Path(repo);self.output=Path(evidence)
-        self._capture_limit=(capture_budget_bytes-capture_reserve_bytes if capture_budget_bytes else None)
+        self._capture_policy=capture_policy
+        self._capture_limit=(capture_policy.max_case_bytes-capture_policy.failure_capture_reserve_bytes
+                             if capture_policy else None)
         if self._capture_limit is not None and self._capture_limit<=0:
             raise ValueError('INVALID_CAPTURE_BUDGET_OR_RESERVE')
         self._next_capture_check=0.;self._budget_error=None
@@ -92,7 +94,10 @@ class RuntimeIO:
             self.contact_capture.start()
         if self.vacuum_spec:
             self.vacuum_capture=JsonTopicCapture(self.env,self.output,'vacuum_state',
-                self.vacuum_spec['state_topic'],self._accept_vacuum,max_bytes=self._capture_limit or 75_000_000)
+                self.vacuum_spec['state_topic'],self._accept_vacuum,max_bytes=self._capture_limit or 75_000_000,
+                trace_options=(dict(period_s=self._capture_policy.monitor_period_s,
+                    pre_s=self._capture_policy.trigger_pre_s,post_s=self._capture_policy.trigger_post_s,
+                    lag_s=self._capture_policy.observation_max_age_s) if self._capture_policy else None))
             self.vacuum_capture.start()
         deadline=time.monotonic()+25
         while time.monotonic()<deadline:
@@ -145,6 +150,8 @@ class RuntimeIO:
             elif self.vacuum_spec:
                 self.contacts=None;self.contact_stamp=None
 
+        return state['sim_time_s']
+
     def native_samples_after(self,stamp_s):
         with self.pose_lock:
             return tuple(state for state in self._native_history if state['sim_time_s']>stamp_s)
@@ -192,6 +199,13 @@ class RuntimeIO:
             if (state and state['ready'] and state['attached']==attached
                     and state['processed_commands']>previous_commands):return state
         raise TimeoutError('IDEAL_VACUUM_STATE_ACK')
+
+    def begin_failure_capture(self,stamp):
+        if self.vacuum_capture and self.vacuum_capture.trace:
+            self.vacuum_capture.trace.start_trigger(stamp)
+
+    def native_capture_metrics(self):
+        return self.vacuum_capture.trace.metrics() if self.vacuum_capture and self.vacuum_capture.trace else None
 
     def _capture_budget_error(self):
         if self._capture_limit is not None and time.monotonic()>=self._next_capture_check:

@@ -41,7 +41,10 @@ def main():
     parser.add_argument('--evidence',type=Path,required=True)
     parser.add_argument('--planning-run',type=Path)
     parser.add_argument('--policy',type=Path)
+    parser.add_argument('--capture-rehearsal',action='store_true',
+        help='Deliberate diagnostic failure after controller hold; never a physical action verdict')
     args=parser.parse_args();out=args.evidence.resolve()
+    if args.capture_rehearsal and args.planning_run:parser.error('capture rehearsal does not execute a plan')
     if not out.is_relative_to(EVIDENCE):raise ValueError('PRIMARY_EVIDENCE_REQUIRED')
     policy=ExecutionPolicy.load(args.policy);config=UpperConfig.load();plan=None
     if args.planning_run:
@@ -72,8 +75,7 @@ def main():
         source_hashes=hashes,started_wall=time.time(),command=list(__import__('sys').argv),
         capture_complete=False,replay_possible=False)
     save(out/'manifest.json',manifest)
-    runtime=RuntimeIO(ROOT,out,args.scene_dir,capture_budget_bytes=policy.max_case_bytes,
-                      capture_reserve_bytes=policy.failure_capture_reserve_bytes);monitor=None;observe=None;trace=None;failed=False
+    runtime=RuntimeIO(ROOT,out,args.scene_dir,capture_policy=policy);monitor=None;observe=None;trace=None;failed=False
     try:
         assets=load(ROOT);runtime.start();row=runtime.snapshot();save(out/'initial_observation.json',row)
         snapshot,state=capture_fixture(args.scene_dir,assets,config)
@@ -124,17 +126,21 @@ def main():
         # Warm up the real observation boundary while holding the current arm.
         q=list(initial.q);hold=dict(positions=[q,q],velocities=[[0.]*6,[0.]*6],time_from_start=[0.,policy.trigger_pre_s])
         ArmController(runtime).execute(hold,observe,policy.condition_wait_budget_s)
+        if args.capture_rehearsal:raise RuntimeError('DIAGNOSTIC_CAPTURE_REHEARSAL')
         result=(PhysicalExecutor(runtime,monitor,observe,state.dimensions,config,policy).execute(plan) if plan else
                 dict(status='monitor_hold_pass',scope='native_observation_and_actual_controller_hold_only'))
         result['monitor']=monitor.metrics();result['stream']=observe.metrics();save(out/'summary.json',result)
         manifest['capture_complete']=True;manifest['replay_possible']=True
     except BaseException as exc:
         failed=True
-        if monitor:monitor.fail_execution(str(exc) or type(exc).__name__,exception_type=type(exc).__name__)
+        if monitor:
+            monitor.fail_execution(str(exc) or type(exc).__name__,exception_type=type(exc).__name__)
+            runtime.begin_failure_capture(monitor.sample.stamp_s)
         (out/'error.txt').write_text(traceback.format_exc())
         tail=[];wall_deadline=time.monotonic()+policy.condition_wait_budget_s
         first=runtime.snapshot().get('vacuum');stamp=first['sim_time_s'] if first else None
         if stamp is not None:
+            if monitor is None:runtime.begin_failure_capture(stamp)
             import rclpy
             while time.monotonic()<wall_deadline:
                 rclpy.spin_once(runtime.node,timeout_sec=policy.monitor_period_s)
@@ -150,9 +156,15 @@ def main():
         manifest['replay_possible']=manifest['capture_complete']
     finally:
         if trace:trace.close()
+        save(out/'native_capture_metrics.json',runtime.native_capture_metrics())
         save(out/'terminal_observation.json',runtime.snapshot())
         save(out/'manifest.json',manifest) # Failure observations are durable before teardown.
         runtime.stop()
+        native_capture=runtime.native_capture_metrics()
+        save(out/'native_capture_metrics.json',native_capture)
+        if failed and runtime.vacuum_spec:
+            manifest['capture_complete']=bool(manifest['capture_complete'] and native_capture and native_capture['trigger_complete'])
+            manifest['replay_possible']=manifest['capture_complete']
         inventory={str(path.relative_to(out)):path.stat().st_size for path in out.rglob('*') if path.is_file()}
         manifest.update(ended_wall=time.time(),artifact_bytes=inventory,total_bytes=sum(inventory.values()))
         if manifest['total_bytes']>policy.max_case_bytes:

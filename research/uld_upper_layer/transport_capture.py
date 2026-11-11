@@ -1,16 +1,17 @@
 """Bounded compressed Ignition topic capture with an observation-only callback."""
-import gzip
 import json
+from bounded_trace import BoundedTrace
 from pathlib import Path
 import subprocess
 import threading
 
 
 class JsonTopicCapture:
-    def __init__(self,env,output,name,topic,accept,max_bytes=75_000_000):
+    def __init__(self,env,output,name,topic,accept,max_bytes=75_000_000,trace_options=None):
         self.env=env;self.output=Path(output);self.name=name;self.topic=topic
         self.accept=accept;self.max_bytes=max_bytes;self.error=None;self.count=0
         self.process=None;self.thread=None;self.closing=False
+        self.trace_options=trace_options or {};self.trace=None
 
     def start(self):
         self.stderr=(self.output/f'{self.name}_stderr.log').open('w')
@@ -23,7 +24,8 @@ class JsonTopicCapture:
         decoder=json.JSONDecoder();buffer=''
         path=self.output/f'{self.name}.jsonl.gz'
         try:
-            with gzip.open(path,'wt',compresslevel=3) as trace:
+            self.trace=BoundedTrace(path,**self.trace_options)
+            try:
                 for line in self.process.stdout:
                     buffer+=line
                     while buffer.strip():
@@ -31,12 +33,13 @@ class JsonTopicCapture:
                         try:row,end=decoder.raw_decode(buffer)
                         except json.JSONDecodeError:break
                         buffer=buffer[end:]
-                        trace.write(json.dumps(row,separators=(',',':'))+'\n')
-                        self.accept(row);self.count+=1
+                        stamp=self.accept(row)
+                        self.trace.append(row,stamp);self.count+=1
                         if self.count%100==0:
-                            trace.flush()
                             if path.stat().st_size>self.max_bytes:
                                 raise RuntimeError('COMPRESSED_CAPTURE_BUDGET:'+self.name)
+            finally:
+                self.trace.close()
             if buffer.strip() and not self.closing:raise RuntimeError('TRUNCATED_TRANSPORT_MESSAGE:'+self.name)
         except Exception as exc:self.error=str(exc)
 
