@@ -18,3 +18,17 @@ minimum_executable_solutions: 1
 max_action_candidates: 2000
 search_budget_s: 600.0
 path_attempt_budget_s: 5.0
+contact_penetration_m: 0.0005
+sweep_step_m: 0.001
+cartesian_step_m: 0.005
+push_speed_mps: 0.010
+push_acceleration_mps2: 0.020
+contact_speed_mps: 0.002
+joint_speed_scaling: 0.20
+joint_acceleration_radps2: 0.50
+ik_seed_count: 24
+precontact_distance_m: 0.050
+pick_lift_m: 0.100
+outside_aperture_margin_m: 0.050
+ompl_resolution_fraction: 0.002
+distance_query_timeout_s: 2.0

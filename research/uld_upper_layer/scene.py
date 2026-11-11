@@ -103,7 +103,7 @@ def fixture(assets, ceiling_gap=.03, layers=4, columns=3):
                 source_hashes=assets['hashes'])
 
 
-def box_model(spec, color):
+def box_model(spec, color, contact_topic=None):
     model = ET.Element('model', name=spec['name'])
     text(model, 'static', 'false')
     text(model, 'pose', numbers(spec['pose_world']))
@@ -129,6 +129,13 @@ def box_model(spec, color):
             ode = ET.SubElement(friction, 'ode')
             text(ode, 'mu', .8)
             text(ode, 'mu2', .8)
+    if contact_topic:
+        sensor=ET.SubElement(link,'sensor',name='box_contact',type='contact')
+        text(sensor,'always_on','true')
+        text(sensor,'update_rate',50)
+        contact=ET.SubElement(sensor,'contact')
+        text(contact,'collision','collision')
+        text(contact,'topic',contact_topic)
     return model
 
 
@@ -171,7 +178,7 @@ def intersecting_triangles(center, half, triangles):
     return hits
 
 
-def write_scene(repo, output):
+def write_scene(repo, output, physics_plugin=None):
     if output.exists() and any(output.iterdir()):
         raise ValueError('output must be new or empty; do not overwrite a previous scene')
     assets = load(repo)
@@ -188,6 +195,12 @@ def write_scene(repo, output):
     output.mkdir(parents=True, exist_ok=True)
     root = ET.parse(repo/'src/luggage_gazebo/worlds/airport_loading.sdf').getroot()
     world = root.find('world')
+    if physics_plugin is not None:
+        physics_plugin=Path(physics_plugin).resolve(strict=True)
+        physics=next(p for p in world.findall('plugin') if p.get('name')=='ignition::gazebo::systems::Physics')
+        physics.set('filename',str(physics_plugin))
+        spec['source_hashes'][str(physics_plugin)]=sha256(physics_plugin)
+        spec['expected_contact_fields']=['position','normal','depth']
     # Preserve collision physics; use a declared 1 ms research stepping profile.
     world.find('physics/max_step_size').text = str(spec['physics_step_s'])
     # The default world contains off-scene mesh-cache preloads; omit them.
@@ -204,7 +217,8 @@ def write_scene(repo, output):
                   pose_world=[pickup['x'], pickup['y'], pickup['z']+platform['size'][2]
                               +spec['payload']['size_m'][2]/2+.001, 0,0,0])
     spec['pickup_payload'] = target
-    world.append(box_model(target, '0.15 0.55 0.85 1'))
+    spec['payload_contact_topic']='/upper_layer_payload/contacts'
+    world.append(box_model(target, '0.15 0.55 0.85 1',spec['payload_contact_topic']))
     # Add a slow all-model pose stream without changing dynamics.
     for model in world.findall('model'):
         if model.get('name', '').startswith('lower_'):
@@ -241,8 +255,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repo', type=Path, default=ROOT)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--physics-plugin',type=Path)
     args = parser.parse_args()
-    spec = write_scene(args.repo.resolve(), args.output.resolve())
+    spec = write_scene(args.repo.resolve(), args.output.resolve(),args.physics_plugin)
     print(json.dumps({k:spec[k] for k in ('support_z_m','upper_headroom_m','lower_fill_fraction',
                                           'payload_ceiling_gap_m','suction_panel_depth_from_contact_m')}, indent=2))
     print(f"Scene: {args.output.resolve()} (24 dynamic support boxes; no action commands)")

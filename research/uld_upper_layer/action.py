@@ -93,10 +93,10 @@ def build(assets, case):
                 insertion_m=depth, stages=stages)
 
 
-def boundary_failure(box, assets):
+def boundary_failure(box, assets, margin=None):
     from luggage_description.container_geometry import contains_point_through_aperture
     aperture = np.array(assets['scene']['container']['opening']['aperture']['corners'])
-    opening_x = float(aperture[0,0]); margin = SETTINGS['clearance_m']
+    opening_x = float(aperture[0,0]); margin = SETTINGS['clearance_m'] if margin is None else margin
     clipped = clipped_at_x(box, opening_x)
     for vertex in clipped:
         if not contains_point_through_aperture(assets['hull'],vertex,margin=margin):

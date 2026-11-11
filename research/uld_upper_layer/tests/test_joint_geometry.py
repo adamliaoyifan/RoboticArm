@@ -7,7 +7,8 @@ import json
 import numpy as np
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from assets import load
-from candidates import handoff_windows, matrix
+from candidates import handoff_windows, matrix, generate_actions, samples
+from dataclasses import replace
 from ideal_snapshot import capture_fixture
 from planning_types import UpperConfig
 from scene import fixture
@@ -42,12 +43,29 @@ class JointGeometry(unittest.TestCase):
         self.assertLess(length/2-forward-self.config.collision_margin_m,
                         self.config.support_area_ratio_min*length)
 
+    def test_narrow_window_includes_legal_high_endpoint(self):
+        values=samples(0.,.00999999,.01)
+        self.assertEqual(values,(0.,.00999999))
+        self.assertLessEqual(max(np.diff(values)),.01)
+
     def test_copied_immutable_input_and_exact_surface(self):
         self.assertIsInstance(self.snapshot.occupied,tuple)
         self.assertEqual(self.snapshot.source_kind,'ideal_sim_fixture')
         top=max(p.surface_z_container for p in self.snapshot.surfaces)
         self.assertAlmostEqual(top,self.assets['hull'].ceiling_z-.25-.03)
         self.assertAlmostEqual(matrix(self.state.container_T_box)[2,3],.986)
+
+    def test_small_budget_interleaves_orientations_and_leaves_clearance_slack(self):
+        config=replace(self.config,max_action_candidates=6)
+        actions,_=generate_actions(self.assets,self.snapshot,self.state,config)
+        self.assertEqual(len(actions),6)
+        self.assertEqual({a.tool_yaw_deg for a in actions},{0,90,180})
+        self.assertEqual({round(matrix(a.handoff_box_pose)[0,0]) for a in actions},{-1,1})
+        support_x=min(p.bounds_xy[0] for p in self.snapshot.surfaces)
+        for action in actions:
+            tcp=matrix(action.handoff_tool_pose)
+            forward=max(body.moved(tcp).corners()[:,0].max() for body in self.assets['tool'])
+            self.assertGreater(support_x-forward,config.collision_margin_m+config.grasp_step_m/2)
 
 
 if __name__=='__main__':unittest.main()

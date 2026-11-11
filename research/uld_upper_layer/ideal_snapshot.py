@@ -6,6 +6,8 @@ and separate from voxel upper-face heights. Unexported space is UNKNOWN.
 import json
 from pathlib import Path
 import numpy as np
+from dataclasses import replace
+from scipy.spatial.transform import Rotation
 from geometry import axis_box, separated
 from planning_types import BoxState, OccupiedBox, SceneSnapshot, SurfacePatch, digest
 
@@ -47,3 +49,28 @@ def query_box(snapshot, body, clearance=0.):
         if not separated(body, axis_box(item.name, center-size/2, center+size/2), clearance):
             hits.append(item.name)
     return ('OCCUPIED' if hits else 'FREE'), tuple(hits)
+
+
+def from_observation(snapshot, state, observation, assets):
+    """Replace fixture initial conditions by observed, settled simulation poses."""
+    def observed_matrix(name):
+        row=observation['poses'].get(name)
+        if row is None:raise ValueError('OBSERVATION_MISSING:'+name)
+        p=row['position'];q=row['orientation']
+        transform=np.eye(4)
+        transform[:3,:3]=Rotation.from_quat([q.get('x',0),q.get('y',0),q.get('z',0),q.get('w',1)]).as_matrix()
+        transform[:3,3]=[p.get('x',0),p.get('y',0),p.get('z',0)]
+        return np.linalg.inv(assets['world_container'])@transform
+    occupied=[];surfaces=[]
+    for item in snapshot.occupied:
+        transform=observed_matrix(item.name)
+        angle=Rotation.from_matrix(transform[:3,:3]).magnitude()
+        if angle>np.deg2rad(.1):raise ValueError('NON_COPLANAR_SUPPORT:'+item.name)
+        center=transform[:3,3];half=np.array(item.size)/2
+        occupied.append(replace(item,center=tuple(center)))
+        surfaces.append(SurfacePatch(item.name,(center[0]-half[0],center[1]-half[1],
+            center[0]+half[0],center[1]+half[1]),center[2]+half[2]))
+    identity=digest(dict(fixture=snapshot.snapshot_id,poses=observation['poses'],
+                         stamp=observation['pose_stamp']))
+    return replace(snapshot,snapshot_id=identity,occupied=tuple(occupied),surfaces=tuple(surfaces)),\
+           replace(state,container_T_box=tuple(observed_matrix(state.box_id).ravel()))

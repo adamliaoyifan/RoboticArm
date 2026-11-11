@@ -36,6 +36,20 @@ class UpperConfig:
     max_action_candidates: int
     search_budget_s: float
     path_attempt_budget_s: float
+    contact_penetration_m: float
+    sweep_step_m: float
+    cartesian_step_m: float
+    push_speed_mps: float
+    push_acceleration_mps2: float
+    contact_speed_mps: float
+    joint_speed_scaling: float
+    joint_acceleration_radps2: float
+    ik_seed_count: int
+    precontact_distance_m: float
+    pick_lift_m: float
+    outside_aperture_margin_m: float
+    ompl_resolution_fraction: float
+    distance_query_timeout_s: float
 
     def __post_init__(self):
         for field in fields(self):
@@ -49,10 +63,14 @@ class UpperConfig:
             raise ValueError('support_area_ratio_min outside (0, 1]')
         for name in ('grid_resolution_m', 'placement_step_m', 'handoff_step_m',
                      'grasp_step_m', 'push_height_step_m', 'search_budget_s',
-                     'path_attempt_budget_s'):
+                     'path_attempt_budget_s','sweep_step_m','cartesian_step_m',
+                     'push_speed_mps','push_acceleration_mps2','contact_speed_mps',
+                     'joint_speed_scaling','joint_acceleration_radps2','precontact_distance_m',
+                     'pick_lift_m','outside_aperture_margin_m','ompl_resolution_fraction',
+                     'distance_query_timeout_s'):
             if getattr(self, name) <= 0:
                 raise ValueError(f'{name} must be positive')
-        for name in ('solution_count_target', 'minimum_executable_solutions', 'max_action_candidates'):
+        for name in ('solution_count_target', 'minimum_executable_solutions', 'max_action_candidates','ik_seed_count'):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f'{name} must be positive integer')
@@ -147,3 +165,19 @@ class ActionCandidate:
     push_distance_m: float
     tool_yaw_deg: float
     checks: tuple  # explicitly distinguish geometry from unperformed arm checks
+
+
+def action_from_record(value):
+    """Strict immutable reconstruction of a persisted, version-matched action."""
+    value=dict(value);placement=dict(value.pop('placement'))
+    def support(row):
+        row=dict(row);row['source_ids']=tuple(row['source_ids'])
+        return SupportMetrics(**row)
+    placement['support']=support(placement['support'])
+    placement['final_box_pose']=tuple(placement['final_box_pose'])
+    value['placement']=PlacementCandidate(**placement)
+    value['handoff_support']=support(value['handoff_support'])
+    for key in ('box_T_tool','pick_tool_pose','handoff_box_pose','handoff_tool_pose',
+                'push_start_tool_pose','push_end_tool_pose','push_direction','checks'):
+        value[key]=tuple(value[key])
+    return ActionCandidate(**value)

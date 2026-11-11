@@ -136,3 +136,59 @@ This does not drive ROS or change simulation objects. The sparse ideal snapshot
 represents dynamic lower-cargo occupancy; static hull/platform/robot collision
 models remain mandatory additional inputs for whole-arm planning. A reported
 geometry candidate is not an executable plan.
+
+## Whole-arm and physical integration (in progress)
+
+The single plan remains `docs/plans/ULD_UPPER_LAYER_V1.md`. All new evidence goes
+into the primary workspace, never this worktree. Install native dependencies in
+an isolated environment, retaining the ROS Python packages:
+
+```bash
+python3 -m venv --system-site-packages /tmp/uld-upper-python
+/tmp/uld-upper-python/bin/pip install -r research/uld_upper_layer/research_requirements.txt
+source /opt/ros/humble/setup.bash
+/tmp/uld-upper-python/bin/python -m unittest discover -s research/uld_upper_layer/tests -q
+/tmp/uld-upper-python/bin/python research/uld_upper_layer/motion_feasibility.py \
+  --scene-dir /tmp/uld_upper_layer_scene_v1_aligned --capture-only \
+  --evidence /home/adamliao/work/elfin_humble_ws/docs/status/evidence/uld_upper_layer_v1/NEW_CAPTURE
+```
+
+Capture launches the existing headless controlled robot, observes settled cargo
+and actual joints, and tears down its own launch. `--observation <observation.json>`
+replays that ideal input offline; add `--plan-paths` for connected stage search.
+`--config <yaml>` reads runtime configuration. Geometry proposals may be reused
+with `--candidates <candidates.json>` only when snapshot, configuration and
+geometry source hashes match; full-arm paths are always recomputed.
+
+The private FCL scene uses the original source robot/tool and physical ULD
+meshes, actual platform collision geometry and observed lower cargo. Historical
+SRDF `Never` pairs do not exempt sensors from moving-arm checks. Only adjacent
+links and fixed assemblies are excluded. Mesh queries use conservative AABB
+bounds for distant pairs, then exact FCL checks near the margin. Recorded lower
+bounds are not exact minimum-clearance scores. Free joint intervals can be
+certified by conservative Lipschitz bounds; Cartesian controller interpolation
+is checked at the configured point-travel bound. Watchdog failures preserve the
+native query, input, seed and stage trajectory, and never count as solutions.
+
+`controller_io.py` provides the actual FollowJointTrajectory boundary but is not
+yet invoked by the feasibility entry. Connected nominal plans, contact/release
+calibration and physical pushing are separate evidence gates. No current stage
+result establishes complete physical feasibility or real-camera performance.
+
+For the native contact diagnostics, build a separate copy of the official 6.18
+Physics system, with only its contact-message conversion augmented:
+
+```bash
+python3 research/uld_upper_layer/native/build_observed_physics.py \
+  --output /tmp/NEW_observed_physics_build
+python3 research/uld_upper_layer/scene.py --output /tmp/NEW_contact_scene \
+  --physics-plugin /tmp/NEW_observed_physics_build/build/libuld_upper_observed_physics.so
+```
+
+The builder pins the upstream release commit and verifies all source hashes. It
+writes a patch/build manifest and never installs into the system. Default Gazebo
+contact messages lack normal/depth here; an absent field must remain unverified.
+Both observed poses and contacts are compressed JSONL. The source and fixture
+are explicit ideal-input diagnostics, not real camera output. Reusing geometry
+while changing only search/path time budgets explicitly rebinds configuration
+and candidate IDs; every other configuration mismatch rejects cache reuse.
