@@ -46,6 +46,23 @@ class PathContracts(unittest.TestCase):
         self.assertTrue(certify_path(ToyScene(),dict(positions=path),UpperConfig.load())['valid'])
 
     @unittest.skipUnless(find_spec('ompl'),'isolated OMPL dependency required')
+    def test_real_rrt_detour_keeps_returned_edge_proofs(self):
+        from dataclasses import replace
+        class DetourScene(ToyScene):
+            def check_state(self,q,margin,contact):
+                distance=max(abs(float(q[0]))-.2,abs(float(q[1]))-.3)
+                self.sample_clearance_m=distance
+                self.sample_distances=[(distance,('point','obstacle'))]
+                return dict(reason='DET0UR_OBSTACLE') if distance<margin else None
+            def relative_joint_indices(self,pair):return {0,1}
+        scene=DetourScene();config=replace(UpperConfig.load(),path_attempt_budget_s=10.)
+        path,detail=joint_path(scene,[-.5,0,0,0,0,0],[.5,0,0,0,0,0],config)
+        self.assertIsNotNone(path,detail)
+        self.assertGreater(len(path),2)
+        self.assertTrue(detail['certificate']['valid'])
+        self.assertTrue(certify_path(scene,dict(positions=path),config,interval_bounds=True)['valid'])
+
+    @unittest.skipUnless(find_spec('ompl'),'isolated OMPL dependency required')
     def test_invalid_goal_never_returns_solution(self):
         path,detail=joint_path(ToyScene(True),[-.5]*6,[0.]*6,UpperConfig.load())
         self.assertIsNone(path)

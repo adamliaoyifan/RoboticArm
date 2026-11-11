@@ -46,14 +46,14 @@ def robot_radius(scene):
 def joint_path(scene,start_q,goal_q,config,contact_tool=False):
     from ompl import base as ob,geometric as og
     from interval_certificate import certify_joint_intervals
-    started=time.monotonic();deadline=started+config.path_attempt_budget_s
+    started=time.monotonic();deadline=started+config.path_attempt_budget_s;active_deadline=deadline
     limits=np.array(scene.urdf.joint_limits())
     space=ob.RealVectorStateSpace(6);bounds=ob.RealVectorBounds(6)
     for i in range(6):bounds.setLow(i,limits[i,0]);bounds.setHigh(i,limits[i,1])
     space.setBounds(bounds)
     setup=og.SimpleSetup(space);witness=[];cache={};radius=robot_radius(scene)
     def valid(state):
-        if time.monotonic()>deadline:return False
+        if time.monotonic()>active_deadline:return False
         q=[state[i] for i in range(6)]
         failure=scene.check_state(q,config.collision_margin_m,contact_tool)
         if failure and not witness:witness.append(failure)
@@ -66,7 +66,7 @@ def joint_path(scene,start_q,goal_q,config,contact_tool=False):
             identity=key(qa,qb)
             if identity not in cache:
                 cache[identity]=certify_joint_intervals(scene,[qa,qb],config,radius,
-                                                       contact_tool,deadline)
+                                                       contact_tool,active_deadline)
             detail=cache[identity]
             if not detail['valid'] and not witness:witness.append(detail)
             return detail['valid']
@@ -77,7 +77,17 @@ def joint_path(scene,start_q,goal_q,config,contact_tool=False):
     if not valid(start):return None,dict(reason='START_INVALID',witness=witness)
     if not valid(goal):return None,dict(reason='GOAL_INVALID',witness=witness)
     setup.setStartAndGoalStates(start,goal);si.setup()
-    result=None
+    result=None;path_evidence={};path_source='certified_direct_joint_segment'
+    def snapshot_path(path):
+        points=[[path.getState(j)[i] for i in range(6)] for j in range(path.getStateCount())]
+        edges=[]
+        for index,(a,b) in enumerate(zip(points,points[1:])):
+            proof=cache.get(key(a,b))
+            edges.append(dict(index=index,cached=proof is not None,
+                              valid=proof['valid'] if proof else False,
+                              reason=proof.get('reason') if proof else 'MISSING_CACHE_KEY',
+                              checks=proof.get('checks') if proof else None))
+        return dict(positions=points,edges=edges,remaining_budget_s=deadline-time.monotonic())
     if motion.checkMotion(start,goal):result=[list(start_q),list(goal_q)]
     elif time.monotonic()<deadline:
         planner=og.RRTConnect(si)
@@ -85,15 +95,33 @@ def joint_path(scene,start_q,goal_q,config,contact_tool=False):
         setup.setPlanner(planner)
         outcome=setup.solve(max(0.,deadline-time.monotonic()))
         if outcome and setup.haveExactSolutionPath():
+            path_evidence['before_simplification']=snapshot_path(setup.getSolutionPath())
             remaining=deadline-time.monotonic()
-            if remaining>0:setup.simplifySolution(remaining)
+            if remaining>0 and config.path_simplification_budget_s>0:
+                simplification_started=time.monotonic()
+                active_deadline=min(deadline,simplification_started+config.path_simplification_budget_s)
+                try:setup.simplifySolution(max(0.,active_deadline-time.monotonic()))
+                finally:active_deadline=deadline
+                path_evidence['simplification_elapsed_s']=time.monotonic()-simplification_started
             path=setup.getSolutionPath()
-            result=[[path.getState(j)[i] for i in range(6)] for j in range(path.getStateCount())]
+            path_evidence['after_simplification']=snapshot_path(path)
+            edited=path_evidence['after_simplification']
+            original=path_evidence['before_simplification']
+            if all(edge['valid'] for edge in edited['edges']):
+                result=edited['positions'];path_source='certified_simplified_path'
+            elif all(edge['valid'] for edge in original['edges']):
+                # The Python copy cannot be mutated by the native simplifier.
+                # Preserve the already certified solution if editing loses proof.
+                result=original['positions'];path_source='certified_rrt_path_simplification_rejected'
+            else:
+                return None,dict(reason='RETURNED_PATH_MISSING_INTERVAL_PROOF',
+                                 witness=witness,path_evidence=path_evidence)
     if result is None:return None,dict(reason='PATH_BUDGET_EXHAUSTED',witness=witness)
     proofs=[cache.get(key(a,b)) for a,b in zip(result,result[1:])]
     if any(p is None or not p['valid'] for p in proofs):
-        return None,dict(reason='RETURNED_PATH_MISSING_INTERVAL_PROOF',witness=witness)
+        return None,dict(reason='RETURNED_PATH_MISSING_INTERVAL_PROOF',witness=witness,path_evidence=path_evidence)
     return result,dict(reason='CONNECTED_WITH_INTERVAL_PROOFS',witness=witness,
+        path_source=path_source,path_evidence=path_evidence,
         certificate=dict(valid=True,checks=sum(p['checks'] for p in proofs),
                          method='pairwise_ancestry_Lipschitz_interval_bounds',
                          interpolation='monotone_joint_cubic_same_locus',edges=proofs))

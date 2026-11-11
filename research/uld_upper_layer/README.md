@@ -236,3 +236,12 @@ source origin translations and actual collision vertices. Attached payload
 radii include the TCP-to-box offset. Relative pair bounds cancel shared ancestors;
 unknown bodies reject instead of silently receiving static zero motion. These
 bounds certify whole intervals without changing the required collision margin.
+
+
+RRT solutions retain a Python copy of the original, fully certified path before
+native simplification. An edited path replaces it only if every returned edge
+has a valid interval proof; otherwise the original certified path is retained.
+Pre/post path states and edge-proof status are stage diagnostics. Runtime
+`path_simplification_budget_s` defaults to0.5s (0 disables it); certificate queries
+honor that same phase deadline. Geometry and connected-path search share the
+outer deadline, and a timed-out worker's late result never counts as a solution.

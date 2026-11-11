@@ -18,6 +18,7 @@ minimum_executable_solutions: 1
 max_action_candidates: 2000
 search_budget_s: 600.0
 path_attempt_budget_s: 5.0
+path_simplification_budget_s: 0.5
 contact_penetration_m: 0.0005
 sweep_step_m: 0.001
 cartesian_step_m: 0.005

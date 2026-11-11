@@ -176,7 +176,7 @@ def round_robin(streams):
         except StopIteration:pass
 
 
-def generate_actions(assets, snapshot, state, config, emit=None):
+def generate_actions(assets, snapshot, state, config, emit=None, deadline=None):
     """Interleave orientations, positions, handoffs and grasps before repeats.
 
     Interior lateral/depth samples and the grasp with greatest tool/support
@@ -184,6 +184,7 @@ def generate_actions(assets, snapshot, state, config, emit=None):
     Full trajectory validation and final scoring remain separate gates.
     """
     started=time.monotonic();reasons=Counter();witnesses=[];candidates=[]
+    deadline=min(started+config.search_budget_s,float('inf') if deadline is None else deadline)
     top=max(p.surface_z_container for p in snapshot.surfaces)
     patches=[polygon_box(*p.bounds_xy) for p in snapshot.surfaces
              if abs(p.surface_z_container-top)<=config.contact_tolerance_m]
@@ -213,19 +214,19 @@ def generate_actions(assets, snapshot, state, config, emit=None):
                     grasps=reversed(samples(depth+forward+config.collision_margin_m,bmax,config.grasp_step_m))
                     for grasp in grasps:
                         variants.append(_action_stream(assets,snapshot,state,config,(yaw,),
-                            (tool_yaw,),y,(depth,),(grasp,),reasons,witnesses,started+config.search_budget_s,emit))
+                            (tool_yaw,),y,(depth,),(grasp,),reasons,witnesses,deadline,emit))
                 positions.append(round_robin(variants))
             orientations.append(round_robin(positions))
     stream=round_robin(orientations)
     while len(candidates)<config.max_action_candidates:
-        if time.monotonic()-started>=config.search_budget_s:break
+        if time.monotonic()>=deadline:break
         try:
             candidate=next(stream);candidates.append(candidate)
             if emit:emit(dict(event='geometry_candidate',count=len(candidates),
                               elapsed_s=time.monotonic()-started,action=candidate))
         except StopIteration:
             return candidates,dict(windows=handoff_windows(assets,state,config),reasons=dict(reasons),
-                witnesses=witnesses,termination=('BUDGET_EXHAUSTED' if time.monotonic()-started>=config.search_budget_s
+                witnesses=witnesses,termination=('BUDGET_EXHAUSTED' if time.monotonic()>=deadline
                                                 else 'SEARCH_EXHAUSTED'),elapsed_s=time.monotonic()-started)
     return candidates,dict(windows=handoff_windows(assets,state,config),reasons=dict(reasons),
         witnesses=witnesses,termination='BUDGET_EXHAUSTED',elapsed_s=time.monotonic()-started)

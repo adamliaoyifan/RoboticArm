@@ -77,6 +77,8 @@ def main():
         snapshot,state=capture_fixture(args.scene_dir,assets,config)
         snapshot,state=from_observation(snapshot,state,observation,assets)
         save(output/'inputs.json',dict(snapshot=asdict(snapshot),box=asdict(state)))
+        planning_started=time.monotonic()
+        planning_deadline=planning_started+config.search_budget_s
         scene=FullArmScene(assets,snapshot,config)
         save(output/'models.json',dict(hashes=scene.model_hashes,self_disabled=[sorted(x) for x in scene.disabled],
             source_srdf_disabled=[sorted(x) for x in scene.source_disabled],
@@ -88,7 +90,7 @@ def main():
                     raise ValueError('CANDIDATE_GEOMETRY_SOURCE_MISMATCH:'+dependency)
             actions=[action_from_record(row) for row in json.loads(args.candidates.read_text())]
             old_config=previous['config'];new_config=asdict(config)
-            changed=[key for key in new_config if digest(new_config[key])!=digest(old_config[key])]
+            changed=[key for key in new_config if key not in old_config or digest(new_config[key])!=digest(old_config[key])]
             if any(key not in ('search_budget_s','path_attempt_budget_s') for key in changed):
                 raise ValueError('CANDIDATE_GEOMETRY_CONFIG_MISMATCH:'+str(changed))
             if any(a.placement.snapshot_id!=snapshot.snapshot_id or
@@ -113,7 +115,7 @@ def main():
                     row=dict(row)
                     if 'action' in row:row['action']=asdict(row['action'])
                     progress.write(json.dumps(row)+'\n');progress.flush()
-                actions,report=generate_actions(assets,snapshot,state,config,geometry_emit)
+                actions,report=generate_actions(assets,snapshot,state,config,geometry_emit,planning_deadline)
         save(output/'candidates.json',[asdict(a) for a in actions])
         save(output/'geometry_report.json',report)
         rng=np.random.default_rng(args.seed);limits=np.array(scene.urdf.joint_limits())
@@ -121,7 +123,7 @@ def main():
         if args.plan_paths:
             from planning_worker import plan_bounded
             from action_screen import push_screen_key
-            plans=[];attempted=set();screen_rejections={};reused_screens=0;start=time.monotonic()
+            plans=[];attempted=set();screen_rejections={};reused_screens=0;start=planning_started
             with (output/'stage_boundaries.jsonl').open('w') as trace:
                 def emit(row):
                     trace.write(json.dumps(row)+'\n');trace.flush()
@@ -150,18 +152,22 @@ def main():
             save(output/'plans.json',plans)
             save(output/'summary.json',dict(stage='connected_path_search',
                 attempted_actions=len(attempted),reused_sampled_push_rejections=reused_screens,complete_nominal_plans=len(plans),
-                physical_execution='not_evaluated'))
+                physical_execution='not_evaluated',search_elapsed_s=time.monotonic()-planning_started,
+                search_budget_s=config.search_budget_s,termination=('SOLUTION_TARGET' if len(plans)>=config.solution_count_target
+                    else 'BUDGET_EXHAUSTED' if time.monotonic()>=planning_deadline else 'CANDIDATES_EXHAUSTED')))
             manifest['capture_complete']=True;manifest['replay_possible']=True
             print((output/'summary.json').read_text());return
-        checked=set();counts={};positive=[];start=time.monotonic()
+        checked=set();counts={};positive=[];start=planning_started
         with (output/'endpoint_attempts.jsonl').open('w') as stream:
             for action in actions:
                 # Endpoint failure is reusable only for this exact pose/scene.
                 target=tuple(np.round(action.handoff_tool_pose,8))
                 if target in checked:continue
+                remaining=planning_deadline-time.monotonic()
+                if remaining<=0:break
                 checked.add(target)
                 solutions,attempt=scene.endpoint_solutions(action.handoff_tool_pose,seeds,
-                    config.collision_margin_m,config.path_attempt_budget_s)
+                    config.collision_margin_m,min(config.path_attempt_budget_s,remaining))
                 row=dict(action_id=action.action_id,stage='handoff',solutions=solutions,**attempt)
                 stream.write(json.dumps(row)+'\n');stream.flush()
                 counts['handoff_checked']=counts.get('handoff_checked',0)+1

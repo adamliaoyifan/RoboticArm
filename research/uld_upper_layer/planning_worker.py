@@ -70,7 +70,10 @@ def plan_bounded(repo,snapshot,state,action,start_q,seeds,config,output,budget_s
         process.terminate();process.join(timeout=3)
         if process.is_alive():process.kill();process.join()
     result_path=output/'result.json'
-    if result_path.exists():result=json.loads(result_path.read_text())
+    if abort:
+        result=dict(valid=False,reason=abort,exitcode=process.exitcode,
+                    completed_result_path=str(result_path) if result_path.exists() else None)
+    elif result_path.exists():result=json.loads(result_path.read_text())
     else:result=dict(valid=False,reason=abort or 'WORKER_FAILED',exitcode=process.exitcode)
     atomic_json(output/'watchdog.json',dict(reason=abort,exitcode=process.exitcode,
                 elapsed_s=time.monotonic()-started,physical_execution='not_evaluated'))

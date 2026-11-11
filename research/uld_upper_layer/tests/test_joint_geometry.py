@@ -55,6 +55,14 @@ class JointGeometry(unittest.TestCase):
         self.assertAlmostEqual(top,self.assets['hull'].ceiling_z-.25-.03)
         self.assertAlmostEqual(matrix(self.state.container_T_box)[2,3],.986)
 
+    def test_outer_search_deadline_is_not_reset_by_candidate_generation(self):
+        import time
+        config=replace(self.config,max_action_candidates=6)
+        actions,report=generate_actions(self.assets,self.snapshot,self.state,config,
+                                        deadline=time.monotonic()-1.)
+        self.assertEqual(actions,[])
+        self.assertEqual(report['termination'],'BUDGET_EXHAUSTED')
+
     def test_push_screen_cache_ignores_only_unconsumed_grasp(self):
         from action_screen import push_screen_key
         actions,_=generate_actions(self.assets,self.snapshot,self.state,

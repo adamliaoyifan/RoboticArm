@@ -36,6 +36,7 @@ class UpperConfig:
     max_action_candidates: int
     search_budget_s: float
     path_attempt_budget_s: float
+    path_simplification_budget_s: float
     contact_penetration_m: float
     sweep_step_m: float
     cartesian_step_m: float
