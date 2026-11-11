@@ -160,8 +160,10 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
                                 aid=digest(dict(pid=pid,grasp=flat(box_to_tool),
                                                 handoff=flat(handoff),push=flat(push_start),
                                                 push_geometry=push_geometry.geometry_id))[:20]
+                                contact_tcp=tcp.copy()
+                                contact_tcp[2,3]-=config.support_contact_stroke_m
                                 yield ActionCandidate(aid,placement,flat(box_to_tool),
-                                    flat(pick),flat(handoff),flat(tcp),metrics,flat(push_start),
+                                    flat(pick),flat(handoff),flat(tcp),flat(contact_tcp),metrics,flat(push_start),
                                     flat(push_end),(1.,0.,0.),distance,tool_yaw,
                                     push_geometry.tool_T_push_surface,push_geometry.geometry_id,
                                     ('SUPPORT_AND_FIXED_TOOL_CHECKED',

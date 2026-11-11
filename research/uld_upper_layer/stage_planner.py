@@ -57,6 +57,7 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
     handoff=matrix(action.handoff_box_pose)
     pick=matrix(action.pick_tool_pose)
     tcp_handoff=matrix(action.handoff_tool_pose)
+    contact_handoff=matrix(action.support_contact_tool_pose)
     push_start=matrix(action.push_start_tool_pose)
     push_end=matrix(action.push_end_tool_pose)
     world=scene.world_container
@@ -149,7 +150,7 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
             failure=stage('insert_up',shifted(tcp_handoff,[0,0,config.placement_lift_m]),
                           contact=True,prepared_path=branch['insertion_path'])
         if not failure:
-            failure=stage('lower_to_support',tcp_handoff,contact=True,speed=config.contact_speed_mps,
+            failure=stage('lower_to_support',contact_handoff,contact=True,speed=config.contact_speed_mps,
                           prepared_path=branch['lowering_path'])
         if not failure:connected=True;break
         emit(dict(event='branch_route_rejected',branch=branch['branch'],diagnostic=failure))

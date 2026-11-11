@@ -11,9 +11,10 @@ from path_planning import cartesian_path
 
 def handoff_branches(scene,action,approach,seeds,config,emit):
     handoff=matrix(action.handoff_tool_pose)
+    contact=matrix(action.support_contact_tool_pose)
     lifted=handoff.copy();lifted[2,3]+=config.placement_lift_m
     scene.payload['allow_support']=True
-    goals,diagnostic=scene.endpoint_solutions(handoff,seeds,
+    goals,diagnostic=scene.endpoint_solutions(contact,seeds,
         config.collision_margin_m,config.path_attempt_budget_s)
     emit(dict(event='handoff_ik_branches',action_id=action.action_id,
               count=len(goals),diagnostic=diagnostic))

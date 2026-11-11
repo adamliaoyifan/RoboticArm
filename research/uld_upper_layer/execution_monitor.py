@@ -60,6 +60,10 @@ class ExecutionMonitor:
             self._trace.write(json.dumps(dict(event='failure',**self._failure))+'\n');self._trace.flush()
         return self._failure['reason']
 
+    def fail_execution(self,reason,**details):
+        """Record controller/executor failures at the same observed phase boundary."""
+        return self._stop(reason,**details)
+
     def observe(self,row):
         if self._failure:return self._failure['reason']
         try:sample=self._reader.read(row)

@@ -51,7 +51,7 @@ def main():
         if not plans:raise ValueError('NO_COMPLETE_NOMINAL_PLAN')
         plan=plans[0]  # Diagnostic only: selected-path collision scoring pending.
         for name in ('candidates.py','planning_types.py','full_arm.py','tool_contact_geometry.py',
-                     'geometry.py','assets.py','path_planning.py','stage_planner.py','interval_certificate.py','motion_bounds.py'):
+                     'geometry.py','assets.py','path_planning.py','stage_planner.py','coupled_chain.py','interval_certificate.py','motion_bounds.py'):
             if sha256(Path(__file__).with_name(name))!=planning_manifest['source_hashes'].get(name):
                 raise ValueError('PLANNED_SOURCE_CHANGED:'+name)
     fixture=json.loads((args.scene_dir/'fixture.json').read_text())
@@ -127,8 +127,9 @@ def main():
                 dict(status='monitor_hold_pass',scope='native_observation_and_actual_controller_hold_only'))
         result['monitor']=monitor.metrics();result['stream']=observe.metrics();save(out/'summary.json',result)
         manifest['capture_complete']=True;manifest['replay_possible']=True
-    except BaseException:
+    except BaseException as exc:
         failed=True
+        if monitor:monitor.fail_execution(str(exc) or type(exc).__name__,exception_type=type(exc).__name__)
         (out/'error.txt').write_text(traceback.format_exc())
         tail=[];wall_deadline=time.monotonic()+policy.condition_wait_budget_s
         first=runtime.snapshot().get('vacuum');stamp=first['sim_time_s'] if first else None

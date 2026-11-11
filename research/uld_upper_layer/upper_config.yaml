@@ -20,6 +20,8 @@ search_budget_s: 600.0
 path_attempt_budget_s: 5.0
 path_simplification_budget_s: 0.5
 contact_penetration_m: 0.0005
+# Preplanned contact establishment; native contact is still mandatory before release.
+support_contact_stroke_m: 0.00005
 sweep_step_m: 0.001
 cartesian_step_m: 0.005
 push_speed_mps: 0.010

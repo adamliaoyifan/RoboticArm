@@ -89,6 +89,24 @@ class JointGeometry(unittest.TestCase):
             forward=max(body.moved(tcp).corners()[:,0].max() for body in self.assets['tool'])
             self.assertGreater(support_x-forward,config.collision_margin_m+config.grasp_step_m/2)
 
+    def test_contact_stroke_changes_control_endpoint_without_moving_nominal_box(self):
+        from planning_types import action_from_record
+        from dataclasses import asdict
+        rows=[]
+        for stroke in (0., .00005, .0002):
+            config=replace(self.config,max_action_candidates=1,support_contact_stroke_m=stroke)
+            actions,_=generate_actions(self.assets,self.snapshot,self.state,config)
+            action=actions[0];rows.append(action)
+            expected=matrix(action.handoff_tool_pose).copy();expected[2,3]-=stroke
+            np.testing.assert_allclose(matrix(action.support_contact_tool_pose),expected,atol=1e-12)
+            self.assertEqual(action_from_record(asdict(action)),action)
+        self.assertEqual(rows[0].handoff_box_pose,rows[-1].handoff_box_pose)
+        self.assertEqual(rows[0].box_T_tool,rows[-1].box_T_tool)
+        self.assertNotEqual(rows[0].action_id,rows[-1].action_id)
+        record=asdict(rows[-1]);record.pop('support_contact_tool_pose')
+        with self.assertRaises(KeyError):action_from_record(record)
+        with self.assertRaises(ValueError):replace(self.config,support_contact_stroke_m=.001)
+
     def test_push_candidate_binds_source_plate_face_to_box_face_and_roundtrips(self):
         from dataclasses import asdict
         from planning_types import action_from_record
