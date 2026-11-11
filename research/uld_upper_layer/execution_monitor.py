@@ -146,6 +146,11 @@ class ExecutionMonitor:
         if self._support.native_max_depth_m>self._config.contact_penetration_m:
             return self._stop('LOWER_CONTACT_OVERPENETRATION',depth_m=self._support.native_max_depth_m)
         if self._phase=='push':
+            if not self.support_ready():
+                return self._stop('PUSH_SUPPORT_BELOW_POLICY',
+                    area_ratio=self._support.near_contact_area_ratio,
+                    com_margin_m=self._support.com_margin_m,
+                    native_lower_body_ids=self._support.native_lower_body_ids)
             reason=self._check_push(sample)
             if reason:return reason
         record=dict(event='observation',phase=self._phase,stamp_s=sample.stamp_s,q=sample.q,

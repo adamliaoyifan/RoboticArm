@@ -9,13 +9,13 @@ import numpy as np
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from execution_monitor import ExecutionMonitor
 from execution_policy import ExecutionPolicy
-from physical_observation import PhysicalSample,ObservedBody
+from physical_observation import PhysicalSample,ObservedBody,ObservedContact
 from planning_types import UpperConfig
 from geometry import pose
 
 
 class MonitorContracts(unittest.TestCase):
-    def create(self,policy=None,panel=None):
+    def create(self,policy=None,panel=None,config=None):
         self.initial=PhysicalSample(1.,(0.,)*6,tuple(pose([0,0,1.125]).ravel()),tuple(np.eye(4).ravel()),
             (ObservedBody('lower_0',(1.,1.,1.),tuple(pose([0,0,.5]).ravel()),1.),),(),1.,False,0,0)
         scene=SimpleNamespace(world_container=np.eye(4),payload={},
@@ -24,7 +24,11 @@ class MonitorContracts(unittest.TestCase):
         action=SimpleNamespace(handoff_box_pose=self.initial.container_T_box,push_direction=(1.,0.,0.))
         return ExecutionMonitor(SimpleNamespace(read=lambda row:row),scene,
             SimpleNamespace(dimensions=(1.,1.,.25),com_local=(0,0,0)),action,
-            UpperConfig.load(),policy or ExecutionPolicy.load(),self.initial,io.StringIO(),panel)
+            config or UpperConfig.load(),policy or ExecutionPolicy.load(),self.initial,io.StringIO(),panel)
+
+    def supported(self):
+        return replace(self.initial,contacts=(ObservedContact('lower_0::body::collision',
+            (0,0,1),(0,0,1),.000001),))
 
     def test_actual_collision_failure_is_not_eligible_for_later_scoring(self):
         monitor=self.create();self.scene.check_state=lambda *args:dict(reason='SELF_COLLISION',pair=['camera','arm'])
@@ -66,14 +70,25 @@ class MonitorContracts(unittest.TestCase):
     def test_push_stall_and_lateral_error_use_observed_box_motion(self):
         monitor=self.create();monitor.begin_phase('push','push_plate',False,True)
         for index in range(101):
-            observed=replace(self.initial,stamp_s=1.+index*.01,
+            observed=replace(self.supported(),stamp_s=1.+index*.01,
                 container_T_tool=tuple(pose([index*.00006,0,0]).ravel()))
             reason=monitor.observe(observed)
             if reason:break
         self.assertEqual(reason,'PUSH_NO_PROGRESS')
         monitor=self.create();monitor.begin_phase('push','push_plate',False,True)
-        observed=replace(self.initial,container_T_box=tuple(pose([0,.006,1.125]).ravel()))
+        observed=replace(self.supported(),container_T_box=tuple(pose([0,.006,1.125]).ravel()))
         self.assertEqual(monitor.observe(observed),'PUSH_REFERENCE_ERROR')
+
+    def test_push_requires_current_support_area_margin_and_native_contact(self):
+        contact=ObservedContact('lower_0::body::collision',(.4,0,1),(0,0,1),.000001)
+        for x,config,contacts in ((0.,UpperConfig.load(),()),
+                                  (.45,UpperConfig.load(),(contact,)),
+                                  (.49,replace(UpperConfig.load(),support_area_ratio_min=.5),(contact,))):
+            monitor=self.create(config=config);monitor.begin_phase('push','push_plate',False,True)
+            observed=replace(self.initial,container_T_box=tuple(pose([x,0,1.125]).ravel()),contacts=contacts)
+            self.assertEqual(monitor.observe(observed),'PUSH_SUPPORT_BELOW_POLICY')
+        monitor=self.create();monitor.begin_phase('push','push_plate',False,True)
+        self.assertIsNone(monitor.observe(self.supported()))
 
     def test_batched_native_states_cover_poll_gap_but_missing_native_states_reject(self):
         from monitored_stream import NativeSampleMonitor
