@@ -289,6 +289,27 @@ records these events, source IDs, actual source heights and nominal bottom/top
 gaps. Events are diagnostics for contact-model/tube development, not a new
 contact exemption or stability proof; raised patches are retained too.
 
+`payload_envelope.py` encloses all box-vertex projections for an SO(3) error
+ball about the box centre and a bounded translation. It returns separation
+lower bounds; overlapping projections mean unproved, never observed collision.
+`payload_tube.certify_payload_noncontact_tube` combines those bounds with the
+existing source joint-motion bounds over complete interpolation intervals.
+Push translations lie perpendicular to travel; other released-box stages use
+a full 3D ball. Bounds come from the immutable execution policy, including
+roll/pitch/yaw rotation error. Results identify the translation model, error
+frame, numeric enclosure and input/model/policy/plan identities. Missing
+undeclared pairs, stale inputs, deadline or an insufficient bound fail closed.
+Declared support/panel pairs are inventoried and explicitly not evaluated for
+uncertainty; the result always has `execution_admitted=false`.
+
+`envelope_planning.FreeBoxEnvelopeScene` feeds the tightened noncontact distance
+rows into the existing OMPL joint-motion interval validator for fixed free-box
+routing. It rejects attached boxes or mutation of the fixed box during a route.
+The independent validator uses a plain `FullArmScene` afterwards. This is a
+research route-repair component; automatic adoption in the joint search and
+contact-conditioned whole-tube admission remain unfinished. It neither moves
+the simulated box nor changes a source mesh/contact exception.
+
 Native physical probes archive contacts once in vacuum_state.jsonl.gz; legacy
 contact topic capture is used only without the native fixture. Failure trigger
 windows are lossless trigger_window.jsonl.gz (historical cases may be plaintext).
