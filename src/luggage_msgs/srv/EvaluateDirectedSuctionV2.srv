@@ -1,0 +1,21 @@
+# Read-only contact quality query. No joints, vacuum, attachments or OCC effects.
+string domain_sha256
+luggage_msgs/DetectedLuggage detection
+uint64 generation
+# Empty permits the current effective policy; response always binds its hash.
+string expected_quality_policy_sha256
+luggage_msgs/DirectedSuctionQueryV2[<=8] queries
+# Compute bound only, in [1,8]; not a missing-depth allowance.
+uint32 max_refinements
+float64 budget_s
+---
+# True means a coherent batch completed. Inspect accepted/reason per contact.
+# Invalid/stale input or deadline returns false and no contacts (no partial batch).
+bool success
+string reason
+std_msgs/Header header
+string domain_sha256
+string quality_policy_sha256
+string samples_sha256
+luggage_msgs/DirectedSuctionContactV2[<=8] contacts
+float64 elapsed_s

@@ -12,8 +12,9 @@ from luggage_perception.suction_footprint_containment import (
 )
 
 
-def check_observed_contact_footprint(domain, contact_model, world_from_contact_frame):
-    """Check the exact directed frame proposed by the coupled planner.
+def project_contact_footprint(domain, contact_model, world_from_contact_frame, *,
+                              include_boundary_margin=True):
+    """Project physical contact corners; return None for a rank-zero outline.
 
     Use suction_contact_frame, not a TCP with release gap or a tool mounting
     frame. Both the pose and the domain refer to world. The model must be the
@@ -36,14 +37,22 @@ def check_observed_contact_footprint(domain, contact_model, world_from_contact_f
     if (half.shape != (2,) or not np.isfinite(half).all() or np.any(half <= 0)
             or not np.isfinite(margin) or margin < 0):
         raise ValueError('positive physical footprint and nonnegative margin required')
-    corners = np.array([[-1., -1.], [1., -1.], [1., 1.], [-1., 1.]])*(half+margin)
+    corners = np.array([[-1., -1.], [1., -1.], [1., 1.], [-1., 1.]]) * (
+        half + (margin if include_boundary_margin else 0.))
     world = (corners @ transform[:3, :2].T) + transform[:3, 3]
     basis = np.asarray((domain.u_axis_world, domain.v_axis_world))
     # Numerical rank guard only. Physical normal alignment must be checked by
     # the separate quality gate; projection alone cannot authorize contact.
     if abs(np.linalg.det(basis @ transform[:3, :2])) <= 1e-12:
+        return None
+    return world @ basis.T
+
+
+def check_observed_contact_footprint(domain, contact_model, world_from_contact_frame):
+    """Necessary support gate; contact/surface quality remains separate."""
+    vertices_uv = project_contact_footprint(domain, contact_model, world_from_contact_frame)
+    if vertices_uv is None:
         return ContainmentResult(False, 'FOOTPRINT_PROJECTION_DEGENERATE', 0, 0)
-    vertices_uv = world @ basis.T
     return check_convex_footprint_containment(domain.cells(),
         origin_uv=domain.origin_uv_top_m, cell_size_m=domain.cell_size_m,
         vertices_uv=vertices_uv)

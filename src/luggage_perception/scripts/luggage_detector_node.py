@@ -573,6 +573,7 @@ class LuggageDetector(Node):
         self._publish_observed_suction_domain = bool(
             self.declare_parameter('publish_suction_top_domain', False).value)
         self._suction_top_domain_pub = None
+        self._directed_suction_service = None
         if self._top_surface_mode == "dynamic":
             self.declare_parameter("suction_contact_model_config", "")
             model_path = str(
@@ -726,8 +727,14 @@ class LuggageDetector(Node):
             stream_qos)
         if self._publish_observed_suction_domain:
             from luggage_msgs.msg import SuctionTopDomainV2
+            from luggage_msgs.srv import EvaluateDirectedSuctionV2
+            from luggage_perception.directed_suction_service import DirectedSuctionService
             self._suction_top_domain_pub = self.create_publisher(
                 SuctionTopDomainV2, '/luggage/suction_top_domain_v2', stream_qos)
+            self._directed_suction_service = DirectedSuctionService()
+            self._directed_suction_ros_service = self.create_service(EvaluateDirectedSuctionV2,
+                '/luggage/evaluate_directed_suction_v2', self._directed_suction_service.handle,
+                callback_group=self._group)
         # ST03: v2 pose-contract publishers exist only when an explicit
         # scene revision enables the boundary; a rejected conversion warns
         # with its diagnostic and never disturbs the v1 stream.
@@ -2059,6 +2066,9 @@ class LuggageDetector(Node):
         output.box_id = frame.box.id
         output.instance_id, output.generation = frame.instance_id, int(frame.generation)
         output.reason = 'OBSERVED_TOP_DOMAIN_UNAVAILABLE'
+        service = getattr(self, '_directed_suction_service', None)
+        if service is not None:
+            service.replace_context(None)
         try:
             evaluation = getattr(self, '_last_suction_eval', None)
             if (not frame.pca_valid or frame.box.header != frame.header or evaluation is None
@@ -2066,9 +2076,21 @@ class LuggageDetector(Node):
                     or evaluation.generation != frame.generation):
                 raise ValueError('frame/evaluation acquisition identity mismatch')
             output = domain_to_message(observed_domain_for_detection(frame.box, evaluation))
+            if service is not None:
+                context_started = time.monotonic()
+                context = self._suction_evaluator.directed_quality_context(frame.box)
+                timing = getattr(self, '_timing', None)
+                if timing is not None:
+                    timing['suction_directed_context_ms'] = (time.monotonic()-context_started)*1000.
+                if context.domain_sha256 != output.domain_sha256:
+                    raise ValueError('published domain and quality samples disagree')
+                service.replace_context(context)
         except (TypeError, ValueError) as error:
             # Publish this frame's invalid result; never silently reuse the
             # previous frame or turn fitted box dimensions into support.
+            output.valid = False
+            output.support = []
+            output.domain_sha256 = ''
             output.reason = 'OBSERVED_TOP_DOMAIN_UNAVAILABLE:'+str(error)
         publisher.publish(output)
 

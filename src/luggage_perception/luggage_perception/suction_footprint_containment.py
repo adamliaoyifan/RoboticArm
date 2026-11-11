@@ -34,9 +34,15 @@ def _pair(values, name):
     return result
 
 
-def check_convex_footprint_containment(valid_cells, *, origin_uv, cell_size_m,
-                                       vertices_uv):
-    """Check a projected contact quadrilateral against whole-cell support.
+@dataclass(frozen=True)
+class FootprintCellWindow:
+    first_ij: tuple
+    membership: np.ndarray
+    reason: str
+
+
+def convex_footprint_cell_window(grid_shape, *, origin_uv, cell_size_m, vertices_uv):
+    """Rasterize positive-area cell intersections in a bounded local window.
 
     Vertices must be ordered around a strictly convex quadrilateral. This
     handles the parallelogram obtained when an actual tilted contact frame is
@@ -44,12 +50,12 @@ def check_convex_footprint_containment(valid_cells, *, origin_uv, cell_size_m,
     footprint by its configured margin BEFORE projecting it. Containment alone
     does not prove coplanar contact, surface quality, seal or collision freedom.
     """
-    domain = np.asarray(valid_cells)
+    shape = tuple(grid_shape)
     origin = np.asarray(_pair(origin_uv, "origin_uv"))
     vertices = np.asarray(vertices_uv, dtype=float)
     resolution = float(cell_size_m)
-    if domain.ndim != 2 or domain.dtype != np.bool_:
-        raise ValueError("two-dimensional boolean top domain required")
+    if len(shape) != 2 or any(type(v) is not int or v < 0 for v in shape):
+        raise ValueError("nonnegative two-dimensional grid shape required")
     if (vertices.shape != (4, 2) or not np.isfinite(vertices).all()
             or not math.isfinite(resolution) or resolution <= 0):
         raise ValueError("finite quadrilateral and positive cell size required")
@@ -63,14 +69,15 @@ def check_convex_footprint_containment(valid_cells, *, origin_uv, cell_size_m,
              - unit_edges[:, 1] * np.roll(unit_edges, -1, axis=0)[:, 0])
     if not (np.all(turns > 0) or np.all(turns < 0)):
         raise ValueError("ordered strictly convex contact quadrilateral required")
-    if 0 in domain.shape:
-        return ContainmentResult(False, "EMPTY_TOP_DOMAIN", 0, 0)
+    empty = np.frombuffer(b'', dtype=bool).reshape(0, 0)
+    if 0 in shape:
+        return FootprintCellWindow((0, 0), empty, "EMPTY_TOP_DOMAIN")
     lower, upper = vertices.min(axis=0), vertices.max(axis=0)
     if (np.any(lower < origin - tolerance)
-            or np.any(upper > origin + np.asarray(domain.shape)*resolution + tolerance)):
-        return ContainmentResult(False, "FOOTPRINT_OUTSIDE_TOP_GRID", 0, 0)
+            or np.any(upper > origin + np.asarray(shape)*resolution + tolerance)):
+        return FootprintCellWindow((0, 0), empty, "FOOTPRINT_OUTSIDE_TOP_GRID")
     first = np.maximum(0, np.floor((lower-origin-tolerance)/resolution).astype(int))
-    last = np.minimum(domain.shape, np.ceil((upper-origin+tolerance)/resolution).astype(int))
+    last = np.minimum(shape, np.ceil((upper-origin+tolerance)/resolution).astype(int))
     iu, iv = np.meshgrid(np.arange(first[0], last[0]),
                          np.arange(first[1], last[1]), indexing="ij")
     centers = origin + (np.stack((iu, iv), axis=-1) + .5)*resolution
@@ -83,13 +90,29 @@ def check_convex_footprint_containment(valid_cells, *, origin_uv, cell_size_m,
         radius = resolution/2 * np.abs(axis).sum()
         overlap &= ((cell_center + radius > projection.min() + tolerance)
                     & (cell_center - radius < projection.max() - tolerance))
-    covered = int(np.count_nonzero(overlap))
-    invalid = overlap & ~domain[iu, iv]
+    membership = np.frombuffer(overlap.tobytes(), dtype=bool).reshape(overlap.shape)
+    return FootprintCellWindow(tuple(int(v) for v in first), membership, "ok")
+
+
+def check_convex_footprint_containment(valid_cells, *, origin_uv, cell_size_m,
+                                       vertices_uv):
+    """Require all cells touched by the actual projected quadrilateral."""
+    domain = np.asarray(valid_cells)
+    if domain.ndim != 2 or domain.dtype != np.bool_:
+        raise ValueError("two-dimensional boolean top domain required")
+    window = convex_footprint_cell_window(domain.shape, origin_uv=origin_uv,
+        cell_size_m=cell_size_m, vertices_uv=vertices_uv)
+    if window.reason != 'ok':
+        return ContainmentResult(False, window.reason, 0, 0)
+    first_u, first_v = window.first_ij
+    nu, nv = window.membership.shape
+    covered = int(np.count_nonzero(window.membership))
+    invalid = window.membership & ~domain[first_u:first_u+nu, first_v:first_v+nv]
     invalid_count = int(np.count_nonzero(invalid))
     if invalid_count:
         first_bad = tuple(np.argwhere(invalid)[0])
         return ContainmentResult(False, "FOOTPRINT_NOT_FULLY_CONTAINED", covered,
-            invalid_count, (int(iu[first_bad]), int(iv[first_bad])))
+            invalid_count, (int(first_u+first_bad[0]), int(first_v+first_bad[1])))
     if not covered:
         return ContainmentResult(False, "FOOTPRINT_NOT_RESOLVED", 0, 0)
     return ContainmentResult(True, "ok", covered, 0)

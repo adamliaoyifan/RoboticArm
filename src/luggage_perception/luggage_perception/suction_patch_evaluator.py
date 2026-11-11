@@ -239,19 +239,27 @@ def _sorted_pct(sorted_rows, counts, q, offsets=None):
     index). Matches ``np.percentile(..., method="linear")`` on the
     valid subset of each row.
     """
-    rows = np.arange(sorted_rows.shape[0])
+    counts = np.asarray(counts, dtype=np.int64)
+    # Empty subsets have no percentile. Keep NaN for the caller's existing
+    # sample-count rejection; in particular offset==row_length is not an index.
+    rows = np.flatnonzero(counts > 0)
+    result = np.full(sorted_rows.shape[0], np.nan)
+    if not rows.size:
+        return result
     if offsets is None:
         base = np.zeros(sorted_rows.shape[0], dtype=np.int64)
     else:
         base = np.asarray(offsets, dtype=np.int64)
-    counts = np.asarray(counts, dtype=np.int64)
+    base = base[rows]
+    counts = counts[rows]
     pos = base + q * np.maximum(counts - 1, 0)
     last = base + np.maximum(counts - 1, 0)
     k = np.clip(np.floor(pos).astype(np.int64), base, last)
     k1 = np.minimum(k + 1, last)
     lo = sorted_rows[rows, k]
     hi = sorted_rows[rows, k1]
-    return lo + (pos - k) * (hi - lo)
+    result[rows] = lo + (pos - k) * (hi - lo)
+    return result
 
 
 def _bimodal_splits(sorted_heights, counts, min_fraction):
@@ -367,6 +375,7 @@ class SuctionPatchEvaluator(object):
 
     def __init__(self, contact_model):
         self._model = contact_model
+        self._directed_acquisition = None
 
     @property
     def contact_model(self):
@@ -385,6 +394,7 @@ class SuctionPatchEvaluator(object):
         """
         timing = timing if timing is not None else {}
         t0 = time.monotonic()
+        self._directed_acquisition = None
         if top is None or getattr(top, "reason", None) != "ok":
             self._output = SuctionPatchEvaluation(
                 ok=False, reason=SUCTION_PATCH_NO_TOP,
@@ -423,10 +433,25 @@ class SuctionPatchEvaluator(object):
             model_hash=str(self._model.identity_hash),
             timing_ms=(time.monotonic() - t0) * 1000.0,
             observed_top_domain=domain)
+        if domain is not None:
+            # One reference binds support/output and samples atomically. A
+            # concurrent query must never combine two acquisition generations.
+            self._directed_acquisition = (self._output, height_map)
 
     def copy_output(self):
         """Independent copy; caller mutation cannot corrupt state."""
         return copy.deepcopy(self._output)
+
+    def directed_quality_context(self, detection):
+        """Pin measured samples/support/policy for task-directed quality queries."""
+        from luggage_perception.directed_suction_quality import DirectedSuctionContext
+        from luggage_perception.ros_suction_domain import observed_domain_for_detection
+        acquisition = self._directed_acquisition
+        if acquisition is None:
+            raise ValueError('captured observed acquisition required')
+        evaluation, height_map = acquisition
+        domain = observed_domain_for_detection(detection, evaluation)
+        return DirectedSuctionContext(domain, height_map, self._model)
 
     # -- candidate scan ----------------------------------------------------
 
@@ -736,7 +761,8 @@ class SuctionPatchEvaluator(object):
                 float(center_world @ hmap.v_axis))
 
     def _evaluate_batch(self, hmap, ci_arr, cj_arr, clearances,
-                        stamp, frame_id, instance_id, generation):
+                        stamp, frame_id, instance_id, generation, *,
+                        window_half_shape=None, footprint_mask=None, centers_uv=None):
         """Stage-2 gates for one vectorized chunk of candidates.
 
         Semantics equal per-candidate evaluation, through a single
@@ -747,11 +773,19 @@ class SuctionPatchEvaluator(object):
         every configured footprint is an integer number of cells.
         Returns ``(accepted_records, rejects)`` with rejects as
         ``(i, j, reason, valid_frac, metrics)`` tuples.
+
+        Directed queries may supply a larger uniform window, an exact polygon
+        intersection mask per row, and subcell UV centres. Only masked cells
+        enter ANY metric. This branch also applies the existing coverage gates;
+        callers must independently establish full observed footprint support.
         """
         model = self._model
         cell = hmap.cell_size_m
-        hf_u = model.footprint_size_xy_m[0] / 2.0 / cell
-        hf_v = model.footprint_size_xy_m[1] / 2.0 / cell
+        if window_half_shape is None:
+            hf_u = model.footprint_size_xy_m[0] / 2.0 / cell
+            hf_v = model.footprint_size_xy_m[1] / 2.0 / cell
+        else:
+            hf_u, hf_v = window_half_shape
         if hf_u != int(hf_u) or hf_v != int(hf_v):
             raise NotImplementedError(
                 "batched evaluator requires an integer footprint "
@@ -763,6 +797,15 @@ class SuctionPatchEvaluator(object):
         n = len(ci_arr)
         if n == 0:
             return [], []
+        if footprint_mask is not None:
+            footprint_mask = np.asarray(footprint_mask)
+            if (footprint_mask.dtype != np.bool_ or footprint_mask.shape != (n, wi, wj)
+                    or np.any(footprint_mask.sum(axis=(1, 2)) == 0)):
+                raise ValueError('nonempty boolean footprint mask must match each window')
+        if centers_uv is not None:
+            centers_uv = np.asarray(centers_uv, dtype=float)
+            if centers_uv.shape != (n, 2) or not np.isfinite(centers_uv).all():
+                raise ValueError('finite directed query centres required')
 
         def windows(field):
             """Gather (n, wi, wj) candidate windows from a 2-D field."""
@@ -774,11 +817,15 @@ class SuctionPatchEvaluator(object):
         # both depth presence and a smoothable neighbourhood.
         valid = (windows(hmap.valid_count) > 0) \
             & np.isfinite(windows(hmap.smooth_h))
+        if footprint_mask is not None:
+            valid &= footprint_mask
         win_smooth = windows(hmap.smooth_h)
         flat_valid = valid.reshape(n, -1)
         n_cells = flat_valid.shape[1]
         n_valid = flat_valid.sum(axis=1).astype(np.int64)
-        vfrac = n_valid / float(n_cells)
+        sample_counts = (float(n_cells) if footprint_mask is None
+                         else footprint_mask.sum(axis=(1, 2)))
+        vfrac = n_valid / sample_counts
 
         # Majority plane label of each footprint's own valid cells; ties
         # break to the smallest label (argmax over ascending counts).
@@ -901,7 +948,7 @@ class SuctionPatchEvaluator(object):
             step_count > 0,
             bimodal >= float(model.bimodal_min_separation_m),
         ]
-        reasons = np.select(conds, [
+        reason_codes = [
             SUCTION_REJECT_PLANE_COVERAGE,
             SUCTION_REJECT_VALID_CELLS,
             SUCTION_REJECT_RMS,               # degenerate fit
@@ -912,7 +959,13 @@ class SuctionPatchEvaluator(object):
             SUCTION_REJECT_NORMAL_NO_SAMPLES,
             SUCTION_REJECT_NORMAL_DEVIATION,
             SUCTION_REJECT_ADJACENT_STEP,
-            SUCTION_REJECT_BIMODAL], default="")
+            SUCTION_REJECT_BIMODAL]
+        if footprint_mask is not None:
+            mask_coverage = (windows(hmap.mask_member) & footprint_mask).sum(axis=(1, 2)) / sample_counts
+            conds = [vfrac < float(model.min_valid_cell_fraction),
+                     mask_coverage < float(model.min_mask_coverage)] + conds
+            reason_codes = [SUCTION_REJECT_VALID_CELLS, SUCTION_REJECT_MASK_COVERAGE] + reason_codes
+        reasons = np.select(conds, reason_codes, default="")
 
         rejects = []
         for r in np.nonzero(reasons != "")[0]:
@@ -953,7 +1006,13 @@ class SuctionPatchEvaluator(object):
                          hmap.origin_v + (cj_arr[r] + 0.5) * cell)
             # Centre height on the fitted plane at the candidate centre
             # (window-local coords: candidate centre at (0.5, 0.5)*cell).
-            h_c = -(d_fit[r] + (n_u[r] + n_v[r]) * 0.5 * cell) / n_z[r]
+            if centers_uv is None:
+                h_c = -(d_fit[r] + (n_u[r] + n_v[r]) * 0.5 * cell) / n_z[r]
+            else:
+                center_uv = centers_uv[r]
+                local_uv = center_uv - np.array((hmap.origin_u + ci_arr[r]*cell,
+                                                hmap.origin_v + cj_arr[r]*cell))
+                h_c = -(d_fit[r] + n_u[r]*local_uv[0] + n_v[r]*local_uv[1]) / n_z[r]
             center_world = (hmap.u_axis * center_uv[0]
                             + hmap.v_axis * center_uv[1]
                             + hmap.normal * (h_c - hmap.plane_d))

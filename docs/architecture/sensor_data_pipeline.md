@@ -54,6 +54,41 @@ shrink a tilted footprint, so a positive result does not prove contact height,
 normal alignment, surface quality or collision freedom. No release-gap TCP
 substitution or inferred support is admitted by this API.
 
+The evaluator's `directed_quality_context(detection)` pins its atomically paired
+observed-domain output and height samples. It rejects uncaptured or mismatched
+acquisitions. A directed query specifies exact top-plane UV and an in-plane
+direction; the quality kernel fits the contact height/normal without snapping
+UV to a cell centre. It samples only cells intersecting the physical rectangle,
+while full coverage separately includes the configured boundary margin.
+Changing the fitted normal can change this sampling mask: a result is accepted
+only after the mask stabilizes and the final fitted pose still passes full
+observed coverage. Deadline or refinement-budget exhaustion issues no permission.
+The refinement count is a compute bound, not a missing-depth allowance.
+
+Receipts bind the complete observed-domain digest, immutable sample digest,
+query/actual contact pose and effective runtime quality-policy digest. The
+physical model's file hash alone does not cover detector runtime overrides.
+Existing residual, normal, step, bimodality and coverage limits are reused;
+there is no directed-specific relaxation or inferred surface filling. These
+receipts certify the sampled contact quality only; freshness admission,
+collision checks and whole-operation certification remain separate obligations.
+
+With `publish_suction_top_domain` enabled, the detector also provides the
+read-only `/luggage/evaluate_directed_suction_v2` service. It pins the currently
+published immutable sampling context and admits only requests whose domain
+digest, measured detection and generation agree. An optional expected effective
+policy digest further pins the thresholds. The bounded batch contains at most
+eight queries and at most eight refinements per query (resource bounds only).
+The response echoes acquisition and policy/sample identities plus per-query
+quality verdicts and actual contact transforms. Batch success means evaluation
+completed coherently; individual `accepted` flags determine contact admission.
+Stale/unavailable input or deadline returns no partial contact list. A new
+invalid detection clears the available context; an in-flight batch keeps its
+original pinned snapshot. Caller freshness and scene admission remain required.
+Context capture cost is recorded as `suction_directed_context_ms`. This optional
+service issues no robot, vacuum, scene or OCC writes and does not alter legacy
+candidate acceptance.
+
 ## Canonical colour-aligned RGBD acquisition (PF-R9 g2)
 
 The camera product is a **payload-identical RGBD set**. The preprocessor no
