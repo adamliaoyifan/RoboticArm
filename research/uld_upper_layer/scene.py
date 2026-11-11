@@ -178,7 +178,7 @@ def intersecting_triangles(center, half, triangles):
     return hits
 
 
-def write_scene(repo, output, physics_plugin=None):
+def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None):
     if output.exists() and any(output.iterdir()):
         raise ValueError('output must be new or empty; do not overwrite a previous scene')
     assets = load(repo)
@@ -201,6 +201,18 @@ def write_scene(repo, output, physics_plugin=None):
         physics.set('filename',str(physics_plugin))
         spec['source_hashes'][str(physics_plugin)]=sha256(physics_plugin)
         spec['expected_contact_fields']=['position','normal','depth']
+    if vacuum_plugin is not None:
+        vacuum_plugin=Path(vacuum_plugin).resolve(strict=True)
+        plugin=ET.SubElement(world,'plugin',filename=str(vacuum_plugin),
+                             name='uld_upper::KinematicVacuum')
+        parameters=dict(payload_model='upper_layer_payload',parent_model='S20',
+                        parent_link='elfin_link6',service='/upper_layer/vacuum',
+                        state_topic='/upper_layer/vacuum/state')
+        for name,value in parameters.items():text(plugin,name,value)
+        spec['ideal_vacuum']=dict(**parameters,model='measured_relative_pose_physics_step_follow',
+                                 attach_precondition='caller_verifies_actual_panel_contact',
+                                 detached_pose_commands=False)
+        spec['source_hashes'][str(vacuum_plugin)]=sha256(vacuum_plugin)
     # Preserve collision physics; use a declared 1 ms research stepping profile.
     world.find('physics/max_step_size').text = str(spec['physics_step_s'])
     # The default world contains off-scene mesh-cache preloads; omit them.
@@ -256,8 +268,9 @@ def main():
     parser.add_argument('--repo', type=Path, default=ROOT)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--physics-plugin',type=Path)
+    parser.add_argument('--vacuum-plugin',type=Path)
     args = parser.parse_args()
-    spec = write_scene(args.repo.resolve(), args.output.resolve(),args.physics_plugin)
+    spec = write_scene(args.repo.resolve(), args.output.resolve(),args.physics_plugin,args.vacuum_plugin)
     print(json.dumps({k:spec[k] for k in ('support_z_m','upper_headroom_m','lower_fill_fraction',
                                           'payload_ceiling_gap_m','suction_panel_depth_from_contact_m')}, indent=2))
     print(f"Scene: {args.output.resolve()} (24 dynamic support boxes; no action commands)")

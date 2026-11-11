@@ -1,0 +1,87 @@
+// Explicit ideal-vacuum model, equivalent to the existing sim backend's
+// measured-relative-pose follow, evaluated at physics steps rather than ROS
+// timer ticks. Once released, this system sends NO payload pose commands.
+#include <atomic>
+#include <iomanip>
+#include <sstream>
+#include <ignition/gazebo/System.hh>
+#include <ignition/gazebo/Model.hh>
+#include <ignition/gazebo/Util.hh>
+#include <ignition/gazebo/components/Model.hh>
+#include <ignition/gazebo/components/Name.hh>
+#include <ignition/gazebo/components/PoseCmd.hh>
+#include <ignition/plugin/Register.hh>
+#include <ignition/transport/Node.hh>
+#include <ignition/msgs/boolean.pb.h>
+#include <ignition/msgs/stringmsg.pb.h>
+
+namespace uld_upper {
+namespace sim=ignition::gazebo;
+namespace comp=sim::components;
+class KinematicVacuum : public sim::System, public sim::ISystemConfigure,
+    public sim::ISystemPreUpdate, public sim::ISystemPostUpdate {
+ public:
+  void Configure(const sim::Entity &, const std::shared_ptr<const sdf::Element> &sdf,
+      sim::EntityComponentManager &, sim::EventManager &) override {
+    payloadName=sdf->Get<std::string>("payload_model");
+    parentName=sdf->Get<std::string>("parent_model");
+    linkName=sdf->Get<std::string>("parent_link");
+    auto service=sdf->Get<std::string>("service");
+    state=transport.Advertise<ignition::msgs::StringMsg>(sdf->Get<std::string>("state_topic"));
+    std::function<bool(const ignition::msgs::Boolean &,ignition::msgs::Boolean &)> callback=
+      [this](const ignition::msgs::Boolean &request,ignition::msgs::Boolean &response) {
+        if (!ready.load()) {response.set_data(false);return true;}
+        requested.store(request.data()?1:0);response.set_data(true);return true;
+      };
+    transport.Advertise(service,callback);
+  }
+  void PreUpdate(const sim::UpdateInfo &info,sim::EntityComponentManager &ecm) override {
+    if (info.paused) return;
+    if (!ready.load()) {
+      payload=ecm.EntityByComponents(comp::Model(),comp::Name(payloadName));
+      auto parent=ecm.EntityByComponents(comp::Model(),comp::Name(parentName));
+      if (payload==sim::kNullEntity || parent==sim::kNullEntity) return;
+      link=sim::Model(parent).LinkByName(ecm,linkName);
+      if (link==sim::kNullEntity) return;
+      ready.store(true);
+    }
+    const auto tool=sim::worldPose(link,ecm);
+    const int command=requested.exchange(-1);
+    if (command!=-1) ++processedCommands;
+    if (command==1 && !attached) {
+      // Freeze the observed relation; no target/candidate pose enters this model.
+      relation=tool.Inverse()*sim::worldPose(payload,ecm);attached=true;++epoch;
+    } else if (command==0) attached=false;
+    if (!attached) return;
+    const auto target=tool*relation;
+    auto pose=ecm.Component<comp::WorldPoseCmd>(payload);
+    if (pose) pose->Data()=target;
+    else ecm.CreateComponent(payload,comp::WorldPoseCmd(target));
+    ++poseCommands;
+  }
+  void PostUpdate(const sim::UpdateInfo &info,const sim::EntityComponentManager &) override {
+    ignition::msgs::StringMsg message;
+    std::ostringstream json;json<<std::setprecision(15)
+      <<"{\"ready\":"<<(ready.load()?"true":"false")
+      <<",\"attached\":"<<(attached?"true":"false")
+      <<",\"pose_command_count\":"<<poseCommands<<",\"epoch\":"<<epoch
+      <<",\"processed_commands\":"<<processedCommands
+      <<",\"sim_time_s\":"<<std::chrono::duration<double>(info.simTime).count()
+      <<",\"link_T_payload_xyz\":["<<relation.Pos().X()<<","<<relation.Pos().Y()<<","<<relation.Pos().Z()
+      <<"],\"link_T_payload_quat_xyzw\":["<<relation.Rot().X()<<","<<relation.Rot().Y()<<","<<relation.Rot().Z()<<","<<relation.Rot().W()<<"]}";
+    message.set_data(json.str());state.Publish(message);
+  }
+ private:
+  std::string payloadName,parentName,linkName;
+  sim::Entity payload=sim::kNullEntity,link=sim::kNullEntity;
+  std::atomic<int> requested{-1};std::atomic<bool> ready{false};
+  bool attached=false;uint64_t poseCommands=0,epoch=0,processedCommands=0;
+  ignition::math::Pose3d relation;
+  ignition::transport::Node transport;
+  ignition::transport::Node::Publisher state;
+};
+}
+IGNITION_ADD_PLUGIN(uld_upper::KinematicVacuum,ignition::gazebo::System,
+ uld_upper::KinematicVacuum::ISystemConfigure,
+ uld_upper::KinematicVacuum::ISystemPreUpdate,
+ uld_upper::KinematicVacuum::ISystemPostUpdate)

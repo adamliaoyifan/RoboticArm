@@ -115,7 +115,8 @@ def main():
         seeds=[observation['q']]+list(rng.uniform(limits[:,0],limits[:,1],size=(config.ik_seed_count-1,6)))
         if args.plan_paths:
             from planning_worker import plan_bounded
-            plans=[];attempted=set();start=time.monotonic()
+            from action_screen import push_screen_key
+            plans=[];attempted=set();screen_rejections={};reused_screens=0;start=time.monotonic()
             with (output/'stage_boundaries.jsonl').open('w') as trace:
                 def emit(row):
                     trace.write(json.dumps(row)+'\n');trace.flush()
@@ -125,16 +126,25 @@ def main():
                     if remaining<=0:break
                     attempted.add(action.action_id)
                     emit(dict(event='action_input',action=asdict(action)))
+                    screen_key=push_screen_key(snapshot,state,action,seeds,config)
+                    if screen_key in screen_rejections:
+                        reused_screens+=1
+                        emit(dict(event='sampled_push_screen_reused',action_id=action.action_id,
+                            source_action_id=screen_rejections[screen_key],key=screen_key,
+                            exhaustive=False,valid=False))
+                        continue
                     result=plan_bounded(ROOT,snapshot,state,action,observation['q'],seeds,config,
                         output/f'action_{len(attempted):04d}',remaining,args.seed)
                     emit(dict(event='action_output',action_id=action.action_id,
                               valid=result['valid'],reason=result.get('reason'),
                               diagnostic=result.get('diagnostic')))
+                    if result.get('reason')=='NO_SAMPLED_PUSH_ENDPOINT_SOLUTION':
+                        screen_rejections[screen_key]=action.action_id
                     if result['valid']:plans.append(result)
                     if len(plans)>=config.solution_count_target:break
             save(output/'plans.json',plans)
             save(output/'summary.json',dict(stage='connected_path_search',
-                attempted_actions=len(attempted),complete_nominal_plans=len(plans),
+                attempted_actions=len(attempted),reused_sampled_push_rejections=reused_screens,complete_nominal_plans=len(plans),
                 physical_execution='not_evaluated'))
             manifest['capture_complete']=True;manifest['replay_possible']=True
             print((output/'summary.json').read_text());return

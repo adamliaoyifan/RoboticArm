@@ -3,7 +3,7 @@
 This is an offline prototype for upward suction-panel carry, transfer onto a
 filled support surface under a ULD ceiling, withdrawal, and rear-face push.
 It has no production imports of downward-pick gates or atlas queries and
-does not send robot commands. Its geometry comes from the source worktree.
+keeps planning offline; the explicit wiring rehearsal sends a robot hold command. Its geometry comes from the source worktree.
 
 The current design is [ULD upper-layer V1](../../docs/plans/ULD_UPPER_LAYER_V1.md).
 Historical results remain in Git history and the primary workspace; no evidence
@@ -192,3 +192,31 @@ Both observed poses and contacts are compressed JSONL. The source and fixture
 are explicit ideal-input diagnostics, not real camera output. Reusing geometry
 while changing only search/path time budgets explicitly rebinds configuration
 and candidate IDs; every other configuration mismatch rejects cache reuse.
+
+
+The ideal-vacuum adapter is a separate research plugin. While attached it follows
+an observed link-to-box relation at physics steps, matching the declared ideal
+vacuum model. Attachment requires the caller to verify actual panel contact.
+Detachment sends no box pose commands, changes no collision masks or gravity,
+and acknowledges a processed command counter rather than only a queued request.
+It does not validate real suction holding force. Build and rehearse explicitly:
+
+```bash
+cmake -S research/uld_upper_layer/native -B /tmp/NEW_vacuum_build
+cmake --build /tmp/NEW_vacuum_build -j2
+python3 research/uld_upper_layer/scene.py --output /tmp/NEW_vacuum_scene \
+  --physics-plugin /tmp/NEW_observed_physics_build/build/libuld_upper_observed_physics.so \
+  --vacuum-plugin /tmp/NEW_vacuum_build/libuld_upper_vacuum.so
+/tmp/uld-upper-python/bin/python research/uld_upper_layer/wiring_rehearsal.py \
+  --scene-dir /tmp/NEW_vacuum_scene \
+  --evidence /home/adamliao/work/elfin_humble_ws/docs/status/evidence/uld_upper_layer_v1/NEW_WIRING
+```
+
+The rehearsal verifies two distinct processed detach acknowledgements, zero
+payload pose commands and a real controller hold within 1mrad. This is unscored
+wiring evidence, not a pick, release stability or physical push result. The
+fixture verifies source/binary hashes before launch and owns stack teardown.
+`ompl_range_rad` controls free-motion RRT expansion in runtime YAML. Sampled
+push endpoint screening precedes the expensive pick/carry prefix; only identical
+snapshot, box, push poses, configuration and ordered IK seeds reuse a negative
+screen. A failed sampled screen is not a proof of unreachable geometry.

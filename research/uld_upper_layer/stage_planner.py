@@ -30,7 +30,7 @@ def plan_action(scene, state, action, start_q, seeds, config, emit):
     def payload(mode, box=box_pose, support=False):
         scene.set_payload(state.dimensions,mode,world@box,grasp,support)
 
-    def stage(name,target,kind='cartesian',contact=False,speed=None,box_motion=None,goal_q=None,prepared_path=None):
+    def stage(name,target,kind='cartesian',contact=False,speed=None,box_motion=None,goal_q=None,goal_solutions=None,prepared_path=None):
         nonlocal q
         boundary=dict(stage=name,start_q=q,target_container=target.tolist(),
                       payload_mode=scene.payload['mode'],contact_tool=contact)
@@ -43,7 +43,9 @@ def plan_action(scene, state, action, start_q, seeds, config, emit):
                 raise ValueError('PREPARED_BRANCH_START_MISMATCH')
             path=prepared_path;detail=dict(reason='REVERSED_CONSTRAINED_CHAIN')
         elif kind=='joint':
-            if goal_q is None:
+            if goal_solutions is not None:
+                goals=goal_solutions;ik=dict(source='screened_push_pre_endpoints')
+            elif goal_q is None:
                 goals,ik=scene.endpoint_solutions(target,[q]+seeds,
                     config.collision_margin_m,config.path_attempt_budget_s)
             else:goals=[goal_q];ik=dict(source='backseeded_constrained_chain')
@@ -87,6 +89,10 @@ def plan_action(scene, state, action, start_q, seeds, config, emit):
     payload('world',support=True)
     failure=scene.check_state(q,config.collision_margin_m)
     if failure:return dict(valid=False,reason='INITIAL_STATE_INVALID',diagnostic=failure,stages=stages)
+    from action_screen import screen_push
+    screened=screen_push(scene,state,action,seeds,config)
+    emit(dict(event='necessary_push_endpoint_screen',result=screened))
+    if not screened['valid']:return dict(valid=False,reason=screened['reason'],diagnostic=screened,stages=stages)
     pre_pick=shifted(pick,[0,0,config.precontact_distance_m])
     failure=stage('pick_pre',pre_pick,'joint')
     if not failure:failure=stage('pick_contact',pick,contact=True,speed=config.contact_speed_mps)
@@ -124,7 +130,8 @@ def plan_action(scene, state, action, start_q, seeds, config, emit):
     failure=stage('release_down',down,contact=True,speed=config.contact_speed_mps)
     if not failure:failure=stage('withdraw',shifted(down,[-config.withdraw_m,0,0]))
     pre_push=shifted(push_start,[-config.precontact_distance_m,0,0])
-    if not failure:failure=stage('push_pre',pre_push,'joint')
+    if not failure:failure=stage('push_pre',pre_push,'joint',
+        goal_solutions=screened['endpoints']['push_pre']['q_solutions'])
     if not failure:failure=stage('push_contact',push_start,contact=True,speed=config.contact_speed_mps)
     if failure:return dict(valid=False,diagnostic=failure,stages=stages)
     nominal=lambda t:world@shifted(handoff,[action.push_distance_m*t,0,0])

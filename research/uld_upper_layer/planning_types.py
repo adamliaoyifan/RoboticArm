@@ -48,6 +48,7 @@ class UpperConfig:
     precontact_distance_m: float
     pick_lift_m: float
     outside_aperture_margin_m: float
+    ompl_range_rad: float
     ompl_resolution_fraction: float
     distance_query_timeout_s: float
 
@@ -67,7 +68,7 @@ class UpperConfig:
                      'push_speed_mps','push_acceleration_mps2','contact_speed_mps',
                      'joint_speed_scaling','joint_acceleration_radps2','precontact_distance_m',
                      'pick_lift_m','outside_aperture_margin_m','ompl_resolution_fraction',
-                     'distance_query_timeout_s'):
+                     'distance_query_timeout_s','ompl_range_rad'):
             if getattr(self, name) <= 0:
                 raise ValueError(f'{name} must be positive')
         for name in ('solution_count_target', 'minimum_executable_solutions', 'max_action_candidates','ik_seed_count'):

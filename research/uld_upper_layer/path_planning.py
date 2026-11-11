@@ -80,7 +80,9 @@ def joint_path(scene,start_q,goal_q,config,contact_tool=False):
     result=None
     if motion.checkMotion(start,goal):result=[list(start_q),list(goal_q)]
     elif time.monotonic()<deadline:
-        setup.setPlanner(og.RRTConnect(si))
+        planner=og.RRTConnect(si)
+        planner.setRange(config.ompl_range_rad)
+        setup.setPlanner(planner)
         outcome=setup.solve(max(0.,deadline-time.monotonic()))
         if outcome and setup.haveExactSolutionPath():
             remaining=deadline-time.monotonic()

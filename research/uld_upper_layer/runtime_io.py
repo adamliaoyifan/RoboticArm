@@ -18,9 +18,11 @@ class RuntimeIO:
         self.env=dict(os.environ,ROS_DOMAIN_ID='7',IGN_PARTITION='uld_upper_layer_closed_loop',
                       ROS_LOG_DIR=str(self.output/'ros_logs'))
         self.contact_topic='/upper_layer_payload/contacts'
+        self.vacuum_spec=None;self.vacuum_capture=None;self.vacuum_state=None
         if scene_dir:
             self.env['ULD_UPPER_SCENE']=str(scene_dir)
             fixture=json.loads((Path(scene_dir)/'fixture.json').read_text())
+            self.vacuum_spec=fixture.get('ideal_vacuum')
             self.contact_topic=fixture.get('contact_observation_topic',self.contact_topic)
         self.launch=None;self.pose_capture=None;self.contact_capture=None
         self.contacts=None;self.contact_stamp=None;self.contact_count=0
@@ -73,6 +75,10 @@ class RuntimeIO:
         self.contact_capture=JsonTopicCapture(self.env,self.output,'payload_contacts',
             self.contact_topic,self._accept_contacts)
         self.contact_capture.start()
+        if self.vacuum_spec:
+            self.vacuum_capture=JsonTopicCapture(self.env,self.output,'vacuum_state',
+                self.vacuum_spec['state_topic'],self._accept_vacuum)
+            self.vacuum_capture.start()
         deadline=time.monotonic()+25
         while time.monotonic()<deadline:
             rclpy.spin_once(self.node,timeout_sec=.1)
@@ -102,20 +108,53 @@ class RuntimeIO:
                                 and len(c.get('depth',[]))==len(c['position']) for c in contacts):
                 self.complete_contact_messages+=1
 
+    def _accept_vacuum(self,row):
+        state=json.loads(row['data'])
+        with self.pose_lock:self.vacuum_state=state
+
+    def toggle_vacuum(self,attached,timeout_s=5.):
+        """Queue ideal attachment; wait for physics-step state acknowledgement.
+
+        Caller must verify actual panel contact before attaching. Never used
+        to move a released payload; native pose-command count proves this.
+        """
+        if not self.vacuum_spec:raise RuntimeError('IDEAL_VACUUM_NOT_CONFIGURED')
+        before=self.snapshot()['vacuum']
+        previous_commands=before['processed_commands'] if before else -1
+        result=subprocess.run(['ign','service','-s',self.vacuum_spec['service'],
+            '--reqtype','ignition.msgs.Boolean','--reptype','ignition.msgs.Boolean',
+            '--timeout','2000','--req','data: '+str(bool(attached)).lower()],
+            env=self.env,capture_output=True,text=True,timeout=3.)
+        with (self.output/'vacuum_commands.jsonl').open('a') as trace:
+            trace.write(json.dumps(dict(attached=attached,wall=time.time(),
+                returncode=result.returncode,stdout=result.stdout,stderr=result.stderr))+'\n')
+        if result.returncode or 'data: true' not in result.stdout:
+            raise RuntimeError('IDEAL_VACUUM_SERVICE_REJECTED')
+        deadline=time.monotonic()+timeout_s
+        import rclpy
+        while time.monotonic()<deadline:
+            rclpy.spin_once(self.node,timeout_sec=.01)
+            state=self.snapshot()['vacuum']
+            if (state and state['ready'] and state['attached']==attached
+                    and state['processed_commands']>previous_commands):return state
+        raise TimeoutError('IDEAL_VACUUM_STATE_ACK')
+
     def snapshot(self):
         with self.pose_lock:
-            return dict(poses=dict(self.poses),pose_stamp=self.pose_stamp,
+            return dict(vacuum=self.vacuum_state,poses=dict(self.poses),pose_stamp=self.pose_stamp,
                         messages=self.pose_count,q=self.q,q_stamp=self.q_stamp,
                         clock=self.clocks[-1] if self.clocks else None,
                         first_clock=self.first_clock,
                         capture_error=self.capture_error or (self.pose_capture.error if self.pose_capture else None)
-                            or (self.contact_capture.error if self.contact_capture else None),
+                            or (self.contact_capture.error if self.contact_capture else None)
+                            or (self.vacuum_capture.error if self.vacuum_capture else None),
                         contact_topic=self.contact_topic,contacts=self.contacts,contact_stamp=self.contact_stamp,contact_messages=self.contact_count,positive_contact_messages=self.positive_contact_messages,
                         complete_contact_messages=self.complete_contact_messages)
 
     def stop(self):
         if self.pose_capture:self.pose_capture.stop()
         if self.contact_capture:self.contact_capture.stop()
+        if self.vacuum_capture:self.vacuum_capture.stop()
         if hasattr(self,'node'):
             import rclpy
             self.node.destroy_node()

@@ -55,6 +55,20 @@ class JointGeometry(unittest.TestCase):
         self.assertAlmostEqual(top,self.assets['hull'].ceiling_z-.25-.03)
         self.assertAlmostEqual(matrix(self.state.container_T_box)[2,3],.986)
 
+    def test_push_screen_cache_ignores_only_unconsumed_grasp(self):
+        from action_screen import push_screen_key
+        actions,_=generate_actions(self.assets,self.snapshot,self.state,
+                                   replace(self.config,max_action_candidates=1))
+        action=actions[0];seeds=[[0.]*6]
+        key=lambda candidate,state=self.state,config=self.config:push_screen_key(
+            self.snapshot,state,candidate,seeds,config)
+        original=key(action)
+        self.assertEqual(original,key(replace(action,box_T_tool=tuple(np.eye(4).ravel()))))
+        moved=np.array(action.handoff_box_pose).reshape(4,4).copy();moved[1,3]+=.02
+        self.assertNotEqual(original,key(replace(action,handoff_box_pose=tuple(moved.ravel()))))
+        self.assertNotEqual(original,key(action,config=replace(self.config,collision_margin_m=.01)))
+        self.assertNotEqual(original,push_screen_key(self.snapshot,self.state,action,[[.1]*6],self.config))
+
     def test_small_budget_interleaves_orientations_and_leaves_clearance_slack(self):
         config=replace(self.config,max_action_candidates=6)
         actions,_=generate_actions(self.assets,self.snapshot,self.state,config)
