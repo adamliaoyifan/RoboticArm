@@ -58,7 +58,7 @@ def native_gate():
         acceleration_limits=(.314,)*6,release_drop_m=.05,recorder=record)
     try:
         assert port.client.wait_for_service(timeout_sec=10.) and process.poll() is None
-        yield SimpleNamespace(port=port,model=model,directory=directory,records=records)
+        yield SimpleNamespace(port=port,model=model,directory=directory,records=records,node=node)
     finally:
         (directory/'manifest.json').write_text(json.dumps({'model_sha256':model.model_sha256,
             'scope':'real MoveIt complete-operation certification fixture; no deployment qualification',
@@ -74,6 +74,12 @@ def native_gate():
             except subprocess.TimeoutExpired:
                 process.kill();process.wait(timeout=5.)
         log.close()
+        manifest=json.loads((directory/'manifest.json').read_text())
+        manifest.update(native_exit_code=process.returncode,worker_joined=not worker.is_alive(),
+            executable_sha256=hashlib.sha256(Path(EXECUTABLE).read_bytes()).hexdigest())
+        (directory/'manifest.json').write_text(json.dumps(manifest,indent=2))
+        assert not worker.is_alive(), 'native fixture executor did not stop'
+        assert process.returncode == 0, 'native fixture backend did not shut down cleanly'
 
 
 def operation(model, *, obstacle=False, broad_obstacle_default=False):

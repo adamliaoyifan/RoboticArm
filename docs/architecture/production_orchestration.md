@@ -92,6 +92,37 @@ controller; pure consumer tests do not certify that adoption. Existing startup,
 operator correlation and map ownership requirements apply to the complete-plan
 path as well as the nominal cycle above.
 
+`NativeOperationRevalidationPort` supplies the read-only native portion of
+these validation effects. It accepts only the original canonical six-leg chain
+and exact pick/pick/carry/carry/carry/retreat phases. Every current capture must
+bind the same scene revision, model, geometry and map revision, with explicit
+six-joint winding consistent with both the original leg start and the captured
+robot state. The current world's owned payload must actually match the admitted
+load phase; reconstructing private phase scenes cannot hide a missing, duplicate
+or changed live attachment. Unrelated obstacles survive.
+
+The port checks original release FK under the actual attachment against the
+bound nominal box target, using the existing endpoint tolerances. The configured
+release gap determines a predicted settled box pose from that grasp; this is not
+an observed placement and cannot authorize an OCC commit. Only numerical pose
+equivalence from the operation contract canonicalizes floating representation.
+The caller must explicitly provide issued-certificate liveness, current source /
+attachment freshness, whole-footprint actual-contact admission while carrying,
+and current settled-box occupancy admission. A predicted grasp approval cannot
+stand in for actual-contact approval after an attachment change. Each must
+return literal true; absent, stale, exceptional or incomplete answers refuse.
+Certificate and source liveness are checked again after native validation.
+
+The native request retains original knots and controller-interpolated samples
+of every remaining leg in full private phase scenes, including the released
+world obstacle. Compatible changed geometry can pass without global replanning;
+a target miss, collision, deadline or identity change yields no accepted receipt.
+The receipt retains the original plan/certificate binding plus a separate native
+validation digest. The port has no controller, vacuum, planner, scene-write or
+map-write capability. Production adapters still need to implement the required
+owner callbacks and consume its receipts before actual controller submission;
+native fixture/consumer tests do not certify that adoption.
+
 Failure handling must distinguish pre-pick, carrying, release, verification,
 abort, and recovery boundaries.
 

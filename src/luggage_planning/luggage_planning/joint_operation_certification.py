@@ -160,7 +160,9 @@ class NativeOperationCertificationPort:
         if not self.client.service_is_ready():
             return receipt('CERTIFICATION_BACKEND_UNAVAILABLE')
         expected_names = ('align', 'pick_contact', 'pick_lift', 'carry', 'place_release', 'place_retreat')
-        if tuple(leg.name for leg in draft.legs) != expected_names:
+        if (tuple(leg.name for leg in draft.legs) != expected_names
+                or tuple(leg.phase for leg in draft.legs) !=
+                ('pick','pick','carry','carry','carry','retreat')):
             return receipt('UNSUPPORTED_COMPLETE_CHAIN')
         target_poses = (candidate.pick_approach, draft.world_from_pick_tool,
                         candidate.pick_lift, candidate.place_entry,
