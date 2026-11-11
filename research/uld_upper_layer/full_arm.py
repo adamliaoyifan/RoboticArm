@@ -262,18 +262,20 @@ class FullArmScene:
         patch_allowed=self.contact_patch_valid(transform,contact_mode) if contact_mode else False
         hit,names,contacts=self.world.in_collision_single(mesh,transform,return_names=True,return_data=True)
         if hit:
-            inverse=np.linalg.inv(transform);half=p['size']/2
+            from support_contact import support_contact_failure
             for c in contacts:
                 other=next(n for n in c.names if n!='__external')
-                local=inverse@np.r_[c.point,1.]
-                # Inverted boxes have local +Z as the material support face.
-                bottom_sign=-1 if transform[2,2]>0 else 1
-                at_bottom=abs(local[2]-bottom_sign*half[2])<=contact_tolerance
                 support_name=other.startswith('lower_') or other.startswith('pickup_platform:')
-                if p['allow_support'] and support_name and at_bottom and abs(c.depth)<=self.config.contact_penetration_m:
-                    continue
+                support_failure=None
+                if p['allow_support'] and support_name:
+                    support_mesh,support_pose=self.world_parts[other]
+                    support_failure=support_contact_failure(transform,p['size'],support_pose,
+                        support_mesh.bounds,c.point,c.normal,contact_tolerance,
+                        self.config.contact_penetration_m,self.config.contact_normal_alignment_deg,
+                        c.depth,normal_toward_box=False)
+                    if support_failure is None:continue
                 return dict(reason='PAYLOAD_WORLD_COLLISION',pair=['payload',other],
-                            point=c.point.tolist(),depth_m=float(c.depth))
+                            point=c.point.tolist(),depth_m=float(c.depth),support_diagnostic=support_failure)
         hit,names,contacts=self.robot.in_collision_single(mesh,transform,return_names=True,return_data=True)
         if hit:
             inverse=np.linalg.inv(contact_frame)

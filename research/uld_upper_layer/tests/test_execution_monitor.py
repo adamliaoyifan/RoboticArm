@@ -31,6 +31,14 @@ class MonitorContracts(unittest.TestCase):
         self.assertEqual(monitor.observe(self.initial),'OBSERVED_COLLISION_OR_CLEARANCE')
         self.assertEqual(monitor.failure['diagnostic']['pair'],['camera','arm'])
 
+    def test_lower_bottom_corner_side_contact_is_not_a_support_exemption(self):
+        from physical_observation import ObservedContact
+        for normal,expected in (((0,0,1),None),
+                                ((-1,0,0),'NATIVE_CONTACT_OUTSIDE_DECLARED_SUPPORT')):
+            monitor=self.create()
+            contact=ObservedContact('lower_0::body::collision',(.5,0,1),normal,.000001)
+            self.assertEqual(monitor.observe(replace(self.initial,contacts=(contact,))),expected)
+
     def test_missing_monitor_frequency_and_lower_motion_stop(self):
         monitor=self.create();self.assertIsNone(monitor.observe(self.initial))
         self.assertEqual(monitor.observe(replace(self.initial,stamp_s=1.03)),'MONITOR_RATE_INSUFFICIENT')

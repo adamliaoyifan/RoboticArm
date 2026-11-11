@@ -54,6 +54,24 @@ class FullArmContracts(unittest.TestCase):
         q=np.zeros(6);q[0]=self.scene.urdf.joint_limits()[0][1]+1
         self.assertEqual(self.scene.check_robot(q)['reason'],'JOINT_LIMIT')
 
+    def test_source_fcl_bottom_corner_side_collision_is_not_support(self):
+        scene=self.scene
+        scene.add_world('lower_contract_probe',trimesh.creation.box([1,1,1]),pose([8,0,.5]))
+        try:
+            scene.set_payload((.55,.4,.25),'world',pose([8,0,1.125-.000001]),allow_support=True)
+            self.assertIsNone(scene.check_payload(margin=0.))
+            # The same bottom corner penetrates the lower body's vertical face
+            # by 1um, versus 10um at its top. A bottom-point-only waiver accepts
+            # this side jam; the normal-aware contract must reject it.
+            scene.payload['world_pose']=pose([7.225+.000001,0,1.125-.00001])
+            failure=scene.check_payload(margin=0.)
+            self.assertEqual(failure['reason'],'PAYLOAD_WORLD_COLLISION')
+            self.assertEqual(failure['support_diagnostic']['reason'],
+                             'SUPPORT_CONTACT_NORMAL_NOT_TOP_BOTTOM')
+        finally:
+            scene.set_payload((.55,.4,.25),'absent')
+            scene.remove_world('lower_contract_probe')
+
     def test_bounded_push_normal_contract_retains_patch_checks_and_strict_seal(self):
         from scipy.spatial.transform import Rotation
         from dataclasses import replace

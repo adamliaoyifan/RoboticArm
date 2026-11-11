@@ -105,6 +105,22 @@ class ExecutionMonitor:
             self._scene.update_world_transform(body.name,self._scene.world_container@np.array(body.container_T_body).reshape(4,4))
         self._scene.payload['world_pose']=self._scene.world_container@np.array(sample.container_T_box).reshape(4,4)
         self._scene.payload['allow_support']=self._allow_support
+        # A lower-box vertical side can touch the moving box's bottom corner.
+        # Detect that physical jam before accepting it as intended support.
+        from support_contact import support_contact_failure
+        lower_by_collision={body.name+'::body::collision':body for body in sample.lower}
+        for contact in sample.contacts:
+            lower=lower_by_collision.get(contact.other_collision)
+            if lower is None:continue
+            half=np.asarray(lower.dimensions)/2
+            diagnostic=support_contact_failure(sample.container_T_box,self._state.dimensions,
+                lower.container_T_body,[-half,half],contact.point_container,
+                contact.normal_toward_payload_container,self._config.contact_tolerance_m,
+                self._config.contact_penetration_m,min(self._policy.contact_normal_alignment_deg,
+                    self._config.contact_normal_alignment_deg),contact.depth_m,normal_toward_box=True)
+            if not self._allow_support or diagnostic:
+                return self._stop('NATIVE_CONTACT_OUTSIDE_DECLARED_SUPPORT',
+                    body=lower.name,diagnostic=diagnostic)
         failure=self._scene.check_state(sample.q,self._config.collision_margin_m,self._contact_mode)
         if failure:return self._stop('OBSERVED_COLLISION_OR_CLEARANCE',diagnostic=failure)
         intended=[]
