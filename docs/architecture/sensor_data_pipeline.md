@@ -43,6 +43,17 @@ supplied detection/model/generation. Observed support alone neither proves seal
 quality for a new directed footprint nor authorizes execution. Legacy quality
 evaluation stays separate, and existing detection messages are unchanged.
 
+`check_observed_contact_footprint` consumes the actual directed
+`world_from_suction_contact_frame`, with the matching physical contact model.
+It expands the physical rectangle by the existing configured boundary margin
+in contact-frame XY, then projects all four corners into the observed top
+basis. Every cell intersecting the resulting convex quadrilateral must be
+supported; unknown interior holes and edge notches reject even when all
+corners fit. This is a necessary projected-coverage gate only: projection can
+shrink a tilted footprint, so a positive result does not prove contact height,
+normal alignment, surface quality or collision freedom. No release-gap TCP
+substitution or inferred support is admitted by this API.
+
 ## Canonical colour-aligned RGBD acquisition (PF-R9 g2)
 
 The camera product is a **payload-identical RGBD set**. The preprocessor no

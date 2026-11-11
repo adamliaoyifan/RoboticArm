@@ -34,6 +34,67 @@ def _pair(values, name):
     return result
 
 
+def check_convex_footprint_containment(valid_cells, *, origin_uv, cell_size_m,
+                                       vertices_uv):
+    """Check a projected contact quadrilateral against whole-cell support.
+
+    Vertices must be ordered around a strictly convex quadrilateral. This
+    handles the parallelogram obtained when an actual tilted contact frame is
+    projected onto the observed top plane. The caller expands the physical
+    footprint by its configured margin BEFORE projecting it. Containment alone
+    does not prove coplanar contact, surface quality, seal or collision freedom.
+    """
+    domain = np.asarray(valid_cells)
+    origin = np.asarray(_pair(origin_uv, "origin_uv"))
+    vertices = np.asarray(vertices_uv, dtype=float)
+    resolution = float(cell_size_m)
+    if domain.ndim != 2 or domain.dtype != np.bool_:
+        raise ValueError("two-dimensional boolean top domain required")
+    if (vertices.shape != (4, 2) or not np.isfinite(vertices).all()
+            or not math.isfinite(resolution) or resolution <= 0):
+        raise ValueError("finite quadrilateral and positive cell size required")
+    tolerance = 1e-12  # metres of roundoff, not an observation/filling allowance
+    edges = np.roll(vertices, -1, axis=0) - vertices
+    lengths = np.linalg.norm(edges, axis=1)
+    if np.any(lengths <= tolerance):
+        raise ValueError("nondegenerate contact quadrilateral required")
+    unit_edges = edges / lengths[:, None]
+    turns = (unit_edges[:, 0] * np.roll(unit_edges, -1, axis=0)[:, 1]
+             - unit_edges[:, 1] * np.roll(unit_edges, -1, axis=0)[:, 0])
+    if not (np.all(turns > 0) or np.all(turns < 0)):
+        raise ValueError("ordered strictly convex contact quadrilateral required")
+    if 0 in domain.shape:
+        return ContainmentResult(False, "EMPTY_TOP_DOMAIN", 0, 0)
+    lower, upper = vertices.min(axis=0), vertices.max(axis=0)
+    if (np.any(lower < origin - tolerance)
+            or np.any(upper > origin + np.asarray(domain.shape)*resolution + tolerance)):
+        return ContainmentResult(False, "FOOTPRINT_OUTSIDE_TOP_GRID", 0, 0)
+    first = np.maximum(0, np.floor((lower-origin-tolerance)/resolution).astype(int))
+    last = np.minimum(domain.shape, np.ceil((upper-origin+tolerance)/resolution).astype(int))
+    iu, iv = np.meshgrid(np.arange(first[0], last[0]),
+                         np.arange(first[1], last[1]), indexing="ij")
+    centers = origin + (np.stack((iu, iv), axis=-1) + .5)*resolution
+    overlap = np.ones(iu.shape, dtype=bool)
+    # Separating axes from both the grid cell and the projected polygon.
+    axes = np.vstack((np.eye(2), np.column_stack((-unit_edges[:, 1], unit_edges[:, 0]))))
+    for axis in axes:
+        projection = vertices @ axis
+        cell_center = centers @ axis
+        radius = resolution/2 * np.abs(axis).sum()
+        overlap &= ((cell_center + radius > projection.min() + tolerance)
+                    & (cell_center - radius < projection.max() - tolerance))
+    covered = int(np.count_nonzero(overlap))
+    invalid = overlap & ~domain[iu, iv]
+    invalid_count = int(np.count_nonzero(invalid))
+    if invalid_count:
+        first_bad = tuple(np.argwhere(invalid)[0])
+        return ContainmentResult(False, "FOOTPRINT_NOT_FULLY_CONTAINED", covered,
+            invalid_count, (int(iu[first_bad]), int(iv[first_bad])))
+    if not covered:
+        return ContainmentResult(False, "FOOTPRINT_NOT_RESOLVED", 0, 0)
+    return ContainmentResult(True, "ok", covered, 0)
+
+
 def check_footprint_containment(valid_cells, *, origin_uv, cell_size_m,
                                 center_uv, yaw_rad, footprint_size_xy_m,
                                 boundary_margin_m):
