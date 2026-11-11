@@ -263,3 +263,11 @@ G3 用盒体/三角面 SAT 检查每个初始下层箱体与真实碰撞网格�
 和 24 个下层模型，禁止发送取放动作；精确调用环境见模块 README。
 旧 profile 对照只作为诊断证据。完整连续路径、接触推入、下层在推入时不动和视觉感知
 表现仍是后续工作，不能由本次场景和启动通过推断。
+
+最终启动复查入口为主工作区
+`docs/status/evidence/uld_upper_layer_scene/g1_20261111/stack_startup_05/run.py`，
+此前 `stack_startup*` 目录保留的是测量脚本演练，不作为最终验收入口。
+该入口直接查询 `elfin_arm_controller`，在相同 ROS_DOMAIN_ID=7 下用
+`ros2 topic info --no-daemon --spin-time 2` 和独立订阅进程确认唯一 clock 及递增时间，
+并检查真实模型名 `S20` 与 24 个下层模型。用户打开场景使用模块 `launch_scene.sh`，
+无需运行上述计量脚本；标准 install 路径必须位于本 worktree 的 install/ 下。
