@@ -194,11 +194,13 @@ while changing only search/path time budgets explicitly rebinds configuration
 and candidate IDs; every other configuration mismatch rejects cache reuse.
 
 
-The ideal-vacuum adapter is a separate research plugin. While attached it follows
-an observed link-to-box relation at physics steps, matching the declared ideal
-vacuum model. Attachment requires the caller to verify actual panel contact.
-Detachment sends no box pose commands, changes no collision masks or gravity,
-and acknowledges a processed command counter rather than only a queued request.
+The ideal-vacuum adapter is a separate research plugin. It creates a native
+detachable fixed joint at the observed wrist-to-box relation. The physics engine
+carries the mass; this plugin never commands payload poses, velocities or forces.
+Attachment requires the caller to verify the ideal cup seal-frame gap/footprint.
+The source CAD rigid p04 face lies behind that seal frame and is independently
+derived for pushing. Detachment removes the joint, changes no collision masks or
+gravity, and acknowledges a processed command rather than only a queued request.
 It does not validate real suction holding force. Build and rehearse explicitly:
 
 ```bash
@@ -257,3 +259,25 @@ Per-entity pose timestamps are retained separately for later freshness checks.
 The single plan's G12 section calibrates the physical existence experiment to
 600 simulation seconds/1800 wall seconds after measuring a309.3s nominal plan;
 all collision, support and stability requirements remain mandatory.
+
+`physical_probe.py` performs an unscored real-controller hold, or the first
+complete nominal plan from a `motion_feasibility.py --plan-paths` evidence run:
+
+```bash
+/tmp/uld-upper-python/bin/python research/uld_upper_layer/physical_probe.py \
+  --scene-dir /tmp/NEW_vacuum_scene \
+  --planning-run /home/adamliao/work/elfin_humble_ws/docs/status/evidence/uld_upper_layer_v1/NEW_SEARCH \
+  --evidence /home/adamliao/work/elfin_humble_ws/docs/status/evidence/uld_upper_layer_v1/NEW_PHYSICAL_PROBE
+```
+
+Omit `--planning-run` for the monitor hold. Reuse requires source/model equality
+and fresh initial-state revalidation, never blind replay. Runtime thresholds load
+from `execution_policy.yaml` (override with `--policy`) without compilation.
+The observer records near-contact geometric overlap, anti-tip hull and native
+contact points separately; pressure-bearing area is unavailable. Native joint,
+payload and contact-component observations share a physics-step stamp, including
+empty contacts. A bounded history supplies ordered monitor samples; stale streams
+and real native gaps still reject. ROS clock capture has its own observation-only
+executor, independently of action feedback. Failures preserve stage/window data
+and always tear down the owned stack. A nominal probe is not the G12 acceptance:
+robust tube, release calibration, candidate scoring and five-seed campaign remain.

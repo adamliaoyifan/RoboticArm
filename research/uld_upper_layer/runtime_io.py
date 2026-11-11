@@ -28,6 +28,7 @@ class RuntimeIO:
             self.vacuum_spec=fixture.get('ideal_vacuum')
             self.contact_topic=fixture.get('contact_observation_topic',self.contact_topic)
         self.launch=None;self.pose_capture=None;self.contact_capture=None
+        self.clock_capture=None
         self.contacts=None;self.contact_stamp=None;self.contact_count=0
         self.positive_contact_messages=0;self.complete_contact_messages=0
         self.native_contact_samples=0;self.native_empty_contact_samples=0
@@ -61,7 +62,6 @@ class RuntimeIO:
         os.environ['ROS_DOMAIN_ID']='7'
         import rclpy
         from sensor_msgs.msg import JointState
-        from rosgraph_msgs.msg import Clock
         from rclpy.qos import qos_profile_sensor_data
         rclpy.init()
         self.node=rclpy.create_node('upper_layer_ideal_experiment')
@@ -74,12 +74,10 @@ class RuntimeIO:
                 self.q_stamp=msg.header.stamp.sec+msg.header.stamp.nanosec*1e-9
                 self.joint_trace.write(json.dumps(dict(stamp=self.q_stamp,q=self.q))+'\n')
                 self.joint_trace.flush()
-        def clock(msg):
-            self.clocks.append(msg.clock.sec+msg.clock.nanosec*1e-9)
-            if self.first_clock is None:self.first_clock=self.clocks[-1]
-            if len(self.clocks)>500:self.clocks=self.clocks[-500:]
         self.node.create_subscription(JointState,'/joint_states',joints,qos_profile_sensor_data)
-        self.node.create_subscription(Clock,'/clock',clock,qos_profile_sensor_data)
+        from ros_clock_capture import RosClockCapture
+        self.clock_capture=RosClockCapture(self.output/'clock.jsonl.gz',self._accept_clock,self._native_stamp)
+        self.clock_capture.start()
         from transport_capture import JsonTopicCapture
         self.pose_capture=JsonTopicCapture(self.env,self.output,'poses',
             '/world/airport_loading/pose/info',self._accept_poses)
@@ -100,6 +98,15 @@ class RuntimeIO:
         else:raise TimeoutError('IDEAL_OBSERVATION_NOT_READY')
         count=self.node.count_publishers('/clock')
         if count!=1:raise RuntimeError(f'CLOCK_PUBLISHER_COUNT:{count}')
+
+    def _accept_clock(self,stamp):
+        with self.pose_lock:
+            self.clocks.append(stamp)
+            if self.first_clock is None:self.first_clock=stamp
+            if len(self.clocks)>500:self.clocks=self.clocks[-500:]
+
+    def _native_stamp(self):
+        with self.pose_lock:return self.vacuum_state['sim_time_s'] if self.vacuum_state else None
 
     def _accept_poses(self,row):
         header=row.get('header',{}).get('stamp',{})
@@ -189,7 +196,8 @@ class RuntimeIO:
                         first_clock=self.first_clock,
                         capture_error=self.capture_error or (self.pose_capture.error if self.pose_capture else None)
                             or (self.contact_capture.error if self.contact_capture else None)
-                            or (self.vacuum_capture.error if self.vacuum_capture else None),
+                            or (self.vacuum_capture.error if self.vacuum_capture else None)
+                            or (self.clock_capture.error if self.clock_capture else None),
                         contact_topic=self.contact_topic,contacts=self.contacts,contact_stamp=self.contact_stamp,contact_messages=self.contact_count,positive_contact_messages=self.positive_contact_messages,
                         complete_contact_messages=self.complete_contact_messages,
                         contact_source='native_physics_component' if self.vacuum_spec else 'legacy_contact_topic',
@@ -197,6 +205,7 @@ class RuntimeIO:
                         native_empty_contact_samples=self.native_empty_contact_samples)
 
     def stop(self):
+        if self.clock_capture:self.clock_capture.stop()
         if self.pose_capture:self.pose_capture.stop()
         if self.contact_capture:self.contact_capture.stop()
         if self.vacuum_capture:self.vacuum_capture.stop()

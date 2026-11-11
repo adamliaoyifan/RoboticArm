@@ -62,7 +62,7 @@ class ExecutionMonitor:
     def observe(self,row):
         if self._failure:return self._failure['reason']
         try:sample=self._reader.read(row)
-        except (ValueError,KeyError,TypeError) as exc:return self._stop('PHYSICAL_OBSERVATION_INVALID',detail=str(exc))
+        except (ValueError,KeyError,TypeError) as exc:return self._stop('PHYSICAL_OBSERVATION_INVALID',detail=str(exc),invalid_observation=row)
         if not self._ring or sample.stamp_s>self._ring[-1][0]:self._ring.append((sample.stamp_s,row))
         while self._ring and sample.stamp_s-self._ring[0][0]>self._policy.trigger_pre_s:self._ring.popleft()
         if self._last is not None:
