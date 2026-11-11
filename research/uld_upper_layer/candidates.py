@@ -47,7 +47,7 @@ def tool_collision(assets, snapshot, tcp, clearance):
     return None
 
 
-def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values, lateral, depth_values, grasp_values, reasons, witnesses):
+def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values, lateral, depth_values, grasp_values, reasons, witnesses, deadline=None, emit=None):
     """Return immutable geometric candidates and bounded diagnostic records.
 
     Grasp is selected on the original top face. The final box is inverted by
@@ -55,6 +55,8 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
     All fixed tool bodies must stay clear of actual lower cuboids, not a shelf.
     """
     started = time.monotonic()
+    if emit:emit(dict(event='geometry_stream_input',box_yaws_deg=yaw_values,
+        tool_yaws_deg=tool_yaw_values,lateral_m=lateral,depths_m=depth_values,grasps_m=grasp_values))
     candidates = []
     windows = handoff_windows(assets, state, config)
     top = max(p.surface_z_container for p in snapshot.surfaces)
@@ -102,6 +104,7 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
                     if not metrics.accepted:
                         reasons[metrics.reason]+=1;continue
                     for b in grasp_values:
+                        if deadline is not None and time.monotonic()>=deadline:return
                         tcp = pose([front-b,y,top],rt)
                         failure = tool_collision(assets,snapshot,tcp,config.collision_margin_m)
                         # Verify the actual withdrawal legs including downward
@@ -125,6 +128,7 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
                         box_to_tool=np.linalg.inv(handoff)@tcp
                         pick=state_pose@box_to_tool
                         for final_x in final_xs:
+                            if deadline is not None and time.monotonic()>=deadline:return
                             if final_x < handoff[0,3]+config.collision_margin_m:continue
                             final=pose([final_x,y,top+size[2]/2],box_rotation)
                             final_metrics=measure_support(final,size,patches,config,state.com_local)
@@ -172,7 +176,7 @@ def round_robin(streams):
         except StopIteration:pass
 
 
-def generate_actions(assets, snapshot, state, config):
+def generate_actions(assets, snapshot, state, config, emit=None):
     """Interleave orientations, positions, handoffs and grasps before repeats.
 
     Interior lateral/depth samples and the grasp with greatest tool/support
@@ -209,16 +213,20 @@ def generate_actions(assets, snapshot, state, config):
                     grasps=reversed(samples(depth+forward+config.collision_margin_m,bmax,config.grasp_step_m))
                     for grasp in grasps:
                         variants.append(_action_stream(assets,snapshot,state,config,(yaw,),
-                            (tool_yaw,),y,(depth,),(grasp,),reasons,witnesses))
+                            (tool_yaw,),y,(depth,),(grasp,),reasons,witnesses,started+config.search_budget_s,emit))
                 positions.append(round_robin(variants))
             orientations.append(round_robin(positions))
     stream=round_robin(orientations)
     while len(candidates)<config.max_action_candidates:
         if time.monotonic()-started>=config.search_budget_s:break
-        try:candidates.append(next(stream))
+        try:
+            candidate=next(stream);candidates.append(candidate)
+            if emit:emit(dict(event='geometry_candidate',count=len(candidates),
+                              elapsed_s=time.monotonic()-started,action=candidate))
         except StopIteration:
             return candidates,dict(windows=handoff_windows(assets,state,config),reasons=dict(reasons),
-                witnesses=witnesses,termination='SEARCH_EXHAUSTED',elapsed_s=time.monotonic()-started)
+                witnesses=witnesses,termination=('BUDGET_EXHAUSTED' if time.monotonic()-started>=config.search_budget_s
+                                                else 'SEARCH_EXHAUSTED'),elapsed_s=time.monotonic()-started)
     return candidates,dict(windows=handoff_windows(assets,state,config),reasons=dict(reasons),
         witnesses=witnesses,termination='BUDGET_EXHAUSTED',elapsed_s=time.monotonic()-started)
 

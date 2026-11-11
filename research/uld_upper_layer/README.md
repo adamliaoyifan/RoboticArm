@@ -220,3 +220,12 @@ fixture verifies source/binary hashes before launch and owns stack teardown.
 push endpoint screening precedes the expensive pick/carry prefix; only identical
 snapshot, box, push poses, configuration and ordered IK seeds reuse a negative
 screen. A failed sampled screen is not a proof of unreachable geometry.
+
+
+Whole-action search backtracks sampled pick joint branches after downstream
+failure, instead of freezing the first reachable pick posture. Each attempt
+starts from the same observed home state and shares the action deadline;
+accepted pickup endpoints alone never count as complete plans. Geometry search
+flushes candidate/subsearch inputs incrementally and checks its deadline inside
+subsearches. The occupancy broadphase proves distant AABB separation before
+running the unchanged OBB SAT on near objects.

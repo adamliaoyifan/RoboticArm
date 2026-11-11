@@ -16,8 +16,42 @@ def shifted(transform, delta):
     return result
 
 
-def plan_action(scene, state, action, start_q, seeds, config, emit):
-    started=time.monotonic();stages=[];q=list(start_q)
+def plan_action(scene,state,action,start_q,seeds,config,emit):
+    """Backtrack pick joint branches as well as coupled handoff branches."""
+    from action_screen import screen_push
+    started=time.monotonic()
+    scene.set_payload(state.dimensions,'world',
+        scene.world_container@matrix(state.container_T_box),allow_support=True)
+    initial_failure=scene.check_state(start_q,config.collision_margin_m)
+    if initial_failure:return dict(valid=False,reason='INITIAL_STATE_INVALID',diagnostic=initial_failure,stages=[])
+    screened=screen_push(scene,state,action,seeds,config)
+    emit(dict(event='necessary_push_endpoint_screen',result=screened))
+    if not screened['valid']:return dict(valid=False,reason=screened['reason'],diagnostic=screened,stages=[])
+    pre_pick=shifted(matrix(action.pick_tool_pose),[0,0,config.precontact_distance_m])
+    goals,diagnostic=scene.endpoint_solutions(pre_pick,[start_q]+seeds,
+        config.collision_margin_m,config.path_attempt_budget_s)
+    emit(dict(event='pick_ik_branches',q_solutions=goals,diagnostic=diagnostic))
+    last=None;attempted=0
+    for index,goal in enumerate(sorted(goals,key=lambda q:np.linalg.norm(np.array(q)-start_q))):
+        if time.monotonic()-started>=config.search_budget_s:break
+        attempted+=1
+        emit(dict(event='pick_branch_input',branch=index,pick_pre_q=goal))
+        last=_plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
+                                    goal,screened,started)
+        emit(dict(event='pick_branch_output',branch=index,valid=last['valid'],
+                  diagnostic=last.get('diagnostic'),reason=last.get('reason')))
+        if last['valid']:
+            last['pick_joint_branch']=index
+            last['pick_joint_branches_attempted']=attempted
+            return last
+    return dict(valid=False,reason='NO_CONNECTED_PICK_BRANCH',
+                pick_joint_branches_attempted=attempted,exhaustive=False,
+                diagnostic=last,stages=[])
+
+
+def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
+                            pick_pre_q,screened,started):
+    stages=[];q=list(start_q)
     box_pose=matrix(state.container_T_box)
     grasp=matrix(action.box_T_tool)
     handoff=matrix(action.handoff_box_pose)
@@ -74,7 +108,7 @@ def plan_action(scene, state, action, start_q, seeds, config, emit):
             motion=lambda index,t:box_motion((distances[index]+t*(distances[index+1]-distances[index]))/total)
         emit(dict(event='sweep_input',stage=name,trajectory=timed))
         certificate=detail.get('certificate') or certify_path(scene,timed,config,contact,motion,
-                                 deadline=started+config.search_budget_s,interval_bounds=kind=='joint')
+                                 deadline=started+config.search_budget_s,interval_bounds=box_motion is None)
         if not certificate['valid']:
             result=dict(reason='SWEEP_REJECTED',**boundary,certificate=certificate)
             emit(dict(event='stage_rejected',**result));return result
@@ -89,12 +123,8 @@ def plan_action(scene, state, action, start_q, seeds, config, emit):
     payload('world',support=True)
     failure=scene.check_state(q,config.collision_margin_m)
     if failure:return dict(valid=False,reason='INITIAL_STATE_INVALID',diagnostic=failure,stages=stages)
-    from action_screen import screen_push
-    screened=screen_push(scene,state,action,seeds,config)
-    emit(dict(event='necessary_push_endpoint_screen',result=screened))
-    if not screened['valid']:return dict(valid=False,reason=screened['reason'],diagnostic=screened,stages=stages)
     pre_pick=shifted(pick,[0,0,config.precontact_distance_m])
-    failure=stage('pick_pre',pre_pick,'joint')
+    failure=stage('pick_pre',pre_pick,'joint',goal_q=pick_pre_q)
     if not failure:failure=stage('pick_contact',pick,contact=True,speed=config.contact_speed_mps)
     if failure:return dict(valid=False,diagnostic=failure,stages=stages)
     payload('attached',support=True)

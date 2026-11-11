@@ -4,6 +4,7 @@ Fixture truth enters only this named experiment adapter. Surface Z remains exact
 and separate from voxel upper-face heights. Unexported space is UNKNOWN.
 """
 import json
+from functools import lru_cache
 from pathlib import Path
 import numpy as np
 from dataclasses import replace
@@ -38,15 +39,29 @@ def capture_fixture(scene_dir, assets, config):
     return snapshot, state
 
 
+@lru_cache(maxsize=8)
+def _occupied_arrays(occupied):
+    centers=np.array([item.center for item in occupied],float).reshape(-1,3)
+    halves=np.array([item.size for item in occupied],float).reshape(-1,3)/2
+    centers.flags.writeable=False;halves.flags.writeable=False
+    return centers,halves
+
+
 def query_box(snapshot, body, clearance=0.):
     bounds = np.array(snapshot.observed_bounds).reshape(2,3)
     vertices = body.corners()
     if np.any(vertices < bounds[0]) or np.any(vertices > bounds[1]):
         return 'UNKNOWN', ()
     hits = []
-    for item in snapshot.occupied:
-        center, size = np.array(item.center), np.array(item.size)
-        if not separated(body, axis_box(item.name, center-size/2, center+size/2), clearance):
+    centers,halves=_occupied_arrays(snapshot.occupied)
+    # A separating world-axis projection of enclosing AABBs is a sufficient
+    # proof for the actual OBBs. Only overlapping/near bounds need 15-axis SAT.
+    body_half=np.abs(body.axes)@body.half
+    gaps=np.abs(centers-body.center)-halves-body_half
+    possible=~np.any(gaps>=clearance-1e-9,axis=1)
+    for index in np.flatnonzero(possible):
+        item=snapshot.occupied[index];center=centers[index];half=halves[index]
+        if not separated(body, axis_box(item.name, center-half, center+half), clearance):
             hits.append(item.name)
     return ('OCCUPIED' if hits else 'FREE'), tuple(hits)
 

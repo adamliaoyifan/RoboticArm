@@ -5,8 +5,8 @@ import sys
 import unittest
 import numpy as np
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from geometry import axis_box, pose
-from planning_types import SceneSnapshot, SurfacePatch, UpperConfig
+from geometry import Box, axis_box, pose
+from planning_types import OccupiedBox, SceneSnapshot, SurfacePatch, UpperConfig
 from support_geometry import measure_support
 from ideal_snapshot import query_box
 
@@ -69,6 +69,21 @@ class SupportContracts(unittest.TestCase):
             (0.,0.,0.),(10,10,10),.1,(),(),(0.,0.,0.,1.,1.,1.),0.,1.)
         self.assertEqual(query_box(snapshot,axis_box('inside',[.1]*3,[.2]*3))[0],'FREE')
         self.assertEqual(query_box(snapshot,axis_box('outside',[-.1]*3,[.2]*3))[0],'UNKNOWN')
+
+    def test_occupancy_broadphase_preserves_rotated_and_margin_collisions(self):
+        from scipy.spatial.transform import Rotation
+        snapshot=SceneSnapshot('id','geometry','container_link','ideal_sim_fixture',
+            (-5.,-5.,-5.),(100,100,100),.1,
+            (OccupiedBox('near',(0.,0.,0.),(.2,.2,.2)),
+             OccupiedBox('far',(4.,4.,4.),(.2,.2,.2))),(),(-5.,-5.,-5.,5.,5.,5.),0.,1.)
+        body=Box('rotated',np.array([.18,0,0]),Rotation.from_euler('z',45,degrees=True).as_matrix(),np.ones(3)*.1)
+        self.assertEqual(query_box(snapshot,body,.005),('OCCUPIED',('near',)))
+        self.assertEqual(query_box(snapshot,axis_box('close',[.104,-.1,-.1],[.3,.1,.1]),.005),('OCCUPIED',('near',)))
+        self.assertEqual(query_box(snapshot,axis_box('clear',[.106,-.1,-.1],[.3,.1,.1]),.005),('FREE',()))
+        # An overlapping enclosing AABB is only a possible collision; SAT must
+        # still establish that this diagonal slender body clears the obstacle.
+        slender=Box('slender',np.array([.23,.23,0]),Rotation.from_euler('z',-45,degrees=True).as_matrix(),np.array([.3,.005,.05]))
+        self.assertEqual(query_box(snapshot,slender,.005),('FREE',()))
 
     def test_tilted_box_is_not_silently_flattened(self):
         from scipy.spatial.transform import Rotation

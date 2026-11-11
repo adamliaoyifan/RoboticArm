@@ -108,7 +108,12 @@ def main():
                         rebound_search_only_fields=changed,
                         scope='geometry_only_full_paths_checked_again')
         else:
-            actions,report=generate_actions(assets,snapshot,state,config)
+            with (output/'geometry_progress.jsonl').open('w') as progress:
+                def geometry_emit(row):
+                    row=dict(row)
+                    if 'action' in row:row['action']=asdict(row['action'])
+                    progress.write(json.dumps(row)+'\n');progress.flush()
+                actions,report=generate_actions(assets,snapshot,state,config,geometry_emit)
         save(output/'candidates.json',[asdict(a) for a in actions])
         save(output/'geometry_report.json',report)
         rng=np.random.default_rng(args.seed);limits=np.array(scene.urdf.joint_limits())
