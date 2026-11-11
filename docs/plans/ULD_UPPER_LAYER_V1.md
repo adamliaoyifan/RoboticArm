@@ -1855,3 +1855,56 @@ manifest确认capture_complete/replay_possible/teardown_complete。
 二进制与源码独立归档，旧六轴默认逻辑保留，但本次未重跑六轴全动作。
 下一步为两轴观测标准化、几何/真实接触准入、解除确认及受控下移/撤出
 预演；此后才能冻结释放54/细化入口。正式C5、接触误差管及剩余A/D仍open。
+
+
+### 19.29 两轴观测与校准初始条件；严格执行门槛保持拒绝
+
+新增ReleaseObservationReader：输入单帧native及冻结world/container变换、
+下层尺寸/身份和payload身份；输出不可变ReleaseObservation，箱体原点
+为几何中心，工具原点为source suction_contact_frame，pose均container
+绝对坐标，joint_displacements_xz_m是两轴米值。不能冒充六轴弧度输入。
+下层和接触同stamp，缺contact component/字段、改变下层集合、无效
+pose/法向或箱体命令均拒绝；观测读取本身无副作用。六轴/两轴共用
+read_payload_contacts有符号法向与几何解码，原六轴行为测试保持通过。
+流连续性及相对独立clock的新鲜度仍由之后transport消费者负责。
+
+inspect_release_start复用measure_observed_support和现有严格原生
+bottom/top/normal/depth判据，记录几何近接触面积、抗倾覆凸包、原生
+离散接触、COM、吸附关系和下层/箱体漂移，不推断压力分布或载重比例。
+ReleaseReadyWindow每个独立case/流单独创建，私有baseline持有不可变
+观测；不合格/间断重建初始化窗，stamp不递增拒绝。输入config/policy
+均显式冻结，完整连续3s后才给出初始化ready，永不授予完整执行准入。
+
+release_observation_replay_g12_01实际回放原6832帧、50Hz完整几何342
+次：最大实测近接触比例0.5999999939906693，全部342次低于原0.60
+门槛，10次初始弹跳无原生接触、7次COM不足；严格ready从未成立。
+这说明名义60%边界没有运行余量，不能clamp比例、放宽比较容差、移动
+实验箱或改YAML来让其通过。其原输入/源码/拒绝结果与159测试保留。
+
+按19.18和16.3既有独立低面积校准授权，新增明确分离的
+CalibrationReadyWindow。它仍保留accepted=false、执行policy失败原因
+和execution_admitted=false，ready永远false；仅另报calibration_ready。
+仅面积/COM策略阈值作为诊断标签；原生有效接触、非零几何接触面积、
+吸附约束/相对关系、下层及箱体运动限值和连续稳定窗保持原限制。
+不接入名义动作选择/执行准入，也不是接触法向/深度豁免或降低原阈值。
+所有低于60%/20mm实验都必须维持此明确身份，不能作为合格动作计数。
+
+独立02回放同6832帧/342完整决策：严格ready仍从未成立，而校准初始化
+在3.221s满足3s连续物理前提，比例0.599999993934204、COM54.999997mm；
+实际policy失败原样保留。未启动Gazebo、未实际解除或撤出。
+
+make_release_withdrawal由该实测两轴/TCP状态及运行时config/policy/
+夹具policy生成先container -Z分离、再-X撤出的不可变参考。距离为原
+release_drop_m=.06/withdraw_m=.15；标准零端点速度/加速度quintic
+s(u)=10u³-15u⁴+6u⁵，精确速度/加速度峰值用于选时长，采样由monitor
+period和1mm位移步共同约束，行程越界拒绝。本例为56.25/140.625s，
+速度上限2mm/s、加速度上限原config .02m/s²，不以效率优化作评分。
+两阶段连续、全部参数确实影响输出；仍execution_admitted=false，
+缺少独立碰撞认证及原生解除确认不得向控制器发送。
+
+160行为测试通过，覆盖坐标不重合、不可变输入、六轴误用/缺观测/无效
+法向、策略阈值变化、稳定窗中断/下层移动、校准身份隔离与轨迹距离/
+速度/行程边界。02从归档源码独立重审17检查全通过，包含全部源hash、
+同stamp/无准入输出、严格拒绝与校准身份、实际轨迹速度/采样/行程/
+端点/连续性。下一步接入工具完整原生碰撞观测、实际关节参考发布和
+解除/分离/撤出预演；释放54/细化、接触管、C5及剩余A/D仍open。

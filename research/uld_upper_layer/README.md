@@ -383,3 +383,28 @@ retain their original default joint list and explicit attachment requests.
 `release_rehearsal.py` checks a short attached hold with lossless native capture
 and owned teardown. It requests neither joint motion nor release and supplies no
 release-stability, arm-reachability or full-action verdict.
+
+`ReleaseObservationReader` consumes one native carriage frame and emits an
+immutable `ReleaseObservation`: box geometric-centre/tool poses are container
+absolute; joint displacement is two metres-valued X/Z entries, never six arm
+angles. Lower poses and contacts share the native stamp. It rejects missing
+state/contact geometry, changed lower identities, malformed poses and payload
+commands. The arm and carriage readers share signed payload-contact decoding.
+The transport owner must separately check stream continuity and clock age.
+
+`inspect_release_start` combines the existing observed-support geometry and
+strict material-face/normal/depth rule. `ReleaseReadyWindow` owns one immutable
+baseline per fresh case/stream and requires an uninterrupted configured dwell.
+`CalibrationReadyWindow` is explicitly for the independent below-policy
+workload: it preserves failed area/COM policy checks, always returns
+`ready=false` and exposes `calibration_ready` separately. Contact, attachment,
+lower-motion and stable-dwell limits remain enforced. Neither grants execution
+admission or reports pressure/weight distribution.
+
+`make_release_withdrawal` consumes the measured carriage start and runtime
+planning/execution/fixture policies. It returns immutable downward/outward
+quintic joint-reference stages, source-frame tool endpoints, sampled positions/
+velocities and analytic speed/acceleration bounds. Geometry distances, timing,
+rail limits and sampling derive from those policies. Collision certification,
+native detach acknowledgement, actual tracking and post-withdraw stability
+remain required consumers; generated references are never executable arm plans.

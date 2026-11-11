@@ -50,6 +50,28 @@ class PhysicalSample:
     attachment_joint_component_present: bool | None = None
 
 
+def read_payload_contacts(message,box_id,container_T_world):
+    """Decode signed native contact geometry once for arm and carriage readers."""
+    contacts=[]
+    for contact in message.get('contact',[]):
+        a=contact['collision1']['name'];b=contact['collision2']['name']
+        first=a.startswith(box_id+'::');second=b.startswith(box_id+'::')
+        if first==second:raise ValueError('CONTACT_PAYLOAD_IDENTITY_MISMATCH')
+        points=contact.get('position',[]);normals=contact.get('normal',[]);depths=contact.get('depth',[])
+        if not points or not len(points)==len(normals)==len(depths):
+            raise ValueError('NATIVE_CONTACT_GEOMETRY_INCOMPLETE')
+        for point,normal,depth in zip(points,normals,depths):
+            point=np.array([point.get(k,0.) for k in ('x','y','z')])
+            normal=np.array([normal.get(k,0.) for k in ('x','y','z')])*(1 if first else -1)
+            if not np.isfinite(np.r_[point,normal,depth]).all() or abs(np.linalg.norm(normal)-1)>1e-4:
+                raise ValueError('INVALID_NATIVE_CONTACT_GEOMETRY')
+            point=container_T_world@np.r_[point,1.]
+            normal=container_T_world[:3,:3]@normal
+            contacts.append(ObservedContact(b if first else a,tuple(point[:3]),tuple(normal),float(depth)))
+    return tuple(contacts)
+
+
+
 class ObservationReader:
     def __init__(self,assets,snapshot,box_id,max_age_s):
         if not np.isfinite(max_age_s) or max_age_s<=0:raise ValueError('INVALID_OBSERVATION_MAX_AGE')
@@ -82,22 +104,7 @@ class ObservationReader:
             age(row.get('pose_stamps',{}).get(name),name)
             if name not in row['poses']:raise ValueError('MISSING_LOWER_BODY:'+name)
             lower.append(ObservedBody(name,dimensions,tuple((self._container_T_world@pose_matrix(row['poses'][name])).ravel()),row['pose_stamps'][name]))
-        contacts=[]
-        for contact in contact_message.get('contact',[]):
-            a=contact['collision1']['name'];b=contact['collision2']['name']
-            first=a.startswith(self._box_id+'::');second=b.startswith(self._box_id+'::')
-            if first==second:raise ValueError('CONTACT_PAYLOAD_IDENTITY_MISMATCH')
-            points=contact.get('position',[]);normals=contact.get('normal',[]);depths=contact.get('depth',[])
-            if not points or not len(points)==len(normals)==len(depths):
-                raise ValueError('NATIVE_CONTACT_GEOMETRY_INCOMPLETE')
-            for point,normal,depth in zip(points,normals,depths):
-                point=np.array([point.get(k,0.) for k in ('x','y','z')])
-                normal=np.array([normal.get(k,0.) for k in ('x','y','z')])*(1 if first else -1)
-                if not np.isfinite(np.r_[point,normal,depth]).all() or abs(np.linalg.norm(normal)-1)>1e-4:
-                    raise ValueError('INVALID_NATIVE_CONTACT_GEOMETRY')
-                point=self._container_T_world@np.r_[point,1.]
-                normal=self._container_T_world[:3,:3]@normal
-                contacts.append(ObservedContact(b if first else a,tuple(point[:3]),tuple(normal),float(depth)))
+        contacts=read_payload_contacts(contact_message,self._box_id,self._container_T_world)
         box=self._container_T_world@pose_matrix(native['payload_pose_world'])
         tool=self._container_T_world@pose_matrix(native['link_pose_world'])@self._link_T_tool
         relation=None
