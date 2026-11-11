@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -27,13 +28,15 @@ class RuntimeIO:
         self.launch=None;self.pose_capture=None;self.contact_capture=None
         self.contacts=None;self.contact_stamp=None;self.contact_count=0
         self.positive_contact_messages=0;self.complete_contact_messages=0
-        self.pose_lock=threading.Lock();self.poses={};self.pose_stamp=None
+        self.pose_lock=threading.Lock();self.poses={};self.pose_stamps={};self.pose_stamp=None
         self.pose_count=0;self.q=None;self.q_stamp=None;self.clocks=[]
         self.first_clock=None
         self.capture_error=None
 
     def start(self):
         # launch_scene performs the machine-wide exclusivity check itself.
+        if self.env.get('ELFIN_GZ_STRIP_PANEL_COLLISION','').strip():
+            raise RuntimeError('PANEL_COLLISION_STRIPPING_INCOMPATIBLE_WITH_PHYSICAL_PUSH')
         self.launch_log=(self.output/'launch.log').open('w')
         self.launch=subprocess.Popen(['bash',str(self.repo/'research/uld_upper_layer/launch_scene.sh'),
             '--headless'],env=self.env,stdout=self.launch_log,stderr=subprocess.STDOUT,start_new_session=True)
@@ -46,6 +49,12 @@ class RuntimeIO:
             if self.launch.poll() is not None:raise RuntimeError('SIM_STARTUP_EXITED')
             time.sleep(.2)
         else:raise TimeoutError('SIM_STARTUP_READINESS')
+        from sim_model_contract import panel_contact_identity
+        spawned=Path(self.env.get('TMPDIR','/tmp'))/'elfin_s20_gazebo.sdf'
+        shutil.copy2(spawned,self.output/'spawned_robot.sdf')
+        parent=self.vacuum_spec['parent_model'] if self.vacuum_spec else 'S20'
+        self.panel_contact=panel_contact_identity(self.output/'spawned_robot.sdf',parent)
+        (self.output/'panel_contact_identity.json').write_text(json.dumps(self.panel_contact,indent=2)+'\n')
         os.environ['ROS_DOMAIN_ID']='7'
         import rclpy
         from sensor_msgs.msg import JointState
@@ -94,7 +103,8 @@ class RuntimeIO:
         stamp=float(header.get('sec',0))+float(header.get('nsec',0))*1e-9
         with self.pose_lock:
             for item in row.get('pose',[]):
-                if item.get('name'):self.poses[item['name']]=item
+                if item.get('name'):
+                    self.poses[item['name']]=item;self.pose_stamps[item['name']]=stamp
             self.pose_stamp=stamp;self.pose_count+=1
 
     def _accept_contacts(self,row):
@@ -141,7 +151,7 @@ class RuntimeIO:
 
     def snapshot(self):
         with self.pose_lock:
-            return dict(vacuum=self.vacuum_state,poses=dict(self.poses),pose_stamp=self.pose_stamp,
+            return dict(vacuum=self.vacuum_state,poses=dict(self.poses),pose_stamps=dict(self.pose_stamps),pose_stamp=self.pose_stamp,
                         messages=self.pose_count,q=self.q,q_stamp=self.q_stamp,
                         clock=self.clocks[-1] if self.clocks else None,
                         first_clock=self.first_clock,

@@ -245,3 +245,15 @@ Pre/post path states and edge-proof status are stage diagnostics. Runtime
 `path_simplification_budget_s` defaults to0.5s (0 disables it); certificate queries
 honor that same phase deadline. Geometry and connected-path search share the
 outer deadline, and a timed-out worker's late result never counts as a solution.
+
+
+The native ideal-vacuum state now also exports actual post-physics joint
+positions and payload/wrist world poses for failure replay. It remains
+observational after detachment. The wiring rehearsal compares native wrist FK
+against the source world transform and rejects missing joint observations.
+`sim_model_contract.py` reads the actual spawned SDF and records the exact panel
+collision identity/mask; a model-definition pass does not prove real contact.
+Per-entity pose timestamps are retained separately for later freshness checks.
+The single plan's G12 section calibrates the physical existence experiment to
+600 simulation seconds/1800 wall seconds after measuring a309.3s nominal plan;
+all collision, support and stability requirements remain mandatory.

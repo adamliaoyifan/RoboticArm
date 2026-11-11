@@ -4,12 +4,14 @@
 #include <atomic>
 #include <iomanip>
 #include <sstream>
+#include <vector>
 #include <ignition/gazebo/System.hh>
 #include <ignition/gazebo/Model.hh>
 #include <ignition/gazebo/Util.hh>
 #include <ignition/gazebo/components/Model.hh>
 #include <ignition/gazebo/components/Name.hh>
 #include <ignition/gazebo/components/PoseCmd.hh>
+#include <ignition/gazebo/components/JointPosition.hh>
 #include <ignition/plugin/Register.hh>
 #include <ignition/transport/Node.hh>
 #include <ignition/msgs/boolean.pb.h>
@@ -43,6 +45,14 @@ class KinematicVacuum : public sim::System, public sim::ISystemConfigure,
       if (payload==sim::kNullEntity || parent==sim::kNullEntity) return;
       link=sim::Model(parent).LinkByName(ecm,linkName);
       if (link==sim::kNullEntity) return;
+      joints.clear();
+      for (int i=1;i<=6;++i) {
+        auto joint=sim::Model(parent).JointByName(ecm,"elfin_joint"+std::to_string(i));
+        if (joint==sim::kNullEntity) return;
+        joints.push_back(joint);
+        if (!ecm.Component<comp::JointPosition>(joint))
+          ecm.CreateComponent(joint,comp::JointPosition());
+      }
       ready.store(true);
     }
     const auto tool=sim::worldPose(link,ecm);
@@ -59,7 +69,7 @@ class KinematicVacuum : public sim::System, public sim::ISystemConfigure,
     else ecm.CreateComponent(payload,comp::WorldPoseCmd(target));
     ++poseCommands;
   }
-  void PostUpdate(const sim::UpdateInfo &info,const sim::EntityComponentManager &) override {
+  void PostUpdate(const sim::UpdateInfo &info,const sim::EntityComponentManager &ecm) override {
     ignition::msgs::StringMsg message;
     std::ostringstream json;json<<std::setprecision(15)
       <<"{\"ready\":"<<(ready.load()?"true":"false")
@@ -68,11 +78,33 @@ class KinematicVacuum : public sim::System, public sim::ISystemConfigure,
       <<",\"processed_commands\":"<<processedCommands
       <<",\"sim_time_s\":"<<std::chrono::duration<double>(info.simTime).count()
       <<",\"link_T_payload_xyz\":["<<relation.Pos().X()<<","<<relation.Pos().Y()<<","<<relation.Pos().Z()
-      <<"],\"link_T_payload_quat_xyzw\":["<<relation.Rot().X()<<","<<relation.Rot().Y()<<","<<relation.Rot().Z()<<","<<relation.Rot().W()<<"]}";
-    message.set_data(json.str());state.Publish(message);
+      <<"],\"link_T_payload_quat_xyzw\":["<<relation.Rot().X()<<","<<relation.Rot().Y()<<","<<relation.Rot().Z()<<","<<relation.Rot().W()<<"]";
+    // Observation only: native post-step state survives any controller/pose lag.
+    // Detached payload motion is never commanded by this instrumentation.
+    if (ready.load()) {
+      auto payloadPose=sim::worldPose(payload,ecm),linkPose=sim::worldPose(link,ecm);
+      auto appendPose=[&json](const char *name,const ignition::math::Pose3d &pose) {
+        json<<",\""<<name<<"\":{\"position\":{\"x\":"<<pose.Pos().X()
+          <<",\"y\":"<<pose.Pos().Y()<<",\"z\":"<<pose.Pos().Z()
+          <<"},\"orientation\":{\"x\":"<<pose.Rot().X()<<",\"y\":"<<pose.Rot().Y()
+          <<",\"z\":"<<pose.Rot().Z()<<",\"w\":"<<pose.Rot().W()<<"}}";
+      };
+      appendPose("payload_pose_world",payloadPose);appendPose("link_pose_world",linkPose);
+      json<<",\"q\":[";
+      bool complete=true;
+      for (size_t i=0;i<joints.size();++i) {
+        if (i) json<<",";
+        const auto component=ecm.Component<comp::JointPosition>(joints[i]);
+        if (!component || component->Data().size()!=1) {json<<"null";complete=false;}
+        else json<<component->Data()[0];
+      }
+      json<<"],\"joint_positions_complete\":"<<(complete?"true":"false");
+    }
+    json<<"}";message.set_data(json.str());state.Publish(message);
   }
  private:
   std::string payloadName,parentName,linkName;
+  std::vector<sim::Entity> joints;
   sim::Entity payload=sim::kNullEntity,link=sim::kNullEntity;
   std::atomic<int> requested{-1};std::atomic<bool> ready{false};
   bool attached=false;uint64_t poseCommands=0,epoch=0,processedCommands=0;

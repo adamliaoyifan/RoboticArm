@@ -7,7 +7,9 @@ import shutil
 import subprocess
 import time
 import traceback
-from assets import sha256
+from assets import load,sha256
+import numpy as np
+from scipy.spatial.transform import Rotation
 from controller_io import ArmController
 from runtime_io import RuntimeIO
 
@@ -40,6 +42,18 @@ def main():
     save('manifest.json',manifest)
     try:
         runtime.start();before=runtime.snapshot();save('before.json',before)
+        native=before['vacuum']
+        if not native or not native.get('joint_positions_complete'):
+            raise RuntimeError('NATIVE_JOINT_OBSERVATION_INCOMPLETE')
+        assets=load(ROOT)
+        expected=assets['urdf'].tcp(native['q'],assets['urdf'].path_to(fixture['ideal_vacuum']['parent_link']))
+        observed=native['link_pose_world'];p=observed['position'];o=observed['orientation']
+        error_m=float(np.linalg.norm(expected[:3,3]-[p['x'],p['y'],p['z']]))
+        error_rad=float((Rotation.from_matrix(expected[:3,:3]).inv()*Rotation.from_quat(
+            [o['x'],o['y'],o['z'],o['w']])).magnitude())
+        save('native_fk_consistency.json',dict(position_error_m=error_m,rotation_error_rad=error_rad,
+            expected_world_link=expected.tolist(),native_observation=native))
+        if error_m>1e-5 or error_rad>1e-4:raise RuntimeError('NATIVE_FK_FRAME_MISMATCH')
         first=runtime.toggle_vacuum(False)
         second=runtime.toggle_vacuum(False)
         if second['processed_commands']<=first['processed_commands']:
@@ -57,6 +71,7 @@ def main():
         if drift>=.001:raise RuntimeError('JOINT_HOLD_DRIFT:'+str(drift))
         save('summary.json',dict(status='pass',scope='wiring_only_no_attachment_or_upper_action',
             scored_units=0,joint_hold_max_drift_rad=drift,detached_pose_commands=0,
+            native_fk_error_m=error_m,native_fk_error_rad=error_rad,
             processed_detach_commands=second['processed_commands'],controller_error_code=result['error_code']))
     except BaseException:
         (output/'error.txt').write_text(traceback.format_exc());raise
