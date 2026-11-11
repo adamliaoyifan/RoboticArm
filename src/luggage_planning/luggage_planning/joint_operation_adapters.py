@@ -52,7 +52,7 @@ def operation_plan_to_message(plan, expected_identity, expected_digest):
     for name in ("candidate_id", "certificate_id", "plan_digest"):
         setattr(message, name, getattr(plan, name))
     for name in ("world_from_pick_box", "world_from_pick_tool",
-                 "world_from_place_box", "world_from_place_tool"):
+                 "world_from_place_box", "world_from_place_tool", "world_from_settled_box"):
         setattr(message, name, _pose_to_message(getattr(plan, name)))
     message.predicted_attachment = geometry_to_message(plan.predicted_attachment)
     message.start_joints = list(plan.start_joints)
@@ -96,7 +96,7 @@ def operation_plan_from_message(message, expected_identity, expected_digest):
         identity, message.candidate_id, message.certificate_id,
         *(_transform_from_message(getattr(message, name)) for name in (
             "world_from_pick_box", "world_from_pick_tool",
-            "world_from_place_box", "world_from_place_tool")),
+            "world_from_place_box", "world_from_place_tool", "world_from_settled_box")),
         geometry_from_message(message.predicted_attachment),
         tuple(float(value) for value in message.start_joints),
         tuple(legs), tuple(OperationBarrier(b.before_leg_index, b.event)

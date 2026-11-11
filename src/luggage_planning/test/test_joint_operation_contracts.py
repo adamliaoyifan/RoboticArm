@@ -35,6 +35,9 @@ def example_plan():
     return JointOperationPlan(identity, "candidate", "certificate",
                               pick_tool.compose(grasp), pick_tool,
                               place_tool.compose(grasp), place_tool,
+                              Transform(tuple(v-d for v, d in zip(
+                                  place_tool.compose(grasp).translation, (0., 0., .05))),
+                                  place_tool.compose(grasp).quaternion_xyzw),
                               attachment, q[0], tuple(legs),
                               (OperationBarrier(1, "attachment_confirmed"),
                                OperationBarrier(2, "release_confirmed")), "")
@@ -46,6 +49,25 @@ def test_complete_chain_admitted_and_keeps_directed_grasp():
     assert len(plan.plan_digest) == 64
     assert plan.world_from_pick_tool != plan.world_from_place_tool
     assert plan.identity.observation_stamp_ns != plan.identity.robot_state_stamp_ns
+    assert plan.world_from_settled_box != plan.world_from_place_box
+
+
+def test_settled_target_is_independent_and_digest_bound():
+    plan = seal_operation_plan(example_plan())
+    p = plan.world_from_settled_box
+    changed = replace(plan, world_from_settled_box=Transform(
+        (p.translation[0]+.02, *p.translation[1:]), p.quaternion_xyzw))
+    with pytest.raises(ContractError, match="OPERATION_DIGEST_MISMATCH"):
+        admit_operation_plan(changed, plan.identity, plan.plan_digest)
+
+
+def test_missing_or_rotated_settled_pose_refused():
+    plan = example_plan()
+    with pytest.raises(ContractError, match="INVALID_OPERATION_PLAN"):
+        seal_operation_plan(replace(plan, world_from_settled_box=None))
+    with pytest.raises(ContractError, match="SETTLED_ORIENTATION_MISMATCH"):
+        seal_operation_plan(replace(plan, world_from_settled_box=Transform(
+            plan.world_from_settled_box.translation, (0., 0., 0., 1.))))
 
 
 @pytest.mark.parametrize("field,value", [

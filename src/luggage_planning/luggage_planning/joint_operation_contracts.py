@@ -105,6 +105,7 @@ class JointOperationPlan:
     world_from_pick_tool: Transform
     world_from_place_box: Transform
     world_from_place_tool: Transform
+    world_from_settled_box: Transform
     predicted_attachment: AttachmentGeometry
     start_joints: tuple
     legs: tuple
@@ -150,6 +151,13 @@ def _validate_structure(plan):
                 "INVALID_OPERATION_PLAN", end + "_pose", "Transform", (box, tool))
         require(_same_pose(tool.compose(tool_box), box), "GRASP_BINDING_MISMATCH",
                 end + "_pose", "T_world_tool * T_tool_box == T_world_box", (tool, box))
+    settled = plan.world_from_settled_box
+    require(type(settled) is Transform, "INVALID_OPERATION_PLAN", "settled_pose",
+            "explicit world-frame nominal box pose", type(settled).__name__)
+    require(_same_pose(settled, Transform(settled.translation,
+                                        plan.world_from_place_box.quaternion_xyzw)),
+            "SETTLED_ORIENTATION_MISMATCH", "settled_pose",
+            "same directed box orientation as release", settled)
     previous_q = vector(plan.start_joints, 6, "start_joints")
     require(bool(plan.legs), "INCOMPLETE_OPERATION_PLAN", "legs", "complete chain", ())
     phases = []

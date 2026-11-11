@@ -169,7 +169,7 @@ def test_directed_pi_bins_and_query_misses_are_not_pi_folded(tmp_path):
     assert not reader.query(10., 0., .6).branches
 
 
-def consume(proposals, *, source=None, failure='', expire_stage='', cancel=False):
+def consume(proposals, *, source=None, failure='', expire_stage='', cancel=False, check_result=None):
     calls = []
     time = [0.]
     exact = Transform((.081, .092, .618), (1., 0., 0., 0.))
@@ -183,6 +183,7 @@ def consume(proposals, *, source=None, failure='', expire_stage='', cancel=False
     def check(q, **kwargs):
         calls.append(('check', q))
         if expire_stage == 'check': time[0] = 2.
+        if check_result is not None: return check_result
         return not (failure == 'payload' and q[0] == -.001)
     def connect(a, b, **kwargs):
         calls.append(('connect', a, b))
@@ -204,6 +205,14 @@ def consume(proposals, *, source=None, failure='', expire_stage='', cancel=False
                 world_container=asdict(world_container), calls=calls, result=asdict(result)),
                 default=encode, allow_nan=False)+'\n')
     return result, calls, exact, world_container
+
+
+@pytest.mark.parametrize('value', [1, 'yes', object()])
+def test_truthy_non_boolean_payload_verdict_is_not_admitted(tmp_path,value):
+    reader,*_=artifact(tmp_path)
+    result,calls,*_=consume(query(reader),check_result=value)
+    assert not result.pairs and not result.contact_options
+    assert not any(c[0]=='connect' for c in calls)
 
 
 @pytest.mark.parametrize('failure', ['contact', 'transit', 'payload', 'connection'])

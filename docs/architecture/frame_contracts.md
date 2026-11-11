@@ -106,10 +106,14 @@ Acquisition and robot-state stamps remain distinct; epoch zero is valid only
 with the corresponding validity flag set. A response claiming `PLAN_READY`
 must contain all pick, carrying/place and released retreat trajectories.
 
-`JointOperationPlanV2` contains four directed world-frame poses in metres/xyzw:
-nominal box centre and suction_contact_frame at pick and place. Full box axes
-are retained. The same predicted attachment must compose each tool pose into
-its corresponding box pose. Attachment geometry reuses `AttachmentGeometryV2`
+`JointOperationPlanV2` contains five directed world-frame poses in metres/xyzw:
+nominal box centre and suction_contact_frame at pick and release, plus the
+settled box centre. The `world_from_place_*` fields describe release, including
+the configured release gap; `world_from_settled_box` describes the placement
+target after settling and supplies the world obstacle for retreat validation.
+Full box axes are retained; release and settled orientation must agree. The
+same predicted attachment must compose each tool pose into its corresponding
+pick/release box pose. Attachment geometry reuses `AttachmentGeometryV2`
 without re-expanding its conservative dimensions. It is a prediction until
 actual attachment confirmation, not a measured-attachment declaration.
 
@@ -128,6 +132,15 @@ whole-chain planner must certify empty/world-box, attached and released/world-bo
 scenes before sealing. Execution must check actual q and live admission, confirm
 attachment and revalidate carrying paths at the barrier. Schema availability
 does not imply that the service or execution path has been adopted at runtime.
+
+The private preparation certifier independently checks endpoint FK against the
+captured world-rooted robot model, the explicit deployment release gap along
+container up, and the actual frozen payload geometry/ACM in each phase scene.
+It sends original timed knots and controller-interpolated samples to
+`ValidateRouteV2`, with no support-contact exemption. A positive receipt binds
+the draft digest, phase scene digests, model and captured native evidence.
+This is discrete sampled validation under the existing controller model; it
+does not establish continuous collision freedom or confirm an actual grasp.
 
 `PlanSnapshotJointPathV2` is the internal joint-connection primitive for that
 private planning path. The full scene travels as its original serialized CDR

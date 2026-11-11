@@ -244,6 +244,8 @@ def refine_atlas_pairs(proposals, *, expected_source, exact_contact_world,
     Ports own the predicted attachment/snapshot and share the request deadline.
     ``refine(Transform,q,...)`` returns exact-target IK or None; carrying checks
     include the real measured box envelope even for an unloaded base atlas.
+    ``check_carrying`` must return a literal bool; transport/verdict objects
+    require an explicit adapter so a rejected but truthy object cannot pass.
     ``connect`` returns a checked, untimed geometric connection. All surviving
     pairs remain alternatives for the whole-chain planner. No path is executable.
     """
@@ -268,7 +270,7 @@ def refine_atlas_pairs(proposals, *, expected_source, exact_contact_world,
         contact_valid = check_carrying(q, **kwargs)
         if stopped():
             return AtlasEndpointResult((), (), tuple(trace), True, "CANCELLED_OR_DEADLINE")
-        if not contact_valid:
+        if contact_valid is not True:
             trace.append((branch.branch_id, "CONTACT_PAYLOAD_REJECT"))
             continue
         contacts.append((branch.branch_id, q))
@@ -289,7 +291,7 @@ def refine_atlas_pairs(proposals, *, expected_source, exact_contact_world,
         transit_valid = check_carrying(transit, **kwargs)
         if stopped():
             return AtlasEndpointResult((), (), tuple(trace), True, "CANCELLED_OR_DEADLINE")
-        if not transit_valid:
+        if transit_valid is not True:
             trace.append((branch.branch_id, "TRANSIT_PAYLOAD_REJECT"))
             continue
         if stopped():
