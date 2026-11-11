@@ -17,7 +17,7 @@ class WorkerScoreAdmission(unittest.TestCase):
             minimum_clearance_m=.04
             clearance_witness=('search_only','obstacle')
             def __init__(self,*args):pass
-        with patch('assets.load',return_value={}),patch('full_arm.FullArmScene',Scene),\
+        with patch('ompl.util.RNG'),patch('assets.load',return_value={}),patch('full_arm.FullArmScene',Scene),\
              patch('stage_planner.plan_action',return_value=dict(valid=True,stages=[])),\
              patch('plan_clearance.score_plan',return_value=score,side_effect=error):
             _worker('.',None,None,None,[],[],UpperConfig.load(),SelectionPolicy.load(),directory,5.,0)

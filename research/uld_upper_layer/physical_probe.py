@@ -150,7 +150,7 @@ def main():
         failed=True
         if monitor:
             monitor.fail_execution(str(exc) or type(exc).__name__,exception_type=type(exc).__name__)
-            runtime.begin_failure_capture(monitor.sample.stamp_s)
+            runtime.begin_failure_capture(monitor.failure_stamp_s)
         (out/'error.txt').write_text(traceback.format_exc())
         tail=[];wall_deadline=time.monotonic()+policy.condition_wait_budget_s
         first=runtime.snapshot().get('vacuum');stamp=first['sim_time_s'] if first else None

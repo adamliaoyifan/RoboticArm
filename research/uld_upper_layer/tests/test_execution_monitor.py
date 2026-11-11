@@ -92,25 +92,25 @@ class MonitorContracts(unittest.TestCase):
 
     def test_batched_native_states_cover_poll_gap_but_missing_native_states_reject(self):
         from monitored_stream import NativeSampleMonitor
-        for preserve,expected in ((True,None),(False,'MONITOR_RATE_INSUFFICIENT')):
+        for preserve,expected in ((True,None),(False,'NATIVE_CONTACT_STREAM_GAP')):
             monitor=self.create();monitor.observe(self.initial)
             monitor._reader=SimpleNamespace(read=lambda row:replace(self.initial,
                 stamp_s=row['vacuum']['sim_time_s']))
             native=[dict(sim_time_s=1.+i*.001,attached=False,processed_commands=0) for i in range(1,25)]
             if not preserve:native=native[-1:]
-            runtime=SimpleNamespace(native_samples_after=lambda stamp:[r for r in native if r['sim_time_s']>stamp])
+            runtime=SimpleNamespace(native_step_s=.001,native_samples_after=lambda stamp:[r for r in native if r['sim_time_s']>stamp])
             callback=NativeSampleMonitor(runtime,monitor,ExecutionPolicy.load())
             self.assertEqual(callback(dict(vacuum=native[-1])),expected)
             if preserve:
                 self.assertAlmostEqual(monitor.metrics()['max_monitor_gap_s'],.01)
-                self.assertAlmostEqual(callback.metrics()['max_native_processing_backlog_s'],.014)
+                self.assertAlmostEqual(callback.metrics()['max_native_processing_backlog_s'],.023)
 
     def test_native_history_appended_after_snapshot_is_deferred(self):
         from monitored_stream import NativeSampleMonitor
         monitor=self.create();monitor.observe(self.initial)
         monitor._reader=SimpleNamespace(read=lambda row:replace(self.initial,stamp_s=row['vacuum']['sim_time_s']))
         native=[dict(sim_time_s=1.+i*.001,attached=False,processed_commands=0) for i in range(1,31)]
-        runtime=SimpleNamespace(native_samples_after=lambda stamp:[r for r in native if r['sim_time_s']>stamp])
+        runtime=SimpleNamespace(native_step_s=.001,native_samples_after=lambda stamp:[r for r in native if r['sim_time_s']>stamp])
         callback=NativeSampleMonitor(runtime,monitor,ExecutionPolicy.load())
         self.assertIsNone(callback(dict(vacuum=native[23])))
         self.assertLessEqual(monitor.sample.stamp_s,1.024)
@@ -154,7 +154,7 @@ class MonitorContracts(unittest.TestCase):
             monitor=self.create(policy);monitor.observe(self.initial)
             monitor._reader=SimpleNamespace(read=lambda row:replace(self.initial,stamp_s=row['vacuum']['sim_time_s']))
             native=[dict(sim_time_s=1.+i*.001,attached=False,processed_commands=0) for i in range(1,1001)]
-            runtime=SimpleNamespace(native_samples_after=lambda stamp:[r for r in native if r['sim_time_s']>stamp])
+            runtime=SimpleNamespace(native_step_s=.001,native_samples_after=lambda stamp:[r for r in native if r['sim_time_s']>stamp])
             callback=NativeSampleMonitor(runtime,monitor,policy)
             for index in range(99,1000,100):self.assertIsNone(callback(dict(vacuum=native[index])))
             self.assertEqual(monitor.metrics()['samples'],expected_count)

@@ -11,6 +11,7 @@ import time
 import numpy as np
 from scipy.spatial.transform import Rotation
 from observed_support import measure_observed_support
+from contact_validation import validate_declared_contacts
 
 
 def pose_error(reference,observed):
@@ -43,6 +44,35 @@ class ExecutionMonitor:
     @property
     def failure(self):return self._failure
 
+    @property
+    def failure_stamp_s(self):
+        return self._failure['stamp_s'] if self._failure else self._sample.stamp_s
+
+    def _declared_contacts(self,sample,*,record_intended=True):
+        return validate_declared_contacts(sample,self._state.dimensions,self._config,
+            self._policy,self._allow_support,self._contact_mode,self._panel_collision_name,self._scene,
+            record_intended=record_intended)
+
+    def observe_native_contacts(self,row):
+        """Check each raw native step without advancing the 50Hz scene monitor.
+
+        Reuse the normalized reader and identical contact rule. This adds no
+        contact-force feedback or commands. Failure retains the exact input.
+        """
+        if self._failure:return self._failure['reason']
+        stamp=row.get('vacuum',{}).get('sim_time_s',self._sample.stamp_s)
+        try:
+            sample=self._reader.read(row)
+            failure,_=self._declared_contacts(sample,record_intended=False)
+        except (ValueError,KeyError,TypeError) as exc:
+            return self._stop('PHYSICAL_OBSERVATION_INVALID',detail=str(exc),
+                offending_stamp_s=stamp,invalid_observation=row)
+        if failure:
+            self._ring.append((sample.stamp_s,row))
+            return self._stop(failure['reason'],offending_stamp_s=sample.stamp_s,
+                invalid_observation=row,**{k:v for k,v in failure.items() if k!='reason'})
+        return None
+
     def begin_phase(self,name,contact_mode=False,attached=False,allow_support=True):
         self._phase=name;self._contact_mode=contact_mode
         self._expected_attached=attached;self._allow_support=allow_support
@@ -56,7 +86,9 @@ class ExecutionMonitor:
 
     def _stop(self,reason,**details):
         if self._failure is None:
-            self._failure=dict(reason=reason,phase=self._phase,stamp_s=self._sample.stamp_s,**details)
+            stamp=details.pop('offending_stamp_s',self._sample.stamp_s)
+            self._failure=dict(reason=reason,phase=self._phase,stamp_s=stamp,
+                               full_monitor_stamp_s=self._sample.stamp_s,**details)
             self._trace.write(json.dumps(dict(event='failure',**self._failure))+'\n');self._trace.flush()
         return self._failure['reason']
 
@@ -105,42 +137,10 @@ class ExecutionMonitor:
             self._scene.update_world_transform(body.name,self._scene.world_container@np.array(body.container_T_body).reshape(4,4))
         self._scene.payload['world_pose']=self._scene.world_container@np.array(sample.container_T_box).reshape(4,4)
         self._scene.payload['allow_support']=self._allow_support
-        # A lower-box vertical side can touch the moving box's bottom corner.
-        # Detect that physical jam before accepting it as intended support.
-        from support_contact import support_contact_failure
-        lower_by_collision={body.name+'::body::collision':body for body in sample.lower}
-        for contact in sample.contacts:
-            lower=lower_by_collision.get(contact.other_collision)
-            if lower is None:continue
-            half=np.asarray(lower.dimensions)/2
-            diagnostic=support_contact_failure(sample.container_T_box,self._state.dimensions,
-                lower.container_T_body,[-half,half],contact.point_container,
-                contact.normal_toward_payload_container,self._config.contact_tolerance_m,
-                self._config.contact_penetration_m,min(self._policy.contact_normal_alignment_deg,
-                    self._config.contact_normal_alignment_deg),contact.depth_m,normal_toward_box=True)
-            if not self._allow_support or diagnostic:
-                return self._stop('NATIVE_CONTACT_OUTSIDE_DECLARED_SUPPORT',
-                    body=lower.name,diagnostic=diagnostic)
+        failure,intended=self._declared_contacts(sample)
+        if failure:return self._stop(failure['reason'],**{k:v for k,v in failure.items() if k!='reason'})
         failure=self._scene.check_state(sample.q,self._config.collision_margin_m,self._contact_mode)
         if failure:return self._stop('OBSERVED_COLLISION_OR_CLEARANCE',diagnostic=failure)
-        intended=[]
-        for contact in sample.contacts:
-            if contact.other_collision!=self._panel_collision_name:continue
-            if not self._contact_mode:return self._stop('FORBIDDEN_NATIVE_PANEL_CONTACT')
-            mode=self._scene.contact_mode(self._contact_mode)
-            frame=np.array(sample.container_T_tool).reshape(4,4)
-            if mode=='push_plate':frame=frame@np.array(self._scene.push_geometry.tool_T_push_surface).reshape(4,4)
-            point=np.linalg.inv(frame)@np.r_[contact.point_container,1.]
-            normal=np.array(contact.normal_toward_payload_container)
-            from shapely.geometry import Point
-            patch=self._scene.contact_polygon(mode).buffer(self._config.contact_tolerance_m)
-            alignment=float(normal@frame[:3,2])
-            if (not patch.covers(Point(point[:2])) or abs(point[2])>self._config.contact_tolerance_m or
-                alignment<np.cos(np.deg2rad(min(self._policy.contact_normal_alignment_deg,
-                                                self._config.contact_normal_alignment_deg))) or
-                contact.depth_m>self._config.contact_penetration_m):
-                return self._stop('NATIVE_CONTACT_OUTSIDE_DECLARED_PANEL_PATCH',point_contact_frame=point[:3].tolist(),normal_alignment=alignment,depth_m=contact.depth_m)
-            intended.append(asdict(contact))
         self._support=measure_observed_support(sample,self._state.dimensions,self._state.com_local,
             self._config.contact_tolerance_m,self._config.contact_penetration_m)
         if self._support.native_max_depth_m>self._config.contact_penetration_m:

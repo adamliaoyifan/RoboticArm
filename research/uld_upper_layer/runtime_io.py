@@ -25,6 +25,7 @@ class RuntimeIO:
         self._next_capture_check=0.;self._budget_error=None
         self.env=dict(os.environ,ROS_DOMAIN_ID='7',IGN_PARTITION='uld_upper_layer_closed_loop',
                       ROS_LOG_DIR=str(self.output/'ros_logs'))
+        self.native_step_s=None
         self.contact_topic='/upper_layer_payload/contacts'
         self.vacuum_spec=None;self.vacuum_capture=None;self.vacuum_state=None
         self._native_history=deque(maxlen=256)
@@ -32,6 +33,8 @@ class RuntimeIO:
             self.env['ULD_UPPER_SCENE']=str(scene_dir)
             fixture=json.loads((Path(scene_dir)/'fixture.json').read_text())
             self.vacuum_spec=fixture.get('ideal_vacuum')
+            self.native_step_s=float(fixture['physics_step_s'])
+            if not 0<self.native_step_s:raise ValueError('INVALID_NATIVE_PHYSICS_STEP')
             self.contact_topic=fixture.get('contact_observation_topic',self.contact_topic)
         self.launch=None;self.pose_capture=None;self.contact_capture=None
         self.clock_capture=None
