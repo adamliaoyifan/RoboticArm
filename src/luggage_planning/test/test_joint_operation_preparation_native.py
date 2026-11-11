@@ -23,7 +23,7 @@ pytestmark = pytest.mark.skipif(not os.environ.get('JOINT_NATIVE_ENDPOINT_EXECUT
 
 
 @pytest.fixture(scope='module')
-def prepare_stack(native_stack):
+def prepare_stack(native_stack,request):
     import yaml
     import rclpy
     from rclpy.parameter import Parameter
@@ -56,6 +56,8 @@ def prepare_stack(native_stack):
     from types import SimpleNamespace
 
     stack = native_stack
+    backend = getattr(request,'param','grid_g')
+    observer = request.getfixturevalue('observer_owner') if backend == 'observer' else None
     directory = stack.directory/'preparation'
     directory.mkdir()
     fields = make_model(.06).as_dict();fields.pop('identity_hash')
@@ -112,16 +114,19 @@ def prepare_stack(native_stack):
         return response
     def serve_volume(request,response): return copy.deepcopy(state.volume)
     services = [owner.create_service(GetPlanningScene,'/get_planning_scene',serve_scene),
-        owner.create_service(GetCargoVolumeV2,'/cargo_map/get_volume_v2',serve_volume),
-        owner.create_service(GetParameters,'/cargo_volume_mapper/get_parameters',
-            lambda req,res:GetParameters.Response(values=[ParameterValue(type=1,bool_value=True)])),
         owner.create_service(EvaluateDirectedSuctionV2,'/luggage/evaluate_directed_suction_v2',quality.handle)]
+    if backend == 'grid_g':
+        services.extend([owner.create_service(GetCargoVolumeV2,'/cargo_map/get_volume_v2',serve_volume),
+            owner.create_service(GetParameters,'/cargo_volume_mapper/get_parameters',
+                lambda req,res:GetParameters.Response(values=[ParameterValue(type=1,bool_value=True)]))])
     xml,srdf=robot_fixture()
     params=dict(frame_scene_revision='scene',robot_description=xml,robot_description_semantic=srdf,
         container_translation=[0.,0.,0.],container_quaternion_xyzw=[0.,0.,0.,1.],
         suction_contact_model_config=str(contact_file),attachment_geometry_config=str(
             Path('src/luggage_planning/config/attachment_geometry.yaml').resolve()),
         geometric_slot_limit=2048,evidence_dir=str(directory/'boundaries'))
+    if observer is None:params['map_backend']='grid_g'
+    else:params.update(observer_geometry_file=str(observer.geometry),observer_config_file=str(observer.config))
     root=JointOperationPrepareNode(context=owner.context,
         parameter_overrides=[Parameter(k,value=v) for k,v in params.items()])
     executor=MultiThreadedExecutor(context=owner.context,num_threads=4);executor.add_node(root)
@@ -129,8 +134,8 @@ def prepare_stack(native_stack):
     client=owner.create_client(PrepareJointOperationV2,'/joint_operation/prepare')
     from rclpy.qos import QoSProfile,DurabilityPolicy,ReliabilityPolicy
     qos=QoSProfile(depth=1,durability=DurabilityPolicy.TRANSIENT_LOCAL,reliability=ReliabilityPolicy.RELIABLE)
-    publishers=[owner.create_publisher(SurfaceContractV2,'/luggage/cargo_map/surface_v2',qos),
-        owner.create_publisher(String,'/luggage/cargo_map/surface_2d',qos),
+    publishers=[owner.create_publisher(SurfaceContractV2,'/luggage/cargo_map/surface_v2',qos) if observer is None else None,
+        owner.create_publisher(String,'/luggage/cargo_map/surface_2d',qos) if observer is None else None,
         owner.create_publisher(SuctionTopDomainV2,'/luggage/suction_top_domain_v2',10),
         owner.create_publisher(JointState,'/joint_states',10)]
     surface=surface_to_message(record,BoundaryContext('TEST','owner','joint_operation','map','scene',
@@ -140,6 +145,9 @@ def prepare_stack(native_stack):
     request=PrepareJointOperationV2.Request(request_id='native-root',observation_id='observed',generation=3,
         geometry_hash=record['geometry_hash'],expected_map_revision=7,expected_model_sha256=stack.model.model_sha256,
         robot_state_stamp_valid=True,robot_state_stamp_ns=12_000_000_000,start_joints=list(q),candidate_limit=8,budget_s=10.)
+    if observer is not None:
+        request.expected_map_revision=observer.lease.identity.map_revision
+        request.expected_map_epoch=observer.lease.identity.epoch
     box=request.detection;box.id=domain.box_id;box.header.frame_id='world';box.header.stamp.sec=12
     box.pose.position.x,box.pose.position.y,box.pose.position.z=domain.box_xyz_world;box.pose.orientation.w=1.
     box.width,box.depth,box.height=domain.box_wdh;box.top_surface_valid=box.height_valid=True
@@ -151,7 +159,7 @@ def prepare_stack(native_stack):
     for name,message in zip(('surface','confirmation','top_domain','joints'),messages):
         (directory/('original_'+name+'.cdr')).write_bytes(serialize_message(message))
     (directory/'original_detection.cdr').write_bytes(serialize_message(request.detection))
-    (directory/'original_volume.cdr').write_bytes(serialize_message(volume))
+    if observer is None:(directory/'original_volume.cdr').write_bytes(serialize_message(volume))
     (directory/'original_scene.cdr').write_bytes(serialize_message(scene))
     def call(current):
         future=client.call_async(current);limit=time.monotonic()+15.
@@ -163,19 +171,22 @@ def prepare_stack(native_stack):
         for port in (root.preparation.contacts,root.preparation.planner.endpoints,
                      root.preparation.planner.connections,root.preparation.planner.certification):
             assert port.client.wait_for_service(timeout_sec=5.)
-        for client_ in (root.scene_client,root.volume_client,root.map_parameters):
+        clients = (root.scene_client,root.volume_client,root.map_parameters) if observer is None else (
+            root.scene_client,*root.observer.clients.values())
+        for client_ in clients:
             assert client_.wait_for_service(timeout_sec=5.)
         for client_ in (root.observed_contacts.retain_client,root.preparation.contacts.frozen_client):
             assert client_.wait_for_service(timeout_sec=5.)
         limit=time.monotonic()+5.
         while time.monotonic()<limit:
-            for pub,msg in zip(publishers,messages):pub.publish(msg)
-            if root.store.current() and root.domain is not None and root.joints is not None:break
+            for index,(pub,msg) in enumerate(zip(publishers,messages)):
+                if observer is None or index>=2:pub.publish(msg)
+            if (observer is not None or root.store.current()) and root.domain is not None and root.joints is not None:break
             time.sleep(.05)
-        assert root.store.current() and root.domain and root.joints
+        assert (observer is not None or root.store.current()) and root.domain and root.joints
         yield SimpleNamespace(request=request,call=call,root=root,state=state,domain=domain,
             publishers=publishers,messages=messages,directory=directory,quality=quality,
-            quality_context=quality_context,owner=owner,frozen=frozen)
+            quality_context=quality_context,owner=owner,frozen=frozen,observer=observer)
     finally:
         executor.shutdown(timeout_sec=3.);worker.join(timeout=3.)
         (directory/'root_teardown.json').write_text(json.dumps(dict(worker_stopped=not worker.is_alive(),
@@ -183,7 +194,8 @@ def prepare_stack(native_stack):
         root.destroy_node()
         owner.destroy_client(client)
         for service in (*services,*frozen.services):owner.destroy_service(service)
-        for pub in publishers:owner.destroy_publisher(pub)
+        for pub in publishers:
+            if pub is not None:owner.destroy_publisher(pub)
 
 
 def test_generated_prepare_rpc_returns_whole_certified_plan(prepare_stack):

@@ -604,7 +604,7 @@
    "consumer": "complete-operation execution admission",
    "transport": "PrepareJointOperationV2 / CheckPreparedOperationV2",
    "scope": "production",
-   "current": "preparation retains observed evidence and returns owner-issued plan/provenance; execution adoption pending",
+   "current": "preparation retains frozen contact and original O snapshot provenance; execution adoption pending",
    "target": "full directed plan binding against independently retained owner identity and digest; no client self-issued certificate",
    "sources": [
     "src/luggage_msgs/msg/JointOperationPlanV2.msg",
@@ -615,7 +615,10 @@
     "src/luggage_planning/luggage_planning/joint_operation_prepare_node.py",
     "src/luggage_planning/luggage_planning/joint_operation_issuance.py",
     "src/luggage_msgs/msg/FrozenSuctionObservationV2.msg",
-    "src/luggage_planning/luggage_planning/joint_operation_actual_contact.py"
+    "src/luggage_planning/luggage_planning/joint_operation_actual_contact.py",
+    "src/luggage_msgs/msg/OperationMapSourceV2.msg",
+    "src/luggage_planning/luggage_planning/joint_operation_map_source.py",
+    "src/luggage_planning/luggage_planning/joint_operation_observer.py"
    ],
    "checks": [
     "old_version",

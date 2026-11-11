@@ -12,7 +12,8 @@ def rank_payload_clearance(candidates, box_wdh, volume, margin):
     oriented box. Prefix sums bound each candidate query to eight array reads.
     """
     nx, ny, nz = map(int, volume.dimensions_xyz)
-    states = np.asarray(volume.states).reshape(nz, ny, nx)
+    states = (np.frombuffer(volume.states,dtype=np.uint8) if isinstance(volume.states,bytes)
+              else np.asarray(volume.states)).reshape(nz, ny, nx)
     active = np.asarray(volume.active, dtype=bool).reshape(nz, ny, nx)
     prefix = np.pad((active & (states != 1)).astype(np.int32), ((1, 0),) * 3)
     for axis in range(3):

@@ -6,3 +6,5 @@ bool current
 string reason
 # Independently retained owner provenance; not current observation/path permission.
 luggage_msgs/FrozenSuctionObservationV2 frozen_observation
+# Bound for the default O source; legacy G has bound=false.
+luggage_msgs/OperationMapSourceV2 map_source

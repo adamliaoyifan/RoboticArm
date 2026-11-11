@@ -520,10 +520,34 @@ exact typed service requests/responses before client-side slot-index remapping.
 
 `joint_operation_prepare_node.py` serves `/joint_operation/prepare`
 (`PrepareJointOperationV2`). This is a separate plan-only entry. It has read-only
-ports for the map owner's confirmation configuration and exact volume, full
+ports for an immutable O observer lease (default), full
 PlanningScene, perception-owned directed quality, native local paths, snapshot
 connections and whole-operation certification. It has no controller, vacuum,
 ApplyPlanningScene or OCC-write port. Legacy planning/execution remains separate.
+
+The default `map_backend=observer` requires the exact `observer_geometry_file`
+and `observer_config_file` used by O. Their bytes reproduce the native config
+digest, and supply the actual resolution and hull. `expected_map_epoch` must
+be positive; it and the requested map revision select one immutable lease.
+Surface and x-fastest volume pages must be complete, progress monotonically,
+and carry that same full identity and VALID epoch/generation. Cross-check
+column counts/occupied tops against the volume. Unknown active voxels remain
+blocked; inactive hull cells are not free evidence. O's canonical installed
+bridge supplies the surface view; no G occupancy-confirmed flag is synthesized.
+Container floor/ceiling and voxel origin Z are absolute; `inner_size[2]` is
+ceiling minus floor. All RPCs share the original deadline. Release acquired
+leases even on refusal, including late acquisitions after a transport timeout;
+unconfirmed release prevents another allocation. Final source checking acquires
+a fresh lease because GetValidity carries transition-time map revision.
+Preparation currently refuses changed revision/content. Execution adoption
+must separately check fresh O geometry and original remaining trajectories;
+the retained original revision is not execution permission.
+
+`map_backend=grid_g` retains the old explicit G confirmation/volume join for
+compatibility. Default O creates no G client or topic subscription. A fixture
+using explicit G cannot certify production O adoption. Issuance retains the
+original typed `OperationMapSourceV2` independently of client plan fields and
+returns it from CheckPreparedOperationV2; this source is non-renewing provenance.
 
 The caller binds measured detection/observation generation, canonical six-joint
 start and acquisition stamp, model SHA, geometry hash and map revision. The

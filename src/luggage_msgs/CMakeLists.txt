@@ -10,6 +10,7 @@ find_package(trajectory_msgs REQUIRED)
 find_package(moveit_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/OperationMapSourceV2.msg"
   "msg/FrozenSuctionObservationV2.msg"
   "srv/RetainSuctionObservationV2.srv"
   "srv/CheckFrozenSuctionContactV2.srv"

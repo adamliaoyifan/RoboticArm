@@ -48,18 +48,23 @@ class FrameContractTests(unittest.TestCase):
     def test_each_interface_has_sources_and_known_cases(self):
         report = checker.inventory_report(
             self.inventory, {case["id"] for case in self.suite["cases"]})
-        self.assertEqual(report["interface_count"], 24)
-        # Pending shrinks only through verified rows whose runtime proofs the
-        # checker itself validates in this tree (ST03+: F02-F05/F09/F10...).
-        # Expected pending = 24 minus verified-and-valid rows; anything else
-        # (isolated rows aside) must stay pending.
-        verified = {
+        self.assertGreaterEqual(report["interface_count"], 26)
+        # Labels cannot predict proof validity in a changing workspace. Every
+        # explicitly pending boundary must remain pending; stale verified
+        # proofs are tested below and may also add pending boundaries.
+        pending = {
             row["id"] for row in self.inventory["interfaces"]
-            if row.get("migration_state") == "verified"}
-        self.assertEqual(
-            len(report["pending"]),
-            24 - len(verified - {"F24"}),
-            report["pending"])
+            if row.get("migration_state") == "pending"}
+        self.assertTrue(pending <= {row["id"] for row in report["pending"]}, report["pending"])
+
+    def test_verified_labels_without_runtime_proofs_leave_every_boundary_pending(self):
+        inventory = deepcopy(self.inventory)
+        for row in inventory["interfaces"]:
+            row["migration_state"] = "verified"
+            row.pop("runtime_evidence", None)
+        report = checker.inventory_report(inventory, {c["id"] for c in self.suite["cases"]})
+        self.assertEqual({r["id"] for r in report["pending"]},
+                         {r["id"] for r in inventory["interfaces"]})
 
     def test_nonfinite_boolean_and_wrong_length_coordinates_rejected(self):
         for bad in (float("nan"), float("inf"), -float("inf"), True):
@@ -109,10 +114,11 @@ class FrameContractTests(unittest.TestCase):
         self.assertIn("F01", {p["id"] for p in report["pending"]})
 
     def test_deleting_a_pending_boundary_cannot_make_inventory_pass(self):
-        inventory = deepcopy(self.inventory)
-        inventory["interfaces"].pop()
-        with self.assertRaisesRegex(ValueError, "missing required boundaries"):
-            checker.inventory_report(inventory, {c["id"] for c in self.suite["cases"]})
+        for boundary in ("F24", "F25", "F26"):
+            inventory = deepcopy(self.inventory)
+            inventory["interfaces"] = [r for r in inventory["interfaces"] if r["id"] != boundary]
+            with self.subTest(boundary=boundary), self.assertRaisesRegex(ValueError, "missing required boundaries"):
+                checker.inventory_report(inventory, {c["id"] for c in self.suite["cases"]})
 
     def test_offline_or_stale_proof_cannot_clear_runtime_gate(self):
         inventory = deepcopy(self.inventory)

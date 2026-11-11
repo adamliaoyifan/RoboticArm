@@ -76,6 +76,7 @@ set_target_properties(observer_ray_probe PROPERTIES
 install(TARGETS observer_eval_native observer_ray_probe DESTINATION lib/${PROJECT_NAME})
 install(PROGRAMS test/run_package_tests.py DESTINATION lib/${PROJECT_NAME})
 install(PROGRAMS scripts/export_geometry.py DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS scripts/occ_surface_bridge.py DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY worlds DESTINATION share/${PROJECT_NAME})
 install(TARGETS uld_occ_observer_io DESTINATION lib)

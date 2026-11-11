@@ -5,6 +5,8 @@ string observation_id
 uint64 generation
 string geometry_hash
 uint64 expected_map_revision
+# Default O requires a positive epoch; G compatibility ignores this field.
+uint64 expected_map_epoch
 string expected_model_sha256
 # Measured robot state at observation, canonical elfin_joint1..elfin_joint6 order.
 bool robot_state_stamp_valid

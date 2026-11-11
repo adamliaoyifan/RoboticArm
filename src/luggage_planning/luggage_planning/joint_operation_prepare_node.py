@@ -34,6 +34,8 @@ from luggage_perception.frozen_suction_service import binding_to_message
 from luggage_planning.joint_operation_contracts import OPERATION_JOINTS, OperationIdentity
 from luggage_planning.joint_operation_adapters import operation_plan_from_message
 from luggage_planning.joint_operation_issuance import IssuedOperationRegistry
+from luggage_planning.joint_operation_map_source import map_source_to_message
+from luggage_planning.joint_operation_observer import ObserverConfiguration, ObserverSnapshotPort
 from luggage_planning.joint_operation_endpoints import NativeOperationEndpointPort
 from luggage_planning.joint_operation_ik import NativeSnapshotIKPort
 from luggage_planning.joint_operation_atlas import AtlasOperationHints, load_operation_atlas
@@ -81,8 +83,10 @@ class JointOperationPrepareNode(Node):
             max_bytes=param('issued_plan_byte_limit',16*1024*1024),
             lifetime_s=param('issued_plan_lifetime_s',300.))
         self._inflight = {}
+        self._rpc_completions = {}
         self._evidence = str(param('evidence_dir',''))
         self._evidence_seq,self._evidence_bytes = 0,0
+        self._evidence_lock = threading.Lock()
         if self._evidence: Path(self._evidence).mkdir(parents=True,exist_ok=False)
         def recorder(port): return lambda kind,value:self._record(port+'_'+kind,value)
         contacts = DirectedContactPort(self,recorder=recorder('quality'))
@@ -116,11 +120,22 @@ class JointOperationPrepareNode(Node):
             max_center_checks=int(param('max_center_checks',256)),atlas=atlas,
             atlas_unavailable_reason=atlas_reason)
         self.scene_client = self.create_client(GetPlanningScene,'/get_planning_scene')
-        self.volume_client = self.create_client(GetCargoVolumeV2,'/cargo_map/get_volume_v2')
-        self.map_parameters = self.create_client(GetParameters,param('map_parameter_service','/cargo_volume_mapper/get_parameters'))
-        qos = QoSProfile(depth=1,reliability=ReliabilityPolicy.RELIABLE,durability=DurabilityPolicy.TRANSIENT_LOCAL)
-        self.create_subscription(SurfaceContractV2,'/luggage/cargo_map/surface_v2',self._surface,qos)
-        self.create_subscription(String,'/luggage/cargo_map/surface_2d',self._confirmation,qos)
+        self.map_backend = str(param('map_backend','observer'))
+        self.observer = None
+        if self.map_backend == 'observer':
+            configuration = ObserverConfiguration.load(param('observer_geometry_file',''),
+                                                        param('observer_config_file',''))
+            self.observer = ObserverSnapshotPort(self,configuration=configuration,call=self._call,
+                prefix=str(param('observer_prefix','/uld_occ_observer')),
+                max_age_ms=int(param('observer_max_age_ms',1000)),recorder=self._record)
+        elif self.map_backend == 'grid_g':
+            self.volume_client = self.create_client(GetCargoVolumeV2,'/cargo_map/get_volume_v2')
+            self.map_parameters = self.create_client(GetParameters,param('map_parameter_service','/cargo_volume_mapper/get_parameters'))
+            qos = QoSProfile(depth=1,reliability=ReliabilityPolicy.RELIABLE,durability=DurabilityPolicy.TRANSIENT_LOCAL)
+            self.create_subscription(SurfaceContractV2,'/luggage/cargo_map/surface_v2',self._surface,qos)
+            self.create_subscription(String,'/luggage/cargo_map/surface_2d',self._confirmation,qos)
+        else:
+            raise ValueError('map_backend must be observer or explicit grid_g compatibility')
         self.create_subscription(SuctionTopDomainV2,'/luggage/suction_top_domain_v2',self._domain,10)
         self.create_subscription(JointState,'/joint_states',self._joints,10)
         self.create_service(PrepareJointOperationV2,'/joint_operation/prepare',self._prepare,
@@ -132,6 +147,7 @@ class JointOperationPrepareNode(Node):
         from luggage_msgs.msg import FrozenSuctionObservationV2
         response.current = False
         response.frozen_observation = FrozenSuctionObservationV2()
+        response.map_source = map_source_to_message(None)
         response.reason = 'PLAN_NOT_CURRENTLY_ISSUED'
         try:
             issued = self.issued.lookup(request.plan.plan_digest)
@@ -141,6 +157,7 @@ class JointOperationPrepareNode(Node):
                 response.current = self.issued.current(plan)
                 binding = self.issued.contact_binding(plan) if response.current else None
                 if binding is not None:response.frozen_observation = binding_to_message(binding)
+                if response.current:response.map_source = map_source_to_message(self.issued.map_source(plan))
                 response.reason = 'OWNER_ISSUANCE_CURRENT' if response.current else 'PLAN_NOT_CURRENTLY_ISSUED'
         except Exception as error:
             response.reason = 'ISSUANCE_CHECK_REFUSED:'+type(error).__name__
@@ -148,6 +165,10 @@ class JointOperationPrepareNode(Node):
 
     def _record(self,boundary,value):
         if not self._evidence: return
+        with self._evidence_lock:
+            self._record_owned(boundary,value)
+
+    def _record_owned(self,boundary,value):
         raw = value if isinstance(value,bytes) else serialize_message(value)
         if self._evidence_bytes+len(raw) > 256*1024*1024:
             raise RuntimeError('OPERATION_EVIDENCE_BUDGET_EXHAUSTED')
@@ -197,21 +218,74 @@ class JointOperationPrepareNode(Node):
             raise ValueError('CURRENT_START_STATE_MISMATCH')
         return domain
 
-    def _call(self,client,request,deadline,boundary):
+    def _call(self,client,request,deadline,boundary,*,late_response=None):
         if time.monotonic() >= deadline: raise TimeoutError('OPERATION_DEADLINE')
         old = self._inflight.get(client)
-        if old is not None and not old.done(): raise RuntimeError(boundary+'_BACKEND_BUSY')
+        completion = self._rpc_completions.get(client)
+        if ((old is not None and not old.done()) or
+                (completion is not None and not completion.is_set())):
+            raise RuntimeError(boundary+'_BACKEND_BUSY')
         if not client.service_is_ready(): raise RuntimeError(boundary+'_BACKEND_UNAVAILABLE')
         self._record(boundary+'_request',request)
         event = threading.Event()
         future = self._inflight[client] = client.call_async(request)
-        future.add_done_callback(lambda _:event.set())
-        while not event.wait(min(.01,max(0.,deadline-time.monotonic()))):
+        consumed = self._rpc_completions[client] = threading.Event()
+        guard = threading.Lock()
+        state = dict(abandoned=False,cleaned=False)
+        def clean_late():
+            with guard:
+                if not state['abandoned'] or state['cleaned'] or not future.done():return
+                state['cleaned'] = True
+            try:
+                result = future.result()
+                if late_response is not None and result is not None:
+                    try:self._record(boundary+'_late_response',result)
+                    finally:late_response(result)
+            except Exception as error:self.get_logger().error('LATE_RESPONSE_CLEANUP_FAILED:'+str(error))
+            finally:consumed.set()
+        def complete(_):
+            event.set()
+            clean_late()
+        future.add_done_callback(complete)
+        returned = False
+        try:
+            while not event.wait(min(.01,max(0.,deadline-time.monotonic()))):
+                if time.monotonic() >= deadline: raise TimeoutError('OPERATION_DEADLINE')
+            result = future.result()
+            self._record(boundary+'_response',result)
             if time.monotonic() >= deadline: raise TimeoutError('OPERATION_DEADLINE')
-        result = future.result()
-        self._record(boundary+'_response',result)
-        if time.monotonic() >= deadline: raise TimeoutError('OPERATION_DEADLINE')
-        return result
+            returned = True
+            return result
+        finally:
+            if not returned:
+                with guard:state['abandoned'] = True
+                clean_late()
+            else:consumed.set()
+
+    def _capture_map(self,request,deadline):
+        if self.observer is not None:
+            captured = self.observer.capture(scene_revision=self.revision,request_id=request.request_id,
+                expected_epoch=request.expected_map_epoch,expected_revision=request.expected_map_revision,
+                deadline=deadline)
+            return captured.surface,captured.volume,captured.source
+        parameters = self._call(self.map_parameters,GetParameters.Request(names=['require_confirmed_map']),deadline,'map_parameters')
+        if len(parameters.values)!=1 or parameters.values[0].type!=1:
+            raise ValueError('MAP_CONFIRMATION_CONFIGURATION_UNAVAILABLE')
+        self.store.set_confirmation_required(parameters.values[0].bool_value)
+        confirmed = self.store.current()
+        if confirmed is None:raise ValueError('NO_CONFIRMED_OCC_SNAPSHOT')
+        return confirmed,None,None
+
+    def _grid_g_volume(self,confirmed,deadline):
+        record = confirmed.record()
+        volume_request = GetCargoVolumeV2.Request(scene_revision=record['scene_revision'],geometry_hash=record['geometry_hash'],
+            expected_map_revision=record['map_revision'],expected_epoch=str(record.get('epoch') or ''),
+            expected_content_digest=str(record.get('content_digest') or ''))
+        volume = self._call(self.volume_client,volume_request,deadline,'volume')
+        if ((volume_request.expected_epoch and volume.epoch!=volume_request.expected_epoch) or
+                (volume_request.expected_content_digest and volume.content_digest!=volume_request.expected_content_digest)):
+            raise ValueError('VOLUME_SNAPSHOT_IDENTITY_MISMATCH')
+        return volume
 
     def _scene(self,deadline):
         request = GetPlanningScene.Request()
@@ -258,6 +332,7 @@ class JointOperationPrepareNode(Node):
         started = time.monotonic();response.success = False;response.plan = JointOperationPlanV2()
         issued_plan = None
         observed = None
+        map_source = None
         response.trace_json,response.elapsed_s = '[]',0.
         if not self._active.acquire(blocking=False):
             response.reason = 'OPERATION_PREPARATION_BUSY';return response
@@ -276,25 +351,14 @@ class JointOperationPrepareNode(Node):
                 deadline=deadline,cancelled=lambda:False)
             if not retained.retained:raise ValueError(retained.reason)
             observed = retained.observation
-            parameters = self._call(self.map_parameters,GetParameters.Request(names=['require_confirmed_map']),deadline,'map_parameters')
-            if len(parameters.values)!=1 or parameters.values[0].type!=1:
-                raise ValueError('MAP_CONFIRMATION_CONFIGURATION_UNAVAILABLE')
-            self.store.set_confirmation_required(parameters.values[0].bool_value)
-            confirmed = self.store.current()
-            if confirmed is None: raise ValueError('NO_CONFIRMED_OCC_SNAPSHOT')
+            confirmed,volume,map_source = self._capture_map(request,deadline)
             record = confirmed.record()
             if (record['geometry_hash'],record['map_revision'],record['scene_revision']) != (
                     request.geometry_hash,request.expected_map_revision,self.revision):
                 raise ValueError('OCC_INPUT_IDENTITY_MISMATCH')
             baseline = self._scene(deadline)
             expected_world = proposal_scene_hash(baseline)
-            volume_request = GetCargoVolumeV2.Request(scene_revision=record['scene_revision'],geometry_hash=record['geometry_hash'],
-                expected_map_revision=record['map_revision'],expected_epoch=str(record.get('epoch') or ''),
-                expected_content_digest=str(record.get('content_digest') or ''))
-            volume = self._call(self.volume_client,volume_request,deadline,'volume')
-            if ((volume_request.expected_epoch and volume.epoch!=volume_request.expected_epoch) or
-                    (volume_request.expected_content_digest and volume.content_digest!=volume_request.expected_content_digest)):
-                raise ValueError('VOLUME_SNAPSHOT_IDENTITY_MISMATCH')
+            if volume is None:volume = self._grid_g_volume(confirmed,deadline)
             snapshot = build_private_snapshot(confirmed,baseline,self.model.model_sha256,self.container,
                                               collision_margin_m=self.margin,volume=volume)
             placements = self._placements(request,confirmed,volume)
@@ -308,7 +372,9 @@ class JointOperationPrepareNode(Node):
                     request_id=request.request_id,observation_id=request.observation_id,
                     expected_observation=observed,deadline=limit,cancelled=lambda:False)
                 latest = self.store.current()
-                return (latest is not None and latest.identity==confirmed.identity
+                map_current = (self.observer.current(map_source,deadline=limit) if self.observer is not None
+                               else latest is not None and latest.identity==confirmed.identity)
+                return (map_current
                     and checked.retained and checked.observation.binding==observed.binding
                     and self._current(request,frozen_domain=domain).digest()==current.domain.digest()
                     and proposal_scene_hash(scene)==expected_world)
@@ -333,7 +399,7 @@ class JointOperationPrepareNode(Node):
                 self.get_logger().error(response.reason+':'+str(error))
             else:
                 if response.success:
-                    try: self.issued.issue(issued_plan,contact_binding=observed.binding)
+                    try: self.issued.issue(issued_plan,contact_binding=observed.binding,map_source=map_source)
                     except Exception as error:
                         response.success = False;response.plan = JointOperationPlanV2()
                         response.reason = 'PREPARATION_ISSUANCE_FAILED:'+type(error).__name__

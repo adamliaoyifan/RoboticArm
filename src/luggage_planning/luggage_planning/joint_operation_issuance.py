@@ -13,6 +13,7 @@ import time
 
 from luggage_planning.joint_operation_contracts import JointOperationPlan, admit_operation_plan
 from luggage_perception.frozen_suction_observation import FrozenObservationBinding
+from luggage_planning.joint_operation_map_source import OperationMapSource
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ class _IssuedPlan:
     expires_at: float
     size_bytes: int
     contact_binding: object = None
+    map_source: object = None
 
 
 class IssuedOperationRegistry:
@@ -49,7 +51,7 @@ class IssuedOperationRegistry:
             if now >= entry.expires_at:
                 self._remove(digest)
 
-    def issue(self, plan, *, contact_binding=None):
+    def issue(self, plan, *, contact_binding=None, map_source=None):
         """Owner-only publication; callers cannot issue through the check RPC.
 
         Repeating an identical publication does not extend its lifetime. A new
@@ -69,6 +71,12 @@ class IssuedOperationRegistry:
                 raise ValueError('ISSUED_CONTACT_BINDING_IDENTITY_MISMATCH')
             size += len(json.dumps(asdict(contact_binding),sort_keys=True,separators=(',',':'),
                                    allow_nan=False).encode())
+        if map_source is not None:
+            if (type(map_source) is not OperationMapSource
+                    or (map_source.scene_revision,map_source.geometry_hash,map_source.map_revision) !=
+                       (plan.identity.scene_revision,plan.identity.geometry_hash,plan.identity.map_revision)):
+                raise ValueError('ISSUED_MAP_SOURCE_IDENTITY_MISMATCH')
+            size += len(json.dumps(asdict(map_source),sort_keys=True,separators=(',',':')).encode())
         if size > self.max_bytes:
             raise ValueError('ISSUED_PLAN_EXCEEDS_BYTE_LIMIT')
         with self._lock:
@@ -77,6 +85,8 @@ class IssuedOperationRegistry:
             if plan.plan_digest in self._entries:
                 if self._entries[plan.plan_digest].contact_binding != contact_binding:
                     raise ValueError('ISSUED_CONTACT_BINDING_REBIND_REFUSED')
+                if self._entries[plan.plan_digest].map_source != map_source:
+                    raise ValueError('ISSUED_MAP_SOURCE_REBIND_REFUSED')
                 return
             key = (plan.identity.request_id, plan.identity.box_id)
             previous = [(digest, entry) for digest, entry in self._entries.items()
@@ -89,7 +99,7 @@ class IssuedOperationRegistry:
             while (len(self._entries) >= self.max_plans
                    or self._bytes + size > self.max_bytes):
                 self._remove(next(iter(self._entries)))
-            self._entries[plan.plan_digest] = _IssuedPlan(plan, now + self.lifetime_s, size,contact_binding)
+            self._entries[plan.plan_digest] = _IssuedPlan(plan, now + self.lifetime_s, size,contact_binding,map_source)
             self._bytes += size
 
     def lookup(self, digest):
@@ -119,3 +129,12 @@ class IssuedOperationRegistry:
             self._expire(self._now())
             entry = self._entries.get(plan.plan_digest)
             return entry.contact_binding if entry is not None and entry.plan == plan else None
+
+    def map_source(self, plan):
+        """Original source from the owner; never infer it from caller labels."""
+        if not self.current(plan):
+            return None
+        with self._lock:
+            self._expire(self._now())
+            entry = self._entries.get(plan.plan_digest)
+            return entry.map_source if entry is not None and entry.plan == plan else None

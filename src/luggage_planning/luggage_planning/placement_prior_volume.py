@@ -12,7 +12,17 @@ def blocked_volume_runs(response, confirmed_surface):
     """
     surface = confirmed_surface.record()
     confirmation = json.loads(confirmed_surface.confirmation_json)
-    if (not response.success or response.frame_id != 'container_link' or
+    from luggage_planning.joint_operation_observer import ObserverVolume
+    if type(response) is ObserverVolume:
+        from dataclasses import asdict
+        source = response.source
+        if (confirmation.get('source') != 'observer'
+                or confirmation.get('observer_source') != asdict(source)
+                or (source.scene_revision, source.geometry_hash, source.map_revision, source.content_sha256) !=
+                   (surface['scene_revision'], surface['geometry_hash'], surface['map_revision'],
+                    surface.get('content_digest'))):
+            raise ValueError('observer volume/surface source mismatch')
+    elif (not response.success or response.frame_id != 'container_link' or
             response.scene_revision != surface['scene_revision'] or
             response.geometry_hash != surface['geometry_hash'] or
             response.map_revision != surface['map_revision'] or

@@ -163,6 +163,7 @@ scene; world and base do not coincide in this cell. `0.53` is container-frame ON
 | v1 `surface_map_2d` (topic / bridge / view) | container, floor-relative (height arrays) | z=0 at inner floor | [0, 1.48] |
 | v2 surface contract `surface_z_container` | container, ABSOLUTE | floor .. ceiling | [0.53, 2.01] |
 | G `query_cells_v2` grid.origin | container, ABSOLUTE | cell iz spans [origin.z+iz*r, ...) | [0.53, 2.01] |
+| joint-operation O lease surface/volume | container, ABSOLUTE | voxel origin Z=floor; surface top=floor..ceiling; inner_size[2]=HEIGHT | [0.53, 2.01] / size 1.48 |
 | oracle `verify_candidate` hull | container, ABSOLUTE | reads `hull.ceiling_z_container` | [0.53, 2.01] |
 | oracle `placed_clearance_leg` | container, floor-relative | scene-derived floor/height | [0, 1.48] |
 | K01 oracle payload hull (`_k01_hull`, schema v4) | BOTH, named | `inner_size[2]`=HEIGHT 1.48 + `ceiling_z_container`=2.01 | both |

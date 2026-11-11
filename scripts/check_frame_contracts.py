@@ -33,7 +33,7 @@ DEFAULT_SUITE = ROOT / "src/luggage_description/test/data/frame_contract_cases.j
 DEFAULT_INVENTORY = ROOT / "docs/architecture/frame_interfaces.json"
 # Inventory v1 freezes these reviewed obligations. Deleting a row cannot turn
 # an incomplete migration green; extra future boundaries are allowed.
-REQUIRED_INTERFACE_IDS = {f"F{i:02d}" for i in range(1, 25)}
+REQUIRED_INTERFACE_IDS = {f"F{i:02d}" for i in range(1, 27)}
 CONTRACT_SOURCES = (
     "src/luggage_description/luggage_description/frame_contracts.py",
     "src/luggage_description/luggage_description/frame_transforms.py",

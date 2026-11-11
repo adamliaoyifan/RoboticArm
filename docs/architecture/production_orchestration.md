@@ -151,6 +151,16 @@ observation liveness or physical seal; execution must check the actual perceptio
 and attachment owners before native/controller admission. A stored binding is
 not a new view, a pose correction or a reason to skip any execution gate.
 
+The original O source is also retained independently with the issued plan:
+epoch, map/observed revisions, acquisition stamp, hull/config digests, clock,
+validity generation and full content digest. CheckPreparedOperationV2 returns
+typed OperationMapSourceV2; duplicate issuance cannot replace or drop it and
+its bytes count against retention. The default preparation root reads one O
+lease for both surface and volume and rechecks a fresh lease before issuance.
+Changed ordinary revisions need fresh native validation before execution;
+changed epoch/config/model/hull invalidate the original source association.
+Legacy explicit G has an unbound O source and cannot enter an O-only consumer.
+
 The strict operation motion transport submits one original timed leg through
 MoveIt ExecuteTrajectory. It retains every joint coordinate (including full
 turns), timestamp, derivative and effort value. A native receipt must bind the
