@@ -86,6 +86,8 @@ class FullArmScene:
         self._add_environment()
         self.last_witness=None
         self.payload=None
+        from motion_bounds import SourceMotionBounds
+        self._motion_bounds=SourceMotionBounds(self.urdf,self.robot_parts,self.world_parts)
         self.set_joints(np.zeros(6))
 
     def add_world(self,name,mesh,transform):
@@ -95,9 +97,11 @@ class FullArmScene:
         from trimesh.collision import CollisionManager
         manager=CollisionManager();manager.add_object(name,mesh,transform)
         self.world_managers[name]=manager
+        if hasattr(self,'_motion_bounds'):self._motion_bounds.register_static(name)
 
     def remove_world(self,name):
         self.world.remove_object(name)
+        if hasattr(self,'_motion_bounds'):self._motion_bounds.remove_static(name)
         del self.world_parts[name];del self.world_managers[name];del self.world_bounds[name]
 
     def _add_environment(self):
@@ -230,6 +234,10 @@ class FullArmScene:
         self.payload=None if mode=='absent' else dict(mesh=trimesh.creation.box(size),
             size=np.array(size),mode=mode,world_pose=world_pose,box_T_tool=box_T_tool,
             allow_support=allow_support)
+        self._motion_bounds.set_payload(self.payload)
+
+    def relative_motion_bound(self,pair,absolute_joint_delta):
+        return self._motion_bounds.relative_motion_bound(pair,absolute_joint_delta)
 
     def payload_transform(self):
         p=self.payload

@@ -22,8 +22,11 @@ def certify_joint_intervals(scene,path,config,radius,contact_tool,deadline=None)
             if hasattr(scene,'relative_joint_indices'):
                 proven=True
                 for distance,pair in scene.sample_distances:
-                    axes=scene.relative_joint_indices(pair)
-                    bound=radius*sum(delta[j] for j in axes)
+                    if hasattr(scene,'relative_motion_bound'):
+                        bound=scene.relative_motion_bound(pair,delta)
+                    else:
+                        axes=scene.relative_joint_indices(pair)
+                        bound=radius*sum(delta[j] for j in axes)
                     if distance<config.collision_margin_m+bound:
                         proven=False;break
             else:

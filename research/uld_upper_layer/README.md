@@ -229,3 +229,10 @@ accepted pickup endpoints alone never count as complete plans. Geometry search
 flushes candidate/subsearch inputs incrementally and checks its deadline inside
 subsearches. The occupancy broadphase proves distant AABB separation before
 running the unchanged OBB SAT on near objects.
+
+
+`motion_bounds.py` derives each body's joint point-travel radii from downstream
+source origin translations and actual collision vertices. Attached payload
+radii include the TCP-to-box offset. Relative pair bounds cancel shared ancestors;
+unknown bodies reject instead of silently receiving static zero motion. These
+bounds certify whole intervals without changing the required collision margin.
