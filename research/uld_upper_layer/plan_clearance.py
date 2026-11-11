@@ -9,6 +9,7 @@ import numpy as np
 from clearance_bounds import DistanceSample,bound_joint_path
 from planning_types import digest
 from support_geometry import measure_support
+from push_seam_events import trace_push_seams
 
 
 class FullArmDistanceSampler:
@@ -149,4 +150,6 @@ def score_plan(scene,state,plan,config,policy,deadline,emit=None):
         payload_lower_m=min((r['payload_lower_m'] for r in payloads),default=None),
         min_com_margin_m=support['min_com_margin_m'],min_support_area_ratio=support['min_area_ratio'],
         support_trace=support,stages=scores,elapsed_s=time.monotonic()-started,
+        push_seam_events=trace_push_seams(action['handoff_box_pose'],
+            action['placement']['final_box_pose'],state.dimensions,scene.snapshot.surfaces),
         scope='nominal_complete_path_clearance_only_robust_tube_and_physics_are_separate_gates')

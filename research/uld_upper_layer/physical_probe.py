@@ -66,7 +66,7 @@ def main():
         plan=plans[selection['selected_index']]
         for name in ('candidates.py','planning_types.py','full_arm.py','tool_contact_geometry.py','support_contact.py',
                      'geometry.py','assets.py','path_planning.py','stage_planner.py','action_screen.py','coupled_chain.py','interval_certificate.py','motion_bounds.py',
-                     'plan_clearance.py','clearance_bounds.py','selection_policy.py','plan_selection.py'):
+                     'plan_clearance.py','push_seam_events.py','clearance_bounds.py','selection_policy.py','plan_selection.py'):
             if sha256(Path(__file__).with_name(name))!=planning_manifest['source_hashes'].get(name):
                 raise ValueError('PLANNED_SOURCE_CHANGED:'+name)
     fixture=json.loads((args.scene_dir/'fixture.json').read_text())

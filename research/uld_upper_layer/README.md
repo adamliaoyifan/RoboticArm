@@ -260,8 +260,8 @@ The single plan's G12 section calibrates the physical existence experiment to
 600 simulation seconds/1800 wall seconds after measuring a309.3s nominal plan;
 all collision, support and stability requirements remain mandatory.
 
-`physical_probe.py` performs an unscored real-controller hold, or the first
-complete nominal plan from a `motion_feasibility.py --plan-paths` evidence run:
+`physical_probe.py` performs an unscored real-controller hold, or selects a
+complete scored nominal plan from a `motion_feasibility.py --plan-paths` evidence run:
 
 ```bash
 /tmp/uld-upper-python/bin/python research/uld_upper_layer/physical_probe.py \
@@ -279,8 +279,15 @@ payload and contact-component observations share a physics-step stamp, including
 empty contacts. A bounded history supplies ordered monitor samples; stale streams
 and real native gaps still reject. ROS clock capture has its own observation-only
 executor, independently of action feedback. Failures preserve stage/window data
-and always tear down the owned stack. A nominal probe is not the G12 acceptance:
-robust tube, release calibration, candidate scoring and five-seed campaign remain.
+and always tear down the owned stack. Complete nominal path scoring and
+collision-first selection are implemented; robust tube, release calibration
+and five-seed campaign remain separate unfinished acceptance gates.
+
+`push_seam_events.py` locates continuous footprint-overlap entry/exit progress
+for each rectangular source surface using translating-polygon SAT. Scoring
+records these events, source IDs, actual source heights and nominal bottom/top
+gaps. Events are diagnostics for contact-model/tube development, not a new
+contact exemption or stability proof; raised patches are retained too.
 
 Native physical probes archive contacts once in vacuum_state.jsonl.gz; legacy
 contact topic capture is used only without the native fixture. Failure trigger
@@ -290,7 +297,13 @@ max_case_bytes; the runtime checks the sum of all case files before consuming
 the reserve. Intended push/support normal tolerance comes from UpperConfig;
 native checks also enforce the execution policy's stricter normal limit.
 
-For physical probes, native callbacks remain full rate. `monitor.jsonl.gz`
+For physical probes, native callbacks remain full rate. Every native physics
+step validates the declared lower/panel contact rules through the shared
+`contact_validation.py`; missing steps/history fail closed. Complete FCL,
+support and motion checks retain the configured monitor period. This is not
+a full-arm/full-world check at every physics step. Native contact coverage,
+initial cursor and step gaps are counted separately; failure windows use the
+actual offending raw stamp. `monitor.jsonl.gz`
 includes each accepted decision's exact `input_observation`; the native archive
 baseline uses the monitor period and `_trigger.jsonl.gz` retains the complete
 raw pre/post failure window. `native_capture_metrics.json` reports coverage and
