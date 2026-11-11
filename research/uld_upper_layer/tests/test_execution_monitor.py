@@ -119,5 +119,23 @@ class MonitorContracts(unittest.TestCase):
             observed=replace(self.initial,contacts=(ObservedContact('S20::wrist::p04',point,normal,.0001),))
             self.assertEqual(monitor.observe(observed),expected)
 
+    def test_external_monitor_period_changes_sample_count_without_losing_native_order(self):
+        from monitored_stream import NativeSampleMonitor
+        import tempfile,yaml
+        from dataclasses import asdict
+        for period,expected_count in ((.01,101),(.02,51)):
+            with tempfile.TemporaryDirectory() as directory:
+                path=Path(directory)/'policy.yaml';values=asdict(ExecutionPolicy.load())
+                values['monitor_period_s']=period;path.write_text(yaml.safe_dump(values))
+                policy=ExecutionPolicy.load(path)
+            monitor=self.create(policy);monitor.observe(self.initial)
+            monitor._reader=SimpleNamespace(read=lambda row:replace(self.initial,stamp_s=row['vacuum']['sim_time_s']))
+            native=[dict(sim_time_s=1.+i*.001,attached=False,processed_commands=0) for i in range(1,1001)]
+            runtime=SimpleNamespace(native_samples_after=lambda stamp:[r for r in native if r['sim_time_s']>stamp])
+            callback=NativeSampleMonitor(runtime,monitor,policy)
+            for index in range(99,1000,100):self.assertIsNone(callback(dict(vacuum=native[index])))
+            self.assertEqual(monitor.metrics()['samples'],expected_count)
+            self.assertLessEqual(monitor.metrics()['max_monitor_gap_s'],.020000001)
+
 
 if __name__=='__main__':unittest.main()

@@ -31,6 +31,7 @@ class ExecutionMonitor:
         self._panel_collision_name=panel_collision_name
         self._max_monitor_gap_s=0.;self._samples=0
         self._prior_attached=initial.attached
+        self._lower_maxima={body.name:dict(translation_m=0.,rotation_deg=0.) for body in initial.lower}
         scene.set_payload(state.dimensions,'world',scene.world_container@np.array(initial.container_T_box).reshape(4,4),allow_support=True)
 
     @property
@@ -93,6 +94,8 @@ class ExecutionMonitor:
                 return self._stop('ATTACHED_BOX_RELATION_ERROR',distance_m=distance,angle_deg=angle)
         for body in sample.lower:
             distance,angle=pose_error(self._baseline[body.name],body.container_T_body)
+            self._lower_maxima[body.name]['translation_m']=max(self._lower_maxima[body.name]['translation_m'],distance)
+            self._lower_maxima[body.name]['rotation_deg']=max(self._lower_maxima[body.name]['rotation_deg'],angle)
             if distance>self._policy.lower_translation_m or angle>self._policy.lower_rotation_deg:
                 return self._stop('LOWER_CARGO_MOVED',body=body.name,distance_m=distance,angle_deg=angle)
             self._scene.update_world_transform(body.name,self._scene.world_container@np.array(body.container_T_body).reshape(4,4))
@@ -169,4 +172,5 @@ class ExecutionMonitor:
 
     def metrics(self):
         return dict(samples=self._samples,max_monitor_gap_s=self._max_monitor_gap_s,
+                    lower_maxima={name:dict(values) for name,values in self._lower_maxima.items()},
                     failure=self._failure,physical_execution='not_certified_by_monitor_alone')

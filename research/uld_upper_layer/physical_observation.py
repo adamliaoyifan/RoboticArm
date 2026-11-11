@@ -75,8 +75,8 @@ class ObservationReader:
             if not native['contacts_component_available'] or 'payload_contacts' not in native:
                 raise ValueError('NATIVE_PHYSICAL_CONTACT_COMPONENT_UNAVAILABLE')
             contact_message=native['payload_contacts'];contact_stamp=stamp
-        age(row.get('clock'),'clock');age(contact_stamp,'contacts')
         if 'native_latest_stamp_s' in row:age(row['native_latest_stamp_s'],'native_processing_backlog')
+        age(row.get('clock'),'clock');age(contact_stamp,'contacts')
         lower=[]
         for name,dimensions in self._lower:
             age(row.get('pose_stamps',{}).get(name),name)
