@@ -529,6 +529,11 @@ class TestProvenance(unittest.TestCase):
             request_id="req", scene_revision=SCENE, frame_id="world",
             reference="box_center", time_basis="acquisition")
         attachment = admit_attachment(tool, box, measured, None, 3, 3, "box", context)
+        from st09_contracts.attachment_geometry import freeze_geometry
+        from st09_contracts.payload_envelope import EnvelopeLimits
+        attachment['conservative_geometry'] = freeze_geometry(
+            WDH, attachment['t_tool_box_translation'], attachment['t_tool_box_quaternion'],
+            EnvelopeLimits(0., (0., 0., 0.), (0., 0.), 0.))
         physical = dict(attachment)
         physical["t_tool_box_translation"] = [9, 9, 9]
         scene = SimpleNamespace(calls=[])
@@ -544,6 +549,8 @@ class TestProvenance(unittest.TestCase):
             "model_name": "box",
         })
         self.assertTrue(ok)
+        for observed, expected in zip(scene.calls[0][1], (1., 2., 3.)):
+            self.assertAlmostEqual(observed, expected, places=9)
         before = backend.planning_box_pose((1, 2, 3.16), (0, 0, 0, 1))
         physical["t_tool_box_translation"] = [4, 4, 4]
         after = backend.planning_box_pose((1, 2, 3.16), (0, 0, 0, 1))

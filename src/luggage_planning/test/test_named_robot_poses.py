@@ -21,9 +21,9 @@ from luggage_planning.named_robot_poses import (
 SITE = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "..",
     "luggage_description", "config", "robot_poses.site.yaml"))
-EXAMPLE = os.path.abspath(os.path.join(
+SIM_DEPLOY_UPDATE = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "..", "..",
-    "luggage_description", "config", "robot_poses.yaml.example"))
+    "luggage_description", "config", "robot_poses.sim_deploy_update.yaml"))
 
 
 class NamedRobotPosesTest(unittest.TestCase):
@@ -42,9 +42,12 @@ class NamedRobotPosesTest(unittest.TestCase):
             named_pose_joints(config, "pickup_observe")
         self.assertIn("current", str(ctx.exception))
 
-    def test_example_yaml_keeps_sim_pickup_observe(self):
-        config = load_poses_config(EXAMPLE)
-        joints = named_pose_joints(config, "pickup_observe")
+    def test_current_sim_yaml_keeps_explicit_sim_pickup_observe(self):
+        config = load_poses_config(SIM_DEPLOY_UPDATE)
+        self.assertEqual(default_observe_pose_name(config), "pickup_observe_sim")
+        self.assertEqual(config['poses']['pickup_observe_sim']['provenance']['source'],
+                         'synthetic_fixture')
+        joints = named_pose_joints(config, "pickup_observe_sim")
         self.assertEqual(len(joints), 6)
         self.assertAlmostEqual(joints[0], 1.8806, places=4)
 

@@ -167,6 +167,31 @@ goals after a stop request, and refuses overlapping submissions. Uncertain
 transport has no force-clear shortcut. This port has no vacuum, planner, scene
 or map writes; fixture coverage does not certify production owner adoption.
 
+`MotionPlannerNode` now owns one `MotionOwnership` instance for its actual
+PlanMotion, PlanMotionV2 and GoToRobotPose callbacks. Busy callbacks abort before
+entering their planner/controller work. Legacy MoveGroup, ExecuteTrajectory and
+FJT clients explicitly track dispatch, acceptance and terminal result through
+this owner. A handler returning or throwing cannot release an unresolved goal;
+late accepted goals are cancelled, with ownership held until terminal status.
+Unknown or nonterminal results cannot authorize a legacy fallback. Public result
+futures are completed only after the owner consumes the same result, so executor
+callback ordering cannot overlap consecutive submissions.
+The node's action-cancel callback stops only the session bound to that exact
+ServerGoalHandle. It cancels accepted inner goals, remembers the stop for late
+acceptance and prevents fallback submissions; a pending cancel cannot release
+the session. A terminal inner result still waits for the owning callback to
+finish. An already cancelled outer goal never enters its planning/controller
+body. Cancelling a stale or different goal cannot stop the current owner.
+
+A complete-operation adapter must acquire this same owner's session across all
+legs and vacuum/event barriers, and give its separate `motion_lock` to the strict
+transport per leg. It must finish the session only after the strict transport
+consumes terminal status and releases that lock. The session excludes legacy
+requests even between legs. This process-local owner does not arbitrate unrelated
+nodes or direct controller clients; the production launch/driver must route every
+motion entry through the owning node. Complete-operation and driver adoption
+remain required; ownership wiring alone is not a completed execution chain.
+
 Actual full-footprint contact revalidation may use the same box's retained,
 frozen pre-grasp RGB-D top observation and the measured attachment relation.
 Its acquisition frame/pose remain fixed; a new wrist-camera frame must not

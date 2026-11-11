@@ -428,7 +428,7 @@ class MotionExecutor:
                  joint_path_continuity_rad=1.2,
                  cartesian_joint_fallback=None,
                  align_retry_enabled=True,
-                 fk_verifier=None):
+                 fk_verifier=None, motion_owner=None):
         self._node = node
         self._group = str(group_name)
         self._link = str(link_name)
@@ -487,6 +487,10 @@ class MotionExecutor:
             node, MoveGroup, "/move_action")
         self._execute = rclpy.action.ActionClient(
             node, ExecuteTrajectory, "/execute_trajectory")
+        if motion_owner is not None:
+            from luggage_planning.motion_ownership import OwnedActionClient
+            self._move_group = OwnedActionClient(self._move_group, motion_owner, "/move_action")
+            self._execute = OwnedActionClient(self._execute, motion_owner, "/execute_trajectory")
         # [ST09-I] /compute_cartesian_path and /compute_ik clients are
         # gone with the generation bypasses: geometry generation lives
         # in the route's MoveIt edge builder; this executor only submits

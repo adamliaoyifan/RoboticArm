@@ -61,6 +61,7 @@ from luggage_planning.atlas_runtime import (
 from luggage_planning.urdf_identity import UrdfIdentity
 from luggage_planning.motion_boundary import robot_traj_to_dict, write_boundary_dump
 from luggage_planning.motion_executor import MotionExecutor, _wrap_near
+from luggage_planning.motion_ownership import MotionOwnership, OwnedActionClient, run_legacy_motion
 from luggage_planning.named_robot_poses import (
     JOINTS,
     load_poses_config,
@@ -106,9 +107,10 @@ _ATLAS_CACHE = {}
 
 class MotionPlannerNode(Node):
 
-    def __init__(self):
-        super().__init__("motion_planner")
+    def __init__(self, **node_options):
+        super().__init__("motion_planner", **node_options)
         self._group = ReentrantCallbackGroup()
+        self._motion_owner = MotionOwnership()
 
         self.declare_parameter("robot_poses_config", "")
         self.declare_parameter("default_observe_pose", "current")
@@ -245,6 +247,7 @@ class MotionPlannerNode(Node):
 
         self._executor_client = MotionExecutor(
             self,
+            motion_owner=self._motion_owner,
             allowed_planning_time=float(
                 self.get_parameter("planning_time").value),
             num_planning_attempts=int(
@@ -293,6 +296,8 @@ class MotionPlannerNode(Node):
             self, FollowJointTrajectory,
             str(self.get_parameter("fjt_action").value),
             callback_group=self._group)
+        self._fjt = OwnedActionClient(self._fjt, self._motion_owner,
+            str(self.get_parameter("fjt_action").value))
 
         self._plan_action = ActionServer(
             self, PlanMotion, "/motion_planner/plan_motion",
@@ -366,6 +371,7 @@ class MotionPlannerNode(Node):
         return GoalResponse.ACCEPT
 
     def _accept_cancel(self, goal_handle):
+        self._motion_owner.request_stop(goal_handle)
         return CancelResponse.ACCEPT
 
     def _on_surface(self, msg):
@@ -731,6 +737,10 @@ class MotionPlannerNode(Node):
         return True, "", self._last_admission_check_ms
 
     def _execute_plan_motion_v2(self, goal_handle):
+        return run_legacy_motion(self._motion_owner, goal_handle, PlanMotionV2.Result,
+            "PlanMotionV2", self._execute_plan_motion_v2_owned)
+
+    def _execute_plan_motion_v2_owned(self, goal_handle):
         from luggage_planning.motion_v2_service import handle_plan_v2
         result = PlanMotionV2.Result()
         if getattr(self, "_frame_runtime", None) is not None:
@@ -1056,6 +1066,10 @@ class MotionPlannerNode(Node):
     # PlanMotion
 
     def _execute_plan_motion(self, goal_handle):
+        return run_legacy_motion(self._motion_owner, goal_handle, PlanMotion.Result,
+            "PlanMotion", self._execute_plan_motion_owned)
+
+    def _execute_plan_motion_owned(self, goal_handle):
         segment = goal_handle.request.segment
         result = PlanMotion.Result()
         name = str(segment.name)
@@ -1192,6 +1206,10 @@ class MotionPlannerNode(Node):
     # GoToRobotPose (named joint pose via FJT)
 
     def _execute_goto_pose(self, goal_handle):
+        return run_legacy_motion(self._motion_owner, goal_handle, GoToRobotPose.Result,
+            "GoToRobotPose", self._execute_goto_pose_owned)
+
+    def _execute_goto_pose_owned(self, goal_handle):
         result = GoToRobotPose.Result()
         requested = str(goal_handle.request.pose_name)
         if getattr(self, "_frame_runtime", None) is not None:
