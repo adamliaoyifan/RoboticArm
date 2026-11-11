@@ -423,3 +423,18 @@ process per fixture run, checks configured rail bounds and records requests/
 responses with their observation stamps. Acknowledgements always leave tracking
 unconfirmed. Actual controller feedback and certified trajectories remain the
 consumer's responsibility; neither adapter can command a payload or attachment.
+
+`release_collision.ReleaseCollisionScene` certifies only the nominal two-stage
+carriage withdrawal against the observed frozen payload/lower poses and every
+static source collider. It verifies the original tool part set and transforms,
+carriage joint axes, lower SDF sizes (including the original `.9g` serialization),
+and the sampled monotone joint path's binding to the measured start and tool
+endpoints. FCL distances use a 1um research numerical enclosure. Adaptive
+interval subdivision bounds translation between checks, so clear endpoints
+alone cannot pass an intervening obstacle. The original p04 seal interface
+during downward separation uses strict whole-part separation below the box
+bottom; other pairs and the outward stage retain the configured 5mm margin.
+A result binds observation, motions, model/world/config hashes and always keeps
+`execution_admitted=false`: moving-body feedback, controller tracking, detach
+confirmation, error envelopes and post-withdrawal stability remain independent
+requirements. This is not a six-joint arm or production collision certificate.
