@@ -276,3 +276,54 @@ operation execution and regression; retain its six positive witness matrix
 and negative effect invariants. Do not close stages0-4 on source adoption or
 component counts alone. ST5-7 and performance/capacity campaigns remain outside
 this implementation scope.
+
+
+### 2026-11-11 pre-seal contact selection and stationary attachment qualification
+
+User confirmed: before suction the planner may replace input contact xyz with
+another point on the same observed box face; after suction the box/tool rigid
+relation is fixed. Return final pick pose/J6 and bound complete trajectory before
+motion. Never treat contact xyz as the box centre, change G after sealing, or
+edit J6 in an issued trajectory. Existing target-side back-projection and full
+observed-footprint plus quality gates remain the candidate mechanism.
+
+ST-4-STATIONARY-ATTACH (codex/gpt-6, base2cbe1397bf5ea806b0d59839bcd93d4792bf611a,
+depends ST-4-PREP-OBS) qualifies the user-approved stationary acquisition path
+before final runtime integration. Preserve original box acquisition and actual
+seal-time TCP stamps separately, original full rigid poses, generation, issued
+plan and nonrenewing perception binding. Admit only an actual successful
+VacuumCommandV2 measured-attachment response and an independently accepted
+actual-footprint check from the real frozen observation owner. Its provenance
+binds both stamps, original retained observation, actual contact evidence,
+response bytes and conservative geometry. No timestamp relabelling, GT, guessed
+support, relaxed legacy same-stamp path or mutation of a valid sealed relation.
+Keep the existing provider acquisition-age bound; storage retention is not age.
+
+Acceptance: deterministic source-first Humble functional AND gate, one run per
+case, not physical reliability. Actual prepare/frozen owner and native complete
+plan -> real vacuum boundary adapter with synthetic actuator -> real frozen
+actual-contact RPC -> existing attachment provider must produce a route-grade
+record with original acquisition stamp and independently preserved later TCP
+stamp. Cover centered and allowed pre-seal offset contact; exact duplicate is
+idempotent. Refuse missing/failed/unmeasured vacuum, wrong request/scene/box/
+generation/dimensions/observation/model, changed or expired frozen evidence,
+whole-cup boundary failure, reversed/future/stale stamps, changed actual geometry
+or new proof after sealing. Legacy same-stamp provider regression stays green;
+legacy unequal-stamp path still refuses. No motion, vacuum release or map-write
+port is added to this qualification layer. This is not full ST-4 completion.
+
+Procedure: add test_joint_operation_attachment.py and native coverage in
+ test_joint_operation_attachment_native.py; run those plus existing
+ tests/st09_parallel/D/test_attachment_provider.py, execution/bindings and vacuum
+revision propagation regressions. Reuse isolated Humble/native prefixes and
+verified-free diagnostic domain; no hardware/Gazebo. Install changed Python and
+verify source/install hashes. Only exact owned files staged; unrelated dirty
+scene/atlas retirement preserved. Required evidence under
+ docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-STATIONARY-ATTACH/ <=128MiB:
+T0 revision/dirty/config/command/workload and hashes; T1 observation retention,
+actual vacuum receipt, actual footprint result, provider freeze/refusal and both
+real stamps; T2 each failed case plus one upstream/downstream boundary, original
+CDRs, frozen inputs, plan and native requests/responses before teardown/rerun.
+One case is the bounded trigger window. Verify complete joinable capture and
+worker/native exit0; missing real positive is not_evaluated, never pass. Reuse
+existing tolerances and acquisition-age policy; no performance claim.
