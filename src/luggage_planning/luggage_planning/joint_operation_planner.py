@@ -44,6 +44,18 @@ class LocalJointBranch:
 
 
 @dataclass(frozen=True)
+class JointSeedHint:
+    """An untrusted IK proposal, retaining its atlas/online branch provenance."""
+    seed_id: str
+    joints: tuple
+
+    def __post_init__(self):
+        if not isinstance(self.seed_id, str) or not self.seed_id.strip():
+            raise ValueError('seed provenance required')
+        object.__setattr__(self, 'joints', finite_tuple(self.joints, 6, 'entry seed'))
+
+
+@dataclass(frozen=True)
 class OperationCandidate:
     candidate_id: str
     world_from_pick_box: Transform
@@ -58,6 +70,8 @@ class OperationCandidate:
     pick_lift: Transform
     place_entry: Transform
     place_retreat: Transform
+    pick_entry_seeds: tuple = ()
+    place_entry_seeds: tuple = ()
 
     def __post_init__(self):
         if not isinstance(self.candidate_id, str) or not self.candidate_id.strip():
@@ -69,6 +83,12 @@ class OperationCandidate:
                      "pick_lift", "place_entry", "place_retreat"):
             if type(getattr(self, name)) is not Transform:
                 raise ValueError("explicit world Transform required: "+name)
+        for name in ('pick_entry_seeds', 'place_entry_seeds'):
+            seeds = tuple(getattr(self, name))
+            if (len(seeds) > 3 or any(type(seed) is not JointSeedHint for seed in seeds)
+                    or len({seed.seed_id for seed in seeds}) != len(seeds)):
+                raise ValueError('at most three distinct typed entry seeds required')
+            object.__setattr__(self, name, seeds)
 
 
 @dataclass(frozen=True)
@@ -135,7 +155,7 @@ def _connection_rows(connection, start, goal):
 class JointOperationPlanner:
     """Prepare from admitted candidates; no execution or predicted-as-actual shim.
 
-    endpoint_port.solve(candidate, ...) returns both complete local branch sets.
+    endpoint_port.solve(candidate, request_id=..., ...) returns both complete local branch sets.
     connection_port.connect(snapshot, start, goal, request_id=..., ...) uses the
     exact phase snapshot. certification_port.certify(draft, candidate, ...) checks
     timed controller samples, endpoint FK and all phase scenes before issuing its
@@ -183,11 +203,13 @@ class JointOperationPlanner:
             if not self._candidate_matches(candidate, identity):
                 trace.append((getattr(candidate, 'candidate_id', '<invalid>'), "CANDIDATE_IDENTITY_MISMATCH"))
                 continue
-            evidence = self.endpoints.solve(candidate, deadline=planning_deadline, cancelled=cancelled)
+            evidence = self.endpoints.solve(candidate, request_id=identity.request_id,
+                deadline=planning_deadline, cancelled=cancelled)
             if stopped(planning_deadline):
                 return finish("CANCELLED" if cancelled() else "SEARCH_INCOMPLETE")
             if not self._evidence_matches(evidence, candidate, identity):
-                trace.append((candidate.candidate_id, "LOCAL_EVIDENCE_REFUSED"))
+                trace.append((candidate.candidate_id, "LOCAL_EVIDENCE_REFUSED",
+                              getattr(evidence, 'reason', 'INVALID_EVIDENCE_TYPE')))
                 continue
             # Both branch sets remain distinct. A failed carrying connection may
             # be recovered by another pick q at exactly the same spatial grasp.

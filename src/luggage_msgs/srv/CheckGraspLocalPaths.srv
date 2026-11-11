@@ -11,6 +11,12 @@ geometry_msgs/Pose pick_lift_world
 geometry_msgs/Pose place_entry_world
 geometry_msgs/Pose place_retreat_world
 float64[3] box_wdh
+# Optional entry IK hints, row-major canonical elfin_joint1..elfin_joint6.
+# At most 3 six-joint rows per endpoint; empty preserves legacy ordering.
+# Hints are tried first within the existing total 8-seed budget per endpoint.
+# They are proposals only: every local IK/path uses the current private scene.
+float64[] pick_entry_seed_joints_flat
+float64[] place_entry_seed_joints_flat
 float64 budget_s
 ---
 string request_id

@@ -2,6 +2,7 @@
 // or applies them. Output is untimed geometric evidence, not execution
 // authority.
 #include "luggage_msgs/srv/check_grasp_local_paths.hpp"
+#include <algorithm>
 #include <chrono>
 #include <geometric_shapes/shapes.h>
 #include <iomanip>
@@ -46,6 +47,18 @@ public:
     tcp_ = model_->getLinkModel("suction_contact_frame");
     if (!group_ || !tcp_ || !group_->getSolverInstance())
       throw std::runtime_error("IK_SOLVER_UNAVAILABLE");
+    const std::vector<std::string> canonical{
+        "elfin_joint1", "elfin_joint2", "elfin_joint3",
+        "elfin_joint4", "elfin_joint5", "elfin_joint6"};
+    if (group_->getVariableNames() != canonical)
+      throw std::invalid_argument("canonical six-joint group required");
+    for (const auto *hints : {&req.pick_entry_seed_joints_flat,
+                              &req.place_entry_seed_joints_flat}) {
+      if (hints->size() % 6 || hints->size() > 18 ||
+          !std::all_of(hints->begin(), hints->end(),
+                       [](double value) { return std::isfinite(value); }))
+        throw std::invalid_argument("at most three finite entry seed rows required");
+    }
     if (req.scene.is_diff || !scene_.setPlanningSceneMsg(req.scene))
       throw std::invalid_argument("full scene required");
     if (scene_.getWorld()->hasObject(payload_) ||
@@ -92,6 +105,8 @@ public:
     diagnostic.pop_back();
     std::ostringstream detail;
     detail << diagnostic << ",\"last_contact\":" << std::quoted(last_contact_)
+           << ",\"pick_hint_count\":" << req_.pick_entry_seed_joints_flat.size() / 6
+           << ",\"place_hint_count\":" << req_.place_entry_seed_joints_flat.size() / 6
            << "}";
     res.diagnostics_json = detail.str();
   }
@@ -187,7 +202,12 @@ private:
       int steps = std::max(1, static_cast<int>(std::ceil(delta / .01)));
       for (int k = 1; k <= steps; ++k) {
         State sample(previous);
-        previous.interpolate(state, double(k) / steps, sample);
+        // Keep the IK endpoint itself at the join. Interpolating at f=1 can
+        // introduce rounding, severing the exact incoming/outgoing q binding.
+        if (k == steps)
+          sample = state;
+        else
+          previous.interpolate(state, double(k) / steps, sample);
         if (!valid(sample))
           return false;
         append(result, sample);
@@ -199,11 +219,21 @@ private:
               const Eigen::Isometry3d &exit, bool incoming_carrying,
               std::vector<luggage_msgs::msg::GraspLocalBranch> &branches) {
     const auto contact = box * g_;
+    const auto &hints = incoming_carrying ? req_.place_entry_seed_joints_flat
+                                        : req_.pick_entry_seed_joints_flat;
+    const unsigned hint_count = static_cast<unsigned>(hints.size() / 6);
     for (unsigned seed = 0; seed < 8 && branches.size() < 2 && !expired();
          ++seed) {
       State state(scene_.getCurrentState());
       payload(state, box, incoming_carrying);
-      if (seed > 0) {
+      if (seed < hint_count) {
+        const auto begin = hints.begin() + seed * 6;
+        const std::vector<double> q(begin, begin + 6);
+        state.setJointGroupPositions(group_, q);
+        state.update();
+        if (!state.satisfiesBounds(group_))
+          continue;
+      } else if (seed > hint_count) {
         std::vector<double> q;
         state.copyJointGroupPositions(group_, q);
         for (size_t j = 0; j < q.size(); ++j) {
@@ -211,7 +241,7 @@ private:
               model_->getVariableBounds(group_->getVariableNames()[j]);
           const double low = b.position_bounded_ ? b.min_position_ : -M_PI,
                        high = b.position_bounded_ ? b.max_position_ : M_PI;
-          q[j] = low + (high - low) * std::fmod(.5 + seed * .61803398875 +
+          q[j] = low + (high - low) * std::fmod(.5 + (seed - hint_count) * .61803398875 +
                                                     j * .41421356237,
                                                 1.0);
         }

@@ -746,3 +746,20 @@ with exact model/snapshot/request identity. A 2 s per-pair limit remains inside
 the existing 10 s preparation budget. Timeout means inconclusive, not globally
 infeasible. Actual attachment and complete carrying route certification remain
 mandatory, and cached results include pickup pose and local references.
+
+`CheckGraspLocalPaths` optionally accepts up to three canonical six-joint
+entry seeds per endpoint. Hints are tried first within the same total eight
+attempts; an empty array retains the legacy deterministic order. Every hint is
+subject to current bounds, IK and full-arm/payload local collision checking.
+Returned `seed_index` identifies the hint first, then the generic seed order.
+Both local paths share the exact original IK contact state; the endpoint is
+not reconstructed by floating-point interpolation at fraction one.
+
+The complete-operation endpoint adapter supplies the already-frozen conservative
+envelope dimensions and envelope-relative G, preserving the nominal measured
+pick/release tool poses. It removes only the explicitly associated pickup box
+from its private probe scene, retains other objects and resets the local probe
+payload's permissions to the existing suction panel/contact-frame interface.
+It retains full branch/seed provenance in immutable untimed witnesses. Those
+witnesses still require actual-start and carrying connections, timing and the
+independent whole-operation certifier; they cannot authorize execution alone.
