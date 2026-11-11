@@ -54,6 +54,22 @@ class FullArmContracts(unittest.TestCase):
         q=np.zeros(6);q[0]=self.scene.urdf.joint_limits()[0][1]+1
         self.assertEqual(self.scene.check_robot(q)['reason'],'JOINT_LIMIT')
 
+    def test_lazy_robot_minimum_matches_exhaustive_mesh_distances_not_search_minimum(self):
+        from plan_clearance import FullArmDistanceSampler
+        scene=self.scene;original=scene.minimum_clearance_m
+        scene.set_payload((.55,.4,.25),'absent');scene.minimum_clearance_m=-123.
+        try:
+            result=FullArmDistanceSampler(scene,1e-6).evaluate(0,0.,np.zeros(6),False)
+            self.assertIsNone(result.failure)
+            scene.exact_distances=True
+            self.assertIsNone(scene.check_state(np.zeros(6),scene.config.collision_margin_m))
+            expected=min(d for d,pair in scene.sample_distances)
+            self.assertAlmostEqual(result.robot_minimum_m,expected+1e-6,places=9)
+            self.assertGreater(result.robot_minimum_m,0.)
+            self.assertTrue(all(d>=expected-1e-6-1e-8 for d,pair,kind in result.distances))
+        finally:
+            scene.exact_distances=False;scene.minimum_clearance_m=original
+
     def test_source_fcl_bottom_corner_side_collision_is_not_support(self):
         scene=self.scene
         scene.add_world('lower_contract_probe',trimesh.creation.box([1,1,1]),pose([8,0,.5]))

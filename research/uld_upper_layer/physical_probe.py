@@ -24,7 +24,9 @@ from physical_observation import ObservationReader
 from physical_executor import PhysicalExecutor
 from observed_collision import ObservedArmScene
 from ideal_snapshot import capture_fixture,from_observation
-from planning_types import UpperConfig,action_from_record
+from planning_types import UpperConfig,action_from_record,digest
+from selection_policy import SelectionPolicy
+from plan_selection import rank_nominal_plans
 from runtime_io import RuntimeIO
 from monitored_stream import NativeSampleMonitor
 
@@ -46,15 +48,25 @@ def main():
     args=parser.parse_args();out=args.evidence.resolve()
     if args.capture_rehearsal and args.planning_run:parser.error('capture rehearsal does not execute a plan')
     if not out.is_relative_to(EVIDENCE):raise ValueError('PRIMARY_EVIDENCE_REQUIRED')
-    policy=ExecutionPolicy.load(args.policy);config=UpperConfig.load();plan=None
+    policy=ExecutionPolicy.load(args.policy);config=UpperConfig.load();plan=None;selection=None
     if args.planning_run:
         planning_manifest=json.loads((args.planning_run/'manifest.json').read_text())
         config=UpperConfig.load(args.planning_run/'source/upper_config.yaml')
         plans=json.loads((args.planning_run/'plans.json').read_text())
         if not plans:raise ValueError('NO_COMPLETE_NOMINAL_PLAN')
-        plan=plans[0]  # Diagnostic only: selected-path collision scoring pending.
+        selection_policy=SelectionPolicy.load(args.planning_run/'source/selection_policy.yaml')
+        if (sha256(args.planning_run/'source/selection_policy.yaml')!=planning_manifest['source_hashes'].get('selection_policy.yaml') or
+            sha256(args.planning_run/'source/upper_config.yaml')!=planning_manifest['source_hashes'].get('upper_config.yaml')):
+            raise ValueError('PLANNING_CONFIG_ARCHIVE_CHANGED')
+        models=json.loads((args.planning_run/'models.json').read_text())
+        planning_inputs=json.loads((args.planning_run/'inputs.json').read_text())
+        selection=rank_nominal_plans(plans,planning_inputs['snapshot']['snapshot_id'],config,selection_policy,
+            digest(dict(assets=models['asset_hashes'],meshes=models['hashes'])))
+        if not selection['nominal_minimum_met']:raise ValueError('NO_SCORED_NOMINAL_PLAN:'+str(selection['rejected']))
+        plan=plans[selection['selected_index']]
         for name in ('candidates.py','planning_types.py','full_arm.py','tool_contact_geometry.py','support_contact.py',
-                     'geometry.py','assets.py','path_planning.py','stage_planner.py','action_screen.py','coupled_chain.py','interval_certificate.py','motion_bounds.py'):
+                     'geometry.py','assets.py','path_planning.py','stage_planner.py','action_screen.py','coupled_chain.py','interval_certificate.py','motion_bounds.py',
+                     'plan_clearance.py','clearance_bounds.py','selection_policy.py','plan_selection.py'):
             if sha256(Path(__file__).with_name(name))!=planning_manifest['source_hashes'].get(name):
                 raise ValueError('PLANNED_SOURCE_CHANGED:'+name)
     fixture=json.loads((args.scene_dir/'fixture.json').read_text())
@@ -67,6 +79,9 @@ def main():
     for path in list(Path(__file__).parent.glob('*.py'))+list(Path(__file__).with_name('native').glob('*')):
         shutil.copy2(path,source/path.name);hashes[path.name]=sha256(path)
     save(source/'execution_policy.json',asdict(policy));save(source/'planning_config.json',asdict(config))
+    if selection is not None:
+        save(out/'selection.json',selection)
+        save(source/'selection_policy.json',asdict(selection_policy))
     shutil.copy2(args.scene_dir/'fixture.json',out/'fixture.json')
     manifest=dict(scored_units=0,profile='unscored_native_physics_probe',
         acceptance_scope='nominal_only_robust_tube_release54_and_campaign_not_evaluated',

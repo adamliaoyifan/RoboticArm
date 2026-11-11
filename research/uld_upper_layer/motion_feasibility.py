@@ -17,6 +17,9 @@ from full_arm import FullArmScene
 from ideal_snapshot import capture_fixture,from_observation
 from planning_types import UpperConfig,action_from_record,digest
 from runtime_io import RuntimeIO
+from selection_policy import SelectionPolicy
+from plan_clearance import model_identity
+from plan_selection import rank_nominal_plans
 
 ROOT=Path(__file__).resolve().parents[2]
 EVIDENCE=Path('/home/adamliao/work/elfin_humble_ws/docs/status/evidence')
@@ -34,22 +37,31 @@ def main():
     parser.add_argument('--candidates',type=Path)
     parser.add_argument('--seed',type=int,default=0)
     parser.add_argument('--config',type=Path)
+    parser.add_argument('--selection-policy',type=Path)
     parser.add_argument('--plan-paths',action='store_true')
     args=parser.parse_args()
     output=args.evidence.resolve()
     if not output.is_relative_to(EVIDENCE):raise ValueError('primary evidence required')
     output.mkdir(parents=True,exist_ok=False)
-    config=UpperConfig.load(args.config);runtime=None
+    config=UpperConfig.load(args.config);selection_policy=SelectionPolicy.load(args.selection_policy);runtime=None
     source=output/'source';source.mkdir()
     hashes={}
     for p in Path(__file__).parent.glob('*.py'):
         shutil.copy2(p,source/p.name);hashes[p.name]=sha256(p)
     shutil.copy2(args.config or Path(__file__).with_name('upper_config.yaml'),source/'upper_config.yaml')
+    hashes['upper_config.yaml']=sha256(source/'upper_config.yaml')
+    shutil.copy2(args.selection_policy or Path(__file__).with_name('selection_policy.yaml'),source/'selection_policy.yaml')
+    hashes['selection_policy.yaml']=sha256(source/'selection_policy.yaml')
+    if (UpperConfig.load(source/'upper_config.yaml')!=config or
+        SelectionPolicy.load(source/'selection_policy.yaml')!=selection_policy):
+        raise ValueError('CONFIG_CHANGED_DURING_CAPTURE')
     for native in Path(__file__).with_name('native').glob('*'):
         shutil.copy2(native,source/native.name);hashes['native/'+native.name]=sha256(native)
     manifest=dict(started_wall=time.time(),revision=subprocess.check_output(
         ['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),source_hashes=hashes,
-        config=asdict(config),seed=args.seed,command=list(os.sys.argv),capture_complete=False,replay_possible=False,
+        config=asdict(config),selection_policy=asdict(selection_policy),
+        selection_policy_revision=selection_policy.revision,
+        seed=args.seed,command=list(os.sys.argv),capture_complete=False,replay_possible=False,
         dirty_count=len(subprocess.check_output(['git','-C',str(ROOT),'status','--porcelain'],text=True).splitlines()),
         dependency_versions={name:importlib.metadata.version(name) for name in ('python-fcl','ompl','numpy','scipy','shapely','trimesh')},
         profile='ideal_sim_snapshot_source_mesh_diagnostic',scored_units=0)
@@ -128,6 +140,7 @@ def main():
             from planning_worker import plan_bounded
             from action_screen import push_screen_key
             plans=[];attempted=set();screen_rejections={};reused_screens=0;start=planning_started
+            selection=rank_nominal_plans(plans,snapshot.snapshot_id,config,selection_policy,model_identity(scene))
             with (output/'stage_boundaries.jsonl').open('w') as trace:
                 def emit(row):
                     trace.write(json.dumps(row)+'\n');trace.flush()
@@ -144,20 +157,27 @@ def main():
                             source_action_id=screen_rejections[screen_key],key=screen_key,
                             exhaustive=False,valid=False))
                         continue
-                    result=plan_bounded(ROOT,snapshot,state,action,observation['q'],seeds,config,
+                    result=plan_bounded(ROOT,snapshot,state,action,observation['q'],seeds,config,selection_policy,
                         output/f'action_{len(attempted):04d}',remaining,args.seed)
                     emit(dict(event='action_output',action_id=action.action_id,
                               valid=result['valid'],reason=result.get('reason'),
                               diagnostic=result.get('diagnostic')))
                     if result.get('reason')=='NO_SAMPLED_PUSH_ENDPOINT_SOLUTION':
                         screen_rejections[screen_key]=action.action_id
-                    if result['valid']:plans.append(result)
-                    if len(plans)>=config.solution_count_target:break
-            save(output/'plans.json',plans)
+                    if result['valid']:
+                        plans.append(result)
+                        selection=rank_nominal_plans(plans,snapshot.snapshot_id,config,selection_policy,model_identity(scene))
+                        # Persist completed evidence before trying another action.
+                        save(output/'plans.json',plans)
+                        save(output/'selection.json',selection)
+                    if selection['achieved']>=config.solution_count_target:break
+            save(output/'plans.json',plans);save(output/'selection.json',selection)
             save(output/'summary.json',dict(stage='connected_path_search',
-                attempted_actions=len(attempted),reused_sampled_push_rejections=reused_screens,complete_nominal_plans=len(plans),
+                attempted_actions=len(attempted),reused_sampled_push_rejections=reused_screens,
+                complete_nominal_plans=len(plans),distinct_scored_nominal_plans=selection['achieved'],
+                nominal_minimum_met=selection['nominal_minimum_met'],
                 physical_execution='not_evaluated',search_elapsed_s=time.monotonic()-planning_started,
-                search_budget_s=config.search_budget_s,termination=('SOLUTION_TARGET' if len(plans)>=config.solution_count_target
+                search_budget_s=config.search_budget_s,termination=('SOLUTION_TARGET' if selection['achieved']>=config.solution_count_target
                     else 'BUDGET_EXHAUSTED' if time.monotonic()>=planning_deadline else 'CANDIDATES_EXHAUSTED')))
             manifest['capture_complete']=True;manifest['replay_possible']=True
             print((output/'summary.json').read_text());return

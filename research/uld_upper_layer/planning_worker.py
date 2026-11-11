@@ -18,13 +18,15 @@ def atomic_json(path,value):
     temporary.replace(path)
 
 
-def _worker(repo,snapshot,state,action,start_q,seeds,config,output,seed):
+def _worker(repo,snapshot,state,action,start_q,seeds,config,selection_policy,output,budget_s,seed):
     from assets import load
     from full_arm import FullArmScene
     from stage_planner import plan_action
+    from plan_clearance import score_plan
     from ompl import util as ou
     ou.RNG.setSeed(seed+1)
     output=Path(output)
+    deadline=time.monotonic()+budget_s
     try:
         scene=FullArmScene(load(repo),snapshot,config)
         scene.query_observer=lambda row:atomic_json(output/'last_query.json',row)
@@ -33,8 +35,23 @@ def _worker(repo,snapshot,state,action,start_q,seeds,config,output,seed):
                 stream.write(json.dumps(row)+'\n');stream.flush()
                 atomic_json(output/'last_boundary.json',row)
             result=plan_action(scene,state,action,start_q,seeds,config,emit)
+            if result.get('valid'):
+                # Preserve the complete nominal path even if scoring times out.
+                # A nominal path without its completed score is never admitted.
+                atomic_json(output/'nominal_result.json',result)
+                score_scene=FullArmScene(load(repo),snapshot,config)
+                score_scene.query_observer=scene.query_observer
+                with (output/'clearance_intervals.jsonl').open('w') as clearance_stream:
+                    def score_emit(row):
+                        clearance_stream.write(json.dumps(row)+'\n');clearance_stream.flush()
+                        atomic_json(output/'last_boundary.json',row)
+                    score=score_plan(score_scene,state,result,config,selection_policy,deadline,score_emit)
+                result['clearance_score']=score
+                result['valid']=bool(score.get('valid'))
+                if not result['valid']:result['reason']='COMPLETE_PATH_CLEARANCE_REJECTED'
         result['search_observed_clearance_lower_bound_m']=scene.minimum_clearance_m
-        result['clearance_score_status']='not_evaluated_includes_rejected_search_states'
+        result['clearance_score_status']=('complete' if result.get('clearance_score',{}).get('valid')
+                                          else 'not_accepted')
         result['clearance_witness']=scene.clearance_witness
         atomic_json(output/'result.json',result)
     except BaseException:
@@ -42,13 +59,13 @@ def _worker(repo,snapshot,state,action,start_q,seeds,config,output,seed):
         raise
 
 
-def plan_bounded(repo,snapshot,state,action,start_q,seeds,config,output,budget_s,seed):
+def plan_bounded(repo,snapshot,state,action,start_q,seeds,config,selection_policy,output,budget_s,seed):
     output=Path(output);output.mkdir()
     atomic_json(output/'input.json',dict(snapshot=asdict(snapshot),box=asdict(state),
         action=asdict(action),start_q=start_q,seeds=[list(q) for q in seeds],
-        config=asdict(config),seed=seed))
+        config=asdict(config),selection_policy=asdict(selection_policy),budget_s=budget_s,seed=seed))
     process=multiprocessing.get_context('spawn').Process(target=_worker,
-        args=(repo,snapshot,state,action,start_q,seeds,config,output,seed))
+        args=(repo,snapshot,state,action,start_q,seeds,config,selection_policy,output,budget_s,seed))
     process.start();started=time.monotonic();abort=None
     try:
         while process.is_alive():
