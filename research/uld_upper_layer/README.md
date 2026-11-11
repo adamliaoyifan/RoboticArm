@@ -353,3 +353,12 @@ direction. An explicit unit vector is in each collision's material frame,
 independent of a target trajectory; the fixture archives the parsed material
 and profile hash. It changes simulation contact properties, never box poses
 or controller feedback. Controlled comparisons must state the material profile.
+
+`edge_contact_diagnostic.diagnose_support_edge` describes contact near a box's
+bottom leading edge and a lower box's top approach edge, for horizontal rigid
+cuboids with face-aligned travel. Inputs are material bounds, container-absolute
+poses/point/normal/direction and existing tolerances. Output retains the unchanged
+strict point-predicate result, material edge distances and both edge normal-cone
+checks. A geometric transition candidate can still jam; this offline diagnostic
+always returns `execution_admitted=false` and is not connected to selection or
+execution. It neither introduces a contact exception nor proves a contact tube.
