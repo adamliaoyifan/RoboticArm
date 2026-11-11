@@ -47,3 +47,25 @@ def test_eccentric_rotated_pose_roundtrip():
     restored = geometry.box_pose_at_conservative(*conservative)
     assert restored[0] == pytest.approx(nominal[0])
     assert restored[1] == pytest.approx(nominal[1])
+
+
+def test_tilted_measured_attachment_keeps_nominal_pose_and_roundtrip():
+    from st09_contracts.attachment import transform_point
+
+    tool_box = ((.18, -.09, .1), (math.cos(.02), 0., 0., math.sin(.02)))
+    geometry = freeze_geometry((.5, .3, .2), *tool_box,
+                              EnvelopeLimits(5, (.1, .1, .1), (.01, .02), .005))
+    nominal = ((1., 2., 3.), (0., 0., math.sin(.7), math.cos(.7)))
+    conservative = geometry.conservative_pose_at_box(*nominal)
+    restored = geometry.box_pose_at_conservative(*conservative)
+    assert restored[0] == pytest.approx(nominal[0])
+    assert restored[1] == pytest.approx(nominal[1])
+    assert geometry.t_tool_box_translation == tool_box[0]
+    assert geometry.t_tool_box_quaternion_xyzw == tool_box[1]
+    assert abs(conservative[1][0]) + abs(conservative[1][1]) > .001
+    # Full envelope orientation is required in world: simply substituting
+    # yaw-only nominal orientation would move the represented corner.
+    corner = tuple(v / 2 for v in geometry.conservative.dimensions_wdh)
+    correct = transform_point(*conservative, corner)
+    flattened = transform_point(conservative[0], nominal[1], corner)
+    assert math.dist(correct, flattened) > .001

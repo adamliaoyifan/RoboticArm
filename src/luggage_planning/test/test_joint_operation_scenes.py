@@ -1,5 +1,6 @@
 """Private phase composition: owned target only, envelope once, narrow ACM."""
 import hashlib
+import math
 
 import pytest
 from geometry_msgs.msg import Pose
@@ -95,6 +96,34 @@ def test_conservative_geometry_is_transformed_once_and_contact_face_preserved():
         p = box.primitive_poses[0].position
         assert (p.x, p.y, p.z) == xyz
         assert xyz != nominal.translation  # away-from-contact growth shifts centre
+
+
+def test_tilted_phase_geometry_preserves_full_pose_and_rejects_flattening():
+    from luggage_planning.joint_operation_scenes import validate_phase_payloads
+
+    plan = example_plan()
+    geometry = freeze_geometry((.5, .3, .2), (.08, -.03, .1),
+        (math.cos(.02), 0., 0., math.sin(.02)),
+        EnvelopeLimits(5., (.1, .1, .1), (.01, .02), .005))
+    result = compose(baseline(), geometry)
+    scenes = [deserialize_message(result.for_phase(phase).scene_cdr, PlanningScene)
+              for phase in ('pick', 'carry', 'retreat')]
+    arguments = dict(pickup_object_id='pickup_box', geometry=geometry,
+        world_from_pick_box=plan.world_from_pick_box,
+        world_from_settled_box=plan.world_from_settled_box)
+    validate_phase_payloads(scenes, **arguments)
+    for scene, nominal in ((scenes[0], plan.world_from_pick_box),
+                           (scenes[2], plan.world_from_settled_box)):
+        obj = next(o for o in scene.world.collision_objects if o.id == 'pickup_box')
+        pose = obj.primitive_poses[0]
+        expected = geometry.conservative_pose_at_box(nominal.translation, nominal.quaternion_xyzw)
+        assert (pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w) == expected[1]
+        assert tuple(obj.primitives[0].dimensions) == geometry.conservative.dimensions_wdh
+    obj = next(o for o in scenes[2].world.collision_objects if o.id == 'pickup_box')
+    q = obj.primitive_poses[0].orientation
+    q.x, q.y, q.z, q.w = plan.world_from_settled_box.quaternion_xyzw
+    with pytest.raises(ValueError, match='exact predicted box'):
+        validate_phase_payloads(scenes, **arguments)
 
 
 @pytest.mark.parametrize('kind', ['scene_diff', 'state_diff', 'attached', 'bad_acm'])

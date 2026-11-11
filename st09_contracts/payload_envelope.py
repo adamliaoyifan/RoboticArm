@@ -6,6 +6,9 @@ extrema occur at interval endpoints or derivative zeros. A linear functional
 of a cuboid attains its extrema at a corner, so enumerating these critical
 angles for every expanded corner encloses the entire continuous family.
 Translation uncertainty is added afterwards in tool axes (Minkowski sum).
+For nonparallel box/contact axes, height and away-position allowances extend
+both ways: a fitted normal alone does not identify a one-sided contact plane.
+This enclosure does not certify contact quality or suction support.
 """
 from dataclasses import dataclass, asdict
 from itertools import product
@@ -77,29 +80,35 @@ def build_envelope(dimensions, translation, quaternion, limits):
     translation = finite_tuple(translation, 3, 't_tool_box.translation')
     quaternion = unit_quaternion(quaternion, 't_tool_box.quaternion')
     axis = rotate_vector(quaternion, (0., 0., 1.))
-    if math.hypot(axis[0], axis[1]) > 1e-9:
-        raise ContractViolation('PAYLOAD_ENVELOPE_UNSUPPORTED_TILT: box Z must be parallel to contact normal')
+    # Retain the existing numerical parallelism tolerance, not a physical
+    # acceptance angle. Surface-quality gates own admissible contact normals.
+    parallel_axes = math.hypot(axis[0], axis[1]) <= 1e-9
     radius = math.radians(limits.yaw_half_range_deg)
     growth = limits.size_growth_fraction_wdh
     half_xy = [dimensions[i] * (1 + growth[i]) / 2 for i in range(2)]
-    z_faces = []
-    for sign in (-1, 1):
-        z_faces.append(transform_point(translation, quaternion, (0., 0., sign * dimensions[2] / 2))[2])
-    # Measured contact transforms commonly leave nanometre-scale residuals on
-    # the face that is physically at the suction origin.
-    z_faces = [0. if abs(value) <= 1e-6 else value for value in z_faces]
-    if (z_faces[0] * z_faces[1] < 0 or
-            abs(abs(z_faces[0]) - abs(z_faces[1])) <= 1e-9):
-        raise ContractViolation('PAYLOAD_ENVELOPE_CONTACT_FACE_AMBIGUOUS: cannot identify face away from suction origin')
-    away_face_index = 0 if abs(z_faces[0]) > abs(z_faces[1]) else 1
-    near_face_index = 1 - away_face_index
-    away_local_sign = -1 if away_face_index == 0 else 1
-    away_tool_sign = (-1 if z_faces[away_face_index] < z_faces[near_face_index]
-                      else 1)
     z_low, z_high = -dimensions[2] / 2, dimensions[2] / 2
-    if away_local_sign < 0:
-        z_low -= dimensions[2] * growth[2]
+    away_tool_sign = None
+    if parallel_axes:
+        z_faces = [transform_point(translation, quaternion,
+                   (0., 0., sign * dimensions[2] / 2))[2] for sign in (-1, 1)]
+        # Existing parallel contact construction and archive identity remain
+        # unchanged, including its measured face-plane arithmetic tolerance.
+        z_faces = [0. if abs(value) <= 1e-6 else value for value in z_faces]
+        if (z_faces[0] * z_faces[1] < 0 or
+                abs(abs(z_faces[0]) - abs(z_faces[1])) <= 1e-9):
+            raise ContractViolation('PAYLOAD_ENVELOPE_CONTACT_FACE_AMBIGUOUS: cannot identify face away from suction origin')
+        away_face_index = 0 if abs(z_faces[0]) > abs(z_faces[1]) else 1
+        near_face_index = 1 - away_face_index
+        away_local_sign = -1 if away_face_index == 0 else 1
+        away_tool_sign = (-1 if z_faces[away_face_index] < z_faces[near_face_index] else 1)
     else:
+        # A tilted top may cross tool Z=0. Face-centre distances in tool Z
+        # cannot identify the contact side for an eccentric grasp. Enclose
+        # either one-sided growth without inventing a face/angle prior.
+        away_local_sign = None
+    if away_local_sign is None or away_local_sign < 0:
+        z_low -= dimensions[2] * growth[2]
+    if away_local_sign is None or away_local_sign > 0:
         z_high += dimensions[2] * growth[2]
     low, high = [math.inf] * 3, [-math.inf] * 3
     for sx, sy, z in product((-1, 1), (-1, 1), (z_low, z_high)):
@@ -114,15 +123,16 @@ def build_envelope(dimensions, translation, quaternion, limits):
     for i, margin in enumerate(limits.position_half_range_tool_xy_m):
         low[i] -= margin + 1e-12
         high[i] += margin + 1e-12
-    if away_tool_sign < 0:
+    if away_tool_sign is None or away_tool_sign < 0:
         low[2] -= limits.away_from_contact_position_error_m + 1e-12
-    else:
+    if away_tool_sign is None or away_tool_sign > 0:
         high[2] += limits.away_from_contact_position_error_m + 1e-12
     return PayloadEnvelope(
         tuple(hi - lo for lo, hi in zip(low, high)),
         tuple((hi + lo) / 2 for lo, hi in zip(low, high)),
-        # Equivalent cuboid with +Z agreeing with nominal box +Z. This
-        # preserves an upright box when a packing solver places the envelope.
+        # Tool-aligned cuboid; +Z stays in the nominal box-Z hemisphere.
+        # With tilt this is not the nominal box orientation. Consumers must
+        # transform its full pose, including when converting solver targets.
         ((0., 0., 0., 1.) if axis[2] > 0 else (1., 0., 0., 0.)), limits,
         digest_of(dimensions, translation, quaternion))
 

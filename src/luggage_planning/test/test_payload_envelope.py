@@ -51,9 +51,51 @@ def test_off_center_pivot_moves_center_and_far_corner():
     assert env.dimensions_wdh[1] == pytest.approx(2*math.hypot(.6,.1))
 
 
-def test_tilt_refused():
-    with pytest.raises(ContractViolation, match='UNSUPPORTED_TILT'):
-        build_envelope((.5,.3,.2), (0,0,0), (math.sin(.01),0,0,math.cos(.01)), limits())
+@pytest.mark.parametrize('tilt_deg', [.000001, 2., 35., 90., 145., 179.])
+@pytest.mark.parametrize('yaw', [0., 5., 100., 180.])
+def test_tilted_continuous_family_keeps_both_uncertainty_directions(tilt_deg, yaw):
+    import numpy as np
+
+    dimensions = np.array((.5, .3, .2))
+    translation = np.array((.18, -.09, .1))
+    axis = np.array((1., 2., 0.)) / math.sqrt(5)
+    angle = math.radians(tilt_deg)
+    quaternion = (*tuple(axis * math.sin(angle / 2)), math.cos(angle / 2))
+    cfg = limits(yaw, (.1, .2, .15), (.012, .021), .005)
+    env = build_envelope(tuple(dimensions), tuple(translation), quaternion, cfg)
+    # Independent Rodrigues matrix, not the production quaternion helper.
+    cross = np.array(((0., -axis[2], axis[1]), (axis[2], 0., -axis[0]),
+                      (-axis[1], axis[0], 0.)))
+    rotation = (np.eye(3) * math.cos(angle)
+                + (1 - math.cos(angle)) * np.outer(axis, axis)
+                + math.sin(angle) * cross)
+    half = dimensions * (.5 + np.array(cfg.size_growth_fraction_wdh) / 2)
+    # Height uncertainty includes either contact-side choice; in the union
+    # each possible away face extends by the full configured height growth.
+    half[2] = dimensions[2] * (.5 + cfg.size_growth_fraction_wdh[2])
+    local = np.array(list(product(*[(-v, v) for v in half])))
+    corners = local @ rotation.T + translation
+    angles = np.radians(np.linspace(-yaw, yaw, 361))
+    rotated = np.empty((len(angles), len(corners), 3))
+    rotated[:, :, 0] = np.cos(angles)[:, None] * corners[:, 0] - np.sin(angles)[:, None] * corners[:, 1]
+    rotated[:, :, 1] = np.sin(angles)[:, None] * corners[:, 0] + np.cos(angles)[:, None] * corners[:, 1]
+    rotated[:, :, 2] = corners[:, 2]
+    errors = np.array(list(product(*[(-v, v) for v in (*cfg.position_half_range_tool_xy_m,
+                                                            cfg.away_from_contact_position_error_m)])))
+    points = rotated[:, :, None, :] + errors
+    assert np.all(np.abs(points - env.t_tcp_box_translation) <= np.array(env.dimensions_wdh) / 2 + 1e-11)
+    # Nominal transformed corners are enclosed too; no flattening of the tilt.
+    nominal = np.array(list(product(*[(-v / 2, v / 2) for v in dimensions]))) @ rotation.T + translation
+    assert np.all(np.abs(nominal - env.t_tcp_box_translation) <= np.array(env.dimensions_wdh) / 2 + 1e-11)
+
+
+def test_tilt_without_configured_uncertainty_encloses_original_measured_cuboid():
+    cfg = limits(0.)
+    q = (math.sin(.01), 0., 0., math.cos(.01))
+    env = build_envelope((.5, .3, .2), (.08, -.03, -.1), q, cfg)
+    for corner in product((-.25, .25), (-.15, .15), (-.1, .1)):
+        assert inside(env, transform_point((.08, -.03, -.1), q, corner))
+    assert env.dimensions_wdh[2] > .2
 
 
 @pytest.mark.parametrize('quaternion,translation,expected_center,unchanged_face', [

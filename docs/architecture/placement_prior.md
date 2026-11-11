@@ -763,3 +763,23 @@ payload's permissions to the existing suction panel/contact-frame interface.
 It retains full branch/seed provenance in immutable untimed witnesses. Those
 witnesses still require actual-start and carrying connections, timing and the
 independent whole-operation certifier; they cannot authorize execution alone.
+
+The attachment geometry owner preserves the measured contact attitude even when
+the measured box pose expresses yaw only. Nonparallel box/contact Z axes use a
+tool-aligned enclosing cuboid computed from all eight transformed corners and
+exact continuous tool-pivot yaw extrema. Existing configured height-growth
+allowance extends on both local box-Z sides, and the existing away-position
+allowance extends on both tool-Z sides: a tilted face-centre projection does not
+identify a reliable one-sided contact direction. Parallel inputs retain the
+existing one-sided construction and identities. This adds no physical tilt
+acceptance threshold; measured surface-quality, full-footprint support and
+collision checks remain mandatory. Geometry construction alone never grants
+contact permission.
+
+The envelope's full pose must travel with its WDH. Under tilt its orientation in
+world may differ from the nominal box yaw. An envelope WDH is not a world-axis
+AABB. A solver choosing upright envelope targets must convert them back through
+`box_pose_at_conservative`; a solver choosing nominal box targets must test the
+fully transformed envelope, including container/hull and occupancy clearance.
+Never flatten either measured pose, infer nominal targets by centre substitution,
+or inflate already-frozen envelope dimensions again.

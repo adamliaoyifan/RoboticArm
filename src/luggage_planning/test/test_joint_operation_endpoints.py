@@ -1,5 +1,6 @@
 """Current-envelope endpoint inputs and bound untimed branch admission."""
 from dataclasses import replace
+import math
 import time
 from types import SimpleNamespace as NS
 
@@ -45,7 +46,8 @@ def response(request):
     return result
 
 
-def test_private_request_removes_exact_target_only_and_never_double_inflates():
+@pytest.mark.parametrize('tilt', [0., .02])
+def test_private_request_removes_exact_target_only_and_never_double_inflates(tilt):
     from st09_contracts.attachment_geometry import freeze_geometry
     from st09_contracts.payload_envelope import EnvelopeLimits
     from luggage_planning.joint_operation_scenes import build_operation_scenes
@@ -53,12 +55,16 @@ def test_private_request_removes_exact_target_only_and_never_double_inflates():
     _,candidate=fixture()
     old=candidate.predicted_attachment
     grown=freeze_geometry(old.measured_dimensions_wdh,old.t_tool_box_translation,
-        old.t_tool_box_quaternion_xyzw,EnvelopeLimits(5.,(.1,.1,.1),(0.,0.),.005))
+        (math.cos(tilt),0.,0.,math.sin(tilt)),EnvelopeLimits(5.,(.1,.1,.1),(0.,0.),.005))
+    box_from_tool=Transform(grown.t_tool_box_translation,grown.t_tool_box_quaternion_xyzw).inverse()
+    candidate=replace(candidate,
+        world_from_pick_tool=candidate.world_from_pick_box.compose(box_from_tool),
+        world_from_release_tool=candidate.world_from_release_box.compose(box_from_tool))
     scenes=build_operation_scenes(baseline(),pickup_object_id='pickup_box',geometry=grown,
         world_from_pick_box=candidate.world_from_pick_box,world_from_settled_box=candidate.world_from_settled_box)
     candidate=replace(candidate,predicted_attachment=grown,scenes=scenes)
     before=candidate.scenes.pick.scene_cdr
-    request=query(candidate)
+    request=deserialize_message(serialize_message(query(candidate)),CheckGraspLocalPaths.Request)
     assert candidate.scenes.pick.scene_cdr==before
     objects={obj.id for obj in request.scene.world.collision_objects}
     assert objects=={'pickup_box_neighbor','container','robot_pedestal'}

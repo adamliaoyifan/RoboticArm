@@ -1,4 +1,5 @@
 """Real ROS message roundtrip and stale/tampered geometry rejection."""
+import math
 import pytest
 from luggage_msgs.msg import AttachmentGeometryV2
 from st09_contracts._base import ContractViolation
@@ -12,9 +13,12 @@ def sample():
                            EnvelopeLimits(5, (.1,.1,.1), (0,0), 0))
 
 
-def test_real_wire_roundtrip_preserves_digest_without_expansion():
+@pytest.mark.parametrize('tilt', [0., .02])
+def test_real_wire_roundtrip_preserves_digest_without_expansion(tilt):
     from rclpy.serialization import serialize_message, deserialize_message
-    original = sample()
+    original = freeze_geometry((.5,.3,.2), (.08,-.03,-.1),
+        (math.sin(tilt),0.,0.,math.cos(tilt)),
+        EnvelopeLimits(5,(.1,.1,.1),(0.,0.),.005))
     wire = geometry_to_message(original)
     restored = geometry_from_message(deserialize_message(serialize_message(wire), AttachmentGeometryV2))
     assert restored == original
