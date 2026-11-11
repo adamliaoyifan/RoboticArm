@@ -58,8 +58,9 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
     pick=matrix(action.pick_tool_pose)
     tcp_handoff=matrix(action.handoff_tool_pose)
     contact_handoff=matrix(action.support_contact_tool_pose)
-    push_start=matrix(action.push_start_tool_pose)
-    push_end=matrix(action.push_end_tool_pose)
+    nominal_push_start=matrix(action.push_start_tool_pose)
+    push_start=matrix(action.push_start_control_tool_pose)
+    push_end=matrix(action.push_end_control_tool_pose)
     world=scene.world_container
 
     def payload(mode, box=box_pose, support=False):
@@ -160,7 +161,7 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
     down=shifted(tcp_handoff,[0,0,-config.release_drop_m])
     failure=stage('release_down',down,contact=True,speed=config.contact_speed_mps)
     if not failure:failure=stage('withdraw',shifted(down,[-config.withdraw_m,0,0]))
-    pre_push=shifted(push_start,[-config.precontact_distance_m,0,0])
+    pre_push=shifted(nominal_push_start,[-config.precontact_distance_m,0,0])
     if not failure:failure=stage('push_pre',pre_push,'joint',
         goal_solutions=screened['endpoints']['push_pre']['q_solutions'])
     if not failure:failure=stage('push_contact',push_start,contact='push_plate',speed=config.contact_speed_mps)

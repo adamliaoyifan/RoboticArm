@@ -51,7 +51,7 @@ def main():
         if not plans:raise ValueError('NO_COMPLETE_NOMINAL_PLAN')
         plan=plans[0]  # Diagnostic only: selected-path collision scoring pending.
         for name in ('candidates.py','planning_types.py','full_arm.py','tool_contact_geometry.py',
-                     'geometry.py','assets.py','path_planning.py','stage_planner.py','coupled_chain.py','interval_certificate.py','motion_bounds.py'):
+                     'geometry.py','assets.py','path_planning.py','stage_planner.py','action_screen.py','coupled_chain.py','interval_certificate.py','motion_bounds.py'):
             if sha256(Path(__file__).with_name(name))!=planning_manifest['source_hashes'].get(name):
                 raise ValueError('PLANNED_SOURCE_CHANGED:'+name)
     fixture=json.loads((args.scene_dir/'fixture.json').read_text())

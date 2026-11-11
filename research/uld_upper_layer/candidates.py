@@ -149,8 +149,10 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
                                 push_start=pose([front-length,y,z],push_r)@surface_T_tool
                                 distance=final_x-handoff[0,3]
                                 push_end=push_start.copy();push_end[0,3]+=distance
-                                failure=tool_collision(assets,snapshot,push_start,config.collision_margin_m)
-                                if not failure:failure=tool_collision(assets,snapshot,push_end,config.collision_margin_m)
+                                push_control_start=push_start.copy();push_control_start[0,3]+=config.push_contact_stroke_m
+                                push_control_end=push_end.copy();push_control_end[0,3]+=config.push_contact_stroke_m
+                                failure=tool_collision(assets,snapshot,push_control_start,config.collision_margin_m)
+                                if not failure:failure=tool_collision(assets,snapshot,push_control_end,config.collision_margin_m)
                                 if failure:
                                     reasons[failure['reason']]+=1;continue
                                 pid=digest(dict(pose=flat(final),snapshot=snapshot.snapshot_id,
@@ -164,7 +166,7 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
                                 contact_tcp[2,3]-=config.support_contact_stroke_m
                                 yield ActionCandidate(aid,placement,flat(box_to_tool),
                                     flat(pick),flat(handoff),flat(tcp),flat(contact_tcp),metrics,flat(push_start),
-                                    flat(push_end),(1.,0.,0.),distance,tool_yaw,
+                                    flat(push_end),flat(push_control_start),flat(push_control_end),(1.,0.,0.),distance,tool_yaw,
                                     push_geometry.tool_T_push_surface,push_geometry.geometry_id,
                                     ('SUPPORT_AND_FIXED_TOOL_CHECKED',
                                      'FULL_ARM_NOT_EVALUATED','PUSH_PHYSICS_NOT_EVALUATED'))

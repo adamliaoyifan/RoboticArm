@@ -39,6 +39,7 @@ class UpperConfig:
     path_simplification_budget_s: float
     contact_penetration_m: float
     support_contact_stroke_m: float
+    push_contact_stroke_m: float
     sweep_step_m: float
     cartesian_step_m: float
     push_speed_mps: float
@@ -77,8 +78,9 @@ class UpperConfig:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise ValueError(f'{name} must be positive integer')
-        if self.support_contact_stroke_m > self.contact_penetration_m:
-            raise ValueError('support_contact_stroke_m exceeds modeled contact penetration')
+        for name in ('support_contact_stroke_m','push_contact_stroke_m'):
+            if getattr(self,name) > self.contact_penetration_m:
+                raise ValueError(name+' exceeds modeled contact penetration')
         if self.minimum_executable_solutions > self.solution_count_target:
             raise ValueError('minimum exceeds target')
 
@@ -167,6 +169,8 @@ class ActionCandidate:
     handoff_support: SupportMetrics
     push_start_tool_pose: tuple
     push_end_tool_pose: tuple
+    push_start_control_tool_pose: tuple  # nominal panel contact plus bounded acquisition stroke
+    push_end_control_tool_pose: tuple
     push_direction: tuple
     push_distance_m: float
     tool_yaw_deg: float
@@ -186,7 +190,8 @@ def action_from_record(value):
     value['placement']=PlacementCandidate(**placement)
     value['handoff_support']=support(value['handoff_support'])
     for key in ('box_T_tool','pick_tool_pose','handoff_box_pose','handoff_tool_pose','support_contact_tool_pose',
-                'push_start_tool_pose','push_end_tool_pose','push_direction',
+                'push_start_tool_pose','push_end_tool_pose','push_start_control_tool_pose',
+                'push_end_control_tool_pose','push_direction',
                 'tool_T_push_surface','checks'):
         value[key]=tuple(value[key])
     return ActionCandidate(**value)

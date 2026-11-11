@@ -107,6 +107,21 @@ class JointGeometry(unittest.TestCase):
         with self.assertRaises(KeyError):action_from_record(record)
         with self.assertRaises(ValueError):replace(self.config,support_contact_stroke_m=.001)
 
+    def test_push_control_stroke_preserves_nominal_placement_and_travel(self):
+        actions=[]
+        for stroke in (0., .00005, .0002):
+            config=replace(self.config,max_action_candidates=1,push_contact_stroke_m=stroke)
+            rows,_=generate_actions(self.assets,self.snapshot,self.state,config);a=rows[0];actions.append(a)
+            for reference,control in ((a.push_start_tool_pose,a.push_start_control_tool_pose),
+                                      (a.push_end_tool_pose,a.push_end_control_tool_pose)):
+                delta=matrix(control)[:3,3]-matrix(reference)[:3,3]
+                np.testing.assert_allclose(delta,np.array(a.push_direction)*stroke,atol=1e-12)
+            travel=matrix(a.push_end_control_tool_pose)[:3,3]-matrix(a.push_start_control_tool_pose)[:3,3]
+            self.assertAlmostEqual(np.linalg.norm(travel),a.push_distance_m)
+        self.assertEqual(actions[0].placement.final_box_pose,actions[-1].placement.final_box_pose)
+        self.assertEqual(actions[0].push_start_tool_pose,actions[-1].push_start_tool_pose)
+        with self.assertRaises(ValueError):replace(self.config,push_contact_stroke_m=.001)
+
     def test_push_candidate_binds_source_plate_face_to_box_face_and_roundtrips(self):
         from dataclasses import asdict
         from planning_types import action_from_record
