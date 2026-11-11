@@ -15,6 +15,7 @@ class NativeSampleMonitor:
         if self._native_step_s is None or not math.isfinite(self._native_step_s) or self._native_step_s<=0:
             raise ValueError('NATIVE_CONTACT_STEP_REQUIRED')
         self._contact_stamp=monitor.sample.stamp_s
+        self._contact_initial_stamp=self._contact_stamp
         self._contact_samples=0;self._max_native_gap_s=0.
 
     def __call__(self,row):
@@ -64,5 +65,6 @@ class NativeSampleMonitor:
     def metrics(self):return dict(max_native_processing_backlog_s=self._max_backlog_s,
         callbacks=self._calls,selected_samples=self._selected_samples,max_callback_wall_s=self._max_callback_wall_s,
         native_contact_samples=self._contact_samples,native_contact_last_stamp_s=self._contact_stamp,
+        native_contact_initial_stamp_s=self._contact_initial_stamp,
         native_contact_step_s=self._native_step_s,max_native_contact_gap_s=self._max_native_gap_s,
         native_contact_scope='declared_lower_and_panel_rules_every_native_step_full_scene_at_monitor_period')
