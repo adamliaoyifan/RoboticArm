@@ -1,0 +1,20 @@
+# Necessary observed support/quality only. No physical seal or motion permission.
+luggage_msgs/FrozenSuctionObservationV2 binding
+string attachment_geometry_sha256
+# Same measured box body axes as the frozen acquisition; no inferred dimensions.
+float64[3] measured_box_wdh
+# Inverse of measured contact_from_box; row-major SE(3), no live wrist transform.
+float64[16] box_from_contact_frame
+float64 budget_s
+---
+bool checked
+bool accepted
+string reason
+luggage_msgs/FrozenSuctionObservationV2 binding
+string attachment_geometry_sha256
+float64[16] world_from_contact_frame_at_observation
+string quality_metrics_json
+# Diagnostics only. No new height/angle tolerance is implied.
+float64 plane_height_offset_m
+float64 normal_difference_rad
+string evidence_sha256

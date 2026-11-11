@@ -55,6 +55,21 @@ geometry keeps its measurement stamp. Starting robot state keeps its own state
 stamp. Static scene goals bind to the chosen scene snapshot. These times must
 not be collapsed into a fabricated common `now()`.
 
+`FrozenSuctionObservationV2` retains the original world acquisition header and
+hash-bound request/observation/box/generation/model/domain/sample/policy identity.
+`CheckFrozenSuctionContactV2.box_from_contact_frame` is a measured body-frame
+SE(3), not a current world/wrist transform. Its returned
+`world_from_contact_frame_at_observation` refers to the frozen acquisition. A
+contact/quality positive is neither a physical-seal nor an execution permit.
+Invalid or unavailable bindings return an inactive result without an old witness.
+
+The F24 legacy bringup files named by historical isolation evidence are absent
+from the cleaned workspace. That receipt cannot certify the current state.
+The obligation remains pending, with pointers to the remaining ROS1 packing
+reference and current install declarations; restoring legacy execution requires
+fresh isolation or migration evidence. An offline geometry pass does not close
+that obligation or certify any live integration.
+
 Pose payload: `position[3]`, `quaternion_xyzw[4]`, `reference`, and
 `orientation_semantics`. Named checker profiles are:
 

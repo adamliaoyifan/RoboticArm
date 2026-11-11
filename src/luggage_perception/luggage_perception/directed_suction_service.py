@@ -21,6 +21,10 @@ class DirectedSuctionService:
         """One reference swap; an in-flight handler retains its own snapshot."""
         self._context = context
 
+    def context_snapshot(self):
+        """Current immutable acquisition for explicit owner retention."""
+        return self._context
+
     def handle(self, request, response):
         from luggage_msgs.msg import DirectedSuctionContactV2
         started = self._clock()

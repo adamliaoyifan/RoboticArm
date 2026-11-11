@@ -89,6 +89,36 @@ Context capture cost is recorded as `suction_directed_context_ms`. This optional
 service issues no robot, vacuum, scene or OCC writes and does not alter legacy
 candidate acceptance.
 
+The detector also registers `/luggage/retain_suction_observation_v2` and
+`/luggage/check_frozen_suction_contact_v2` when observed suction export is enabled.
+Retention must match the exact current measured detection, domain and effective
+policy. Its opaque retention identity binds request, observation, box/generation,
+original world acquisition stamp, model, domain, sample and policy digests.
+The owner copies sample buffers and the model. Subsequent camera publication
+does not replace retained evidence. Read/duplicate retention does not renew it;
+expiry, resource eviction, explicit revocation or an actual model/policy change
+refuses subsequent checks. Resource defaults are 16 records / 64 MiB sampled
+payload and metadata / 300 monotonic seconds, exposed as detector parameters.
+These are retention limits, not a calibrated physical freshness policy.
+
+Actual contact checks compose the frozen acquisition box pose with the inverse
+of the measured contact-from-box relation in the same measured body axes. They
+keep that full pose, check the complete physical footprint plus existing margin
+against directly observed support, and recompute the existing surface quality
+over the cells intersected by the actual rectangle. They never refit the actual
+pose, reuse the planned-grasp score or fill unknown cells. Signed plane-height
+offset and normal difference are diagnostics only; no uncalibrated contact
+height/angle tolerances are introduced. A positive result proves necessary
+observed support/quality only. Actual seal, attachment identity/freshness,
+preparation issuance, current scene and native trajectory admission remain
+separate mandatory execution-owner gates.
+
+`FrozenActualContactPort` checks typed response bindings, original acquisition
+pose, actual geometry and the complete witness digest. A timeout leaves the
+service request tracked until its real response; it does not permit a second
+overlapping RPC. The detector registration and isolated RPC fixtures do not
+by themselves prove adoption by the production preparation/execution owners.
+
 The complete-operation planning client binds every response to the independently
 provided domain, measured detection, physical model, exact query sequence and
 acquisition stamp. It verifies each canonical quality receipt, proper contact

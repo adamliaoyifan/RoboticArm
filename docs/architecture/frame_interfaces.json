@@ -580,28 +580,23 @@
   },
   {
    "id": "F24",
-   "producer": "ROS1 / ignored bringup / historical exploration",
+   "producer": "retired ROS1 bringup / remaining ROS1 packing reference",
    "consumer": "future restored integration",
    "transport": "legacy services and scripts",
    "scope": "legacy",
-   "current": "ROS1 references and COLCON_IGNORE paths are not migrated Humble runtime",
+   "current": "former bringup source absent after deployment cleanup; historical isolation receipt stale; remaining packing reference is not a Humble runtime",
    "target": "explicit isolation proof or full migration before enabling; never counted as tested live",
    "sources": [
-    "src/luggage_bringup/COLCON_IGNORE",
-    "src/luggage_bringup/scripts/orchestrator_node.py",
-    "src/luggage_bringup/scripts/interior_explore_loop.py",
-    "src/luggage_bringup/scripts/explore_execution_utils.py",
-    "src/luggage_bringup/scripts/probe_execution_utils.py",
     "src/luggage_packing/scripts/ros1_reference/placement_planner_node.py",
-    "src/luggage_planning/scripts/ros1_reference/waypoint_generator_node.py"
+    "src/luggage_packing/CMakeLists.txt",
+    "src/luggage_planning/CMakeLists.txt"
    ],
    "checks": [
     "old_version",
     "missing_version",
     "wrong_frame"
    ],
-   "migration_state": "isolated",
-   "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-graph/runtime_F24.json"
+   "migration_state": "pending"
   },
   {
    "id": "F25",
@@ -623,6 +618,27 @@
    "checks": [
     "old_version",
     "missing_version",
+    "wrong_frame"
+   ],
+   "migration_state": "pending"
+  },
+  {
+   "id": "F26",
+   "producer": "perception frozen observed suction owner",
+   "consumer": "complete-operation actual contact admission",
+   "transport": "RetainSuctionObservationV2 / CheckFrozenSuctionContactV2",
+   "scope": "production",
+   "current": "detector registration and read-only port; preparation/execution adoption pending",
+   "target": "same-box acquisition-bound samples and actual full measured contact pose; necessary observed support and quality only",
+   "sources": [
+    "src/luggage_msgs/msg/FrozenSuctionObservationV2.msg",
+    "src/luggage_msgs/srv/RetainSuctionObservationV2.srv",
+    "src/luggage_msgs/srv/CheckFrozenSuctionContactV2.srv",
+    "src/luggage_perception/luggage_perception/frozen_suction_observation.py",
+    "src/luggage_perception/luggage_perception/frozen_suction_service.py",
+    "src/luggage_planning/luggage_planning/joint_operation_actual_contact.py"
+   ],
+   "checks": [
     "wrong_frame"
    ],
    "migration_state": "pending"

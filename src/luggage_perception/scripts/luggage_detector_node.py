@@ -735,6 +735,10 @@ class LuggageDetector(Node):
             self._directed_suction_ros_service = self.create_service(EvaluateDirectedSuctionV2,
                 '/luggage/evaluate_directed_suction_v2', self._directed_suction_service.handle,
                 callback_group=self._group)
+            from luggage_perception.frozen_suction_service import register_frozen_suction_services
+            self._frozen_suction_service = register_frozen_suction_services(self,
+                context_provider=self._directed_suction_service.context_snapshot,
+                model_provider=lambda:self._suction_evaluator.contact_model)
         # ST03: v2 pose-contract publishers exist only when an explicit
         # scene revision enables the boundary; a rejected conversion warns
         # with its diagnostic and never disturbs the v1 stream.

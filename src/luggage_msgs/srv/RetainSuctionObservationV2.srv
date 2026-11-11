@@ -1,0 +1,11 @@
+# Retain exactly this currently published measured acquisition, without renewal.
+string request_id
+string observation_id
+string domain_sha256
+luggage_msgs/DetectedLuggage detection
+uint64 generation
+string expected_quality_policy_sha256
+---
+bool retained
+string reason
+luggage_msgs/FrozenSuctionObservationV2 binding
