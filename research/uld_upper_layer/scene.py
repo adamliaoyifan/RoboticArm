@@ -204,13 +204,13 @@ def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None):
     if vacuum_plugin is not None:
         vacuum_plugin=Path(vacuum_plugin).resolve(strict=True)
         plugin=ET.SubElement(world,'plugin',filename=str(vacuum_plugin),
-                             name='uld_upper::KinematicVacuum')
+                             name='uld_upper::IdealVacuum')
         parameters=dict(payload_model='upper_layer_payload',parent_model='S20',
                         payload_link='body',payload_collision='collision',
                         parent_link='elfin_link6',service='/upper_layer/vacuum',
                         state_topic='/upper_layer/vacuum/state')
         for name,value in parameters.items():text(plugin,name,value)
-        spec['ideal_vacuum']=dict(**parameters,model='measured_relative_pose_physics_step_follow',
+        spec['ideal_vacuum']=dict(**parameters,model='native_detachable_fixed_joint_at_measured_relation',
                                  attach_precondition='caller_verifies_ideal_cup_seal_frame_gap_and_footprint',
                                  detached_pose_commands=False)
         spec['source_hashes'][str(vacuum_plugin)]=sha256(vacuum_plugin)

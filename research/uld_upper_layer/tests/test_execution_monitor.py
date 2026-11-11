@@ -15,7 +15,7 @@ from geometry import pose
 
 
 class MonitorContracts(unittest.TestCase):
-    def create(self,policy=None):
+    def create(self,policy=None,panel=None):
         self.initial=PhysicalSample(1.,(0.,)*6,tuple(pose([0,0,1.125]).ravel()),tuple(np.eye(4).ravel()),
             (ObservedBody('lower_0',(1.,1.,1.),tuple(pose([0,0,.5]).ravel()),1.),),(),1.,False,0,0)
         scene=SimpleNamespace(world_container=np.eye(4),payload={},
@@ -24,7 +24,7 @@ class MonitorContracts(unittest.TestCase):
         action=SimpleNamespace(handoff_box_pose=self.initial.container_T_box,push_direction=(1.,0.,0.))
         return ExecutionMonitor(SimpleNamespace(read=lambda row:row),scene,
             SimpleNamespace(dimensions=(1.,1.,.25),com_local=(0,0,0)),action,
-            UpperConfig.load(),policy or ExecutionPolicy.load(),self.initial,io.StringIO())
+            UpperConfig.load(),policy or ExecutionPolicy.load(),self.initial,io.StringIO(),panel)
 
     def test_actual_collision_failure_is_not_eligible_for_later_scoring(self):
         monitor=self.create();self.scene.check_state=lambda *args:dict(reason='SELF_COLLISION',pair=['camera','arm'])
@@ -92,6 +92,32 @@ class MonitorContracts(unittest.TestCase):
         self.assertIsNone(callback(dict(vacuum=native[23])))
         self.assertLessEqual(monitor.sample.stamp_s,1.024)
         self.assertIsNone(callback(dict(vacuum=native[-1])))
+
+    def test_attachment_flag_does_not_replace_actual_rigid_relation_check(self):
+        monitor=self.create();monitor.begin_phase('carry','seal',True,False)
+        expected=np.array(self.initial.container_T_box).reshape(4,4)
+        valid=replace(self.initial,attached=True,tool_T_box_at_attach=tuple(expected.ravel()))
+        self.assertIsNone(monitor.observe(valid))
+        slipped=expected.copy();slipped[2,3]-=.002
+        self.assertEqual(monitor.observe(replace(valid,stamp_s=1.01,container_T_box=tuple(slipped.ravel()))),
+                         'ATTACHED_BOX_RELATION_ERROR')
+        monitor=self.create()
+        self.assertEqual(monitor.observe(replace(self.initial,attachment_joint_component_present=True)),
+                         'DETACHED_ATTACHMENT_CONSTRAINT_REMAINS')
+
+    def test_native_push_contact_requires_the_declared_patch_and_normal(self):
+        from physical_observation import ObservedContact
+        from shapely.geometry import box
+        for point,normal,expected in (((0,0,0),(0,0,1),None),
+                                      ((.2,0,0),(0,0,1),'NATIVE_CONTACT_OUTSIDE_DECLARED_PANEL_PATCH'),
+                                      ((0,0,0),(0,0,-1),'NATIVE_CONTACT_OUTSIDE_DECLARED_PANEL_PATCH')):
+            monitor=self.create(panel='S20::wrist::p04')
+            self.scene.contact_mode=lambda value:'push_plate'
+            self.scene.push_geometry=SimpleNamespace(tool_T_push_surface=tuple(np.eye(4).ravel()))
+            self.scene.contact_polygon=lambda mode:box(-.09,-.09,.09,.09)
+            monitor.begin_phase('push_contact','push_plate',False,True)
+            observed=replace(self.initial,contacts=(ObservedContact('S20::wrist::p04',point,normal,.0001),))
+            self.assertEqual(monitor.observe(observed),expected)
 
 
 if __name__=='__main__':unittest.main()

@@ -19,7 +19,7 @@ def pose_error(reference,observed):
 
 
 class ExecutionMonitor:
-    def __init__(self,reader,scene,state,action,config,policy,initial,trace):
+    def __init__(self,reader,scene,state,action,config,policy,initial,trace,panel_collision_name=None):
         self._reader=reader;self._scene=scene;self._state=state;self._action=action
         self._config=config;self._policy=policy;self._trace=trace
         self._baseline={b.name:b.container_T_body for b in initial.lower}
@@ -28,6 +28,7 @@ class ExecutionMonitor:
         self._contact_mode=False;self._allow_support=True;self._detached_commands=initial.pose_command_count
         self._push_history=deque();self._ring=deque();self._failure=None
         self._support=None;self._sample=initial;self._contact_since=None
+        self._panel_collision_name=panel_collision_name
         self._max_monitor_gap_s=0.;self._samples=0
         self._prior_attached=initial.attached
         scene.set_payload(state.dimensions,'world',scene.world_container@np.array(initial.container_T_box).reshape(4,4),allow_support=True)
@@ -83,6 +84,13 @@ class ExecutionMonitor:
             return self._stop('DETACHED_PAYLOAD_POSE_COMMAND')
         if not sample.attached and sample.payload_pose_command_component_present is True:
             return self._stop('DETACHED_PAYLOAD_POSE_COMMAND_COMPONENT_REMAINS')
+        if not sample.attached and sample.attachment_joint_component_present is True:
+            return self._stop('DETACHED_ATTACHMENT_CONSTRAINT_REMAINS')
+        if sample.attached and sample.tool_T_box_at_attach is not None:
+            actual=np.linalg.inv(np.array(sample.container_T_tool).reshape(4,4))@np.array(sample.container_T_box).reshape(4,4)
+            distance,angle=pose_error(sample.tool_T_box_at_attach,actual)
+            if distance>self._config.contact_tolerance_m or angle>self._policy.attachment_rotation_error_deg:
+                return self._stop('ATTACHED_BOX_RELATION_ERROR',distance_m=distance,angle_deg=angle)
         for body in sample.lower:
             distance,angle=pose_error(self._baseline[body.name],body.container_T_body)
             if distance>self._policy.lower_translation_m or angle>self._policy.lower_rotation_deg:
@@ -92,6 +100,23 @@ class ExecutionMonitor:
         self._scene.payload['allow_support']=self._allow_support
         failure=self._scene.check_state(sample.q,self._config.collision_margin_m,self._contact_mode)
         if failure:return self._stop('OBSERVED_COLLISION_OR_CLEARANCE',diagnostic=failure)
+        intended=[]
+        for contact in sample.contacts:
+            if contact.other_collision!=self._panel_collision_name:continue
+            if not self._contact_mode:return self._stop('FORBIDDEN_NATIVE_PANEL_CONTACT')
+            mode=self._scene.contact_mode(self._contact_mode)
+            frame=np.array(sample.container_T_tool).reshape(4,4)
+            if mode=='push_plate':frame=frame@np.array(self._scene.push_geometry.tool_T_push_surface).reshape(4,4)
+            point=np.linalg.inv(frame)@np.r_[contact.point_container,1.]
+            normal=np.array(contact.normal_toward_payload_container)
+            from shapely.geometry import Point
+            patch=self._scene.contact_polygon(mode).buffer(self._config.contact_tolerance_m)
+            alignment=float(normal@frame[:3,2])
+            if (not patch.covers(Point(point[:2])) or abs(point[2])>self._config.contact_tolerance_m or
+                alignment<np.cos(np.deg2rad(self._policy.contact_normal_alignment_deg)) or
+                contact.depth_m>self._config.contact_penetration_m):
+                return self._stop('NATIVE_CONTACT_OUTSIDE_DECLARED_PANEL_PATCH',point_contact_frame=point[:3].tolist(),normal_alignment=alignment,depth_m=contact.depth_m)
+            intended.append(asdict(contact))
         self._support=measure_observed_support(sample,self._state.dimensions,self._state.com_local,
             self._config.contact_tolerance_m,self._config.contact_penetration_m)
         if self._support.native_max_depth_m>self._config.contact_penetration_m:
@@ -102,6 +127,7 @@ class ExecutionMonitor:
         record=dict(event='observation',phase=self._phase,stamp_s=sample.stamp_s,q=sample.q,
             container_T_box=sample.container_T_box,container_T_tool=sample.container_T_tool,
             attached=sample.attached,pose_command_count=sample.pose_command_count,
+            intended_contact_trace=intended,
             support=asdict(self._support))
         self._trace.write(json.dumps(record)+'\n');self._trace.flush()
         return None

@@ -46,6 +46,8 @@ class PhysicalSample:
     pose_command_count: int
     processed_commands: int
     payload_pose_command_component_present: bool | None = None
+    tool_T_box_at_attach: tuple | None = None
+    attachment_joint_component_present: bool | None = None
 
 
 class ObservationReader:
@@ -98,7 +100,13 @@ class ObservationReader:
                 contacts.append(ObservedContact(b if first else a,tuple(point[:3]),tuple(normal),float(depth)))
         box=self._container_T_world@pose_matrix(native['payload_pose_world'])
         tool=self._container_T_world@pose_matrix(native['link_pose_world'])@self._link_T_tool
+        relation=None
+        if 'link_T_payload_xyz' in native and 'link_T_payload_quat_xyzw' in native:
+            link_T_box=np.eye(4);link_T_box[:3,3]=native['link_T_payload_xyz']
+            link_T_box[:3,:3]=Rotation.from_quat(native['link_T_payload_quat_xyzw']).as_matrix()
+            relation=tuple((np.linalg.inv(self._link_T_tool)@link_T_box).ravel())
         return PhysicalSample(stamp,q,tuple(box.ravel()),tuple(tool.ravel()),tuple(lower),tuple(contacts),
                               float(contact_stamp),bool(native['attached']),
                               int(native['pose_command_count']),int(native['processed_commands']),
-                              native.get('payload_pose_command_component_present'))
+                              native.get('payload_pose_command_component_present'),relation,
+                              native.get('attachment_joint_component_present'))

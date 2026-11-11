@@ -1,6 +1,6 @@
-// Explicit ideal-vacuum model, equivalent to the existing sim backend's
-// measured-relative-pose follow, evaluated at physics steps rather than ROS
-// timer ticks. Once released, this system sends NO payload pose commands.
+// Explicit ideal vacuum: native fixed constraint at the measured relation.
+// The physics engine carries mass and momentum; no payload poses, velocities,
+// forces, gravity changes or collision-mask changes are commanded here.
 #include <atomic>
 #include <iomanip>
 #include <sstream>
@@ -14,6 +14,7 @@
 #include <ignition/gazebo/components/PoseCmd.hh>
 #include <ignition/gazebo/components/JointPosition.hh>
 #include <ignition/gazebo/components/ContactSensorData.hh>
+#include <ignition/gazebo/components/DetachableJoint.hh>
 #include <google/protobuf/util/json_util.h>
 #include <ignition/plugin/Register.hh>
 #include <ignition/transport/Node.hh>
@@ -23,7 +24,7 @@
 namespace uld_upper {
 namespace sim=ignition::gazebo;
 namespace comp=sim::components;
-class KinematicVacuum : public sim::System, public sim::ISystemConfigure,
+class IdealVacuum : public sim::System, public sim::ISystemConfigure,
     public sim::ISystemPreUpdate, public sim::ISystemPostUpdate {
  public:
   void Configure(const sim::Entity &, const std::shared_ptr<const sdf::Element> &sdf,
@@ -50,7 +51,7 @@ class KinematicVacuum : public sim::System, public sim::ISystemConfigure,
       if (payload==sim::kNullEntity || parent==sim::kNullEntity) return;
       link=sim::Model(parent).LinkByName(ecm,linkName);
       if (link==sim::kNullEntity) return;
-      auto payloadLink=sim::Model(payload).LinkByName(ecm,payloadLinkName);
+      payloadLink=sim::Model(payload).LinkByName(ecm,payloadLinkName);
       if (payloadLink==sim::kNullEntity) return;
       payloadCollision=sim::Link(payloadLink).CollisionByName(ecm,payloadCollisionName);
       if (payloadCollision==sim::kNullEntity) return;
@@ -69,20 +70,19 @@ class KinematicVacuum : public sim::System, public sim::ISystemConfigure,
     if (command!=-1) ++processedCommands;
     if (command==1 && !attached) {
       // Freeze the observed relation; no target/candidate pose enters this model.
-      relation=tool.Inverse()*sim::worldPose(payload,ecm);attached=true;++epoch;
+      relation=tool.Inverse()*sim::worldPose(payload,ecm);
+      attachmentJoint=ecm.CreateEntity();
+      ecm.CreateComponent(attachmentJoint,comp::DetachableJoint(
+          comp::DetachableJointInfo{link,payloadLink,"fixed"}));
+      attached=true;++epoch;++attachmentCreateCount;
     } else if (command==0) {
       attached=false;
-      // Gazebo lets WorldPoseCmd survive one iteration for other systems.
-      // Remove the last attached command before this detached physics step,
-      // so even an old command cannot be reapplied after release.
-      ecm.RemoveComponent<comp::WorldPoseCmd>(payload);
+      if (attachmentJoint!=sim::kNullEntity) {
+        ecm.RemoveComponent<comp::DetachableJoint>(attachmentJoint);
+        ecm.RequestRemoveEntity(attachmentJoint);
+        attachmentJoint=sim::kNullEntity;++attachmentDetachCount;
+      }
     }
-    if (!attached) return;
-    const auto target=tool*relation;
-    auto pose=ecm.Component<comp::WorldPoseCmd>(payload);
-    if (pose) pose->Data()=target;
-    else ecm.CreateComponent(payload,comp::WorldPoseCmd(target));
-    ++poseCommands;
   }
   void PostUpdate(const sim::UpdateInfo &info,const sim::EntityComponentManager &ecm) override {
     ignition::msgs::StringMsg message;
@@ -91,6 +91,11 @@ class KinematicVacuum : public sim::System, public sim::ISystemConfigure,
       <<",\"attached\":"<<(attached?"true":"false")
       <<",\"pose_command_count\":"<<poseCommands<<",\"epoch\":"<<epoch
       <<",\"processed_commands\":"<<processedCommands
+      <<",\"attachment_model\":\"native_detachable_fixed_joint\""
+      <<",\"attachment_create_count\":"<<attachmentCreateCount
+      <<",\"attachment_detach_count\":"<<attachmentDetachCount
+      <<",\"attachment_joint_component_present\":"
+      <<(attachmentJoint!=sim::kNullEntity && ecm.Component<comp::DetachableJoint>(attachmentJoint)?"true":"false")
       <<",\"payload_pose_command_component_present\":"
       <<(ready.load() && ecm.Component<comp::WorldPoseCmd>(payload)?"true":"false")
       <<",\"sim_time_s\":"<<std::chrono::duration<double>(info.simTime).count()
@@ -133,15 +138,17 @@ class KinematicVacuum : public sim::System, public sim::ISystemConfigure,
   std::string payloadName,parentName,linkName,payloadLinkName,payloadCollisionName;
   std::vector<sim::Entity> joints;
   sim::Entity payload=sim::kNullEntity,link=sim::kNullEntity;
+  sim::Entity payloadLink=sim::kNullEntity,attachmentJoint=sim::kNullEntity;
   sim::Entity payloadCollision=sim::kNullEntity;
   std::atomic<int> requested{-1};std::atomic<bool> ready{false};
   bool attached=false;uint64_t poseCommands=0,epoch=0,processedCommands=0;
+  uint64_t attachmentCreateCount=0,attachmentDetachCount=0;
   ignition::math::Pose3d relation;
   ignition::transport::Node transport;
   ignition::transport::Node::Publisher state;
 };
 }
-IGNITION_ADD_PLUGIN(uld_upper::KinematicVacuum,ignition::gazebo::System,
- uld_upper::KinematicVacuum::ISystemConfigure,
- uld_upper::KinematicVacuum::ISystemPreUpdate,
- uld_upper::KinematicVacuum::ISystemPostUpdate)
+IGNITION_ADD_PLUGIN(uld_upper::IdealVacuum,ignition::gazebo::System,
+ uld_upper::IdealVacuum::ISystemConfigure,
+ uld_upper::IdealVacuum::ISystemPreUpdate,
+ uld_upper::IdealVacuum::ISystemPostUpdate)

@@ -117,7 +117,8 @@ def main():
             except ValueError as exc:
                 if not str(exc).startswith('STALE_PHYSICAL_STREAM') or time.monotonic()>deadline:raise
         trace=gzip.open(out/'monitor.jsonl.gz','wt',compresslevel=3)
-        monitor=ExecutionMonitor(reader,scene,state,action,config,policy,initial,trace)
+        monitor=ExecutionMonitor(reader,scene,state,action,config,policy,initial,trace,
+                                 panel_collision_name=runtime.panel_contact['collision_name'])
         observe=NativeSampleMonitor(runtime,monitor,policy)
         # Warm up the real observation boundary while holding the current arm.
         q=list(initial.q);hold=dict(positions=[q,q],velocities=[[0.]*6,[0.]*6],time_from_start=[0.,policy.trigger_pre_s])

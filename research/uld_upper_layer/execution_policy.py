@@ -29,6 +29,8 @@ class ExecutionPolicy:
     final_rotation_deg: float
     initial_joint_error_rad: float
     initial_rotation_deg: float
+    attachment_rotation_error_deg: float
+    contact_normal_alignment_deg: float
     trigger_pre_s: float
     trigger_post_s: float
     max_case_bytes: int
