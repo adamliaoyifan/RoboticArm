@@ -783,3 +783,17 @@ AABB. A solver choosing upright envelope targets must convert them back through
 fully transformed envelope, including container/hull and occupancy clearance.
 Never flatten either measured pose, infer nominal targets by centre substitution,
 or inflate already-frozen envelope dimensions again.
+
+Complete-operation candidate construction preserves a fixed nominal placement
+and back-projects a desired world tool-pose hint through that placement and the
+measured pickup box into observed top-plane UV/direction. Hints may come from
+current FK or a qualified atlas; they confer no reachability or contact validity.
+Bounded centre proposals use only measured support, physical footprint and the
+existing margin. Missing support remains unknown, and a scan cap means incomplete
+search. Only the perception-owned directed-quality response can admit a contact.
+One admitted G then determines the predicted attachment and both endpoint tool
+poses. Release uses the existing container-up gap; settled box pose stays exact.
+Pick references retain the measured normal; place approach/exit reuse existing
+container-axis clearances. Full native phase-scene and whole-chain checks remain
+required. Private pickup replacement refuses conflicting existing geometry;
+unrelated obstacles are never removed to make a candidate pass.

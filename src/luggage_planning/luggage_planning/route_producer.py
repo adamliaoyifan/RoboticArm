@@ -128,6 +128,7 @@ def camera_to_tcp_transform(urdf):
 from luggage_planning.waypoint_generator import (
     DEFAULT_CORRIDOR_MARGIN,
     DEFAULT_PLACE_CLEARANCE_Z,
+    EXIT_EXTRA_LIFT_M,
     corridor_clearance,
     insertion_clearance,
 )
@@ -173,11 +174,6 @@ def certification_exceeded(service_s, wall_s,
 #: Budget share reserved for the certification + revalidation tail so a
 #: route planned at t=9.9s cannot enter certification without time left.
 CERTIFICATION_RESERVE_S = CERTIFICATION_TIMEOUT_S + 0.5
-
-#: Extra lift of the post-release exit anchor above the traverse height
-#: (anchor seeding detail only — the certified retreat edge decides the
-#: real motion; declared here, not a frozen contract value).
-EXIT_EXTRA_LIFT_M = 0.10
 
 #: Declared release gap ([ST09-I] release policy, 2026-10-02): the
 #: certified descend ends with the payload bottom this far ABOVE the

@@ -18,6 +18,10 @@ from luggage_planning.pose import MotionSegment, Point, Pose, Quaternion
 # started. waypoint_generator_node reads its defaults from here.
 DEFAULT_PLACE_CLEARANCE_Z = 0.15
 
+# Extra post-release exit proposal height above the carrying approach.
+# This seeds planning; the native checks decide whether the motion is legal.
+EXIT_EXTRA_LIFT_M = 0.10
+
 # Descend TCP sits this far along container +Z above the true rest top
 # (slot center + half height). SlotSpec.place_pose stays the rest pose.
 # 50 mm keeps the physical mesh bottom above the cargo slab at detach
