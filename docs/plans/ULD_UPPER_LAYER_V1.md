@@ -902,3 +902,28 @@ COM域外拒绝、参数跨阈值改变判定、配置非法拒绝、快照不�
 门槛确实改变结果。证据含source/config hashes、revision/dirty、全输入、
 每个候选/拒绝原因和见证、测试日志，限定单轮50MB；缺失为incomplete。
 只读离线单元无sim/控制器副作用。完成后继续规划/闭环任务，不结束总目标。
+
+
+## 18. 全臂与闭环实现任务 G11（用户授权执行）
+
+Owner eng/codex/gpt-6；depends_on=GEOMETRY-CONTRACT；代码基线e36b512；
+单worktree，证据仍仅主工作区。范围为独立研究入口的真实源网格全臂碰撞、
+OMPL RRTConnect/受约束路径、实际关节状态与稳定后的理想箱体快照、原始
+控制器执行及无吸附物理推箱；不修改正常放置生产链。
+离线新增依赖隔离在/tmp/uld-upper-python，python-fcl==0.7.0.11、ompl==2.0.1；
+模型直接读源URDF/场景网格，不用简化胶囊代替工具；碰撞证据带对象对。
+入口拟定 motion_feasibility.py；先 source /opt/ros/humble/setup.bash 和
+主工作区/研究worktree install/setup.bash，再用隔离python执行入口。
+命令 python -m unittest discover -s research/uld_upper_layer/tests -v，
+随后 python research/uld_upper_layer/motion_feasibility.py --scene-dir
+/tmp/uld_upper_layer_scene_v1_aligned --evidence <主工作区新目录>。
+仿真读取与执行通过既有launch_scene.sh --headless串行独占启动，证据捕获
+与teardown先于退出；必须区分 startup、理想状态读取、规划、执行与评分。
+
+验收沿用G9第16.7节A–D与54单元释放校准/五seed全动作存在性，全部指标
+按16.6；新增全臂测试至少验证真实网格碰撞与无碰撞正反、附着/释放后箱体
+场景状态切换及已知blocked路径拒绝，全部契约测试通过。搜索不得以几何
+2000候选当作已执行解。若发现客观几何/运动不可行，完整保存见证并继续
+验证其他合法候选，不能改门槛或省略执行来宣称闭环成功。
+在正式计分前形成实际入口命令/启动与捕获健康证据、独立冻结源码revision。
+该实现任务可以提交中间产物，但只有所有适用门槛有证据才关闭pass。
