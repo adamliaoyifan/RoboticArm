@@ -46,6 +46,10 @@ class DirectedSuctionResult:
     refinement_count: int = 0
     evidence_sha256: str = ''
 
+    def evidence_digest(self):
+        """Canonical wire witness digest, with the digest field itself empty."""
+        return _digest(replace(self, evidence_sha256='').__dict__)
+
 
 def _contact_pose(domain, uv, yaw, center=None, normal=None):
     outward = np.asarray(domain.normal_world if normal is None else normal)
@@ -122,7 +126,7 @@ class DirectedSuctionContext:
         def result(accepted, reason, count, pose=(), metrics=()):
             value = DirectedSuctionResult(accepted, reason, self.domain_sha256,
                 self.policy_sha256, self.samples_sha256, uv, yaw, pose, metrics, count)
-            return replace(value, evidence_sha256=_digest(value.__dict__))
+            return replace(value, evidence_sha256=value.evidence_digest())
 
         pose = _contact_pose(self.domain, uv, yaw)
         evaluator = SuctionPatchEvaluator(self._model)

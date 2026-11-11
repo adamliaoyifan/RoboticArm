@@ -89,6 +89,17 @@ Context capture cost is recorded as `suction_directed_context_ms`. This optional
 service issues no robot, vacuum, scene or OCC writes and does not alter legacy
 candidate acceptance.
 
+The complete-operation planning client binds every response to the independently
+provided domain, measured detection, physical model, exact query sequence and
+acquisition stamp. It verifies each canonical quality receipt, proper contact
+transform and requested UV/direction, then rechecks whole physical-footprint
+support. It consumes only accepted individual results. Invalid or expired
+batches yield no partial contacts; complete all-negative batches remain valid
+evaluations. One outstanding late request prevents another backend submission.
+The fitted contact pose determines one `T_box_contact` for pick and place;
+normal-aligned pick references preserve that pose's orientation. The client
+neither fits quality nor replaces the measured normal with a yaw-only pose.
+
 ## Canonical colour-aligned RGBD acquisition (PF-R9 g2)
 
 The camera product is a **payload-identical RGBD set**. The preprocessor no

@@ -41,6 +41,32 @@ class Transform:
         q = (-x, -y, -z, w)
         return Transform(rotate_vector(q, tuple(-v for v in self.translation)), q)
 
+    @classmethod
+    def from_matrix(cls, matrix):
+        """Preserve a proper measured rigid transform; never repair a rotation."""
+        import numpy as np
+        m = np.asarray(matrix, dtype=float)
+        if (m.shape != (4, 4) or not np.isfinite(m).all()
+                or not np.allclose(m[3], (0., 0., 0., 1.), atol=1e-9, rtol=0)
+                or not np.allclose(m[:3, :3].T @ m[:3, :3], np.eye(3), atol=1e-7, rtol=0)
+                or np.linalg.det(m[:3, :3]) < 0):
+            raise ValueError('proper finite rigid transform required')
+        trace = float(np.trace(m[:3, :3]))
+        if trace > 0:
+            scale = math.sqrt(trace + 1.) * 2.
+            q = ((m[2, 1]-m[1, 2])/scale, (m[0, 2]-m[2, 0])/scale,
+                 (m[1, 0]-m[0, 1])/scale, .25*scale)
+        else:
+            # Largest diagonal avoids division by zero near a half turn.
+            i = int(np.argmax(np.diag(m[:3, :3])))
+            j, k = (i+1) % 3, (i+2) % 3
+            scale = math.sqrt(1.+m[i, i]-m[j, j]-m[k, k])*2.
+            q = [0.]*4
+            q[i], q[j], q[k], q[3] = (.25*scale, (m[i, j]+m[j, i])/scale,
+                (m[i, k]+m[k, i])/scale, (m[k, j]-m[j, k])/scale)
+        norm = math.sqrt(sum(v*v for v in q))
+        return cls(tuple(m[:3, 3]), tuple(v/norm for v in q))
+
 
 @dataclass(frozen=True)
 class Snapshot:
