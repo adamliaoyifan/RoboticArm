@@ -156,7 +156,9 @@ class ReachabilityAtlas:
                 data.get("transit_seeds", data.get("seed_joints")),
                 "transit_seeds")
 
-        nseed = max(contact_seeds.shape[-2], transit_seeds.shape[-2])
+        self._contact_seed_capacity = contact_seeds.shape[-2]
+        self._transit_seed_capacity = transit_seeds.shape[-2]
+        nseed = max(self._contact_seed_capacity, self._transit_seed_capacity)
         self._contact_seeds = self._pad_seeds(contact_seeds, nseed)
         self._transit_seeds = self._pad_seeds(transit_seeds, nseed)
         self._nseed = nseed
@@ -434,6 +436,15 @@ class ReachabilityAtlas:
             indices=idx,
             yaw_error=yaw_error,
         )
+
+    def branch_proposals(self, point, yaw, source):
+        """Qualified reader's paired-array accessor; legacy query is unchanged.
+
+        Preserve storage indices and each transit's actual target. Qualification
+        and immutable artifact identity belong to AtlasProposalReader.
+        """
+        from luggage_planning.atlas_proposals import proposals_from_cell
+        return proposals_from_cell(self, point, yaw, source)
 
     def is_reachable(self, x, y, z, yaw=0.0):
         """O(1) lookup: is (x,y,z,yaw) reachable?

@@ -147,6 +147,26 @@ and rejects incomplete, timed, undersampled or endpoint-shifted responses. Timin
 controller-interpolated whole-chain checking and execution liveness remain the
 responsibility of operation assembly/certification and execution adapters.
 
+The structured `AtlasProposalSet` consumer uses `query_xyz_container`,
+`sample_xyz_container` and each branch's `transit_xyz_container` in
+container-ABSOLUTE metres. Z is never floor-relative. `transit_lift_m` and
+`lift_clearance_m` are lengths, not absolute heights; the legacy cell clearance
+and branch-kind scalars describe the first stored branch only. Every transit
+keeps its own recorded XYZ, which may belong to a predecessor cell. Contact and
+transit are paired by their original array index before finite-value filtering.
+Zero joint vectors are valid when included in the explicit solution count.
+
+Only an explicit offline qualification matching the exact NPZ/YAML digest and
+full frame/model/geometry/payload contract enables the new proposal reader. Old
+deploy_update files are not qualified by matching scene hashes alone. A missing
+qualification supplies no seeds or negative reachability verdict. The reader
+does not issue qualification records or change legacy query/rejection behavior.
+Paired consumption refines the exact requested contact and recorded transit,
+checks both in the current predicted carrying scene, then requests an online
+geometric connection. These paths remain untimed hints for whole-chain assembly
+and certification. Missing transit provenance retains contact-only hints and
+requires online fallback; deadline/cancellation exposes no partial result.
+
 `frame_transforms.transform_pose` accepts an explicit source/target transform:
 translation, unit quaternion, scene_revision and stamp_ns. An explicit null
 transform stamp means static for that scene revision; a dynamic transform stamp
