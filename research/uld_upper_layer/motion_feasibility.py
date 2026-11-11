@@ -80,14 +80,17 @@ def main():
         planning_started=time.monotonic()
         planning_deadline=planning_started+config.search_budget_s
         scene=FullArmScene(assets,snapshot,config)
-        save(output/'models.json',dict(hashes=scene.model_hashes,self_disabled=[sorted(x) for x in scene.disabled],
+        save(output/'models.json',dict(hashes=scene.model_hashes,asset_hashes=assets['hashes'],self_disabled=[sorted(x) for x in scene.disabled],
             source_srdf_disabled=[sorted(x) for x in scene.source_disabled],
             self_policy='adjacent_or_fixed_assembly_only_no_sampled_never_pairs'))
         if args.candidates:
             previous=json.loads((args.candidates.parent/'manifest.json').read_text())
-            for dependency in ('candidates.py','support_geometry.py','geometry.py','ideal_snapshot.py','assets.py','action.py'):
-                if previous['source_hashes'][dependency]!=hashes[dependency]:
+            for dependency in ('candidates.py','support_geometry.py','geometry.py','ideal_snapshot.py','assets.py','action.py','tool_contact_geometry.py','planning_types.py'):
+                if previous['source_hashes'].get(dependency)!=hashes[dependency]:
                     raise ValueError('CANDIDATE_GEOMETRY_SOURCE_MISMATCH:'+dependency)
+            previous_models=json.loads((args.candidates.parent/'models.json').read_text())
+            if previous_models.get('asset_hashes')!=assets['hashes'] or previous_models.get('hashes')!=scene.model_hashes:
+                raise ValueError('CANDIDATE_SOURCE_MODELS_MISMATCH')
             actions=[action_from_record(row) for row in json.loads(args.candidates.read_text())]
             old_config=previous['config'];new_config=asdict(config)
             changed=[key for key in new_config if key not in old_config or digest(new_config[key])!=digest(old_config[key])]
@@ -103,7 +106,8 @@ def main():
                                     config=config.revision))[:20]
                     placement=replace(action.placement,placement_id=pid,config_revision=config.revision)
                     aid=digest(dict(pid=pid,grasp=action.box_T_tool,
-                                    handoff=action.handoff_box_pose,push=action.push_start_tool_pose))[:20]
+                                    handoff=action.handoff_box_pose,push=action.push_start_tool_pose,
+                                    push_geometry=action.push_contact_geometry_id))[:20]
                     rebound.append(replace(action,action_id=aid,placement=placement))
                 actions=rebound
             report=dict(reused_from=str(args.candidates),sha256=sha256(args.candidates),

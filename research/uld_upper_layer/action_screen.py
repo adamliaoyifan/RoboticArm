@@ -17,11 +17,13 @@ def push_screen_key(snapshot,state,action,seeds,config):
     return digest(dict(snapshot=snapshot.snapshot_id,dimensions=state.dimensions,
         handoff=action.handoff_box_pose,final=action.placement.final_box_pose,
         push_start=action.push_start_tool_pose,push_end=action.push_end_tool_pose,
+        push_geometry=action.push_contact_geometry_id,tool_T_push_surface=action.tool_T_push_surface,
         direction=action.push_direction,seeds=[list(q) for q in seeds],
         config=config.revision))
 
 
 def screen_push(scene,state,action,seeds,config):
+    scene.validate_push_geometry(action)
     world=scene.world_container
     handoff=matrix(action.handoff_box_pose)
     pre=matrix(action.push_start_tool_pose).copy()
@@ -30,7 +32,7 @@ def screen_push(scene,state,action,seeds,config):
     try:
         for name,box,target,contact in (
             ('push_pre',handoff,pre,False),
-            ('push_end',matrix(action.placement.final_box_pose),matrix(action.push_end_tool_pose),True)):
+            ('push_end',matrix(action.placement.final_box_pose),matrix(action.push_end_tool_pose),'push_plate')):
             scene.set_payload(state.dimensions,'world',world@box,allow_support=True)
             goals,diagnostic=scene.endpoint_solutions(target,seeds,
                 config.collision_margin_m,config.path_attempt_budget_s)

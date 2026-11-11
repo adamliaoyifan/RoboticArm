@@ -166,6 +166,8 @@ class ActionCandidate:
     push_direction: tuple
     push_distance_m: float
     tool_yaw_deg: float
+    tool_T_push_surface: tuple  # seal TCP -> actual source-CAD rigid push face
+    push_contact_geometry_id: str
     checks: tuple  # explicitly distinguish geometry from unperformed arm checks
 
 
@@ -180,6 +182,7 @@ def action_from_record(value):
     value['placement']=PlacementCandidate(**placement)
     value['handoff_support']=support(value['handoff_support'])
     for key in ('box_T_tool','pick_tool_pose','handoff_box_pose','handoff_tool_pose',
-                'push_start_tool_pose','push_end_tool_pose','push_direction','checks'):
+                'push_start_tool_pose','push_end_tool_pose','push_direction',
+                'tool_T_push_surface','checks'):
         value[key]=tuple(value[key])
     return ActionCandidate(**value)

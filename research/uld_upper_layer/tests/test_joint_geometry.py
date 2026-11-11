@@ -89,5 +89,22 @@ class JointGeometry(unittest.TestCase):
             forward=max(body.moved(tcp).corners()[:,0].max() for body in self.assets['tool'])
             self.assertGreater(support_x-forward,config.collision_margin_m+config.grasp_step_m/2)
 
+    def test_push_candidate_binds_source_plate_face_to_box_face_and_roundtrips(self):
+        from dataclasses import asdict
+        from planning_types import action_from_record
+        from tool_contact_geometry import derive_push_surface
+        actions,_=generate_actions(self.assets,self.snapshot,self.state,
+                                   replace(self.config,max_action_candidates=1))
+        action=actions[0];source=derive_push_surface(self.assets)
+        self.assertEqual(action.push_contact_geometry_id,source.geometry_id)
+        plate=matrix(action.push_start_tool_pose)@matrix(action.tool_T_push_surface)
+        box=matrix(action.handoff_box_pose)
+        self.assertAlmostEqual(plate[0,3],box[0,3]-self.state.dimensions[0]/2)
+        np.testing.assert_allclose(plate[:3,2],action.push_direction,atol=1e-12)
+        record=json.loads(json.dumps(asdict(action)))
+        self.assertEqual(action_from_record(record),action)
+        record.pop('tool_T_push_surface')
+        with self.assertRaises(KeyError):action_from_record(record)
+
 
 if __name__=='__main__':unittest.main()

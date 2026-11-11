@@ -139,3 +139,15 @@ criteria needed for its unit; never use a full-history fork by default.
 
 If you produce a decision, code change, plan, or eval, write a role note.
 Skip ack-only turns. Test evidence stays under `docs/status/evidence/`.
+
+
+## Upper-layer research height consumer contract
+
+| Consumer | Frame | Height semantics | Range |
+|---|---|---|---|
+| upper-layer research ideal snapshot / physical support | container, ABSOLUTE | box-centre and support-face poses; active-scene floor/ceiling, fixture-only | scene-derived; ULD surfaces within floor .. ceiling |
+
+Native world poses convert through the active scene transform; world/base do
+not coincide. Research fixtures use their declared scene, not a copied deploy
+translation. Size fields carry dimensions only; coordinate/bound fields name
+their frame. Tool contact-plane coordinates remain in their named tool frame.

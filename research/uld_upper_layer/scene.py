@@ -210,7 +210,7 @@ def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None):
                         state_topic='/upper_layer/vacuum/state')
         for name,value in parameters.items():text(plugin,name,value)
         spec['ideal_vacuum']=dict(**parameters,model='measured_relative_pose_physics_step_follow',
-                                 attach_precondition='caller_verifies_actual_panel_contact',
+                                 attach_precondition='caller_verifies_ideal_cup_seal_frame_gap_and_footprint',
                                  detached_pose_commands=False)
         spec['source_hashes'][str(vacuum_plugin)]=sha256(vacuum_plugin)
     # Preserve collision physics; use a declared 1 ms research stepping profile.

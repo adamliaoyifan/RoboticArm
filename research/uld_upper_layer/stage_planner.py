@@ -162,13 +162,13 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
     pre_push=shifted(push_start,[-config.precontact_distance_m,0,0])
     if not failure:failure=stage('push_pre',pre_push,'joint',
         goal_solutions=screened['endpoints']['push_pre']['q_solutions'])
-    if not failure:failure=stage('push_contact',push_start,contact=True,speed=config.contact_speed_mps)
+    if not failure:failure=stage('push_contact',push_start,contact='push_plate',speed=config.contact_speed_mps)
     if failure:return dict(valid=False,diagnostic=failure,stages=stages)
     nominal=lambda t:world@shifted(handoff,[action.push_distance_m*t,0,0])
-    failure=stage('push',push_end,contact=True,speed=config.push_speed_mps,box_motion=nominal)
+    failure=stage('push',push_end,contact='push_plate',speed=config.push_speed_mps,box_motion=nominal)
     if failure:return dict(valid=False,diagnostic=failure,stages=stages)
     payload('world',matrix(action.placement.final_box_pose),True)
-    failure=stage('retreat',shifted(push_end,[-config.precontact_distance_m,0,0]),contact=True)
+    failure=stage('retreat',shifted(push_end,[-config.precontact_distance_m,0,0]),contact='push_plate')
     return dict(valid=failure is None,diagnostic=failure,stages=stages,
                 action=asdict(action),elapsed_s=time.monotonic()-started,
                 certificate_scope='sampled_full_arm_and_payload_nominal_contact_modes',

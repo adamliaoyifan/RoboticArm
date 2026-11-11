@@ -125,7 +125,9 @@ class RuntimeIO:
     def toggle_vacuum(self,attached,timeout_s=5.):
         """Queue ideal attachment; wait for physics-step state acknowledgement.
 
-        Caller must verify actual panel contact before attaching. Never used
+        Caller verifies the ideal cup seal-frame gap and footprint before attaching.
+        The rigid plate lies behind the seal frame; CAD plate contact is not a
+        prerequisite of this explicitly ideal cup model. Never used
         to move a released payload; native pose-command count proves this.
         """
         if not self.vacuum_spec:raise RuntimeError('IDEAL_VACUUM_NOT_CONFIGURED')

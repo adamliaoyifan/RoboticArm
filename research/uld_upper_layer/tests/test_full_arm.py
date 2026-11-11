@@ -54,6 +54,43 @@ class FullArmContracts(unittest.TestCase):
         q=np.zeros(6);q[0]=self.scene.urdf.joint_limits()[0][1]+1
         self.assertEqual(self.scene.check_robot(q)['reason'],'JOINT_LIMIT')
 
+    def test_source_push_face_touches_payload_while_seal_reference_leaves_gap(self):
+        from tool_contact_geometry import derive_push_surface
+        from trimesh.collision import CollisionManager
+        from shapely.geometry import Polygon,Point
+        from types import SimpleNamespace
+        from dataclasses import replace
+        scene=self.scene;geometry=derive_push_surface(self.assets)
+        scene.set_joints(np.zeros(6))
+        tcp=scene.transforms['suction_contact_frame']
+        relative=np.array(geometry.tool_T_push_surface).reshape(4,4)
+        mesh=trimesh.creation.box([.55,.4,.25])
+        def distance(box_pose):
+            manager=CollisionManager();manager.add_object('payload',mesh,box_pose)
+            return manager.min_distance_other(scene.pair_managers[geometry.collision_key])
+        seal_box=tcp@pose([0,0,.125])
+        plate_box=tcp@relative@pose([0,0,.125])
+        self.assertLess(relative[2,3],-scene.config.contact_tolerance_m)
+        self.assertAlmostEqual(distance(seal_box),-relative[2,3],places=7)
+        self.assertLessEqual(abs(distance(plate_box)),geometry.cad_tolerance_m)
+        polygon=Polygon(geometry.push_polygon_xy)
+        self.assertFalse(polygon.covers(Point(polygon.bounds[0],polygon.bounds[1])))
+        scene.set_payload((.55,.4,.25),'world',plate_box)
+        try:
+            self.assertTrue(scene.contact_patch_valid(plate_box,'push_plate'))
+            self.assertFalse(scene.contact_patch_valid(plate_box,'seal'))
+            outside=plate_box@pose([.4,0,0])
+            self.assertFalse(scene.contact_patch_valid(outside,'push_plate'))
+            with self.assertRaisesRegex(ValueError,'UNKNOWN_TOOL_CONTACT_MODE'):
+                scene.contact_patch_valid(plate_box,'unregistered_contact')
+            action=SimpleNamespace(push_contact_geometry_id=geometry.geometry_id,
+                                   tool_T_push_surface=geometry.tool_T_push_surface)
+            scene.validate_push_geometry(action)
+            action.push_contact_geometry_id='old_geometry'
+            with self.assertRaisesRegex(ValueError,'STALE_PUSH_CONTACT_GEOMETRY'):
+                scene.validate_push_geometry(action)
+        finally:scene.set_payload((.55,.4,.25),'absent')
+
     def test_source_point_radii_bound_all_robot_collision_vertices(self):
         from motion_bounds import SourceMotionBounds
         scene=self.scene;bounds=SourceMotionBounds(scene.urdf,scene.robot_parts)

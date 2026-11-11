@@ -11,6 +11,7 @@ from ideal_snapshot import query_box
 from planning_types import ActionCandidate, PlacementCandidate, digest
 from support_geometry import measure_support
 from action import boundary_failure
+from tool_contact_geometry import derive_push_surface
 
 
 def matrix(value):
@@ -55,6 +56,8 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
     All fixed tool bodies must stay clear of actual lower cuboids, not a shelf.
     """
     started = time.monotonic()
+    push_geometry=derive_push_surface(assets)
+    surface_T_tool=np.linalg.inv(matrix(push_geometry.tool_T_push_surface))
     if emit:emit(dict(event='geometry_stream_input',box_yaws_deg=yaw_values,
         tool_yaws_deg=tool_yaw_values,lateral_m=lateral,depths_m=depth_values,grasps_m=grasp_values))
     candidates = []
@@ -143,7 +146,7 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
                             low=top+contact_width[0]/2+edge
                             high=top+size[2]-contact_width[0]/2-edge
                             for z in interior_samples(low,high,config.push_height_step_m):
-                                push_start=pose([front-length,y,z],push_r)
+                                push_start=pose([front-length,y,z],push_r)@surface_T_tool
                                 distance=final_x-handoff[0,3]
                                 push_end=push_start.copy();push_end[0,3]+=distance
                                 failure=tool_collision(assets,snapshot,push_start,config.collision_margin_m)
@@ -155,10 +158,12 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
                                 placement=PlacementCandidate(pid,snapshot.snapshot_id,
                                     config.revision,flat(final),final_metrics)
                                 aid=digest(dict(pid=pid,grasp=flat(box_to_tool),
-                                                handoff=flat(handoff),push=flat(push_start)))[:20]
+                                                handoff=flat(handoff),push=flat(push_start),
+                                                push_geometry=push_geometry.geometry_id))[:20]
                                 yield ActionCandidate(aid,placement,flat(box_to_tool),
                                     flat(pick),flat(handoff),flat(tcp),metrics,flat(push_start),
                                     flat(push_end),(1.,0.,0.),distance,tool_yaw,
+                                    push_geometry.tool_T_push_surface,push_geometry.geometry_id,
                                     ('SUPPORT_AND_FIXED_TOOL_CHECKED',
                                      'FULL_ARM_NOT_EVALUATED','PUSH_PHYSICS_NOT_EVALUATED'))
 

@@ -35,6 +35,8 @@ class FullArmScene:
         self.assets=assets;self.urdf=assets['urdf'];self.snapshot=snapshot
         from planning_types import UpperConfig
         self.config=config or UpperConfig.load()
+        from tool_contact_geometry import derive_push_surface
+        self.push_geometry=derive_push_surface(assets)
         self.robot=CollisionManager();self.world=CollisionManager()
         self.robot_parts={};self.world_parts={};self.model_hashes={}
         self.world_managers={}
@@ -255,7 +257,9 @@ class FullArmScene:
         margin=self.config.collision_margin_m if margin is None else margin
         contact_tolerance=self.config.contact_tolerance_m
         p=self.payload;transform=self.payload_transform();mesh=p['mesh']
-        patch_allowed=self.contact_patch_valid(transform) if contact_tool else False
+        contact_mode=self.contact_mode(contact_tool)
+        contact_frame=self.contact_frame(contact_mode)
+        patch_allowed=self.contact_patch_valid(transform,contact_mode) if contact_mode else False
         hit,names,contacts=self.world.in_collision_single(mesh,transform,return_names=True,return_data=True)
         if hit:
             inverse=np.linalg.inv(transform);half=p['size']/2
@@ -272,15 +276,15 @@ class FullArmScene:
                             point=c.point.tolist(),depth_m=float(c.depth))
         hit,names,contacts=self.robot.in_collision_single(mesh,transform,return_names=True,return_data=True)
         if hit:
-            inverse=np.linalg.inv(self.transforms['suction_contact_frame'])
-            footprint=np.array(self.assets['contact']['footprint_size_xy_m'])/2
+            inverse=np.linalg.inv(contact_frame)
+            from shapely.geometry import Point
+            patch=self.contact_polygon(contact_mode).buffer(contact_tolerance)
             for c in contacts:
                 other=next(n for n in c.names if n!='__external')
                 local=inverse@np.r_[c.point,1.]
-                in_patch=(abs(local[0])<=footprint[0]+contact_tolerance and
-                          abs(local[1])<=footprint[1]+contact_tolerance and
+                in_patch=(patch.covers(Point(local[:2])) and
                           abs(local[2])<=contact_tolerance)
-                if patch_allowed and other.startswith('suction_panel:') and in_patch and abs(c.depth)<=self.config.contact_penetration_m:
+                if patch_allowed and other==self.push_geometry.collision_key and in_patch and abs(c.depth)<=self.config.contact_penetration_m:
                     continue
                 return dict(reason='ROBOT_PAYLOAD_COLLISION',pair=[other,'payload'],
                             point=c.point.tolist(),depth_m=float(c.depth),point_tool=local[:3].tolist())
@@ -303,7 +307,7 @@ class FullArmScene:
             if distance<margin-1e-8:
                 return dict(reason='PAYLOAD_WORLD_CLEARANCE',pair=['payload',name],distance_m=float(distance))
         for name,manager in self.pair_managers.items():
-            if patch_allowed and name.startswith('suction_panel:'):continue
+            if patch_allowed and name==self.push_geometry.collision_key:continue
             distance=self.bounds_distance(self.transformed_bounds(mesh,transform),self.current_bounds[name])
             if self.exact_distances or distance<margin+2*self.config.cartesian_step_m:
                 distance=self.observed_distance(pm,manager,['payload',name])
@@ -312,22 +316,45 @@ class FullArmScene:
                 return dict(reason='ROBOT_PAYLOAD_CLEARANCE',pair=[name,'payload'],distance_m=float(distance))
         return None
 
-    def contact_patch_valid(self,box_pose):
+    @staticmethod
+    def contact_mode(value):
+        if value is True:return 'seal'
+        if value is False or value is None:return None
+        if value not in ('seal','push_plate'):raise ValueError('UNKNOWN_TOOL_CONTACT_MODE')
+        return value
+
+    def contact_frame(self,mode):
+        tcp=self.transforms['suction_contact_frame']
+        return tcp@np.array(self.push_geometry.tool_T_push_surface).reshape(4,4) if mode=='push_plate' else tcp
+
+    def contact_polygon(self,mode):
+        from shapely.geometry import Polygon,box
+        if mode=='push_plate':return Polygon(self.push_geometry.push_polygon_xy)
+        half=np.array(self.assets['contact']['footprint_size_xy_m'])/2
+        return box(-half[0],-half[1],half[0],half[1])
+
+    def validate_push_geometry(self,action):
+        if (action.push_contact_geometry_id!=self.push_geometry.geometry_id or
+            tuple(action.tool_T_push_surface)!=self.push_geometry.tool_T_push_surface):
+            raise ValueError('STALE_PUSH_CONTACT_GEOMETRY')
+
+    def contact_patch_valid(self,box_pose,mode='seal'):
         """Panel normal enters one box face, its whole footprint lies on it.
 
         Positive separation is allowed along a declared contact approach. Actual
         contact existence/dwell is a distinct execution gate, never inferred
         from this exemption. Tilted/non-face contacts do not obtain a waiver.
         """
-        tool_in_box=np.linalg.inv(box_pose)@self.transforms['suction_contact_frame']
+        mode=self.contact_mode(mode)
+        if mode is None:return False
+        tool_in_box=np.linalg.inv(box_pose)@self.contact_frame(mode)
         normal=tool_in_box[:3,2];axis=int(np.argmax(np.abs(normal)))
         if abs(normal[axis])<1-1e-7:return False
         sign=np.sign(normal[axis]);half=self.payload['size']/2
         gap=-sign*(tool_in_box[axis,3]+sign*half[axis])
         if gap < -self.config.contact_penetration_m:return False
-        footprint=np.array(self.assets['contact']['footprint_size_xy_m'])/2
-        for u,v in ((-1,-1),(-1,1),(1,-1),(1,1)):
-            point=tool_in_box@np.array([u*footprint[0],v*footprint[1],0,1])
+        for u,v in self.contact_polygon(mode).exterior.coords:
+            point=tool_in_box@np.array([u,v,0,1])
             for j in range(3):
                 if j!=axis and abs(point[j])>half[j]+1e-8:return False
         return True
