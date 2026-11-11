@@ -163,6 +163,25 @@ barriers; execution consumes that plan and revalidates actual attachment after
 grasp confirmation. Existing prior and per-segment interfaces remain compatible.
 This decision authorizes the ST-3/4 boundary, not a claim of implementation.
 
+Observation checkpoint (2026-11-11): the user confirmed depth-aligned RGB and
+optional LiDAR, both mounted on the end effector. The user explicitly selected
+active box-view acquisition before grasp. With a rigid attachment, moving the
+arm does not change sensor-to-box pose; post-grasp wrist rotation must not be
+credited as a new box viewpoint. Use acquisition-time transforms and existing
+preprocessor/deskew ownership. An additional pre-grasp observation motion needs
+its own collision-checked plan, with the ungrasped box retained in the world.
+After observation, prepare the full operation from the actual resulting q and
+new observation identity. No align/contact/carry execution is authorized by an
+observation-only plan. Post-grasp observations may refine attachment/environment
+evidence but cannot retroactively authorize the initial suction contact.
+
+No numeric hole-filling policy is approved. Whole-footprint observed support,
+inferred support and unknown remain distinct; missing returns, segmentation,
+bbox or fitted rectangles alone cannot prove physical top-face continuity.
+Actual new depth/LiDAR returns may add support only after same-box association,
+registration and contradiction checks. Sensor availability is not proof that
+the live synchronized/deskewed LiDAR adapter is already wired or qualified.
+
 The user explicitly authorized development of ST-0 through ST-4, with no matching
 atlas assumed for current `scene_tf_deploy_update`. These stages are now active
 work; ST-5..7 remain outside this implementation authorization. ST-0 records the
