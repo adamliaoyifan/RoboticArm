@@ -1,0 +1,113 @@
+"""Whole-operation preparation callback core; no execution or map-write effects."""
+from dataclasses import dataclass
+import hashlib
+import json
+import math
+import time
+
+from luggage_perception.ros_suction_domain import require_matching_detection
+from luggage_planning.joint_operation_adapters import operation_plan_to_message
+from luggage_planning.joint_operation_candidates import candidate_for_contact, propose_contact
+from luggage_planning.joint_operation_contracts import OperationIdentity
+from luggage_perception.observed_suction_domain import ObservedSuctionDomain
+from luggage_planning.placement_prior_contracts import PlacementCandidate, Snapshot, Transform
+
+
+@dataclass(frozen=True)
+class PreparationInputs:
+    # All inputs are admitted/pinned by the node's read-only snapshot adapter.
+    snapshot: Snapshot
+    domain: ObservedSuctionDomain
+    placements: tuple
+    world_from_reference_tool: Transform
+    pickup_object_id: str
+
+    def __post_init__(self):
+        placements = tuple(self.placements)
+        if (type(self.snapshot) is not Snapshot or type(self.domain) is not ObservedSuctionDomain
+                or type(self.world_from_reference_tool) is not Transform
+                or not isinstance(self.pickup_object_id,str) or not self.pickup_object_id.strip()
+                or any(type(slot) is not PlacementCandidate for slot in placements)):
+            raise ValueError('typed pinned operation inputs required')
+        object.__setattr__(self,'placements',placements)
+
+
+class JointOperationPreparation:
+    def __init__(self, contacts, planner, contact_model, envelope_limits, *,
+                 max_center_checks, clock=time.monotonic):
+        if type(max_center_checks) is not int or not 1 <= max_center_checks <= 4096:
+            raise ValueError('bounded geometric centre checks required')
+        self.contacts,self.planner = contacts,planner
+        self.model,self.limits = contact_model,envelope_limits
+        self.max_center_checks,self.clock = max_center_checks,clock
+
+    def prepare(self, request, response, inputs, *, deadline, revalidate, cancelled=lambda:False):
+        from luggage_msgs.msg import JointOperationPlanV2
+        began = self.clock()
+        response.success,response.reason = False,'SEARCH_INCOMPLETE'
+        response.plan = JointOperationPlanV2()
+        trace = [('atlas','ATLAS_UNAVAILABLE_ONLINE_IK')]
+        def stopped(): return cancelled() or self.clock() >= deadline
+        def finish(reason):
+            response.reason = reason
+            response.trace_json = json.dumps(trace,separators=(',',':'),allow_nan=False)
+            response.elapsed_s = max(0.,self.clock()-began)
+            return response
+        try:
+            snapshot,domain = inputs.snapshot,inputs.domain
+            if (not request.request_id or not request.observation_id or not request.robot_state_stamp_valid
+                    or not 1 <= request.candidate_limit <= 8 or not math.isfinite(request.budget_s)
+                    or not 0 < request.budget_s <= 10 or not math.isfinite(deadline)
+                    or (request.geometry_hash,request.expected_map_revision,request.expected_model_sha256) !=
+                       (snapshot.geometry_hash,snapshot.map_revision,snapshot.model_hash)):
+                return finish('PREPARATION_INPUT_IDENTITY_MISMATCH')
+            require_matching_detection(domain,request.detection,generation=int(request.generation),
+                                       contact_model_hash=self.model.identity_hash)
+            identity = OperationIdentity(request.request_id,snapshot.scene_revision,
+                hashlib.sha256(repr(snapshot.identity).encode()).hexdigest(),snapshot.geometry_hash,
+                snapshot.model_hash,snapshot.map_revision,request.observation_id,domain.stamp_ns,
+                int(request.robot_state_stamp_ns),domain.box_id,domain.generation,domain.contact_model_hash)
+            planning_deadline = deadline-self.planner.reserve_s
+            def candidates():
+                groups = 0
+                for placement in inputs.placements:
+                    if stopped() or self.clock() >= planning_deadline or groups >= request.candidate_limit:
+                        return
+                    target_box = snapshot.world_from_container.compose(placement.container_from_box)
+                    proposed = []
+                    for opposite in (False,True):
+                        if groups >= request.candidate_limit: break
+                        groups += 1
+                        hint = inputs.world_from_reference_tool
+                        if opposite:
+                            hint = hint.compose(Transform((0.,0.,0.),(0.,0.,1.,0.)))
+                        proposal = propose_contact(domain,self.model,query_id=placement.slot_id+':'+str(groups),
+                            world_from_place_box=target_box,desired_world_from_tool=hint,
+                            max_center_checks=self.max_center_checks)
+                        trace.append((proposal.query_id,proposal.reason,proposal.checked_centres))
+                        if proposal.reason == 'OBSERVED_FOOTPRINT_PROPOSAL': proposed.append(proposal)
+                    if not proposed: continue
+                    evidence = self.contacts.evaluate(domain,request.detection,
+                        [p.to_message() for p in proposed],self.model,deadline=planning_deadline,cancelled=cancelled)
+                    trace.append((placement.slot_id,evidence.reason,evidence.verdicts))
+                    if not evidence.complete: continue
+                    for rank,contact in enumerate(evidence.contacts):
+                        if stopped() or self.clock() >= planning_deadline: return
+                        yield candidate_for_contact(snapshot,domain,contact,placement,self.limits,
+                            pickup_object_id=inputs.pickup_object_id,observation_id=request.observation_id,rank=rank)
+            if stopped(): return finish('CANCELLED_OR_DEADLINE')
+            result = self.planner.prepare(identity,tuple(float(v) for v in request.start_joints),candidates(),
+                budget_s=max(1e-9,deadline-self.clock()),absolute_deadline=deadline,cancelled=cancelled)
+            trace.extend(result.trace)
+            if stopped(): return finish('CANCELLED_OR_DEADLINE')
+            if result.status != 'PLAN_READY' or result.plan is None:
+                return finish(result.status)
+            if not revalidate(inputs,deadline): return finish('PREPARATION_SNAPSHOT_CHANGED')
+            if stopped(): return finish('CANCELLED_OR_DEADLINE')
+            message = operation_plan_to_message(result.plan,identity,result.plan.plan_digest)
+            if stopped(): return finish('CANCELLED_OR_DEADLINE')
+            response.plan,response.success = message,True
+            return finish('PLAN_READY')
+        except (TypeError,ValueError,RuntimeError) as error:
+            trace.append(('input',type(error).__name__,str(error)))
+            return finish('INVALID_PREPARATION_INPUT:'+str(error))

@@ -222,3 +222,36 @@ def test_failed_pick_alignment_skips_its_place_alternatives():
     assert prepare(bundle).status=='PLAN_READY'
     assert len(connection.calls)==3
     assert all(':p0:s1:' not in c[3]['request_id'] for c in connection.calls)
+
+
+def test_absolute_deadline_includes_prior_input_work_without_resetting_budget():
+    bundle = ports()
+    identity,candidate,ep,connection,cert,clock,planner = bundle
+    result = planner.prepare(identity,joints(0.),(candidate,),budget_s=5.,absolute_deadline=12.)
+    assert result.status == 'PLAN_READY'
+    assert ep.calls[0][1]['deadline'] == pytest.approx(11.8)
+    assert cert.calls[0][2]['deadline'] == 12.
+    assert planner.prepare(identity,joints(0.),(candidate,),budget_s=5.,absolute_deadline=9.).plan is None
+
+
+def test_candidate_branch_cap_preserves_a_global_attempt_for_valid_fallback():
+    bundle = ports(max_branch_attempts=3,max_branch_attempts_per_candidate=2)
+    identity,candidate,ep,connection,cert,_,planner = bundle
+    ep.evidence = replace(ep.evidence,place_branches=(branch('s0',.08),branch('s1',.12)))
+    original_solve = ep.solve
+    def solve(current,**kwargs):
+        return replace(original_solve(current,**kwargs),candidate_id=current.candidate_id)
+    ep.solve = solve
+    original_connect = connection.connect
+    def connect(snapshot,start,goal,**kwargs):
+        result = original_connect(snapshot,start,goal,**kwargs)
+        if kwargs['request_id'].startswith(identity.request_id+':candidate:') and kwargs['request_id'].endswith(':carry'):
+            return GeometricConnection(False,False,'deep fixture connection miss')
+        return result
+    connection.connect = connect
+    fallback = replace(candidate,candidate_id='fallback')
+    result = planner.prepare(identity,joints(0.),(candidate,fallback),budget_s=5.)
+    assert result.status == 'PLAN_READY' and result.plan.candidate_id == 'fallback'
+    assert [row[0].candidate_id for row in ep.calls] == ['candidate','fallback']
+    assert sum(call[3]['request_id'].endswith(':carry') for call in connection.calls) == 3
+    assert ('candidate','CANDIDATE_BRANCH_CAP') in result.trace

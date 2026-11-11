@@ -516,6 +516,62 @@ rehearsal and prior enabled. It returns at the detected-input hook before pickup
 it is an input capture tool, not a successful cycle. `--dump-dir` also captures
 exact typed service requests/responses before client-side slot-index remapping.
 
+### Independent complete-operation preparation
+
+`joint_operation_prepare_node.py` serves `/joint_operation/prepare`
+(`PrepareJointOperationV2`). This is a separate plan-only entry. It has read-only
+ports for the map owner's confirmation configuration and exact volume, full
+PlanningScene, perception-owned directed quality, native local paths, snapshot
+connections and whole-operation certification. It has no controller, vacuum,
+ApplyPlanningScene or OCC-write port. Legacy planning/execution remains separate.
+
+The caller binds measured detection/observation generation, canonical six-joint
+start and acquisition stamp, model SHA, geometry hash and map revision. The
+entry joins the actual observed top domain with the same detection/contact-model
+file, live joint sample, confirmed measured surface and exact owner volume.
+Unknown volume remains blocked. The explicit world-rooted model, scene revision
+and world-from-container transform are deployment inputs, never inferred from a
+fixture or an old atlas. Conflicting same-ID pickup geometry is refused before
+private replacement. Contact quality supplies the measured attitude; frozen
+payload geometry encloses it without flattening its normal.
+
+For empty `slots`, the current bounded provider retains the existing solver's
+first ranked placement and a minimum-depth fallback, plus their directed half
+turns. Each has current-FK and opposite tool hints, back-projected through the
+measured pickup box into whole-footprint observed support. These hints propose
+queries only; real directed quality, both native endpoints, connections and
+certification remain mandatory. This limited automatic selection is not complete
+four-orientation exploration or a capacity-optimal policy. Explicit slots retain
+their exact poses and must match an admitted physical footprint in the bounded
+solver pool, allowing its directed half turn. A pool miss is incomplete search,
+not proof that the requested continuous position is invalid or unreachable.
+Continuous requested-slot admission and broader balanced candidate generation
+remain separate integration work.
+
+The root profile keeps at most eight contact groups and three total branch
+attempts, with at most two attempts per candidate to leave a fallback opportunity.
+All acquisition reads, quality queries, planning, native certification and final
+source revalidation share the one request deadline (maximum ten seconds).
+Existing five-second certification reserve is retained by default. After the final
+asynchronous scene read, recheck live map/domain/joints as well as world collision
+semantics. A changed input, deadline, incomplete search, busy backend or capture
+failure returns an inactive plan. Only the complete six-leg certified chain can
+return `PLAN_READY`; J6 is part of those original trajectories.
+
+`joint_operation_prepare.launch.py` starts this entry and optionally the three
+private native backends. Its required `model_parameters` file must bind the same
+URDF/SRDF to all four nodes and provide the root's scene/container/contact-policy
+parameters. Observations, confirmed map and scene owners must already be running;
+the launch does not acquire or fabricate them. Perception's observed-domain and
+directed-quality publication remains explicitly enabled by its own deployment
+profile. `evidence_dir`, when supplied, must be a fresh directory; it records
+original boundary CDR with hashes under a 256 MiB per-process bound.
+
+This entry currently reports `ATLAS_UNAVAILABLE_ONLINE_IK`. An old deployment
+NPZ/YAML is not an admitted atlas, and merely starting this service does not
+qualify one. Atlas-guided proposals and production execution consumption remain
+required before claiming the full atlas/operation closed loop is deployed.
+
 ## Initial measured-map prerequisite
 
 An empty cargo semantic cloud cannot establish that the container is empty.

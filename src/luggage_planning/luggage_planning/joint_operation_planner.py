@@ -164,7 +164,8 @@ class JointOperationPlanner:
     """
     def __init__(self, endpoint_port, connection_port, certification_port, *,
                  velocity_scale, acceleration_scale, certification_reserve_s,
-                 max_candidates=8, max_branch_attempts=3, clock=time.monotonic):
+                 max_candidates=8, max_branch_attempts=3,
+                 max_branch_attempts_per_candidate=None, clock=time.monotonic):
         for name, value in (("velocity_scale", velocity_scale),
                             ("acceleration_scale", acceleration_scale)):
             if type(value) not in (int, float) or not math.isfinite(value) or not 0 < value <= 1:
@@ -173,18 +174,28 @@ class JointOperationPlanner:
                 or type(max_candidates) is not int or not 1 <= max_candidates <= 32
                 or type(max_branch_attempts) is not int or not 1 <= max_branch_attempts <= 32):
             raise ValueError("explicit finite budgets and bounded attempt counts required")
+        if (max_branch_attempts_per_candidate is not None and
+                (type(max_branch_attempts_per_candidate) is not int
+                 or not 1 <= max_branch_attempts_per_candidate <= max_branch_attempts)):
+            raise ValueError('candidate branch cap must fit the global attempt budget')
         self.endpoints, self.connections, self.certification = endpoint_port, connection_port, certification_port
         self.velocity_scale, self.acceleration_scale = velocity_scale, acceleration_scale
         self.reserve_s = float(certification_reserve_s)
         self.max_candidates, self.max_branch_attempts = max_candidates, max_branch_attempts
+        self.candidate_branch_cap = max_branch_attempts_per_candidate or max_branch_attempts
         self.clock = clock
 
-    def prepare(self, identity, start_joints, candidates, *, budget_s, cancelled=lambda: False):
+    def prepare(self, identity, start_joints, candidates, *, budget_s, cancelled=lambda: False,
+                absolute_deadline=None):
         if not isinstance(identity, OperationIdentity) or not math.isfinite(budget_s) or budget_s <= 0:
             raise ValueError("operation identity and finite positive budget required")
         start = finite_tuple(start_joints, 6, "actual planning start")
         began = self.clock()
         deadline = began+budget_s
+        if absolute_deadline is not None:
+            if not math.isfinite(absolute_deadline):
+                raise ValueError('finite absolute operation deadline required')
+            deadline = min(deadline,absolute_deadline)
         planning_deadline = deadline-self.reserve_s
         trace, attempts = [], 0
 
@@ -214,12 +225,17 @@ class JointOperationPlanner:
             # Both branch sets remain distinct. A failed carrying connection may
             # be recovered by another pick q at exactly the same spatial grasp.
             alignment = {}
+            candidate_attempts = 0
             for pick in evidence.pick_branches:
                 for place in evidence.place_branches:
+                    if (self.candidate_branch_cap < self.max_branch_attempts
+                            and candidate_attempts >= self.candidate_branch_cap):
+                        break
                     if stopped(planning_deadline) or attempts >= self.max_branch_attempts:
                         trace.append((candidate.candidate_id, "BRANCH_CAP_OR_DEADLINE"))
                         return finish("CANCELLED" if cancelled() else "SEARCH_INCOMPLETE")
                     attempts += 1
+                    candidate_attempts += 1
                     branch_id = candidate.candidate_id+":"+pick.branch_id+":"+place.branch_id
                     if pick.branch_id not in alignment:
                         response = self.connections.connect(candidate.scenes.pick, start, pick.incoming[0],
@@ -270,6 +286,10 @@ class JointOperationPlanner:
                     plan = seal_operation_plan(replace(draft, certificate_id=receipt.certificate_id))
                     trace.append((branch_id, "PLAN_READY"))
                     return finish("PLAN_READY", plan)
+                if (self.candidate_branch_cap < self.max_branch_attempts
+                        and candidate_attempts >= self.candidate_branch_cap):
+                    trace.append((candidate.candidate_id, 'CANDIDATE_BRANCH_CAP'))
+                    break
         return finish("SEARCH_INCOMPLETE")
 
     @staticmethod

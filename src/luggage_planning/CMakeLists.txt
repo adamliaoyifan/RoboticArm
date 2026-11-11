@@ -65,6 +65,7 @@ install(PROGRAMS
   scripts/scene_manager_node.py
   scripts/hardware_pick_driver.py
   scripts/place_prior_node.py
+  scripts/joint_operation_prepare_node.py
   scripts/static_joint_state_publisher.py
   DESTINATION lib/${PROJECT_NAME}
 )
