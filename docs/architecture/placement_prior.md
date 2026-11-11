@@ -500,6 +500,17 @@ resolves world/tool/top-plane transforms. The kernel neither authorizes contact
 nor performs IK, vacuum, or motion. Adoption into the live evaluator and typed
 joint-plan path is a separate integration gate, not implied by kernel tests.
 
+`suction_top_domain` can construct a strict observed-support domain by projecting
+each entire plane-grid cell into the acquisition image. Admission intersects the
+instance region, connected winning patch, winning plane label and finite positive
+depth. It preserves holes and rejects partial out-of-image projections. Its
+projected bounding rectangle is conservative for oblique views. Stamp/frame
+mismatch and missing connected-patch provenance are errors, not a rectangle
+fallback. The strict observed-support domain is not yet the live geometric
+boundary policy: treating every sensor dropout as a physical hole requires a
+separate acceptance decision before adoption. Existing surface-quality gates
+remain necessary under either policy.
+
 `--prior-acquisition-only` in the motion/OCC driver requires a non-scored
 rehearsal and prior enabled. It returns at the detected-input hook before pickup;
 it is an input capture tool, not a successful cycle. `--dump-dir` also captures

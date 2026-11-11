@@ -126,6 +126,9 @@ class DynamicTopResult(TopSurfaceEstimate):
     plane_labels: object = None
     #: index (1-based into plane_labels) of the winning plane.
     winner_plane_id: int = 0
+    #: Exact connected winning patch, before rectangle/convex-hull fitting.
+    #: Keeps holes and disconnected patches out of full-footprint admission.
+    winning_patch_mask: object = None
     #: winning plane frame as ((u_axis, v_axis, normal), d): orthonormal
     #: basis in plane coords plus the plane offset (p.n + d = height).
     plane_basis: tuple = ()
@@ -590,6 +593,7 @@ isolate_depth_component`.
         pixel_count=int(blob.sum()),
         plane_labels=plane_labels,
         winner_plane_id=int(winner) + 1,
+        winning_patch_mask=blob.copy(),
         plane_basis=(u_axis, v_axis, cand["normal"]),
         plane_offset=float(cand["d"]))
 
