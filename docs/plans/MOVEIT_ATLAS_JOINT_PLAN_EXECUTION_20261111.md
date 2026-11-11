@@ -157,6 +157,12 @@ M1交付：一个目标在完整吸盘约束下，能够先输出完整pick/plac
 
 ### 2026-11-11 execution authorization and missing-atlas handling
 
+API checkpoint decision: the user approved an independent complete-chain
+preparation interface. It returns bound pick/place trajectories with event
+barriers; execution consumes that plan and revalidates actual attachment after
+grasp confirmation. Existing prior and per-segment interfaces remain compatible.
+This decision authorizes the ST-3/4 boundary, not a claim of implementation.
+
 The user explicitly authorized development of ST-0 through ST-4, with no matching
 atlas assumed for current `scene_tf_deploy_update`. These stages are now active
 work; ST-5..7 remain outside this implementation authorization. ST-0 records the
