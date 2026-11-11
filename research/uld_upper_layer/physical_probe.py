@@ -103,9 +103,9 @@ def main():
         scene=ObservedArmScene(assets,snapshot,config)
         if plan:
             if (sha256(args.planning_run/'source/execution_policy.yaml')!=planning_manifest['source_hashes'].get('execution_policy.yaml') or
-            planning_manifest.get('execution_policy_revision')!=policy.revision):
-            raise ValueError('PLANNED_EXECUTION_POLICY_CHANGED')
-        models=json.loads((args.planning_run/'models.json').read_text())
+                    planning_manifest.get('execution_policy_revision')!=policy.revision):
+                raise ValueError('PLANNED_EXECUTION_POLICY_CHANGED')
+            models=json.loads((args.planning_run/'models.json').read_text())
             if models.get('asset_hashes')!=assets['hashes'] or models['hashes']!=scene.model_hashes:
                 raise ValueError('PLANNED_MODELS_CHANGED')
             action=action_from_record(plan['action']);scene.validate_push_geometry(action)

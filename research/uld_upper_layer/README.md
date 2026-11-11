@@ -362,3 +362,13 @@ strict point-predicate result, material edge distances and both edge normal-cone
 checks. A geometric transition candidate can still jam; this offline diagnostic
 always returns `execution_admitted=false` and is not connected to selection or
 execution. It neither introduces a contact exception nor proves a contact tube.
+
+`release_fixture.source_tool_link` exports every source rigid-tool collision at
+its original material transform and welds source inertials by the parallel-axis
+theorem. `release_carriage_model` mounts this link on two force-controlled
+prismatic joints, whose positive axes are container +X/+Z regardless of tool
+yaw. `release_fixture.yaml` supplies carriage mass/inertia, controller gains and
+joint limits without recompilation. The fixture is for independent release
+calibration; it proves neither arm reachability nor physical release stability.
+Native attachment, observation/capture wiring and live calibration are pending.
+Public-command help smoke tests load each CLI without starting simulation.
