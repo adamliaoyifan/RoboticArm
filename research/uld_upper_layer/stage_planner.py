@@ -99,7 +99,7 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
                 goals,ik=scene.endpoint_solutions(target,[q]+seeds,
                     config.collision_margin_m,config.path_attempt_budget_s)
             else:goals=[goal_q];ik=dict(source='backseeded_constrained_chain')
-            if name=='push_pre' and not contact:
+            if name=='push_pre' and not contact and goal_q is None:
                 from free_transfer import outside_reorientation
                 path,detail=outside_reorientation(scene,q,target,config)
                 diagnostics.append(detail)
@@ -189,14 +189,26 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
     down=shifted(tcp_handoff,[0,0,-config.release_drop_m])
     failure=stage('release_down',down,contact=True,speed=config.contact_speed_mps)
     if not failure:failure=stage('withdraw',shifted(down,[-config.withdraw_m,0,0]))
+    if failure:return dict(valid=False,diagnostic=failure,stages=stages)
     pre_push=shifted(nominal_push_start,[-config.precontact_distance_m,0,0])
-    if not failure:failure=stage('push_pre',pre_push,'joint',
-        goal_solutions=screened['endpoints']['push_pre']['q_solutions'])
-    if not failure:failure=stage('push_contact',push_start,contact='push_plate',speed=config.contact_speed_mps)
-    if failure:return dict(valid=False,diagnostic=failure,stages=stages)
+    from coupled_chain import push_branches
+    prefix_count=len(stages);withdraw_q=list(q);connected=False
     nominal=lambda t:world@shifted(handoff,[action.push_distance_m*t,0,0])
-    failure=stage('push',push_end,contact='push_plate',speed=config.push_speed_mps,box_motion=nominal)
-    if failure:return dict(valid=False,diagnostic=failure,stages=stages)
+    for branch in push_branches(scene,state,action,
+            screened['endpoints']['push_end']['q_solutions'],config,emit):
+        del stages[prefix_count:];q=list(withdraw_q)
+        payload('world',handoff,True)
+        failure=stage('push_pre',pre_push,'joint',goal_q=branch['pre_q'])
+        if not failure:
+            failure=stage('push_contact',push_start,contact='push_plate',
+                speed=config.contact_speed_mps,prepared_path=branch['contact_path'])
+        if not failure:
+            failure=stage('push',push_end,contact='push_plate',speed=config.push_speed_mps,
+                box_motion=nominal,prepared_path=branch['push_path'])
+        if not failure:connected=True;break
+        emit(dict(event='push_branch_route_rejected',branch=branch['branch'],diagnostic=failure))
+    if not connected:
+        return dict(valid=False,reason='NO_CONNECTED_PUSH_BRANCH',diagnostic=failure,stages=stages)
     payload('world',matrix(action.placement.final_box_pose),True)
     failure=stage('retreat',shifted(push_end,[-config.precontact_distance_m,0,0]),contact='push_plate')
     return dict(valid=failure is None,diagnostic=failure,stages=stages,

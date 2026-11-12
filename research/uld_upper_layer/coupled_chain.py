@@ -36,3 +36,39 @@ def handoff_branches(scene,action,approach,seeds,config,emit,goals=None):
         yield dict(branch=index,approach_q=insertion[-1],
                    insertion_path=list(reversed(insertion)),
                    lowering_path=list(reversed(lowering)))
+
+
+def push_branches(scene,state,action,goals,config,emit):
+    """Connect the moving-box push backwards before choosing its entry branch.
+
+    Endpoint reachability alone cannot select a branch for a constrained push.
+    Reverse the declared straight box motion together with the TCP, then reverse
+    the resulting joint path. The caller still certifies forward interpolation.
+    """
+    world=scene.world_container
+    handoff=matrix(action.handoff_box_pose)
+    final=matrix(action.placement.final_box_pose)
+    start=matrix(action.push_start_control_tool_pose)
+    pre=matrix(action.push_start_tool_pose).copy()
+    pre[:3,3]-=config.precontact_distance_m*np.asarray(action.push_direction)
+    def box_at(t):
+        pose=handoff.copy()
+        pose[:3,3]=(1-t)*final[:3,3]+t*handoff[:3,3]
+        return world@pose
+    for index,q in enumerate(goals):
+        scene.set_payload(state.dimensions,'world',world@final,allow_support=True)
+        reverse,detail=cartesian_path(scene,q,start,config,'push_plate',box_at)
+        if reverse is None:
+            emit(dict(event='push_branch_rejected',branch=index,stage='reverse_push',diagnostic=detail))
+            continue
+        scene.set_payload(state.dimensions,'world',world@handoff,allow_support=True)
+        entry,detail=cartesian_path(scene,reverse[-1],pre,config,'push_plate')
+        if entry is None:
+            emit(dict(event='push_branch_rejected',branch=index,stage='reverse_push_contact',diagnostic=detail))
+            continue
+        failure=scene.check_state(entry[-1],config.collision_margin_m,False)
+        if failure:
+            emit(dict(event='push_branch_rejected',branch=index,stage='push_pre',diagnostic=failure))
+            continue
+        yield dict(branch=index,pre_q=entry[-1],contact_path=list(reversed(entry)),
+                   push_path=list(reversed(reverse)))

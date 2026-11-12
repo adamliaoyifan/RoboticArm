@@ -76,6 +76,12 @@ def main():
             digest(dict(assets=models['asset_hashes'],meshes=models['hashes'])),policy)
         if not selection['nominal_minimum_met']:raise ValueError('NO_SCORED_NOMINAL_PLAN:'+str(selection['rejected']))
         plan=plans[selection['selected_index']]
+        if planning_manifest.get('request_revision'):
+            from request_planner import request_from_record
+            request=request_from_record(json.loads((args.planning_run/'request.json').read_text()))
+            if (request.revision!=planning_manifest['request_revision'] or
+                    plan.get('request_revision')!=request.revision):
+                raise ValueError('PLANNED_REQUEST_BINDING_CHANGED')
         for name in ('candidates.py','placement_request.py','request_planner.py','planning_types.py','full_arm.py','tool_contact_geometry.py','support_contact.py',
                      'geometry.py','assets.py','path_planning.py','stage_planner.py','action_screen.py','coupled_chain.py','interval_certificate.py','motion_bounds.py',
                      'plan_clearance.py','push_seam_events.py','clearance_bounds.py','selection_policy.py','plan_selection.py',
@@ -131,6 +137,8 @@ def main():
                 candidate=json.loads(path.read_text())
                 if candidate['action']['action_id']==action.action_id:old_input=candidate;break
             if old_input is None:raise ValueError('PLANNED_INPUT_NOT_PRESERVED')
+            if tuple(old_input['box']['dimensions'])!=state.dimensions:
+                raise ValueError('LIVE_BOX_DIMENSIONS_DIFFER_FROM_PLAN')
             errors=[]
             old={item['name']:item for item in old_input['snapshot']['occupied']}
             if set(old)!={body.name for body in snapshot.occupied}:raise ValueError('INITIAL_LOWER_SET_CHANGED')
