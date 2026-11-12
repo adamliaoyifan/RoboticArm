@@ -153,6 +153,56 @@ decodable and source identities retained; record timing as diagnostic overhead.
 Failure before scoring consumes no physical experiment. This audit has no
 scored matching campaign and cannot enable substitution.
 
+## ST-4-O-RESOLUTION generation1 (diagnostic dispatch-complete)
+
+User requests checking whether2cm O voxels remove the10cm-fixture refusal.
+Owner codex/gpt-6, base415506aa, dependencies none. Preserve original native
+cycle02 source inputs and original494-sample timed retreat; no replanning,
+hardware, controller, Gazebo, production config change or obstacle exemptions.
+Read native_cycle_02/stack/00_observer_integrate_observation_request.cdr plus
+the38 original camera requests through the captured snapshot acquisition
+stamp19727797595ns. Re-integrate those exact39 CDR observations into an isolated
+native O owner at0.10m and0.02m. Same geometry/filter/probability configuration,
+acquisition clock/stamps, input transforms and ordering. Preserve unknowns.
+
+Use actual ObserverSnapshotPort and build_private_snapshot to build the private
+collision scenes. Keep original fine released-box geometry, robot, all remaining
+world geometry and trajectory fields. Three finite diagnostic variants, once
+each: rebuilt10cm with original0.05m padding; rebuilt2cm with original0.05m
+padding; rebuilt2cm with zero padding as a diagnostic ablation only. Last is
+not a proposed runtime change.2cm verdict is unknown before measurement; report
+all494 valid or first invalid sample and actual pairs, never tune to force pass.
+
+Functional gate is AND of:39/39 native INTEGRATED receipts per resolution;
+original10cm reconstructed states identical to preserved original ReadCells;
+original10cm native sample0 COLLISION/contact set reproduced; every variant
+has native response result0 and complete sample-count/contacts; original leg
+message fields unchanged; output geometry actually reflects owner resolution
+and specified padding; complete replay capture and clean native teardown.
+This gate tests one deterministic case and has no success-rate or real-wrist
+coverage claim.2cm collision is a legitimate experimental result. Surface/cell
+capture must be complete and same-source bound. Missing native readiness/source
+or parity yields incomplete evidence, not a physical result.
+
+Environment source /tmp/joint_operation_o_env.sh; run evidence replay.py on
+isolated available domain184 with matching ROS_LOCALHOST_ONLY=1. No simulation.
+Before run inspect matching native processes, never stop another worker.
+Readiness bounded10s per native service; RPC10s, whole diagnostic <=15min.
+Source/binary/config/parameter/trajectory hashes, revision/dirty state and exact
+commands are T0. Record observed_revision and active/free/occupied/unknown
+counts, private geometry bounds, first invalid sample/pairs and durations T1.
+Evidence under ST-4-INTEGRATION/g2/release_resolution_01 (new suffix on retry),
+<=128MiB/run, <=256MiB total; preserve every failed bundle before fixes.
+
+| Boundary | T1 | Failure trigger | T2 | Window | Budget | Replay |
+|---|---|---|---|---|---|---|
+| Native O integration | source hash/stamp/status/revision | RPC/status/parity failure | exact requests/replies/config/clock | fixed39-frame history | CDR/JSON <=64MiB | same replay with preserved inputs |
+| O scene conversion | states/counts/resolution/padding | mismatch/missing/invalid scene | snapshot pages + full private scene | one snapshot per resolution | CDR/JSON <=32MiB | same converter with retained snapshot |
+| Native retreat validation | original leg hash/verdict/sample/pairs | refusal or unexpected error | full route request/response and native log | original494 samples | CDR/JSON <=32MiB | same native validation request |
+
+Capture-health gate rehashes records, verifies native CDR decodes, lease release
+and process exit. A diagnostic no-padding result has no production authority.
+
 ## ST-4-OBS-JOIN acceptance (dispatch-complete)
 
 Environment: source-first Python3/ROS Humble, isolated generated interfaces
