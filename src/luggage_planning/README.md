@@ -63,6 +63,12 @@ pose storage and quaternion sign cannot appear as an external geometry change.
 Layout re-admission checks the original bound slot; the existing FK accuracy
 check and exact FK-derived release obstacle still govern native suffix collision
 certification. Runtime uses that same release geometry for the retreat scene.
+Within one action, the user-confirmed static-environment premise permits retained
+O evidence while the wrist sensors look away from ULD. The age allowance ends
+with the action budget, preserves the original timestamps, and is recorded in
+`stationary_map_scope.json`. Epoch/config/validity and changed-content checks
+remain active. Preparation still requires its configured fresh observation;
+post-release adoption still requires an actual acquisition after release/settle.
 Prepare evidence stores lossless gzip CDR files; `boundaries.jsonl` records raw
 and stored sizes/hashes. Decompress before deserialization; the budget counts
 stored bytes and still refuses when full.

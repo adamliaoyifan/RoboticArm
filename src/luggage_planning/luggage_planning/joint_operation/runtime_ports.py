@@ -169,6 +169,24 @@ class OperationRuntimePorts:
         self.detection = copy.deepcopy(goal.detection)
         self.observation = RetainedContactObservation(binding_from_message(checked.frozen_observation),domain)
         self.original_source = map_source_from_message(checked.map_source)
+        # The user-confirmed operation premise keeps all other cargo/static
+        # geometry stationary while this one box moves. A wrist sensor can
+        # temporarily look away from ULD. Bound retained map age by this action,
+        # never restamp the acquisition or bypass content/epoch revalidation.
+        now_ns = self.node.get_clock().now().nanoseconds
+        map_stamp = (self.original_source.last_integrated_stamp_ns
+                     or self.original_source.initialization_stamp_ns)
+        if not 0 < map_stamp <= now_ns:
+            raise ValueError('STATIONARY_MAP_ORIGINAL_STAMP_REQUIRED')
+        initial_age_ns = now_ns - map_stamp
+        retained_age_ns = initial_age_ns + math.ceil(goal.budget_s*1e9)
+        self.observer.max_age_ms = math.ceil(retained_age_ns/1e6)
+        self.record('stationary_map_scope.json',json.dumps(dict(
+            premise='other_cargo_and_environment_stationary_during_one_operation',
+            original_acquisition_or_initialization_stamp_ns=map_stamp,
+            scope_open_stamp_ns=now_ns,max_retained_age_ms=self.observer.max_age_ms,
+            wall_deadline=deadline,content_change='full_native_suffix_revalidation',
+            physical_collision_detection_available=False),sort_keys=True).encode())
         self.provider = MeasuredAttachmentProvider(self.revision,identity.model_sha256)
         self.attachment = StationaryOperationAttachmentPort(self.provider,self.contacts,
             certificate_current=self.check_issued,now_ns=lambda:self.node.get_clock().now().nanoseconds,
