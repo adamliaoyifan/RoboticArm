@@ -43,6 +43,13 @@ from luggage_description.scene_mesh_utils import container_model_name
 JOINTS = ['elfin_joint%d'%i for i in range(1,7)]
 
 
+def can_reprepare_before_pick(result):
+    """Only a stopped, terminal, empty tool may discard an unexecuted suffix."""
+    return (not result.success and result.outcome=='STOPPED'
+            and result.motion_terminal and not result.may_have_payload
+            and result.reason in ('CURRENT_SOURCE_REFUSED','BOUND_NATIVE_ADMISSION_REQUIRED'))
+
+
 def load_diagnostic_views(path, launch):
     """Explicit offline-generated observation goals, bound to this exact cell.
 
@@ -272,7 +279,9 @@ class OperationSimDriver(Node):
             start_joints=[positions[name] for name in JOINTS],candidate_limit=8,
             budget_s=float(self.launch['resolved']['operation_prepare_budget_s']))
         prepared = self.call(self.prepare,request,'prepare',timeout=request.budget_s+10.)
-        (self.folder/'prepare_trace.json').write_text(prepared.trace_json+'\n')
+        trace=self.folder/'prepare_trace.json'
+        if trace.exists():trace=self.folder/('prepare_trace_'+request.request_id+'.json')
+        trace.write_text(prepared.trace_json+'\n')
         if not prepared.success:raise RuntimeError('PREPARE:'+prepared.reason)
         return prepared.plan,detection,domain
 
@@ -306,12 +315,25 @@ class OperationSimDriver(Node):
             result = self.stage('execute',lambda:self.action(self.execute,
                 ExecuteJointOperationV2.Goal(plan=plan,detection=detection,top_domain=domain,budget_s=300.),
                 'execute',310.))
+            original_instance=domain.instance_id
+            for attempt in range(getattr(self.args,'prepick_replans',0)):
+                if not can_reprepare_before_pick(result.result):break
+                # The failed action has finalized its owned scene and released
+                # motion ownership. Acquire NEW measured contact/map evidence,
+                # prepare a NEW complete plan from actual current joints, and
+                # keep the same observed physical instance. Never retarget a seal.
+                plan,detection,domain=self.stage('prepare_retry_'+str(attempt+1),self.plan)
+                if not original_instance or domain.instance_id!=original_instance:
+                    raise RuntimeError('PREPICK_REPLAN_INSTANCE_CHANGED')
+                result=self.stage('execute_retry_'+str(attempt+1),lambda:self.action(self.execute,
+                    ExecuteJointOperationV2.Goal(plan=plan,detection=detection,top_domain=domain,budget_s=300.),
+                    'execute_retry_'+str(attempt+1),310.))
             if not result.result.success:raise RuntimeError('EXECUTE:'+result.result.outcome+':'+result.result.reason)
             self.flush(outcome='FULL_CYCLE_PASS',capture_complete=True,replay_possible=True)
             return 0
         except Exception as error:
             if (getattr(self,'failure_capture',None) is not None
-                    and str(error).endswith('CURRENT_SOURCE_REFUSED')):
+                    and str(error).endswith(('CURRENT_SOURCE_REFUSED','BOUND_NATIVE_ADMISSION_REQUIRED'))):
                 self.failure_capture.trigger()
                 self.stage('failure_stationary_capture',lambda:time.sleep(self.args.failure_hold_s))
                 self.failure_capture.close()
@@ -334,8 +356,11 @@ def main():
     parser.add_argument('--view-poses',help='Exact model/scene-bound diagnostic observation goals JSON')
     parser.add_argument('--failure-hold-s',type=float,default=0.,
         help='Diagnostic stationary observer capture after a terminal source refusal (0..60 s)')
+    parser.add_argument('--prepick-replans',type=int,default=0,
+        help='Explicit bounded new complete plans after terminal pre-pick map/native refusal (0..2)')
     args = parser.parse_args()
     if not 0 <= args.failure_hold_s <= 60:parser.error('failure hold must be within 0..60 seconds')
+    if not 0 <= args.prepick_replans <= 2:parser.error('prepick replans must be within 0..2')
     rclpy.init()
     node = OperationSimDriver(args)
     executor = MultiThreadedExecutor(num_threads=4);executor.add_node(node)

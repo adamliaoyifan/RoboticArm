@@ -32,7 +32,13 @@ after the second capture. Other launches retain the two-attempt default.
 For source-change diagnosis, `joint_operation_sim_driver.py --failure-hold-s 25`
 retains ten seconds of mapper input clouds, TF, joints and O receipts, then records
 a stationary post-refusal window. It only triggers on terminal
-`CURRENT_SOURCE_REFUSED`, performs no motion or map writes, and bounds RAM to
+source or native-admission refusal, performs no motion or map writes, and bounds RAM to
 96MiB and stored CDR blocks to256MiB. `observer_failure/index.jsonl` locates each
 independently gzip-compressed message in `cdr.gzblocks`; `summary.json` reports
 capture gaps. This instrumented timing is diagnostic, not a latency benchmark.
+
+`--prepick-replans 1` explicitly permits one new complete plan after a terminal,
+empty-tool source/native refusal. The driver obtains fresh detection/contact and
+O, uses the actual current joints, and requires the same observed instance. It
+never retries a carrying or uncertain action and never changes a sealed grasp.
+Every original plan, result and preparation trace remains preserved.

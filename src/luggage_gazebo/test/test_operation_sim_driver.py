@@ -72,12 +72,13 @@ def test_prepare_binds_repository_identity_and_releases_lease_on_refusal(monkeyp
     assert requests[-1][0]=='release' and requests[-1][1].handle=='2:7'
 
 
-def test_explicit_start_declares_empty_without_mandatory_portal_motion(tmp_path):
+@pytest.mark.parametrize('replan',[False,True])
+def test_explicit_start_declares_empty_without_mandatory_portal_motion(tmp_path,replan):
     module=driver_module()
     from luggage_msgs.msg import JointOperationPlanV2
     from test_joint_operation_observer import configuration
     config,geometry,config_file=configuration(tmp_path)
-    calls=[];poses=[]
+    calls=[];poses=[];actions=[]
     def call(client,request,name,*args):
         calls.append((client,request))
         if client=='validity':return SimpleNamespace(epoch=1)
@@ -87,17 +88,35 @@ def test_explicit_start_declares_empty_without_mandatory_portal_motion(tmp_path)
             return SimpleNamespace(status='OK')
         if client=='spawn':return SimpleNamespace(success=True)
         raise AssertionError(client)
-    probe=SimpleNamespace(args=SimpleNamespace(start=True,views=None),extra_views={},folder=tmp_path,
+    def action(*args):
+        actions.append(args)
+        refused=replan and len(actions)==1
+        return SimpleNamespace(result=SimpleNamespace(success=not refused,outcome='STOPPED',
+            motion_terminal=True,may_have_payload=False,reason='BOUND_NATIVE_ADMISSION_REQUIRED'))
+    probe=SimpleNamespace(args=SimpleNamespace(start=True,views=None,prepick_replans=int(replan)),extra_views={},folder=tmp_path,
         launch={'resolved':{'observe_pose_name':'pickup'},'map_owner':{
             'geometry_file':str(geometry),'config_file':str(config_file)}},
         validity='validity',initialize='initialize',spawn='spawn',execute='execute',call=call,
         readiness=lambda:None,observe_pose=lambda p,**kwargs:poses.append(p),
-        stage=lambda name,f:f(),plan=lambda:(JointOperationPlanV2(),DetectedLuggage(),SuctionTopDomainV2()),
-        action=lambda *a:SimpleNamespace(result=SimpleNamespace(success=True)),
+        stage=lambda name,f:f(),plan=lambda:(JointOperationPlanV2(),DetectedLuggage(),SuctionTopDomainV2(instance_id='observed-instance')),
+        action=action,
         flush=lambda **kwargs:None,domain=None,images={})
     assert module.OperationSimDriver.run(probe)==0
     assert poses==['pickup']
     assert [c for c,_ in calls]==['validity','initialize','spawn']
+    assert len(actions)==1+int(replan)
+    assert all(a[1].top_domain.instance_id=='observed-instance' for a in actions)
+
+
+@pytest.mark.parametrize('field,value',[
+    (None,None),('success',True),('outcome','CARRY_FAULT'),('motion_terminal',False),
+    ('may_have_payload',True),('reason','CONTROLLER_TIMEOUT')])
+def test_preseal_replan_refuses_uncertain_or_carrying_results(field,value):
+    module=driver_module()
+    fields=dict(success=False,outcome='STOPPED',motion_terminal=True,
+                may_have_payload=False,reason='BOUND_NATIVE_ADMISSION_REQUIRED')
+    if field:fields[field]=value
+    assert module.can_reprepare_before_pick(SimpleNamespace(**fields)) is (field is None)
 
 
 @pytest.mark.parametrize('require_uld',[False,True])
@@ -120,6 +139,7 @@ def test_pickup_view_does_not_require_an_unrelated_uld_hit(tmp_path,monkeypatch,
 
 @pytest.mark.parametrize('reason,expected',[
     ('EXECUTE:CARRY_FAULT:CURRENT_SOURCE_REFUSED',['trigger',25.,'close']),
+    ('EXECUTE:STOPPED:BOUND_NATIVE_ADMISSION_REQUIRED',['trigger',25.,'close']),
     ('EXECUTE:STOPPED:CONTROLLER_TIMEOUT',[])])
 def test_terminal_refusal_capture_runs_at_outer_operation_boundary(monkeypatch,reason,expected):
     module=driver_module();events=[]
