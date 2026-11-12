@@ -27,6 +27,10 @@
 7. Previous decisions remain: complete cup containment; preseal grasp reselection;
    fixed grasp after seal; measured occupancy; final side contact permitted without
    penetration/pushing; release method/height and separate 5 cm policies under review.
+8. Baseline order confirmed by the user: complete-model simulation first, then
+   collect real ULD observations and complete the measured real baseline. Simulation
+   perception/maps must still come from simulated sensor observations; Gazebo truth
+   is isolated for scoring and diagnosis, not fed as production box/map geometry.
 
 ## Observed source branches, not an asserted live deployment
 
@@ -221,12 +225,13 @@ before dispatch. The table specifies acceptance intent, not invented test comman
 | P2 | Shared admission + explicit four headings | Identical frozen inputs yield identical candidate geometry/reasons at both entry points. Non-square quarter-turn-only fixture succeeds; all four directed poses reach endpoint stage. Square-box tool branches remain distinct. Unknown support, overlap and hull violations reject; nominal side contact adds no unapproved process gap. |
 | P3 | Bounded region access and full-volume certification fallback | Full vs tiled data are cell-identical for same snapshot. Boundary clipping, unknown/inactive semantics, stale mixed pages, stalled cursors and 67-page 1 cm case are tested. Outside queried bounds never becomes free. |
 | P4 | Default bound-operation client and execution wiring | Final pick xyz/J6/place/trajectory issued together before seal. No legacy fallback. Actual attachment/current O changes can refuse suffix; failed release prevents retreat. Startup still waits for operator authorization. |
-| P5 | Actual complete-model baseline | Pinned deploy_update full URDF/SRDF, sensors/tool/payload and measured map; installed default entry. Entire pick/carry/place/release/retreat certified; inputs and stage timings saved. No simplified cup-only witness, synthetic map or perfect planned OCC passed off as measured baseline. |
-| P6 | Optimize measured bottleneck | Atlas branch scheduling, shared queries and route warm-start cache evaluated on the same workload; report time/expansions and packing capacity separately. No success-rate claim from component test counts. |
+| P5 | Complete-model simulation baseline | Pinned deploy_update full URDF/SRDF, sensors/tool/payload; installed default entry. Simulated RGB-D/LiDAR/TF feed selected O/G and box perception. Pick/carry/place/release/retreat certified and simulated execution completed, with post-release observation. Truth is scoring-only. Preserve inputs and stage timings; no cup-only model, planned OCC or injected catalog dimensions. |
+| P6 | Real ULD data and real baseline | Collect current ULD raw observations/TF and owner snapshots, verify alignment/error evidence and replay same installed default pipeline; distinguish plan-only, replay and actual hardware execution. Complete the agreed real whole-cycle acceptance; simulation cannot close this unit. |
+| P7 | Optimize measured bottleneck | Atlas branch scheduling, shared queries and route warm-start cache evaluated on the same workload; report time/expansions and packing capacity separately. No success-rate claim from component test counts. |
 
 Deterministic P0-P4 behavior matrices must pass every named positive and negative
 case once; this is implementation-contract coverage, not a per-box reliability
-estimate. P5 first successful full-model plan is one feasibility witness. It cannot
+estimate. P5 first successful full-model simulated cycle is one feasibility witness. It cannot
 establish production reliability or capacity. A later reliability campaign needs
 agreed per-unit target, workload, sample sizes, aggregation and observation-error
 criteria; those are not specified or silently inferred here.
@@ -239,9 +244,9 @@ teardown. No scored-case artifact is edited to make the same run pass.
 
 ## Remaining inputs and review decisions
 
-- Current bags contain pickup observations only. A current ULD observation/TF/map
-  source for the measured-map baseline is not yet supplied. The user was asked
-  whether to collect it, provide an existing snapshot, or stage simulation first.
+- Current bags contain pickup observations only. The user confirmed simulation
+  first, then collection of real ULD data. Existing data does not qualify a real
+  release/multibox baseline; the simulation baseline must be labeled separately.
 - Regional read phase 1 retains full-volume final certification as proposed above.
   Regional-only MoveIt planning is not assumed ready.
 - Release height/method, uncertainty and motion clearance values need evidence and

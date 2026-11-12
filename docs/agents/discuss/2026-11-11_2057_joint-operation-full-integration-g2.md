@@ -98,3 +98,8 @@ assertion about an external operator terminal. Proposed region reads use explici
 cell bounds and one snapshot, initially retaining full-volume final certification.
 Current ULD measured input for the final baseline was requested from the user.
 No runtime, robot, simulation, build-prefix or clearance-policy changes made.
+
+User reply during this follow-up confirms complete-model simulation first, then
+collection of real ULD observations for the real baseline. The G3 discussion now
+separates these acceptance units and requires simulated sensor-derived geometry
+and O/G; simulated truth remains separate scoring/diagnosis evidence.

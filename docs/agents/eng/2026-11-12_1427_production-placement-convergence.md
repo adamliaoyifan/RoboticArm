@@ -20,6 +20,10 @@ entry identities; no concurrent input changes or matching named runtime processe
 were observed. Capture script completed successfully. Scoped `git diff --check`
 passed. This verifies inventory provenance, not imports, launch or path feasibility.
 
+User subsequently confirmed full-model simulation first, then real ULD collection
+and real baseline. Updated the ordered draft accordingly; simulated sensor data
+must feed perception/O/G, while truth remains scoring-only.
+
 ## Pointers
 
 - `docs/plans/PRODUCTION_PLACEMENT_CONVERGENCE_G3_20261112.md`
