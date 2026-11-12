@@ -99,7 +99,7 @@ def call_filter(monkeypatch, tmp_path, states):
     trace = tmp_path / 'trace.jsonl'
     monkeypatch.setenv('ELFIN_CARRY_REPLACEMENT_TRACE', str(trace))
     operations = []
-    node = SimpleNamespace(_current_model='box', _spawn_size=[.3, .4, .2],
+    node = SimpleNamespace(_current_model='box', _spawn_size=[.3, .4, .2], _rigid_attachment=None,
         _spawn_mass=5., _spawn_visual='mesh', _carry_bitmask=-1,
         _current_box=SimpleNamespace(pose='stale cached pose'), _place_persist_sec=0.,
         _box_sdf=lambda *a, **kw: 'exact body sdf',

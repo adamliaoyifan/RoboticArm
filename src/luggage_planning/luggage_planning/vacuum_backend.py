@@ -187,10 +187,12 @@ class SimVacuumBackend(VacuumBackend):
     """
 
     def __init__(self, gz_client, scene, follow_rate_hz=30.0, carry_filter=None,
-                 physical_relation_provider=None, physical_release_provider=None):
+                 physical_relation_provider=None, physical_release_provider=None,
+                 rigid_physics_attachment=False):
         self._gz = gz_client
         self._scene = scene
         self.follow_rate_hz = float(follow_rate_hz)
+        self._rigid_physics_attachment = bool(rigid_physics_attachment)
         # ``carry_filter(True)`` excludes p04 from the carried box only.
         # None in unit tests, which have no Gazebo. The sim node always sets it.
         self._carry_filter = carry_filter
@@ -304,6 +306,8 @@ class SimVacuumBackend(VacuumBackend):
         """
         if not self._attached or self._model_name is None:
             return True, ""
+        if self._rigid_physics_attachment:
+            return True, 'physics fixed joint owns attachment'
         try:
             if self._physical_relation is not None:
                 from luggage_planning.attachment_frame_contracts import compose_box_world

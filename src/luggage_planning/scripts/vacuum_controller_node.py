@@ -186,6 +186,7 @@ class VacuumControllerNode(Node):
         self.declare_parameter("panel_frame", "suction_contact_frame")
         self.declare_parameter("follow_rate_hz", 30.0)
         self.declare_parameter("physical_release_on_detach", False)
+        self.declare_parameter('rigid_physics_attachment', False)
         self.declare_parameter("do0_service", "/elfin/vacuum/set_do0")
         self.declare_parameter("do1_service", "/elfin/vacuum/set_do1")
         self.declare_parameter("di0_topic", "/vacuum/di0")
@@ -291,6 +292,7 @@ class VacuumControllerNode(Node):
                 follow_rate_hz=float(
                     self.get_parameter("follow_rate_hz").value),
                 carry_filter=carry_filter,
+                rigid_physics_attachment=self.get_parameter('rigid_physics_attachment').value,
                 physical_relation_provider=self._resolve_physical_attachment,
                 physical_release_provider=(SimPhysicalReleaseClient(self,group,self._follow_lock)
                     if self.get_parameter("physical_release_on_detach").value else None))

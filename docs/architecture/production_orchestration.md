@@ -415,3 +415,17 @@ Gazebo create; the template on disk remains unchanged. Scene agreement must be
 checked before interpreting observed occupancy or motion refusals as robot or
 ULD reachability problems. No sensor points or observed cargo geometry are
 replaced by fixture configuration.
+
+### Joint-profile simulated fixed attachment
+
+The explicit complete-operation profile uses Fortress's native DetachableJoint
+for its simulated vacuum attachment. After the existing identity-preserving carry
+replacement, cargo is dynamic with gravity disabled, keeps all collision/visual
+geometry and existing p04-only carry mask. The spawner loads the built-in system
+onto the actual S20 model entity, naming the current cargo identity, and requires
+its emitted `attached` state before reporting actuator success. The vacuum backend
+then stops issuing SetPose follow commands. Physical detach must emit `detached`
+before the existing dynamic release handover. The initial physical relation is
+preserved; no cargo reference geometry enters perception or planning. Legacy
+profiles keep SetPose following. One built-in plugin per cargo remains for the
+world lifetime; this campaign has three, with no unlimited-run cleanup claim.

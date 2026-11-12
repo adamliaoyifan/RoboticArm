@@ -997,3 +997,40 @@ fixture dimensions and checks emitted create XML, including half-height origin;
 private SDF. Atlas configuration/model binding is unchanged; only Gazebo's
 incorrect physical fixture is brought into agreement with that frozen source.
 The separate45 floor-level endpoint issue remains open pending the next run.
+
+### Diagnostic47 / SetPose carry violates fixed attachment (23:48 UTC)
+
+Build68/install192, readiness7.09s. Actual exported Gazebo world SDF confirms
+pedestal VISUAL AND COLLISION now[.74,.50,.86], matching MoveIt. First plan and
+actual pick/lift pass; carrying hangs, clock slows to RTF0.0011 around sim212s,
+then600s execution watchdog cancels. Raw failure preserved, teardown0.
+
+Continuous actual physics ledger: carried box rim touches p03 (NOT p04), later
+box body touches link1/base/link2. No claim of a ULD or box/box impact here.
+Eval-only59 synchronized physical pose samples compare each actual box's corners
+with ITS OWN frozen measured attachment envelope: initially all corners inside,
+41later samples outside, maximum by-axis excess[.01493,.05450,.00350]m.
+Actual tool-box relation changes despite the frozen seal contract. Hence
+low-frequency ROS SetPose following is not a rigid attachment; dynamic collision
+feedback/lag can violate an otherwise certified load pose. p03 contacts start
+before the stall; exported-SDF timing alone was a competing hypothesis, not an
+established cause. GDB ptrace unavailable; saved stats and contact evidence are
+sufficient to establish relative-pose failure, not exact solver internals.
+
+Minimum recommended actuator repair: use Fortress's installed built-in
+DetachableJoint, attached at the current unchanged physical relation; gravity-free
+dynamic cargo during carry, preserve every mesh/body/rim and exclude only intended
+p04 touch pair as before. Stop SetPose writes in this explicit joint profile.
+Acknowledge native attach/detach states; detach before the existing dynamic release
+handover. Other profiles retain their existing actuator. No new motion planner,
+no new placement input, no GT dimensions or target poses sent online. This repairs
+the existing fixed-after-seal requirement, not an added product capability.
+One plugin per physical cargo identity remains until world teardown (3in this
+campaign); no claim of unlimited-run simulator plugin cleanup. Physical contacts
+and actual relative pose still require verification; offline checks alone do not
+certify this change.43 focused tests pass; first rehearse actual attach/detach
+wiring before spending another three-box integration run.
+
+Native references: installed6.18 detachable_joint.sdf and plugin library;
+https://raw.githubusercontent.com/gazebosim/gz-sim/ign-gazebo6/src/systems/detachable_joint/DetachableJoint.cc
+https://raw.githubusercontent.com/gazebosim/gz-sim/ign-gazebo6/src/SystemManager.cc

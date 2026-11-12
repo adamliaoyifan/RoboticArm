@@ -20,6 +20,7 @@ goals still use FollowJointTrajectory; Cartesian / pose targets go through
 """
 
 import os
+import xml.etree.ElementTree as ET
 import subprocess
 
 import yaml
@@ -966,6 +967,8 @@ def _launch_setup(context):
             "box_catalog_config": cfg["box_catalog_config"],
             "visual_settle_sec": 2.0,
             "render_asset_root": os.path.join(cfg["operation_run_dir"],"render_assets") if complete_operation else "",
+            "rigid_carry_attachment": complete_operation,
+            "physics_robot_model": ET.fromstring(robot_xml).get('name') if complete_operation else "",
             "yaw_mode": cfg["yaw_mode"],
             "yaw_range": _csv_floats(cfg["yaw_range"], (0.0, 0.0)),
             "xy_jitter_range": _csv_floats(
@@ -1327,6 +1330,7 @@ def _launch_setup(context):
             output="screen",
             parameters=[{"use_sim_time": True, "attachment_geometry_config": str(cfg["attachment_geometry_config"]),
                          "physical_release_on_detach": complete_operation,
+                         "rigid_physics_attachment": complete_operation,
                          "observer_payload_mask_barrier": complete_operation, **frame_params}],
             condition=IfCondition(_bool_text(cfg["use_vacuum"])),
         ),

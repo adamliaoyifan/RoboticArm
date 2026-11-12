@@ -168,6 +168,12 @@ class PickupBoxSpawner(Node):
         self.declare_parameter("visual_kind", "mesh")
         self.declare_parameter("models_root", "")
         self._render_asset_root=self.declare_parameter("render_asset_root", "").value
+        self._rigid_attachment=None
+        if self.declare_parameter('rigid_carry_attachment',False).value:
+            from luggage_gazebo.rigid_attachment import FortressRigidAttachment
+            robot_model=self.declare_parameter('physics_robot_model','').value
+            self._rigid_attachment=FortressRigidAttachment(
+                str(self.get_parameter('world').value),robot_model)
 
         scene_cfg = self.get_parameter("scene_tf_config").value
         scene_cfg_path = scene_cfg or resolve_scene_tf_config_path()
@@ -600,7 +606,7 @@ class PickupBoxSpawner(Node):
         ``ELFIN_BOX_CONTACT_TOPIC`` adds an observation contact sensor on the
         existing collision (default unset: the SDF is unchanged).
         ``ELFIN_BOX_SDF_DUMP`` saves the exact text that is spawned.
-        ``collide_bitmask`` is only ``body_collision``. ``BOX_FULL_MASK``
+        ``collide_bitmask`` applies to every body/rim collision. ``BOX_FULL_MASK``
         still hits p04; ``BOX_CARRY_MASK`` does not.
         """
         topic = os.environ.get("ELFIN_BOX_CONTACT_TOPIC", "").strip() or None
@@ -725,6 +731,8 @@ class PickupBoxSpawner(Node):
             pose.orientation=_quaternion_from_rpy(*values[3:])
             return self._spawn_model(request.model_name,pose,sdf=sdf,timeout=budget/2)
         try:
+            if self._rigid_attachment is not None:
+                self._rigid_attachment.detach(request.model_name)
             report=release_model(model=request.model_name,generation=expected[1],identity=identity,
                 sdf=self._box_sdf(request.model_name,self._spawn_size,self._spawn_mass,self._spawn_visual),
                 probe=lambda budget:probe_model(request.model_name,budget),
@@ -842,9 +850,10 @@ class PickupBoxSpawner(Node):
         """Respawn the current static box so its mask is read at creation.
 
         gz-sim applies collide_bitmask only when the collision is created.
-        True: body_collision mask excludes p04. False: full mask again.
-        The model name and the static flag stay. Release deletes this body
-        and spawns a dynamic one with the full mask, which is the revoke.
+        True excludes p04 from every body/rim. The joint profile creates a
+        dynamic gravity-free body and acknowledges a native fixed connection;
+        legacy keeps static SetPose following. Release revokes the connection
+        before replacing with the free dynamic body and restoring full masks.
         """
         mask = BOX_CARRY_MASK if request.data else BOX_FULL_MASK
         model = getattr(self, "_current_model", "") or ""
@@ -857,6 +866,9 @@ class PickupBoxSpawner(Node):
             sdf = self._box_sdf(
                 model, size, self._spawn_mass, self._spawn_visual,
                 collide_bitmask=mask)
+            if self._rigid_attachment is not None and request.data:
+                from luggage_gazebo.rigid_attachment import dynamic_carry_sdf
+                sdf=dynamic_carry_sdf(sdf)
         except (TypeError, ValueError) as exc:
             response.success = False
             response.message = str(exc)
@@ -890,6 +902,13 @@ class PickupBoxSpawner(Node):
             response.success = False
             response.message = "CARRY_ENTITY_%s" % report['reason']
             return response
+        if self._rigid_attachment is not None and request.data:
+            try:
+                self._rigid_attachment.attach(model)
+            except Exception as error:
+                response.success=False
+                response.message='RIGID_ATTACHMENT_UNCONFIRMED:'+str(error)
+                return response
         self._carry_bitmask = mask
         response.success = True
         response.message = "body_collision collide_bitmask %d" % mask

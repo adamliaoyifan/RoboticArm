@@ -176,6 +176,15 @@ class TestSimBackend(unittest.TestCase):
         backend.follow_step(PANEL_XYZ, PANEL_QUAT)
         self.assertEqual(gz.poses, [])
 
+    def test_rigid_physics_attachment_never_teleports_the_loaded_box(self):
+        gz, scene = FakeGzClient(), FakeScene()
+        backend = SimVacuumBackend(gz, scene, rigid_physics_attachment=True)
+        ok, message = backend.attach(self._context())
+        self.assertTrue(ok, message)
+        ok, message = backend.follow_step((0., 0., 2.), PANEL_QUAT)
+        self.assertTrue(ok, message)
+        self.assertEqual(gz.poses, [])
+
     def test_scene_failure_aborts_attach(self):
         gz, scene = FakeGzClient(), FakeScene(fail_attach=True)
         backend = SimVacuumBackend(gz, scene)
