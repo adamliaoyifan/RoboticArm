@@ -123,7 +123,7 @@ def prepare_stack(native_stack,request):
     from test_joint_operation_scene_admission import fixture_scene_file
     fixture_scene,fixture_mesh,fixture_object=fixture_scene_file(directory)
     state.scene.world.collision_objects.append(fixture_object)
-    params=dict(frame_scene_revision='scene',robot_description=xml,robot_description_semantic=srdf,
+    params=dict(use_sim_time=True,frame_scene_revision='scene',robot_description=xml,robot_description_semantic=srdf,
         scene_tf_config=str(fixture_scene),container_collision_mesh=str(fixture_mesh),
         container_translation=[0.,0.,0.],container_quaternion_xyzw=[0.,0.,0.,1.],
         suction_contact_model_config=str(contact_file),attachment_geometry_config=str(
@@ -133,6 +133,10 @@ def prepare_stack(native_stack,request):
     else:params.update(observer_geometry_file=str(observer.geometry),observer_config_file=str(observer.config))
     root=JointOperationPrepareNode(context=owner.context,
         parameter_overrides=[Parameter(k,value=v) for k,v in params.items()])
+    # Synthetic acquisitions/joints in this native-only fixture are at12s.
+    # Keep the root on that explicit ROS clock instead of the host wall clock.
+    from rclpy.time import Time
+    root.get_clock().set_ros_time_override(Time(nanoseconds=12_000_000_000))
     executor=MultiThreadedExecutor(context=owner.context,num_threads=4);executor.add_node(root)
     worker=threading.Thread(target=executor.spin,daemon=True);worker.start()
     client=owner.create_client(PrepareJointOperationV2,'/joint_operation/prepare')

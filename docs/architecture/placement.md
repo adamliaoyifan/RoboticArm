@@ -439,3 +439,12 @@ refuse that target. Requested slots in whole-operation preparation use the same
 rule. Directed quarter-turn orientation, support, hull, unknown-volume and
 non-penetration gates remain unchanged; full-model trajectory validation owns
 arm and conservative attached-payload motion clearance.
+
+A new whole-operation preparation admits the original stationary pickup
+observation within the existing physical-observation age window. Execution
+admission and consumed-plan replay retention share that original-acquisition
+window plus the configured preparation watchdog. After admission, a single
+bounded action may retain the immutable observation under the confirmed
+stationary-before-seal/fixed-after-seal premise. No stage refreshes acquisition
+time; perception-owner binding, current map content and full native suffix
+checks still apply. Root and executor use the same preparation watchdog.

@@ -258,6 +258,10 @@ class JointOperationPrepareNode(Node):
         with self._state_lock: domain,joints = self.domain,self.joints
         if frozen_domain is not None:domain = frozen_domain
         if domain is None or joints is None: raise ValueError('OBSERVATION_OR_JOINTS_UNAVAILABLE')
+        if frozen_domain is None:
+            from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
+            if not 0 <= self.get_clock().now().nanoseconds-domain.stamp_ns <= ATTACHMENT_MAX_AGE_NS:
+                raise ValueError('INITIAL_STATIONARY_OBSERVATION_AGE_REFUSED')
         require_matching_detection(domain,request.detection,generation=int(request.generation),
                                    contact_model_hash=self.preparation.model.identity_hash)
         if (not request.robot_state_stamp_valid or joints[0] < request.robot_state_stamp_ns

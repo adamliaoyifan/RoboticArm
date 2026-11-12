@@ -161,3 +161,21 @@ def test_callback_terminal_transport_failure_still_releases_callback_mutex():
     with pytest.raises(RuntimeError,match='terminal response lost'):
         runtime.finish_action(handle,result,None)
     assert not runtime._active.locked() and runtime.session is not None
+
+
+def test_preparation_window_and_replay_retention_share_original_acquisition_bound(tmp_path):
+    from luggage_planning.joint_operation.preparation_profile import execution_observation_age_limit_ns
+    from luggage_planning.attachment_provider import MeasuredAttachmentProvider
+    bound = execution_observation_age_limit_ns(300.)
+    assert bound == ATTACHMENT_MAX_AGE_NS + 300_000_000_000
+    provider = MeasuredAttachmentProvider('scene','model',max_age_ns=bound)
+    assert provider.max_age_ns == bound
+    journal = OperationJournal(str(tmp_path/'window.json'),capacity=1,max_acquisition_age_ns=bound)
+    first = SimpleNamespace(plan_digest='first',identity=SimpleNamespace(observation_stamp_ns=1))
+    second = SimpleNamespace(plan_digest='second',identity=SimpleNamespace(observation_stamp_ns=2))
+    journal.finish(first,195_000_000_000)
+    with pytest.raises(ValueError,match='CAPACITY'):
+        journal.finish(second,bound+1)  # first still at its exact admission boundary
+    assert journal.used('first')
+    journal.finish(second,bound+2)
+    assert not journal.used('first') and journal.used('second')

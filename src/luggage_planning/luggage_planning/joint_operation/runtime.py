@@ -23,9 +23,12 @@ from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
 
 
 class OperationJournal:
-    def __init__(self, path, *, capacity):
+    def __init__(self, path, *, capacity, max_acquisition_age_ns=ATTACHMENT_MAX_AGE_NS):
         if not path or type(capacity) is not int or capacity<1:
             raise ValueError('EXPLICIT_OPERATION_JOURNAL_AND_CAPACITY_REQUIRED')
+        if type(max_acquisition_age_ns) is not int or max_acquisition_age_ns <= 0:
+            raise ValueError('POSITIVE_JOURNAL_ACQUISITION_WINDOW_REQUIRED')
+        self.max_acquisition_age_ns = max_acquisition_age_ns
         self.path,self.capacity = Path(path),capacity
         self.path.parent.mkdir(parents=True,exist_ok=True)
         self.value = json.loads(self.path.read_text()) if self.path.exists() else dict(active=None,used=[])
@@ -50,7 +53,7 @@ class OperationJournal:
 
     def finish(self,plan,now_ns):
         # Expiry uses original physical observation age, never storage TTL.
-        used=[row for row in self.value['used'] if now_ns-row['stamp_ns']<=ATTACHMENT_MAX_AGE_NS]
+        used=[row for row in self.value['used'] if now_ns-row['stamp_ns']<=self.max_acquisition_age_ns]
         if not any(row['digest']==plan.plan_digest for row in used):
             if len(used)>=self.capacity:raise ValueError('OPERATION_JOURNAL_CAPACITY')
             used.append(dict(digest=plan.plan_digest,stamp_ns=plan.identity.observation_stamp_ns))
@@ -66,8 +69,13 @@ class JointOperationRuntime:
         def param(name,default):
             return (node.get_parameter(name) if node.has_parameter(name)
                     else node.declare_parameter(name,default)).value
+        from luggage_planning.joint_operation.preparation_profile import (
+            DEFAULT_MAX_PREPARATION_BUDGET_S, execution_observation_age_limit_ns)
+        contact_admission_age_ns=execution_observation_age_limit_ns(
+            float(param('max_preparation_budget_s',DEFAULT_MAX_PREPARATION_BUDGET_S)))
         self.journal=OperationJournal(str(param('operation_state_file','')),
-                                      capacity=int(param('operation_completed_limit',128)))
+            capacity=int(param('operation_completed_limit',128)),
+            max_acquisition_age_ns=contact_admission_age_ns)
         self.max_budget=float(param('operation_max_budget_s',600.))
         self.cleanup_budget=float(param('operation_cleanup_timeout_s',5.))
         self.refresh_attempts=int(param('operation_source_refresh_attempts',2))

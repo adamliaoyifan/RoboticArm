@@ -157,3 +157,22 @@ def test_candidate_stage_profile_runs_actual_proposal_quality_and_binding():
     times = [r for r in json.loads(response.trace_json) if r[0] == 'timing']
     assert {'contact_proposal', 'contact_quality', 'bound_candidate'} <= {r[2] for r in times}
     assert all(r[4:] == ['completed', 'profile-slot'] for r in times)
+
+
+def test_new_prepare_refuses_old_observation_but_retained_same_plan_keeps_original_stamp():
+    from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
+    request, context, _ = query_and_inputs(30.)
+    domain = context.domain
+    request.robot_state_stamp_valid = True
+    request.robot_state_stamp_ns = domain.stamp_ns
+    request.start_joints = [0.]*6
+    now = [domain.stamp_ns]
+    root = SimpleNamespace(_state_lock=threading.Lock(), domain=domain,
+        joints=(domain.stamp_ns,(0.,)*6), start_tolerance=.01,
+        preparation=SimpleNamespace(model=context._model),
+        get_clock=lambda:SimpleNamespace(now=lambda:SimpleNamespace(nanoseconds=now[0])))
+    assert JointOperationPrepareNode._current(root, request) is domain
+    now[0] += ATTACHMENT_MAX_AGE_NS + 1
+    with pytest.raises(ValueError, match='INITIAL_STATIONARY_OBSERVATION_AGE_REFUSED'):
+        JointOperationPrepareNode._current(root, request)
+    assert JointOperationPrepareNode._current(root, request, frozen_domain=domain) is domain

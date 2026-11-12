@@ -26,6 +26,17 @@ class PreparationBudget:
                 and 0 < requested_s <= self.max_budget_s)
 
 
+def execution_observation_age_limit_ns(max_preparation_budget_s):
+    """Initial physical-observation window plus the admitted planning budget.
+
+    This bounds a NEW action; its owner must still retain the exact original
+    observation. Replay tombstones use this same original-acquisition bound.
+    """
+    from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
+    budget = PreparationBudget(max_preparation_budget_s)
+    return ATTACHMENT_MAX_AGE_NS + math.ceil(budget.max_budget_s * 1e9)
+
+
 class StageTimings:
     """Append one bounded diagnostic per attempted boundary, including errors."""
 

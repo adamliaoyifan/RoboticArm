@@ -104,6 +104,10 @@ class OperationRuntimePorts:
                                    param('container_quaternion_xyzw',[float('nan')]*4))
         self.margin = float(param('collision_margin_m',.05))
         self.vertical_margin = float(param('vertical_collision_margin_m',self.margin))
+        from luggage_planning.joint_operation.preparation_profile import (
+            DEFAULT_MAX_PREPARATION_BUDGET_S, execution_observation_age_limit_ns)
+        self.contact_admission_max_age_ns = execution_observation_age_limit_ns(
+            float(param('max_preparation_budget_s',DEFAULT_MAX_PREPARATION_BUDGET_S)))
         self.start_tolerance = float(param('start_tolerance_rad',.01))
         self.slot_limit = int(param('geometric_slot_limit',256))
         self.pickup_id = str(param('pickup_object_id','pickup_box'))
@@ -187,10 +191,11 @@ class OperationRuntimePorts:
             scope_open_stamp_ns=now_ns,max_retained_age_ms=self.observer.max_age_ms,
             wall_deadline=deadline,content_change='full_native_suffix_revalidation',
             physical_collision_detection_available=False),sort_keys=True).encode())
-        # A new action must pass the original acquisition-age limit first.
-        # This also keeps completed-plan replay tombstones aligned with that
-        # limit. Only this admitted action receives a longer retained window.
-        self.provider = MeasuredAttachmentProvider(self.revision,identity.model_sha256)
+        # Preparation admitted a recent stationary observation, then consumed
+        # its bounded watchdog. New-action age and journal replay retention use
+        # that SAME composed window, measured from the original acquisition.
+        self.provider = MeasuredAttachmentProvider(self.revision,identity.model_sha256,
+            max_age_ns=self.contact_admission_max_age_ns)
         if not self.observation_current():raise ValueError('ORIGINAL_OPERATION_OBSERVATION_REFUSED')
         observation_age_ns = self.node.get_clock().now().nanoseconds-domain.stamp_ns
         retained_observation_age_ns = observation_age_ns + math.ceil(goal.budget_s*1e9)
@@ -199,6 +204,7 @@ class OperationRuntimePorts:
         self.record('stationary_contact_scope.json',json.dumps(dict(
             original_acquisition_stamp_ns=domain.stamp_ns,
             initial_admission_age_ns=observation_age_ns,
+            initial_admission_max_age_ns=self.contact_admission_max_age_ns,
             max_retained_age_ns=retained_observation_age_ns,wall_deadline=deadline,
             premise='stationary_until_seal_then_fixed_actual_grasp',
             renews_acquisition=False),sort_keys=True).encode())
