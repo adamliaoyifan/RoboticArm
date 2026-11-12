@@ -140,7 +140,8 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
                         for final_x in final_xs:
                             if deadline is not None and time.monotonic()>=deadline:return
                             if final_x < handoff[0,3]+config.collision_margin_m:continue
-                            final=pose([final_x,y,top+size[2]/2],box_rotation)
+                            final=(pose([final_x,y,top+size[2]/2],box_rotation) if final_pose is None
+                                   else matrix(final_pose).copy())
                             final_metrics=measure_support(final,size,patches,config,state.com_local)
                             if not final_metrics.accepted:continue
                             payload=Box('payload',final[:3,3],box_rotation,size/2)

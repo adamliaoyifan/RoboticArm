@@ -54,6 +54,7 @@ from luggage_description.scene_tf_config_utils import (
     pickup_platform_enabled,
 )
 from luggage_description.xacro_robot_with_scene_base import expand_and_patch
+from luggage_description.configured_scene_models import write_configured_model
 
 WORLD_NAME = "airport_loading"
 _PROFILE_SENTINEL = "__profile__"
@@ -440,7 +441,9 @@ def _scene_model_actions(scene_tf_config: str):
     return [
         _create_node(
             model,
-            os.path.join(gz_share, "models", model, "model.sdf"),
+            (write_configured_model(os.path.join(gz_share,"models",model,"model.sdf"),config,model)
+             if model in ("robot_pedestal","pickup_platform") else
+             os.path.join(gz_share,"models",model,"model.sdf")),
             spawn,
         )
         for model, spawn in spawns

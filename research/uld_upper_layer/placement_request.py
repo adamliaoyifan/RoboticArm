@@ -74,10 +74,10 @@ def target_actions(assets,request,config,emit=None,deadline=None):
     selected=tuple(p for p in request.snapshot.surfaces if p.source_id in request.support_source_ids)
     for final_value in request.final_box_poses:
         final=matrix(final_value);bottom=final[2,3]-request.box.dimensions[2]/2
-        patches=tuple(p for p in selected if abs(p.surface_z_container-bottom)<=1e-7)
+        patches=tuple(p for p in selected if abs(p.surface_z_container-bottom)<=config.contact_tolerance_m)
         if not patches:reasons['TARGET_NOT_ON_SUPPORT']+=1;continue
         # Do not mix different support heights into a flat support model.
-        if max(p.surface_z_container for p in patches)-min(p.surface_z_container for p in patches)>1e-7:
+        if max(p.surface_z_container for p in patches)-min(p.surface_z_container for p in patches)>config.contact_tolerance_m:
             reasons['NON_COPLANAR_SUPPORT_OUTSIDE_ACTION_FAMILY']+=1;continue
         yaw=None
         for angle in config.box_yaws_deg:

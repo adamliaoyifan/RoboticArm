@@ -26,13 +26,20 @@ class ExecutionMonitor:
         self._baseline={b.name:b.container_T_body for b in initial.lower}
         self._initial_stamp=initial.stamp_s;self._started=time.monotonic()
         self._last=None;self._phase='initial';self._expected_attached=initial.attached
-        self._contact_mode=False;self._allow_support=True;self._detached_commands=initial.pose_command_count
+        self._contact_mode=bool(initial.attached);self._allow_support=True;self._detached_commands=initial.pose_command_count
         self._push_history=deque();self._ring=deque();self._failure=None
         self._support=None;self._sample=initial;self._contact_since=None
         self._panel_collision_name=panel_collision_name
         self._max_monitor_gap_s=0.;self._samples=0
         self._prior_attached=initial.attached
         self._lower_maxima={body.name:dict(translation_m=0.,rotation_deg=0.) for body in initial.lower}
+        if initial.attached:
+            if initial.tool_T_box_at_attach is None:
+                raise ValueError('CONFIRMED_ATTACHMENT_RELATION_REQUIRED')
+            expected=np.linalg.inv(np.array(action.box_T_tool).reshape(4,4))
+            distance,angle=pose_error(expected,initial.tool_T_box_at_attach)
+            if distance>config.contact_tolerance_m or angle>policy.attachment_rotation_error_deg:
+                raise ValueError('INITIAL_ATTACHMENT_DIFFERS_FROM_PLAN')
         scene.set_payload(state.dimensions,'world',scene.world_container@np.array(initial.container_T_box).reshape(4,4),allow_support=True)
 
     @property

@@ -118,7 +118,8 @@ class FullArmScene:
                            ('pickup_platform',gazebo_pickup_platform_spawn_pose(scene))):
             path=repo/f'src/luggage_gazebo/models/{name}/model.sdf'
             self.model_hashes[str(path)]=sha256(path)
-            root=ET.parse(path).getroot().find('model')
+            from luggage_description.configured_scene_models import configured_model
+            root=configured_model(path,scene,name)
             base=pose([spawn['x'],spawn['y'],spawn['z']],Rotation.from_euler(
                 'xyz',[spawn['R'],spawn['P'],spawn['Y']]).as_matrix())
             for link in root.findall('link'):

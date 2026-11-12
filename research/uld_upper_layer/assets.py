@@ -56,7 +56,8 @@ def load(repo, scene_path=None):
     catalog_path = scene_path.parent/scene['container']['box_catalog_config']
     contact_path = scene_path.parent/'suction_contact_model.yaml'
     source = repo/'src/luggage_description/urdf/elfin_s20_with_camera.urdf.xacro'
-    inputs = {p: sha256(p) for p in (scene_path, catalog_path, contact_path, source)}
+    static_models=repo/'src/luggage_description/luggage_description/configured_scene_models.py'
+    inputs = {p: sha256(p) for p in (scene_path, catalog_path, contact_path, source,static_models)}
     original_find = xacro.substitution_args._eval_find
 
     def find_source(package):

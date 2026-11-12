@@ -75,6 +75,14 @@ class PhysicalExecutor:
             vacuum=self._runtime.snapshot().get('vacuum') or {}
             if not vacuum.get('attached',False):
                 raise ValueError('CONFIRMED_LIVE_ATTACHMENT_REQUIRED')
+        if plan.get('initial_q') is not None:
+            error=np.max(np.abs(np.array(plan['initial_q'])-self._monitor.sample.q))
+            if error>self._policy.initial_joint_error_rad:
+                raise ValueError('EXECUTION_START_JOINTS_CHANGED')
+        if plan.get('initial_box_pose') is not None:
+            distance,angle=pose_error(plan['initial_box_pose'],self._monitor.sample.container_T_box)
+            if distance>self._config.contact_tolerance_m or angle>self._policy.initial_rotation_deg:
+                raise ValueError('EXECUTION_START_BOX_CHANGED')
         action=plan['action'];detached_reference=None
         for stage in plan['stages']:
             name=stage['name'];attached=name in ('pick_lift','invert_and_approach','insert_up','lower_to_support')
@@ -100,6 +108,7 @@ class PhysicalExecutor:
         if distance>self._policy.final_translation_m or angle>self._policy.final_rotation_deg:
             raise RuntimeError('FINAL_BOX_POSE_OUTSIDE_TOLERANCE')
         final_reference=self._monitor.sample.container_T_box
-        self._dwell(lambda:self._stable(final_reference),self._policy.stability_dwell_s)
+        self._dwell(lambda:self._stable(final_reference) and self._monitor.support_ready(),
+                    self._policy.stability_dwell_s)
         return dict(status='nominal_physics_probe_pass',final_position_error_m=distance,final_rotation_error_deg=angle,
                     integration_acceptance='not_evaluated_robust_tube_calibration_and_campaign_pending')

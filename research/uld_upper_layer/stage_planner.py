@@ -189,6 +189,7 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
     payload('world',matrix(action.placement.final_box_pose),True)
     failure=stage('retreat',shifted(push_end,[-config.precontact_distance_m,0,0]),contact='push_plate')
     return dict(valid=failure is None,diagnostic=failure,stages=stages,
-                action=asdict(action),start_attached=start_attached,elapsed_s=time.monotonic()-started,
+                action=asdict(action),start_attached=start_attached,initial_q=list(start_q),
+                initial_box_pose=state.container_T_box,elapsed_s=time.monotonic()-started,
                 certificate_scope='sampled_full_arm_and_payload_nominal_contact_modes',
                 physical_execution='not_evaluated')

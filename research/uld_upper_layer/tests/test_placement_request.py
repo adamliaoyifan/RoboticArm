@@ -67,12 +67,20 @@ class RequestContracts(unittest.TestCase):
         with self.assertRaises(ValueError):self.request(final_box_poses=(tuple(bad.ravel()),))
 
     def test_floating_or_sideways_target_is_not_silently_moved(self):
-        target=self.target.copy();target[2,3]+=.0005
+        target=self.target.copy();target[2,3]+=.002
         actions,report=self.generate(self.request(final_box_poses=(tuple(target.ravel()),)))
         self.assertEqual(actions,[]);self.assertIn('TARGET_NOT_ON_SUPPORT',report['reasons'])
         target=pose(self.target[:3,3],Rotation.from_euler('y',np.pi/2).as_matrix())
         actions,report=self.generate(self.request(final_box_poses=(tuple(target.ravel()),)))
         self.assertEqual(actions,[]);self.assertIn('TARGET_ORIENTATION_OUTSIDE_ACTION_FAMILY',report['reasons'])
+
+    def test_sub_tolerance_surface_heights_keep_exact_requested_target(self):
+        surfaces=tuple(replace(p,surface_z_container=p.surface_z_container-3e-7)
+                       if p.source_id in self.ids else p for p in self.snapshot.surfaces)
+        request=self.request(snapshot=replace(self.snapshot,surfaces=surfaces))
+        actions,report=self.generate(request)
+        self.assertTrue(actions,report)
+        for a in actions:np.testing.assert_allclose(a.placement.final_box_pose,self.target.ravel(),atol=1e-12)
 
     def test_runtime_com_margin_changes_real_candidate_admission(self):
         actions,_=self.generate(self.request());self.assertTrue(actions)

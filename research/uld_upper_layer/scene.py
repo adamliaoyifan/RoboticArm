@@ -145,8 +145,11 @@ def box_model(spec, color, contact_topic=None,material=None):
     return model
 
 
-def original_model(repo, name, pose):
-    model = deepcopy(ET.parse(repo/f'src/luggage_gazebo/models/{name}/model.sdf').getroot().find('model'))
+def original_model(repo, name, pose,scene_config=None):
+    from luggage_description.configured_scene_models import configured_model
+    path=repo/f'src/luggage_gazebo/models/{name}/model.sdf'
+    model=(configured_model(path,scene_config,name) if scene_config is not None else
+           deepcopy(ET.parse(path).getroot().find('model')))
     old_pose = model.find('pose')
     if old_pose is not None:
         model.remove(old_pose)
@@ -184,10 +187,10 @@ def intersecting_triangles(center, half, triangles):
     return hits
 
 
-def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None,contact_profile=None):
+def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None,contact_profile=None,scene_path=None):
     if output.exists() and any(output.iterdir()):
         raise ValueError('output must be new or empty; do not overwrite a previous scene')
-    assets = load(repo)
+    assets = load(repo,scene_path)
     spec = fixture(assets)
     material=BoxContactMaterial.load(contact_profile)
     spec['contact_material']=asdict(material)
@@ -267,7 +270,7 @@ def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None,contact_pr
         (assets['scene']['pedestal']['gazebo_model'], gazebo_pedestal_spawn_pose(assets['scene'])),
         (platform['gazebo_model'], pickup),
     ):
-        world.append(original_model(repo, name, spawn))
+        world.append(original_model(repo, name, spawn,assets['scene']))
     ET.indent(root)
     ET.ElementTree(root).write(output/'standalone.sdf', encoding='utf-8', xml_declaration=True)
     (output/'fixture.json').write_text(json.dumps(spec, indent=2)+'\n')
@@ -281,8 +284,9 @@ def main():
     parser.add_argument('--physics-plugin',type=Path)
     parser.add_argument('--vacuum-plugin',type=Path)
     parser.add_argument('--contact-profile',type=Path)
+    parser.add_argument('--scene-config',type=Path)
     args = parser.parse_args()
-    spec = write_scene(args.repo.resolve(), args.output.resolve(),args.physics_plugin,args.vacuum_plugin,args.contact_profile)
+    spec = write_scene(args.repo.resolve(), args.output.resolve(),args.physics_plugin,args.vacuum_plugin,args.contact_profile,args.scene_config)
     print(json.dumps({k:spec[k] for k in ('support_z_m','upper_headroom_m','lower_fill_fraction',
                                           'payload_ceiling_gap_m','suction_panel_depth_from_contact_m')}, indent=2))
     print(f"Scene: {args.output.resolve()} (24 dynamic support boxes; no action commands)")

@@ -92,6 +92,9 @@ class UpperPlacementPlanner:
                         seeds,config,selection,execution,output/f'action_{attempts:04d}',remaining,seed+attempts,
                         start_attached=request.start_attached,scene_path=self._scene_path)
                     emit(dict(event='action_output',action_id=action.action_id,valid=result.get('valid'),reason=result.get('reason')))
+                    if result.get('reason')=='INITIAL_STATE_INVALID':
+                        emit(dict(event='common_initial_state_rejected',diagnostic=result.get('diagnostic')))
+                        break
                     if result.get('valid'):
                         result['request_revision']=request.revision
                         plans.append(result);atomic_json(output/'plans.json',plans)

@@ -38,6 +38,7 @@ def main():
     parser.add_argument('--candidates',type=Path)
     parser.add_argument('--seed',type=int,default=0)
     parser.add_argument('--config',type=Path)
+    parser.add_argument('--scene-config',type=Path)
     parser.add_argument('--selection-policy',type=Path)
     parser.add_argument('--execution-policy',type=Path)
     parser.add_argument('--plan-paths',action='store_true')
@@ -74,11 +75,11 @@ def main():
         profile='ideal_sim_snapshot_source_mesh_diagnostic',scored_units=0)
     save(output/'manifest.json',manifest)
     try:
-        assets=load(ROOT)
+        assets=load(ROOT,args.scene_config)
         if args.observation:
             observation=json.loads(args.observation.read_text())
         else:
-            runtime=RuntimeIO(ROOT,output,args.scene_dir);runtime.start();observation=runtime.snapshot()
+            runtime=RuntimeIO(ROOT,output,args.scene_dir,scene_path=args.scene_config);runtime.start();observation=runtime.snapshot()
         save(output/'observation.json',observation)
         if args.capture_only:
             result=dict(stage='capture',lower_count=sum(n.startswith('lower_') for n in observation['poses']),
@@ -165,7 +166,7 @@ def main():
                             exhaustive=False,valid=False))
                         continue
                     result=plan_bounded(ROOT,snapshot,state,action,observation['q'],seeds,config,selection_policy,execution_policy,
-                        output/f'action_{len(attempted):04d}',remaining,args.seed)
+                        output/f'action_{len(attempted):04d}',remaining,args.seed,scene_path=args.scene_config)
                     emit(dict(event='action_output',action_id=action.action_id,
                               valid=result['valid'],reason=result.get('reason'),
                               diagnostic=result.get('diagnostic')))

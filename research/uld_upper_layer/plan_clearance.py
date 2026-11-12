@@ -65,7 +65,8 @@ class FullArmDistanceSampler:
 
 
 def plan_digest(plan):
-    return digest(dict(action=plan['action'],stages=[dict(
+    return digest(dict(action=plan['action'],start_attached=plan.get('start_attached',False),
+        initial_q=plan.get('initial_q'),initial_box_pose=plan.get('initial_box_pose'),stages=[dict(
         {k:stage[k] for k in ('name','trajectory','certificate','payload_mode','contact_tool')},
         motion_kind=stage.get('motion_kind'),box_motion_model=stage.get('box_motion_model'),
         box_reference_container=stage.get('box_reference_container')) for stage in plan['stages']]))
