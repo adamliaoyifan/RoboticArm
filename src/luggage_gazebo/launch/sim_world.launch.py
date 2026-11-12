@@ -1234,6 +1234,13 @@ def _launch_setup(context):
         condition=IfCondition(_bool_text(cfg["use_rviz"])),
     )
 
+    controller_actions=[jsb_spawner,
+        RegisterEventHandler(OnProcessExit(target_action=jsb_spawner,on_exit=[arm_spawner])),
+        RegisterEventHandler(OnProcessExit(target_action=arm_spawner,on_exit=[observe_hold,move_group]))]
+    if complete_operation:
+        from luggage_gazebo.controller_startup import bounded_controller_startup
+        controller_actions=bounded_controller_startup([observe_hold,move_group])
+
     return [
         gz_sim,
         clock_bridge,
@@ -1326,13 +1333,7 @@ def _launch_setup(context):
             scene_tf_config, initial_joint_args,
             watchdog_sec=float(cfg["startup_watchdog_sec"]),
         ),
-        jsb_spawner,
-        RegisterEventHandler(
-            OnProcessExit(target_action=jsb_spawner, on_exit=[arm_spawner])
-        ),
-        RegisterEventHandler(
-            OnProcessExit(target_action=arm_spawner, on_exit=[observe_hold, move_group])
-        ),
+        *controller_actions,
         rviz,
     ]
 

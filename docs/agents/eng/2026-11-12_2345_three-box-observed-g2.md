@@ -791,3 +791,23 @@ is inherited from the older acquisition. This avoids adding a second domain
 history/cache and its raw-context lifetime problem. No gate is loosened and no
 failed full planning run is automatically retried.39 focused wiring cases pass.
 Diagnostic38 failure raw/map/scene captured; teardown0;3box remains incomplete.
+
+## Diagnostic39 startup lost response -- 2026-11-13T06:07+08:00
+
+Build60/install192 pass. Startup only, no box attempt: controller manager loads
+joint_state_broadcaster but logs failed DDS service response. Standard Humble
+spawner times out10s, retries LoadController, receives already-loaded failure,
+exits1. Old unconditional OnProcessExit still starts arm/MoveIt, but no joint
+state publisher; readiness fails SENSOR_OR_JOINTS_NOT_READY after120s. Full launch
+log/ready capture/owned teardown0 preserved. Later controller-state CLI was too
+late (after teardown), so no actual state listing is claimed.
+
+Recommended minimum wiring repair for explicit joint route: standard serial
+spawners advance only on exit0. One fresh standard spawner on failure queries
+actual existing controller state via built-in ListControllers and skips an
+already-loaded controller; second failure emits named shutdown. No force-active,
+duplicate load implementation or manual controller state is introduced. Legacy
+startup path unchanged. Four actual launch-event-handler cases cover normal
+advance, lost-reply recovery branch and repeated failure at both stages; all
+selected launch/driver cases pass. Live healthy startup rehearsal follows;
+transport failure-rate improvement is not inferred unless that branch occurs.
