@@ -21,6 +21,14 @@ from luggage_mapping.configuration import owner_configuration
 from luggage_planning.atlas.runtime import load_atlas_runtime_for_scene, resolve_atlas_files
 
 
+def server_render_engine(config):
+    """Explicit simulator sensor backend; never a map or collision-policy knob."""
+    engine = str(config.get('server_render_engine', 'ogre2'))
+    if engine not in ('ogre', 'ogre2'):
+        raise ValueError('UNSUPPORTED_SIMULATION_RENDER_ENGINE')
+    return engine
+
+
 def simulated_self_mask_error_bound(robot_xml):
     """Half a configured simulator range bin, never a real-sensor calibration.
 

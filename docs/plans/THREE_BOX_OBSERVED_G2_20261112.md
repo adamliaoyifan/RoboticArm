@@ -119,3 +119,13 @@ carry exhausted the former300s client literal once certification overhead was
 included. The client records trajectory duration and budget and refuses before
 motion if trajectory duration alone meets/exceeds the budget. This supersedes
 only that diagnostic timeout value; no production latency SLA is established.
+
+## Simulator sensor source qualification -- 2026-11-13T04:30+08:00
+
+The explicit joint profile selects `server_render_engine: ogre` after isolated
+same-pose known-plane measurements reproduced OGRE2 false floor occupancy
+(+7.918mm target-area error) and OGRE reduced it to+0.413mm with no target-area
+points above the configured inner floor. This is a simulation source repair,
+not a real-LiDAR calibration or planner/O tolerance. Bare launch stays OGRE2;
+resolved run metadata records the backend. Full-model RGB-D compatibility must
+be demonstrated by actual measured detection and source outputs in the next run.

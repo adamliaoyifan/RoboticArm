@@ -544,3 +544,42 @@ satisfy these product gates.
   bounded archive and explicit drop reporting; no map policy changed.
 - Behavioral driver checks33 pass; build46 all13 packages passes7.09s with
   no changed source inputs. Actual full cycle and3box baseline remain open.
+
+## Diagnostic31 and simulator sensor isolation -- 2026-11-13T04:30+08:00
+
+- build46 actual cycle364.37s incomplete, retry action234.46s reaches
+  endpoint but descent is never submitted: CURRENT_SOURCE_REFUSED, all three
+  fresh captures change. Pre-seal first attempt stops on settled admission;
+  bounded recovery/new full plan succeeds in actual seal/lift/carry. No release.
+- Capture complete472188929 stored bytes, zero drops; immutable final O and
+  scene retained. Final O4649 occupied,1022 bottom-layer; only3 occupied voxel
+  centres inside measured carried envelope, so bulk map pollution is not
+  explained by carried-box interior returns alone.
+- Exact native suffix replay on latest O fails descent/retreat at sample0:
+  link3 vs O, and payload vs O. This is a planning refusal, not observed impact.
+  No real collision detector is claimed. Target full-admission replay retained.
+- Full source capture now finds1290 target-floor LiDAR returns in98 frames
+  before seal, Z .5300003-.5369219; optical contributes none to that region in
+  this window. Same target's225 XY mesh intersections top at~.529007m.
+- Eval-only physical link6 versus exact-time TF22 samples: max translation
+  .044mm; fixed sensor SDF vs TF translation .00033mm, angle~1e-5rad. These
+  comparisons do not explain the millimetre floor bias.
+- Isolated ONE-world-at-a-time known-plane calibration reuses actual60.1s
+  acquisition pose and unchanged360x32 scan,10 frames per renderer. OGRE2
+  target area40 points,17 above configured .53 floor, max plane error+7.918mm;
+  OGRE41 points,zero above .53, max+0.413mm. Broader plane errors also decrease.
+  This reproduces false floor occupancy without O/planner/robot geometry.
+- Recommendation under user delegation: explicit joint profile selects OGRE
+  server sensor backend via standard Gazebo flag; bare launch remains OGRE2.
+  Record resolved selection; do not erase floor voxels, alter collision gates,
+  shrink full model, change release or inject known plane into online map.
+  Actual full-model RGB-D/detector compatibility and route still need testing.
+  Model URDF/SRDF and atlas identity are unchanged by renderer selection.
+- Primary mechanism corroboration (not a substitute for our measurements):
+  https://github.com/gazebosim/gz-sim/issues/2743 contributor explains OGRE2
+  sample-dependent approximation and recommends OGRE alternative; Fortress
+  Sensors.cc confirms --render-engine-server overrides the world SDF setting.
+- Evidence: diagnostic31/{floor_hit_window_review.json,floor_mesh_review.json,
+  reference_tf_review.json,sensor_extrinsics_review.json,carried_voxel_review.json,
+  latest_suffix46}; floor_sensor_{ogre2,ogre}_360/{world.sdf,result.json,
+  target_area.json,*.cdr.gz}. Known plane and simulator poses are eval-only.

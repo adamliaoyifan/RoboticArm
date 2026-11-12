@@ -2,6 +2,17 @@ import pytest
 from luggage_gazebo.operation_launch import validate_operation_selection
 
 
+@pytest.mark.parametrize('value',['ogre','ogre2','unknown','ogre --bad',''])
+def test_server_render_engine_selection_is_explicit_and_bounded(value):
+    from luggage_gazebo.operation_launch import server_render_engine
+    if value in ('ogre','ogre2'):
+        assert server_render_engine({'server_render_engine':value})==value
+    else:
+        with pytest.raises(ValueError,match='UNSUPPORTED_SIMULATION_RENDER_ENGINE'):
+            server_render_engine({'server_render_engine':value})
+    assert server_render_engine({})=='ogre2'
+
+
 @pytest.mark.parametrize('resolution,expected', [('0.01',.005),('0.002',.001)])
 def test_simulated_self_mask_uses_declared_range_quantization(resolution,expected):
     from luggage_gazebo.operation_launch import simulated_self_mask_error_bound

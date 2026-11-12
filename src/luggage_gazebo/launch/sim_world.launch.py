@@ -88,6 +88,7 @@ def _default_launch_values():
         ),
         "use_moveit": "true",
         "gui": "true",
+        "server_render_engine": "ogre2",
         "use_rviz": "true",
         "use_perception": "true",
         "top_surface_mode": "legacy",
@@ -793,7 +794,8 @@ def _launch_setup(context):
     _check_renderer()
     cfg = _resolved_launch_config(context)
     scene_tf_config = cfg["scene_tf_config"]
-    from luggage_gazebo.operation_launch import validate_operation_selection, operation_composition, operation_atlas_config
+    from luggage_gazebo.operation_launch import validate_operation_selection, operation_composition, operation_atlas_config, server_render_engine
+    render_engine = server_render_engine(cfg)
     complete_operation = validate_operation_selection(cfg)
     if complete_operation:
         cfg['atlas_runtime_config'] = operation_atlas_config(cfg)
@@ -819,7 +821,8 @@ def _launch_setup(context):
     # nonzero sim period; a paused world times out JSB/arm activation.
     # Moving-link gravity is off in the URDF so observe does not collapse
     # before the arm controller claims the joints.
-    gz_args = ("-r -v 3 " if gui else "-s -r -v 3 ") + world_path
+    gz_args = (("-r -v 3 " if gui else "-s -r -v 3 ") + world_path
+               + " --render-engine-server " + render_engine)
 
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -1373,6 +1376,7 @@ def generate_launch_description():
             profile_arg("joint_capture_mode", "Joint-command boundary capture: off | armed | window (requires instrumented gz_ros2_control overlay)."),
             profile_arg("joint_capture_run_dir", "Fresh run directory for joint-command capture streams."),
             profile_arg("gui", "Start Gazebo GUI."),
+            profile_arg("server_render_engine", "Gazebo sensor renderer: ogre or ogre2; recorded in the resolved profile."),
             profile_arg(
                 "start_placement_prior",
                 "Read-only placement-prior sidecar (explicit opt-in; "

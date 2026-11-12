@@ -3,6 +3,9 @@
 runtime:
   planning_pipeline: joint_operation
   gui: false
+  # Known-plane replay at actual pickup pose: OGRE2 places17/40 floor rays
+  # above .53m (max +7.9mm); OGRE places0/41 (max +0.42mm). Simulation-only.
+  server_render_engine: ogre
   use_rviz: false
   use_moveit: true
   frame_runtime: false
