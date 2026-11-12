@@ -488,3 +488,51 @@ is insufficient. Geometrically unavailable, pending and unmeasured failures
 remain distinct; all outputs keep `execution_admitted=false`. Assessment values
 are immutable; the campaign owner owns the case-to-attempt ledger and must not
 count two attempts of one repetition as two independent samples.
+
+## Request-driven planner
+
+`placement_request.PlacementRequest` is the ROS-free request owned by the caller.
+It binds box dimensions and geometric-centre pose, current six joint angles,
+immutable OCC/surface snapshot, explicit final box poses and allowed support IDs.
+All poses use **container_link absolute coordinates**; height is not floor-relative.
+`confirmed_box_T_tool` is mandatory only for `start_attached=True`. That mode
+fixes the actual grasp and starts at the provided current joints; it never repicks.
+The current family accepts inverted axis-aligned boxes on coplanar rectangular
+support patches, with +container-X insertion. Under the configured container yaw
+this puts the long edge along base Y and insertion along base -Y for yaw=0/180.
+Other orientations return an explicit unsupported-family reason.
+
+`request_planner.UpperPlacementPlanner.plan(request, evidence, seed)` owns a private
+scene and bounded workers. It generates multiple exact-target handoff/grasp/push
+candidates, plans connected joint/Cartesian stages, time-parameterizes them,
+certifies swept collision geometry, validates free-box noncontact envelopes and
+ranks complete plans by collision clearance before support. It reads YAML anew
+per call, including the 20mm COM support margin; no rebuild is needed.
+It stops at target3 or budget exhaustion, with minimum1. `valid` means complete
+scored nominal plans; real contact uncertainty and physical success remain separate.
+No path or simulator object pose is injected from previous successful experiments.
+
+The request is serializable with `dataclasses.asdict`; reconstruct with
+`request_planner.request_from_record`. The result directory contains request,
+inputs, candidates, per-action stage traces and certificates, plans and selection.
+Plans are immutable after scoring: changing trajectories invalidates their digest.
+The caller consumes the selected trajectory; `PhysicalExecutor` supports either
+the full12-stage chain or the already-attached9-stage suffix and requires live
+attachment for the latter. The standalone `physical_probe.py` starts a new scene,
+so it rejects attached-start requests; a live attached caller must use its current
+runtime. It does not manufacture attachment when resuming.
+
+```bash
+source /opt/ros/humble/setup.bash
+OPENBLAS_NUM_THREADS=1 /tmp/uld-upper-python/bin/python \
+  research/uld_upper_layer/request_planner.py \
+  --request /absolute/request.json \
+  --scene-config src/luggage_description/config/scene_tf_deploy_update.yaml \
+  --evidence /home/adamliao/work/elfin_humble_ws/docs/status/evidence/uld_upper_layer_v1/NEW_RUN
+```
+
+Scene configuration is explicit and included in the model identity. The physical
+consumer rechecks its hash and passes the same configuration to scene launch.
+Request lifetime ends when its snapshot, grasp, current joints or policy changes;
+request a new plan rather than editing a scored result. Failure output retains
+all rejected boundaries; no result is admitted on a worker timeout.

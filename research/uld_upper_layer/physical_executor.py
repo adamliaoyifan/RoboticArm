@@ -14,6 +14,10 @@ STAGES=('pick_pre','pick_contact','pick_lift','invert_and_approach','insert_up',
         'lower_to_support','release_down','withdraw','push_pre','push_contact','push','retreat')
 
 
+def expected_stages(plan):
+    return STAGES[3:] if plan.get('start_attached',False) else STAGES
+
+
 class PhysicalExecutor:
     def __init__(self,runtime,monitor,observe,dimensions,config,policy):
         self._runtime=runtime;self._monitor=monitor;self._config=config;self._policy=policy
@@ -63,10 +67,14 @@ class PhysicalExecutor:
         return self._monitor.tool_separated()
 
     def execute(self,plan):
-        if not plan.get('valid') or tuple(stage['name'] for stage in plan['stages'])!=STAGES:
+        if not plan.get('valid') or tuple(stage['name'] for stage in plan['stages'])!=expected_stages(plan):
             raise ValueError('COMPLETE_NOMINAL_STAGE_CHAIN_REQUIRED')
         if not all(stage['certificate'].get('valid') for stage in plan['stages']):
             raise ValueError('UNPROVEN_NOMINAL_STAGE')
+        if plan.get('start_attached',False):
+            vacuum=self._runtime.snapshot().get('vacuum') or {}
+            if not vacuum.get('attached',False):
+                raise ValueError('CONFIRMED_LIVE_ATTACHMENT_REQUIRED')
         action=plan['action'];detached_reference=None
         for stage in plan['stages']:
             name=stage['name'];attached=name in ('pick_lift','invert_and_approach','insert_up','lower_to_support')

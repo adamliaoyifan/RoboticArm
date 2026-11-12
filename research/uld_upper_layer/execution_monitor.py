@@ -25,7 +25,7 @@ class ExecutionMonitor:
         self._config=config;self._policy=policy;self._trace=trace
         self._baseline={b.name:b.container_T_body for b in initial.lower}
         self._initial_stamp=initial.stamp_s;self._started=time.monotonic()
-        self._last=None;self._phase='initial';self._expected_attached=False
+        self._last=None;self._phase='initial';self._expected_attached=initial.attached
         self._contact_mode=False;self._allow_support=True;self._detached_commands=initial.pose_command_count
         self._push_history=deque();self._ring=deque();self._failure=None
         self._support=None;self._sample=initial;self._contact_since=None

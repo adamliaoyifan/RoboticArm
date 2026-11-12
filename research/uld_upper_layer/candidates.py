@@ -48,7 +48,7 @@ def tool_collision(assets, snapshot, tcp, clearance):
     return None
 
 
-def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values, lateral, depth_values, grasp_values, reasons, witnesses, deadline=None, emit=None):
+def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values, lateral, depth_values, grasp_values, reasons, witnesses, deadline=None, emit=None, final_pose=None):
     """Return immutable geometric candidates and bounded diagnostic records.
 
     Grasp is selected on the original top face. The final box is inverted by
@@ -81,6 +81,13 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
                           xmax-length/2-config.collision_margin_m, config.placement_step_m)
         ys = samples(ymin+width/2+config.collision_margin_m,
                      ymax-width/2-config.collision_margin_m, config.placement_step_m)
+        if final_pose is not None:
+            requested=matrix(final_pose)
+            if not np.allclose(requested[:3,:3],box_rotation,rtol=0,atol=1e-7):
+                reasons['TARGET_ORIENTATION_OUTSIDE_ACTION_FAMILY']+=1;continue
+            if abs(requested[2,3]-(top+size[2]/2))>config.contact_tolerance_m:
+                reasons['TARGET_NOT_ON_SUPPORT']+=1;continue
+            final_xs=(float(requested[0,3]),)
         for tool_yaw in tool_yaw_values:
             rt = Rotation.from_euler('z', tool_yaw, degrees=True).as_matrix()
             footprint_x = np.abs(rt[0,:2]) @ contact_width

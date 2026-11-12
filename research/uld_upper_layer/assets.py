@@ -40,7 +40,7 @@ def source_mesh(repo, uri):
     return path
 
 
-def load(repo):
+def load(repo, scene_path=None):
     repo = Path(repo).resolve()
     sys.path[:0] = [str(repo/'src/luggage_planning'), str(repo/'src/luggage_description')]
     import xacro
@@ -50,7 +50,8 @@ def load(repo):
     from luggage_description.xacro_robot_with_scene_base import patch_world_base
     from luggage_description.container_geometry import descriptor_from_scene_config
 
-    scene_path = repo/'src/luggage_description/config/scene_tf.yaml'
+    scene_path = (repo/'src/luggage_description/config/scene_tf.yaml' if scene_path is None
+                  else Path(scene_path).resolve())
     scene = yaml.safe_load(scene_path.read_text())
     catalog_path = scene_path.parent/scene['container']['box_catalog_config']
     contact_path = scene_path.parent/'suction_contact_model.yaml'
@@ -122,4 +123,5 @@ def load(repo):
                 contact=yaml.safe_load(contact_path.read_text()), urdf=urdf, xml=xml,
                 hull=descriptor_from_scene_config(scene), tool=tool,
                 world_container=world_container,
-                hashes={str(p.relative_to(repo)):h for p,h in inputs.items()})
+                hashes={str(p.relative_to(repo)) if p.is_relative_to(repo) else str(p):h
+                        for p,h in inputs.items()})

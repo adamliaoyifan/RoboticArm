@@ -15,7 +15,7 @@ from collections import deque
 
 
 class RuntimeIO:
-    def __init__(self,repo,evidence,scene_dir=None,capture_policy=None):
+    def __init__(self,repo,evidence,scene_dir=None,capture_policy=None,scene_path=None):
         self.repo=Path(repo);self.output=Path(evidence)
         self._capture_policy=capture_policy
         self._capture_limit=(capture_policy.max_case_bytes-capture_policy.failure_capture_reserve_bytes
@@ -25,6 +25,7 @@ class RuntimeIO:
         self._next_capture_check=0.;self._budget_error=None
         self.env=dict(os.environ,ROS_DOMAIN_ID='7',IGN_PARTITION='uld_upper_layer_closed_loop',
                       ROS_LOG_DIR=str(self.output/'ros_logs'))
+        if scene_path is not None:self.env['ULD_UPPER_SCENE_CONFIG']=str(Path(scene_path).resolve())
         self.native_step_s=None
         self.contact_topic='/upper_layer_payload/contacts'
         self.vacuum_spec=None;self.vacuum_capture=None;self.vacuum_state=None

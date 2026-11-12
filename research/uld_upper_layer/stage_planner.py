@@ -16,17 +16,26 @@ def shifted(transform, delta):
     return result
 
 
-def plan_action(scene,state,action,start_q,seeds,config,emit):
+def plan_action(scene,state,action,start_q,seeds,config,emit,start_attached=False):
     """Backtrack pick joint branches as well as coupled handoff branches."""
     from action_screen import screen_push
     started=time.monotonic()
-    scene.set_payload(state.dimensions,'world',
-        scene.world_container@matrix(state.container_T_box),allow_support=True)
-    initial_failure=scene.check_state(start_q,config.collision_margin_m)
+    if start_attached:
+        actual=scene.container_world@scene.urdf.tcp(start_q,scene.urdf.path_to('suction_contact_frame'))
+        expected=matrix(state.container_T_box)@matrix(action.box_T_tool)
+        if not np.allclose(actual,expected,rtol=0,atol=config.contact_tolerance_m):
+            return dict(valid=False,reason='CONFIRMED_ATTACHMENT_POSE_MISMATCH',stages=[])
+    scene.set_payload(state.dimensions,'attached' if start_attached else 'world',
+        scene.world_container@matrix(state.container_T_box),
+        matrix(action.box_T_tool) if start_attached else None,allow_support=not start_attached)
+    initial_failure=scene.check_state(start_q,config.collision_margin_m,start_attached)
     if initial_failure:return dict(valid=False,reason='INITIAL_STATE_INVALID',diagnostic=initial_failure,stages=[])
     screened=screen_push(scene,state,action,seeds,config)
     emit(dict(event='necessary_push_endpoint_screen',result=screened))
     if not screened['valid']:return dict(valid=False,reason=screened['reason'],diagnostic=screened,stages=[])
+    if start_attached:
+        return _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
+                                      None,screened,started,start_attached=True)
     pre_pick=shifted(matrix(action.pick_tool_pose),[0,0,config.precontact_distance_m])
     goals,diagnostic=scene.endpoint_solutions(pre_pick,[start_q]+seeds,
         config.collision_margin_m,config.path_attempt_budget_s)
@@ -50,7 +59,7 @@ def plan_action(scene,state,action,start_q,seeds,config,emit):
 
 
 def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
-                            pick_pre_q,screened,started):
+                            pick_pre_q,screened,started,start_attached=False):
     stages=[];q=list(start_q)
     box_pose=matrix(state.container_T_box)
     grasp=matrix(action.box_T_tool)
@@ -127,16 +136,19 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
                   duration_s=timed['time_from_start'][-1],certificate=certificate))
         return None
 
-    payload('world',support=True)
-    failure=scene.check_state(q,config.collision_margin_m)
-    if failure:return dict(valid=False,reason='INITIAL_STATE_INVALID',diagnostic=failure,stages=stages)
-    pre_pick=shifted(pick,[0,0,config.precontact_distance_m])
-    failure=stage('pick_pre',pre_pick,'joint',goal_q=pick_pre_q)
-    if not failure:failure=stage('pick_contact',pick,contact=True,speed=config.contact_speed_mps)
-    if failure:return dict(valid=False,diagnostic=failure,stages=stages)
-    payload('attached',support=True)
-    failure=stage('pick_lift',shifted(pick,[0,0,config.pick_lift_m]),contact=True)
-    if failure:return dict(valid=False,diagnostic=failure,stages=stages)
+    if start_attached:
+        payload('attached',support=False)
+    else:
+        payload('world',support=True)
+        failure=scene.check_state(q,config.collision_margin_m)
+        if failure:return dict(valid=False,reason='INITIAL_STATE_INVALID',diagnostic=failure,stages=stages)
+        pre_pick=shifted(pick,[0,0,config.precontact_distance_m])
+        failure=stage('pick_pre',pre_pick,'joint',goal_q=pick_pre_q)
+        if not failure:failure=stage('pick_contact',pick,contact=True,speed=config.contact_speed_mps)
+        if failure:return dict(valid=False,diagnostic=failure,stages=stages)
+        payload('attached',support=True)
+        failure=stage('pick_lift',shifted(pick,[0,0,config.pick_lift_m]),contact=True)
+        if failure:return dict(valid=False,diagnostic=failure,stages=stages)
     scene.payload['allow_support']=False
     opening=np.array(scene.assets['scene']['container']['opening']['aperture']['corners'])
     corners=np.array(scene.payload['mesh'].vertices)
@@ -177,6 +189,6 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
     payload('world',matrix(action.placement.final_box_pose),True)
     failure=stage('retreat',shifted(push_end,[-config.precontact_distance_m,0,0]),contact='push_plate')
     return dict(valid=failure is None,diagnostic=failure,stages=stages,
-                action=asdict(action),elapsed_s=time.monotonic()-started,
+                action=asdict(action),start_attached=start_attached,elapsed_s=time.monotonic()-started,
                 certificate_scope='sampled_full_arm_and_payload_nominal_contact_modes',
                 physical_execution='not_evaluated')

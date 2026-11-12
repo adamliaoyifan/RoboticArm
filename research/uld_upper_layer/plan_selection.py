@@ -32,11 +32,11 @@ def equivalent_actions(a,b,policy):
 
 
 def _rejection(plan,snapshot_id,config,policy,model_identity,execution_policy):
-    from physical_executor import STAGES
+    from physical_executor import expected_stages
     try:
         score=plan['clearance_score']
         if not plan.get('valid') or not score.get('valid'):return 'INCOMPLETE_OR_INVALID_NOMINAL_PLAN'
-        if (tuple(s['name'] for s in plan['stages'])!=STAGES or
+        if (tuple(s['name'] for s in plan['stages'])!=expected_stages(plan) or
             not all(s['certificate'].get('valid') for s in plan['stages'])):
             return 'INCOMPLETE_OR_INVALID_NOMINAL_PLAN'
         if (score['snapshot_id']!=snapshot_id or score['config_revision']!=config.revision or

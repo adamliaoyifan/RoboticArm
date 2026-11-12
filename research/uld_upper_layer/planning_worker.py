@@ -18,7 +18,7 @@ def atomic_json(path,value):
     temporary.replace(path)
 
 
-def _worker(repo,snapshot,state,action,start_q,seeds,config,selection_policy,execution_policy,output,budget_s,seed):
+def _worker(repo,snapshot,state,action,start_q,seeds,config,selection_policy,execution_policy,output,budget_s,seed,start_attached=False,scene_path=None):
     from assets import load
     from full_arm import FullArmScene
     from stage_planner import plan_action
@@ -29,14 +29,14 @@ def _worker(repo,snapshot,state,action,start_q,seeds,config,selection_policy,exe
     output=Path(output)
     deadline=time.monotonic()+budget_s
     try:
-        assets=load(repo)
+        assets=load(repo,scene_path)
         scene=FullArmScene(assets,snapshot,config)
         scene.query_observer=lambda row:atomic_json(output/'last_query.json',row)
         with (output/'stage_boundaries.jsonl').open('w') as stream:
             def emit(row):
                 stream.write(json.dumps(row)+'\n');stream.flush()
                 atomic_json(output/'last_boundary.json',row)
-            result=plan_action(scene,state,action,start_q,seeds,config,emit)
+            result=plan_action(scene,state,action,start_q,seeds,config,emit,start_attached=start_attached)
             if result.get('valid'):
                 # Preserve the complete nominal path even if scoring times out.
                 # A nominal path without its completed score is never admitted.
@@ -72,13 +72,13 @@ def _worker(repo,snapshot,state,action,start_q,seeds,config,selection_policy,exe
         raise
 
 
-def plan_bounded(repo,snapshot,state,action,start_q,seeds,config,selection_policy,execution_policy,output,budget_s,seed):
+def plan_bounded(repo,snapshot,state,action,start_q,seeds,config,selection_policy,execution_policy,output,budget_s,seed,start_attached=False,scene_path=None):
     output=Path(output);output.mkdir()
     atomic_json(output/'input.json',dict(snapshot=asdict(snapshot),box=asdict(state),
         action=asdict(action),start_q=start_q,seeds=[list(q) for q in seeds],
-        config=asdict(config),selection_policy=asdict(selection_policy),execution_policy=asdict(execution_policy),budget_s=budget_s,seed=seed))
+        config=asdict(config),selection_policy=asdict(selection_policy),execution_policy=asdict(execution_policy),budget_s=budget_s,seed=seed,start_attached=start_attached,scene_path=str(scene_path) if scene_path else None))
     process=multiprocessing.get_context('spawn').Process(target=_worker,
-        args=(repo,snapshot,state,action,start_q,seeds,config,selection_policy,execution_policy,output,budget_s,seed))
+        args=(repo,snapshot,state,action,start_q,seeds,config,selection_policy,execution_policy,output,budget_s,seed,start_attached,scene_path))
     process.start();started=time.monotonic();abort=None
     try:
         while process.is_alive():

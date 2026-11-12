@@ -48,10 +48,13 @@ def main():
     args=parser.parse_args();out=args.evidence.resolve()
     if args.capture_rehearsal and args.planning_run:parser.error('capture rehearsal does not execute a plan')
     if not out.is_relative_to(EVIDENCE):raise ValueError('PRIMARY_EVIDENCE_REQUIRED')
-    policy=ExecutionPolicy.load(args.policy);config=UpperConfig.load();plan=None;selection=None
+    policy=ExecutionPolicy.load(args.policy);config=UpperConfig.load();plan=None;selection=None;scene_path=None
     if args.planning_run:
         planning_manifest=json.loads((args.planning_run/'manifest.json').read_text())
         config=UpperConfig.load(args.planning_run/'source/upper_config.yaml')
+        scene_path=planning_manifest.get('scene_config')
+        if scene_path and sha256(scene_path)!=planning_manifest['scene_config_sha256']:
+            raise ValueError('PLANNED_SCENE_CONFIG_CHANGED')
         plans=json.loads((args.planning_run/'plans.json').read_text())
         if not plans:raise ValueError('NO_COMPLETE_NOMINAL_PLAN')
         selection_policy=SelectionPolicy.load(args.planning_run/'source/selection_policy.yaml')
@@ -67,7 +70,7 @@ def main():
             digest(dict(assets=models['asset_hashes'],meshes=models['hashes'])),policy)
         if not selection['nominal_minimum_met']:raise ValueError('NO_SCORED_NOMINAL_PLAN:'+str(selection['rejected']))
         plan=plans[selection['selected_index']]
-        for name in ('candidates.py','planning_types.py','full_arm.py','tool_contact_geometry.py','support_contact.py',
+        for name in ('candidates.py','placement_request.py','request_planner.py','planning_types.py','full_arm.py','tool_contact_geometry.py','support_contact.py',
                      'geometry.py','assets.py','path_planning.py','stage_planner.py','action_screen.py','coupled_chain.py','interval_certificate.py','motion_bounds.py',
                      'plan_clearance.py','push_seam_events.py','clearance_bounds.py','selection_policy.py','plan_selection.py',
                      'free_box_validation.py','noncontact_admission.py','payload_envelope.py','payload_tube.py','envelope_planning.py','execution_policy.py'):
@@ -94,9 +97,9 @@ def main():
         source_hashes=hashes,started_wall=time.time(),command=list(__import__('sys').argv),
         capture_complete=False,replay_possible=False)
     save(out/'manifest.json',manifest)
-    runtime=RuntimeIO(ROOT,out,args.scene_dir,capture_policy=policy);monitor=None;observe=None;trace=None;failed=False
+    runtime=RuntimeIO(ROOT,out,args.scene_dir,capture_policy=policy,scene_path=scene_path);monitor=None;observe=None;trace=None;failed=False
     try:
-        assets=load(ROOT);runtime.start();row=runtime.snapshot();save(out/'initial_observation.json',row)
+        assets=load(ROOT,scene_path);runtime.start();row=runtime.snapshot();save(out/'initial_observation.json',row)
         snapshot,state=capture_fixture(args.scene_dir,assets,config)
         snapshot,state=from_observation(snapshot,state,row,assets)
         save(out/'fresh_snapshot.json',dict(scene=asdict(snapshot),box=asdict(state)))
@@ -133,6 +136,9 @@ def main():
             actions,_=generate_actions(assets,snapshot,state,replace(config,max_action_candidates=1))
             if not actions:raise ValueError('NO_GEOMETRIC_ACTION_FOR_MONITOR_HOLD')
             action=actions[0]
+        if plan and plan.get('start_attached',False):
+            if not row.get('vacuum',{}).get('attached',False):
+                raise ValueError('ATTACHED_START_NEEDS_ALREADY_RUNNING_ATTACHED_RUNTIME')
         reader=ObservationReader(assets,snapshot,state.box_id,policy.observation_max_age_s)
         import rclpy
         deadline=time.monotonic()+policy.condition_wait_budget_s

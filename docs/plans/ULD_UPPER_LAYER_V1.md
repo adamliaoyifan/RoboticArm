@@ -2488,3 +2488,24 @@ ULD顶/壁、下层、平台、地面、自碰撞均保留，仅原定义接触�
 `docs/status/evidence/uld_upper_layer_v1/orientation_reachability_g12_01/REPORT.md`
 及inventory（93文件/23510889bytes，manifest、audit与两个profile分目录）。
 worktree仍只保留本计划，无新增evidence目录。
+
+### 19.44 输入驱动完整规划接口（实施中）
+
+用户要求打通尺寸、最终位姿与支撑输入到完整放置轨迹。沿用G12并行研究动作，
+不变更生产抓取或碰撞门槛。新增ROS-free请求：箱体几何中心位姿、尺寸、
+当前关节、可选已确认box_T_tool、最终位姿候选、允许交接的SurfacePatch ID。
+所有请求位姿为container_link绝对坐标；场景配置显式绑定，不混用旧布局与deploy_update。
+轴对齐平面支撑/直线推入为当前动作族；不能覆盖的姿态或目标返回明确失败。
+先验证后评分；目标3条、最少1条，搜索预算到期仍保留失败边界与完整候选。
+已抓取入口固定抓取关系，不允许为了可达性重新选择抓取；接续轨迹必须从实际关节起始。
+
+本轮验证按层记录，任何层未执行即not_evaluated。离线单元覆盖：两种尺寸、
+至少两个目标、错误坐标/悬空目标/失配抓取/无支撑ID/预算耗尽；有效候选必须准确
+到达请求的最终箱体位姿，改变运行时20mm支撑裕量必须改变准入。
+集成使用现有合成24箱快照、实际源机器人/工具网格、显式场景配置和固定seed；
+每种新输入至少一次完整规划，完整阶段/连续碰撞证明/时间参数化/评分不可缺失。
+物理验证复用execution_policy.yaml：最终误差<=5mm/1deg，稳定3s内<=2mm/.5deg，
+下层移动<=3mm/.5deg，全程原接触/碰撞门槛；单次仅证明该输入可执行，不编码可靠性。
+失败保留request、snapshot、配置/模型hash、逐阶段输入输出及last_query；
+物理失败另保留原生2s前/1s后窗口，执行沿用200MB单例上限与600sim/1800wall预算。
+证据仅primary docs/status/evidence/uld_upper_layer_v1/，worktree只保留本计划。
