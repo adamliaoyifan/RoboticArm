@@ -401,3 +401,52 @@ replay, canonical complete typed fields for identities (native padding
 counterexample established in ST-4-STATIONARY-ATTACH/native_01). Assert complete
 hash/UUID joins and all workers/native exits. Missing positive or missing capture
 is not_evaluated. Do not substitute component counts for full execution.
+
+### 2026-11-12 checkpoint: conditional static ULD, collision exception
+
+User confirms that only the current box moves inside the ULD in normal
+operation, and explicitly notes that collision can displace previously placed
+cargo. This resolves the environmental premise question, not the detection or
+map-consumption policy. Keep generation2's live O/native checks while those
+interfaces are reviewed. Do not enable frozen-background execution solely on
+this confirmation or alter claimed generation2 requirements in place.
+
+Review the actual ROS collision/protective-stop/controller-error signals and
+their freshness before dispatching a replacement map policy. Current runtime
+inspection establishes measured joint and action-result checks plus fresh O
+capture; it does not establish a connected physical collision monitor. SDK
+sample declarations are capabilities to investigate, not evidence of live
+robot support or a connected ROS signal. Request user confirmation of the
+available real interfaces; do not create force/current thresholds to pass a
+case. Visual observations cannot prove that occluded cargo stayed stationary.
+
+Follow-up user answer: joint torque/current are unavailable by default, with
+possible later confirmation. Do not wait for them to develop the planning and
+map ownership boundaries, and do not depend on them for admission or invent a
+proxy contact detector. Availability of collision/protective-stop ROS status
+remains unconfirmed. Existing action/joint/O checks remain usable but do not
+establish immediate detection of every physical collision.
+
+Required invalidation behavior for that replacement: a collision/protective
+stop, execution fault, or observed displacement requests stop, revokes the old
+world assumption, blocks the remaining original legs and retains unresolved
+motion ownership. If carrying, preserve suction and the actual sealed G.
+After confirmed release, never reattach automatically. Recovery requires
+fresh observations and independent admission; no automatic reverse-path
+retreat. Reset/config/hull/model/clock and observation-age gates remain intact.
+
+Before changing the runtime, dispatch the higher generation with explicit
+signal loss/staleness cases, collision while carrying, displaced old cargo,
+post-release displacement, and no-fault current-cargo observation cases. Each
+deterministic case once, functional AND: no further controller goal after
+invalidation, no automatic vacuum release, no unresolved-owner clearance,
+and no old-plan resumption. Missing real signal coverage is not_evaluated,
+not a claim that collisions are detected. Preserve generation2's complete
+positive/negative matrix and deployment witness requirements.
+
+Preserved native_cycle_02 response now identifies four non-support contacts
+at empty-retreat sample0 between suction_contact_frame and
+placement-prior-occ-voxel-{0,1,2,3}; native_contact_summary.json contains the
+decoded contacts. This establishes the rejected collision pair, not whether
+the voxel representation is excessive or the physical path is clear. Do not
+delete voxels, lower margins or exempt the contact pair on this evidence alone.

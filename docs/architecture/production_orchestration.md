@@ -161,6 +161,25 @@ Changed ordinary revisions need fresh native validation before execution;
 changed epoch/config/model/hull invalidate the original source association.
 Legacy explicit G has an unbound O source and cannot enter an O-only consumer.
 
+The ULD static-world premise is conditional: during a normal operation only the
+current cargo moves. Contact by the robot or current cargo can displace other
+cargo and invalidates that premise. A collision/protective-stop indication,
+execution fault, or observed displacement must revoke continuation under the
+old world assumption. Request stop and retain motion ownership until a real
+terminal result; preserve suction if still carrying. Do not automatically
+resume the original suffix or reverse it as a recovery motion. Recovery needs
+fresh observation and a separately admitted plan using the actual fixed
+attachment (if still sealed). A successful geometric check or absence of an
+error message does not establish absence of physical contact.
+
+Any consumer of a cycle-frozen background map must state how that premise is
+monitored, including signal ownership, timestamps, loss of signal and occluded
+cargo. Robot current or torque availability cannot be assumed, nor may contact
+thresholds be invented. The static-world premise alone does not authorize
+discarding new O occupancy, carving out a planned cargo footprint, or ignoring
+an occupied voxel. Until the monitoring and current-cargo association policy
+are admitted, the current-map/native admission rules above remain in force.
+
 The strict operation motion transport submits one original timed leg through
 MoveIt ExecuteTrajectory. It retains every joint coordinate (including full
 turns), timestamp, derivative and effort value. A native receipt must bind the
