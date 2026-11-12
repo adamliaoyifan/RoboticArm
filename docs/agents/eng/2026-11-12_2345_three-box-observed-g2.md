@@ -483,3 +483,46 @@ satisfy these product gates.
 - Evidence: diagnostic_25/{target_voxel_review.json,latest_suffix41,
   self_surface_residual.json,self_mask42_5mm,floor_mesh_review.json,
   floor_hit_window_review.json}. All stacks/native processes stopped cleanly.
+
+## Diagnostics 26--27 -- 2026-11-13T04:00+08:00
+
+- diagnostic26 fails startup readiness120s: world services and create success
+  replies exist, but no controller manager/joints/sensors. No box task starts.
+  ROS node/transport service lists and complete launch log preserved; teardown0.
+  Root cause remains unknown (world not advancing is a hypothesis).
+- diagnostic27 uses identical product/build43 with a unique IGN_PARTITION in
+  the external runner; readiness8.94s. This is discovery isolation, not evidence
+  of a startup reliability improvement. Only one stack ran throughout.
+- First plan stops before seal because new O makes its target inadmissible.
+  Existing bounded pre-pick recovery returns to O-backed pickup view13.39s,
+  reobserves the same instance, prepares a new whole plan70.76s, seals/lifts.
+- The second retained carry is253.56s; six legs total~273s before RPC/native
+  overhead. The driver's literal300s action expires exactly at300s during
+  carry, returns CANCELLING/DEADLINE with motion_terminal=false. Actual carry
+  endpoint/release/retreat/adoption are NOT demonstrated. Original controller
+  requests, cancel, joint/TF/source streams and reference CANCELLING pose
+  persist before teardown; this is not a collision refusal.
+- Recommendation: expose execution watchdog in the explicit profile,600s
+  matching the existing runtime maximum, and share it between action server
+  and client. Reject before execution if retained trajectory time alone meets
+  or exceeds that budget. Remaining wall time is not a latency guarantee.
+  Rationale: user chose complete functional qualification before setting SLA;
+  spending a known-too-short budget on sealed motion is avoidable.
+- Extend source capture from the first action feedback, including align.
+  Before-seal map changes can also invalidate floor targets, so carry-only
+  evidence misses that cause. Existing768MiB bounded source capture is reused,
+  and opted-in EXECUTE failures retain the requested stationary hold even on
+  deadline, allowing actual cancel/observer tail evidence. Add latest immutable
+  O pages and full scene at failed boundary; capture gaps mark incomplete
+  evidence without overwriting the original product failure.
+- Eval-only physical dimensions for this selected catalog mesh are
+  .515886x.390038x.237463m, not the nominal .55x.40x.25 shorthand in the plan.
+  Online geometry remains measured (.495564x.373311x.247161m in retry1).
+  Three saved physical model/link6 poses (lift start,carry start,cancelling)
+  keep all8 true box corners inside the retained measured envelope, with
+  >=21mm per-axis reserve. This rules out gross envelope exclusion only at
+  those3 samples; no whole-path contact/success claim. GT was evaluation only.
+- Evidence: diagnostic_26/{startup_ros_nodes,startup_ign_services,launch.log};
+  diagnostic_27/{cycle/observer_failure,reference,
+  payload_containment_eval_v2.json,run/execution}. No floor tolerance, nominal
+  target, release gap, map obstacle or static model was changed.

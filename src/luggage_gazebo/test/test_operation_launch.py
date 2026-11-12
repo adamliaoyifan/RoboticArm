@@ -81,6 +81,7 @@ def test_composition_binds_one_owner_and_identical_native_model(tmp_path,monkeyp
         operation_connection_max_edge_s='5.0',operation_max_branch_attempts='8',
         operation_max_branch_attempts_per_candidate='2')
     settings['operation_source_refresh_attempts']='3'
+    settings['operation_execution_budget_s']='540.0'
     xml,semantic='<robot name="test"><link name="world"/></robot>','<robot name="test"/>'
     nodes,runtime=operation_launch.operation_composition(settings,xml,semantic)
     assert [node['package'] for node in nodes].count('uld_occ_observer')==1
@@ -100,6 +101,7 @@ def test_composition_binds_one_owner_and_identical_native_model(tmp_path,monkeyp
     assert runtime['enable_joint_operation'] is True
     assert runtime['collision_margin_m'] == .02
     assert runtime['operation_source_refresh_attempts'] == 3
+    assert runtime['operation_max_budget_s'] == 540.
     prepare=next(node for node in consumers if node['executable']=='joint_operation_prepare_node.py')
     prepare_parameters={}
     for group in evaluate_parameters(LaunchContext(),normalize_parameters(prepare['parameters'])):

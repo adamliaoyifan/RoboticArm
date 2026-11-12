@@ -97,7 +97,7 @@ class OperationSimDriver(Node):
         self.failure_capture = None
         if getattr(args, 'failure_hold_s', 0.) > 0:
             self.failure_capture = ObserverFailureCapture(self.folder/'observer_failure',
-                disk_limit=(768 if getattr(args,'capture_carry',False) else 256)*1024*1024)
+                disk_limit=(768 if getattr(args,'capture_operation',False) else 256)*1024*1024)
             for topic,cls in [('/joint_states',JointState),('/tf',TFMessage),
                     ('/tf_static',TFMessage),('/uld_occ_observer/receipts',UpdateReceipt),
                     ('/luggage/observation/optical_points',PointCloud2),
@@ -196,10 +196,8 @@ class OperationSimDriver(Node):
         if not client.wait_for_server(timeout_sec=10.):raise TimeoutError(name+'_UNAVAILABLE')
         self.record(name+'_goal',goal)
         options={}
-        if name.startswith('execute') and getattr(self.args,'capture_carry',False):
-            def capture_carry(message):
-                if message.feedback.next_leg_index>=3:self.failure_capture.trigger()
-            options['feedback_callback']=capture_carry
+        if name.startswith('execute') and getattr(self.args,'capture_operation',False):
+            options['feedback_callback']=lambda message:self.failure_capture.trigger()
         handle = self.future(client.send_goal_async(goal,**options),10.,name+'_ADMISSION_TIMEOUT')
         if not handle.accepted:raise RuntimeError(name+'_REJECTED')
         try:
@@ -209,6 +207,33 @@ class OperationSimDriver(Node):
             raise
         self.record(name+'_result',wrapped)
         return wrapped
+
+    def execute_prepared(self,plan,detection,domain,name):
+        budget=float(self.launch['resolved'].get('operation_execution_budget_s',600.))
+        durations=[leg.trajectory.trajectory.points[-1].time_from_start for leg in plan.legs]
+        minimum=sum(t.sec+t.nanosec/1e9 for t in durations)
+        if not durations or not math.isfinite(budget) or budget<=minimum:
+            raise ValueError('TRAJECTORY_TIME_EXCEEDS_OPERATION_BUDGET')
+        self.record(name+'_budget',json.dumps(dict(trajectory_time_s=minimum,
+            action_budget_s=budget,includes_certification_and_observation=True)).encode())
+        return self.action(self.execute,ExecuteJointOperationV2.Goal(plan=plan,
+            detection=detection,top_domain=domain,budget_s=budget),name,budget+10.)
+
+    def capture_failure_state(self):
+        """Latest failed boundary; preserve capture errors without masking cause."""
+        failures=[]
+        for name,read in (
+                ('planning_scene',lambda:self.read_scene('failure_current_scene')),
+                ('observer',lambda:self.observer.capture(
+                    scene_revision=self.launch['scene_revision'],request_id='failed-boundary',
+                    expected_epoch=self.call(self.validity,GetValidity.Request(),'failure_validity').epoch,
+                    expected_revision=None,deadline=time.monotonic()+15.,require_latest=False))):
+            try:read()
+            except Exception as error:
+                failures.append(name)
+                self.record('failure_'+name+'_capture_error',json.dumps(dict(
+                    error=type(error).__name__+':'+str(error))).encode())
+        return failures
 
     def stage(self, name, function):
         began = time.monotonic()
@@ -383,9 +408,7 @@ class OperationSimDriver(Node):
             if not spawned.success:raise RuntimeError('SPAWN_FAILED')
             # Ignore response.box; only the simulator actuator owns that truth.
             plan,detection,domain = self.stage('prepare',self.plan)
-            result = self.stage('execute',lambda:self.action(self.execute,
-                ExecuteJointOperationV2.Goal(plan=plan,detection=detection,top_domain=domain,budget_s=300.),
-                'execute',310.))
+            result = self.stage('execute',lambda:self.execute_prepared(plan,detection,domain,'execute'))
             original_instance=domain.instance_id
             for attempt in range(getattr(self.args,'prepick_replans',0)):
                 if not can_reprepare_before_pick(result.result):break
@@ -397,27 +420,31 @@ class OperationSimDriver(Node):
                 plan,detection,domain=self.stage('prepare_retry_'+str(attempt+1),self.plan)
                 if not original_instance or domain.instance_id!=original_instance:
                     raise RuntimeError('PREPICK_REPLAN_INSTANCE_CHANGED')
-                result=self.stage('execute_retry_'+str(attempt+1),lambda:self.action(self.execute,
-                    ExecuteJointOperationV2.Goal(plan=plan,detection=detection,top_domain=domain,budget_s=300.),
-                    'execute_retry_'+str(attempt+1),310.))
+                result=self.stage('execute_retry_'+str(attempt+1),lambda:self.execute_prepared(
+                    plan,detection,domain,'execute_retry_'+str(attempt+1)))
             if not result.result.success:raise RuntimeError('EXECUTE:'+result.result.outcome+':'+result.result.reason)
             if getattr(self,'failure_capture',None) is not None:self.failure_capture.close()
             self.flush(outcome='FULL_CYCLE_PASS',capture_complete=True,replay_possible=True)
             return 0
         except Exception as error:
             if (getattr(self,'failure_capture',None) is not None
-                    and str(error).endswith(('CURRENT_SOURCE_REFUSED','BOUND_NATIVE_ADMISSION_REQUIRED'))):
+                    and (str(error).endswith(('CURRENT_SOURCE_REFUSED','BOUND_NATIVE_ADMISSION_REQUIRED'))
+                         or (getattr(self.args,'capture_operation',False) and 'EXECUTE:' in str(error)))):
                 self.failure_capture.trigger()
                 self.stage('failure_stationary_capture',lambda:time.sleep(self.args.failure_hold_s))
                 self.failure_capture.close()
             elif getattr(self,'failure_capture',None) is not None:
                 self.failure_capture.close()
+            capture_errors=self.capture_failure_state() or []
+            if getattr(getattr(self,'failure_capture',None),'dropped',0):
+                capture_errors.append('observer_window_dropped_records')
             for name,msg in self.sensor_diagnostics.items():self.record('failure_'+name,msg)
             if self.domain is not None:self.record('failure_top_domain',self.domain)
             for name,msg in self.images.items():self.record('failure_'+name,msg)
             if self.joint is not None:self.record('failure_joints',self.joint)
             self.flush(outcome='INCOMPLETE',reason=type(error).__name__+':'+str(error),
-                       capture_complete=True,replay_possible=True)
+                       capture_complete=not capture_errors,replay_possible=not capture_errors,
+                       latest_boundary_capture_errors=capture_errors)
             print(str(error),flush=True)
             return 1
 
@@ -433,12 +460,12 @@ def main():
         help='Diagnostic stationary observer capture after a terminal source refusal (0..60 s)')
     parser.add_argument('--prepick-replans',type=int,default=0,
         help='Explicit bounded new complete plans after terminal pre-pick map/native refusal (0..2)')
-    parser.add_argument('--capture-carry',action='store_true',
-        help='Persist source clouds/TF from carry start, bounded to768MiB; requires failure hold')
+    parser.add_argument('--capture-operation',action='store_true',
+        help='Persist source clouds/TF from action start, bounded to768MiB; requires failure hold')
     args = parser.parse_args()
     if not 0 <= args.failure_hold_s <= 60:parser.error('failure hold must be within 0..60 seconds')
     if not 0 <= args.prepick_replans <= 2:parser.error('prepick replans must be within 0..2')
-    if args.capture_carry and args.failure_hold_s<=0:parser.error('carry capture requires failure hold')
+    if args.capture_operation and args.failure_hold_s<=0:parser.error('operation capture requires failure hold')
     rclpy.init()
     node = OperationSimDriver(args)
     executor = MultiThreadedExecutor(num_threads=4);executor.add_node(node)

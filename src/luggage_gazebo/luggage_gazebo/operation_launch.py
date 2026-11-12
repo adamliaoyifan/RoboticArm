@@ -162,6 +162,7 @@ def operation_composition(config, robot_xml, semantic_xml):
     (folder/'launch.json').write_text(json.dumps(manifest, indent=2)+'\n')
     runtime = dict(common, enable_joint_operation=True,
         max_preparation_budget_s=float(config['operation_prepare_budget_s']),
+        operation_max_budget_s=float(config.get('operation_execution_budget_s',600.)),
         operation_source_refresh_attempts=int(config.get('operation_source_refresh_attempts',2)),
         operation_state_file=str(folder/'operation_state.json'),
         operation_evidence_dir=str(folder/'execution'))

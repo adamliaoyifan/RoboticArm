@@ -100,8 +100,9 @@ def test_explicit_start_declares_empty_without_mandatory_portal_motion(tmp_path,
         readiness=lambda:None,observe_pose=lambda p,**kwargs:poses.append(p),
         return_to_pick_observation=lambda plan:poses.append('retry_pick'),
         stage=lambda name,f:f(),plan=lambda:(JointOperationPlanV2(),DetectedLuggage(),SuctionTopDomainV2(instance_id='observed-instance')),
-        action=action,
-        flush=lambda **kwargs:None,domain=None,images={})
+        action=action,execute_prepared=lambda plan,detection,domain,name:action('execute',
+            module.ExecuteJointOperationV2.Goal(plan=plan,detection=detection,top_domain=domain),name,610.),
+        flush=lambda **kwargs:None,capture_failure_state=lambda:None,domain=None,images={})
     assert module.OperationSimDriver.run(probe)==0
     assert poses==(['pickup','retry_pick'] if replan else ['pickup'])
     assert [c for c,_ in calls]==['validity','initialize','spawn']
@@ -189,9 +190,10 @@ def test_terminal_refusal_capture_runs_at_outer_operation_boundary(monkeypatch,r
     probe=SimpleNamespace(args=SimpleNamespace(failure_hold_s=25.),readiness=fail,
         stage=lambda name,fn:fn(),failure_capture=SimpleNamespace(
             trigger=lambda:events.append('trigger'),close=lambda:events.append('close')),
-        sensor_diagnostics={},domain=None,images={},joint=None,flush=lambda **kwargs:None)
+        sensor_diagnostics={},domain=None,images={},joint=None,flush=lambda **kwargs:None,
+        capture_failure_state=lambda:events.append('snapshot'))
     assert module.OperationSimDriver.run(probe)==1
-    assert events==expected
+    assert events==expected+['snapshot']
 
 
 def test_late_evidence_flush_preserves_terminal_outcome(tmp_path):
@@ -206,18 +208,54 @@ def test_late_evidence_flush_preserves_terminal_outcome(tmp_path):
     assert result['records'][0]['file']=='late_lease_release'
 
 
-def test_carry_source_capture_starts_at_retained_carry_boundary_only():
+def test_operation_source_capture_starts_with_first_action_feedback():
     module=driver_module();events=[]
     handle=SimpleNamespace(accepted=True,get_result_async=lambda:'terminal')
     def send(goal,**options):
         callback=options['feedback_callback']
-        callback(SimpleNamespace(feedback=SimpleNamespace(next_leg_index=2)))
-        assert not events
-        callback(SimpleNamespace(feedback=SimpleNamespace(next_leg_index=3)))
+        callback(SimpleNamespace(feedback=SimpleNamespace(next_leg_index=0)))
         return handle
-    probe=SimpleNamespace(args=SimpleNamespace(capture_carry=True),
-        failure_capture=SimpleNamespace(trigger=lambda:events.append('carry_capture')),
+    probe=SimpleNamespace(args=SimpleNamespace(capture_operation=True),
+        failure_capture=SimpleNamespace(trigger=lambda:events.append('operation_capture')),
         record=lambda *a:None,future=lambda value,*a:value)
     client=SimpleNamespace(wait_for_server=lambda **k:True,send_goal_async=send)
     assert module.OperationSimDriver.action(probe,client,object(),'execute',10.)=='terminal'
-    assert events==['carry_capture']
+    assert events==['operation_capture']
+
+
+@pytest.mark.parametrize('budget,admitted',[(200.,False),(273.,False),(300.,True),(600.,True)])
+def test_explicit_budget_cannot_be_shorter_than_retained_motion(budget,admitted):
+    from luggage_msgs.msg import JointOperationPlanV2,JointOperationLegV2
+    from trajectory_msgs.msg import JointTrajectoryPoint
+    from builtin_interfaces.msg import Duration
+    module=driver_module();plan=JointOperationPlanV2();events=[]
+    for seconds in (10,3,3,253,2,2):
+        leg=JointOperationLegV2();leg.trajectory.trajectory.points=[
+            JointTrajectoryPoint(time_from_start=Duration(sec=seconds))];plan.legs.append(leg)
+    owner=SimpleNamespace(launch={'resolved':{'operation_execution_budget_s':budget}},
+        record=lambda *args:events.append(('evidence',args)),execute='execute',
+        action=lambda client,goal,name,timeout:events.append(('motion',goal,timeout)))
+    args=(owner,plan,DetectedLuggage(),SuctionTopDomainV2(),'execute')
+    if admitted:
+        module.OperationSimDriver.execute_prepared(*args)
+        assert events[-1][0]=='motion' and events[-1][1].budget_s==budget
+        assert events[-1][2]==budget+10.
+        evidence=json.loads(events[0][1][1]);assert evidence['trajectory_time_s']==273.
+    else:
+        with pytest.raises(ValueError,match='TRAJECTORY_TIME_EXCEEDS'):
+            module.OperationSimDriver.execute_prepared(*args)
+        assert not events
+
+
+def test_failure_scene_error_preserves_cause_and_still_captures_latest_o():
+    module=driver_module();events=[]
+    def scene(name):raise TimeoutError('scene_unavailable')
+    def capture(**kwargs):
+        assert kwargs['expected_epoch']==4 and not kwargs['require_latest']
+        events.append('latest_o')
+    owner=SimpleNamespace(read_scene=scene,observer=SimpleNamespace(capture=capture),
+        launch={'scene_revision':'frozen'},validity='validity',
+        call=lambda *args:SimpleNamespace(epoch=4),record=lambda *args:events.append(args))
+    failures=module.OperationSimDriver.capture_failure_state(owner)
+    assert failures==['planning_scene'] and events[-1]=='latest_o'
+    assert 'scene_unavailable' in events[0][1].decode()

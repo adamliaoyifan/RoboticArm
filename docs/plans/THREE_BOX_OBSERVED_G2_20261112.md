@@ -104,3 +104,18 @@ is repaired before another live attempt. Review after first full ULD snapshot,
 first floor cycle, measured stack-support qualification and final three-box run.
 Any deeper redesign, evidence relaxation or release-policy change requires user
 discussion; ordinary wiring/error fixes proceed under the existing authorization.
+
+## Workload and execution watchdog clarification -- 2026-11-13T04:00+08:00
+
+The unchanged `carryon` catalog mesh's actual spawn bounds are approximately
+.515886x.390038x.237463m in the captured run, rather than the nominal
+.55x.40x.25m shorthand above. Use the actual recorded catalog selection and
+physical model bounds for evaluation only; online geometry still comes from
+perception. No GT dimensions or poses enter placement/planning.
+
+The shared explicit profile now exposes a600s execution/observation watchdog,
+matching the existing runtime maximum, after diagnostic27's retained253.56s
+carry exhausted the former300s client literal once certification overhead was
+included. The client records trajectory duration and budget and refuses before
+motion if trajectory duration alone meets/exceeds the budget. This supersedes
+only that diagnostic timeout value; no production latency SLA is established.
