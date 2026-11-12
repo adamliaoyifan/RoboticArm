@@ -13,7 +13,7 @@ from shapely.geometry import box as polygon_box
 from shapely.ops import unary_union
 from candidates import matrix, samples, interior_samples, round_robin, _action_stream
 from geometry import pose
-from planning_types import digest,BoxState,SceneSnapshot
+from planning_types import digest,BoxState,SceneSnapshot,OccupiedBox,SurfacePatch
 from support_geometry import measure_support
 
 
@@ -42,6 +42,13 @@ class PlacementRequest:
     def __post_init__(self):
         if not isinstance(self.box,BoxState) or not isinstance(self.snapshot,SceneSnapshot):
             raise ValueError('TYPED_BOX_AND_SNAPSHOT_REQUIRED')
+        object.__setattr__(self,'box',replace(self.box,dimensions=tuple(self.box.dimensions),
+            com_local=tuple(self.box.com_local),container_T_box=tuple(rigid_pose(self.box.container_T_box,'box').ravel())))
+        object.__setattr__(self,'snapshot',replace(self.snapshot,
+            occupied=tuple(OccupiedBox(p.name,tuple(p.center),tuple(p.size)) for p in self.snapshot.occupied),
+            surfaces=tuple(SurfacePatch(p.source_id,tuple(p.bounds_xy),p.surface_z_container) for p in self.snapshot.surfaces),
+            grid_origin=tuple(self.snapshot.grid_origin),grid_shape=tuple(self.snapshot.grid_shape),
+            observed_bounds=tuple(self.snapshot.observed_bounds)))
         object.__setattr__(self,'start_q',tuple(self.start_q))
         object.__setattr__(self,'support_source_ids',tuple(self.support_source_ids))
         object.__setattr__(self,'final_box_poses',tuple(tuple(rigid_pose(v,'final_box_pose').ravel())
@@ -147,8 +154,9 @@ def target_actions(assets,request,config,emit=None,deadline=None):
                     # is never snapped: complete tool/payload checks use it exactly.
                     grasp_values=(b,) if lower-config.contact_tolerance_m<=b<=bmax+config.contact_tolerance_m else ()
                 if grasp_values:
-                    streams.append(_action_stream(assets,view,request.box,config,(yaw,),(tool_yaw,),
-                        final[1,3],(depth,),grasp_values,reasons,witnesses,deadline,emit,final_value,request.confirmed_box_T_tool))
+                    for push_spin in config.push_face_spins_deg:
+                        streams.append(_action_stream(assets,view,request.box,config,(yaw,),(tool_yaw,),
+                            final[1,3],(depth,),grasp_values,reasons,witnesses,deadline,emit,final_value,request.confirmed_box_T_tool,(push_spin,)))
     actions=[]
     for action in round_robin(streams):
         if request.start_attached and action.box_T_tool!=request.confirmed_box_T_tool:

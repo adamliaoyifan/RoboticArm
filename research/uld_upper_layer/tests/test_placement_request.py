@@ -71,6 +71,30 @@ class RequestContracts(unittest.TestCase):
             np.testing.assert_allclose(np.array(action.handoff_tool_pose).reshape(4,4),
                 np.array(action.handoff_box_pose).reshape(4,4)@grasp,atol=1e-12)
 
+    def test_real_cad_push_rotations_keep_face_inside_box_and_normal_along_insertion(self):
+        config=replace(self.config,max_action_candidates=32)
+        actions,report=self.generate(self.request(),config)
+        self.assertTrue(actions,report)
+        orientations=set()
+        from tool_contact_geometry import derive_push_surface
+        geometry=derive_push_surface(self.assets)
+        for action in actions:
+            surface=np.array(action.push_start_tool_pose).reshape(4,4)@np.array(action.tool_T_push_surface).reshape(4,4)
+            np.testing.assert_allclose(surface[:3,2],[1,0,0],atol=1e-12)
+            polygon=np.c_[geometry.push_polygon_xy,np.zeros(len(geometry.push_polygon_xy)),np.ones(len(geometry.push_polygon_xy))]
+            local=(np.linalg.inv(np.array(action.handoff_box_pose).reshape(4,4))@surface@polygon.T).T
+            self.assertTrue(np.all(np.abs(local[:,1:3])<=np.array(self.box.dimensions[1:])/2+1e-6))
+            orientations.add(tuple(np.round(surface[:3,:3].ravel(),6)))
+        self.assertGreaterEqual(len(orientations),2)
+
+    def test_request_copies_mutable_caller_arrays(self):
+        value=self.target.copy()
+        dimensions=list(self.box.dimensions)
+        request=self.request(box=replace(self.box,dimensions=dimensions),final_box_poses=(value,))
+        old=request.revision;value[0,3]+=1;dimensions[0]=99
+        self.assertEqual(request.revision,old)
+        self.assertEqual(request.box.dimensions,self.box.dimensions)
+
     def test_invalid_boundaries_fail_before_planning(self):
         for values in (dict(frame_id='elfin_base_link'),dict(support_source_ids=('missing',)),
                        dict(start_attached=True),dict(start_q=(float('nan'),)*6),

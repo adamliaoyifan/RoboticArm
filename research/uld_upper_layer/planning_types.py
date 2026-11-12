@@ -55,6 +55,7 @@ class UpperConfig:
     ompl_range_rad: float
     ompl_resolution_fraction: float
     distance_query_timeout_s: float
+    push_face_spins_deg: tuple = (0.,90.,180.,270.)
 
     def __post_init__(self):
         for field in fields(self):
@@ -95,8 +96,8 @@ class UpperConfig:
     def load(cls, path=None, **overrides):
         values = yaml.safe_load(Path(path or Path(__file__).with_name('upper_config.yaml')).read_text())
         values.update(overrides)
-        for key in ('box_yaws_deg', 'tool_yaws_deg'):
-            values[key] = tuple(values[key])
+        for key in ('box_yaws_deg', 'tool_yaws_deg','push_face_spins_deg'):
+            if key in values:values[key] = tuple(values[key])
         return cls(**values)
 
 

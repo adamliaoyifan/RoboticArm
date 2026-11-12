@@ -5,6 +5,9 @@ Private scenes/workers die at the request boundary. Persisted plans are bound to
 request, snapshot, model, policies and source revision; execution revalidates them.
 """
 import argparse
+from collections import Counter
+import platform
+from importlib.metadata import version
 from dataclasses import asdict
 import json
 from pathlib import Path
@@ -40,11 +43,13 @@ class UpperPlacementPlanner:
     def __init__(self,repo,scene_path,config_path=None,selection_path=None,execution_path=None):
         self._repo=Path(repo).resolve();self._scene_path=Path(scene_path).resolve()
         self._config_path=config_path;self._selection_path=selection_path;self._execution_path=execution_path
+        common=Path(subprocess.check_output(['git','-C',str(self._repo),'rev-parse',
+            '--path-format=absolute','--git-common-dir'],text=True).strip())
+        self._evidence_root=common.parent/'docs/status/evidence'
 
     def plan(self,request,output,seed=0):
         output=Path(output).resolve()
-        evidence=Path('/home/adamliao/work/elfin_humble_ws/docs/status/evidence')
-        if not output.is_relative_to(evidence):raise ValueError('PRIMARY_EVIDENCE_REQUIRED')
+        if not output.is_relative_to(self._evidence_root):raise ValueError('PRIMARY_EVIDENCE_REQUIRED')
         output.mkdir(parents=True,exist_ok=False);source=output/'source';source.mkdir()
         config=UpperConfig.load(self._config_path);selection=SelectionPolicy.load(self._selection_path)
         execution=ExecutionPolicy.load(self._execution_path)
@@ -64,6 +69,8 @@ class UpperPlacementPlanner:
             source_hashes=hashes,config=asdict(config),selection_policy=asdict(selection),execution_policy=asdict(execution),
             execution_policy_revision=execution.revision,selection_policy_revision=selection.revision,
             scene_config=str(self._scene_path),scene_config_sha256=sha256(self._scene_path),seed=seed,
+            python=platform.python_version(),dependency_versions={n:version(n) for n in
+                ('numpy','scipy','python-fcl','ompl','trimesh','shapely')},
             capture_complete=False,replay_possible=False,scored_units=0,profile='ideal_snapshot_request_driven')
         atomic_json(output/'manifest.json',manifest)
         try:
@@ -81,7 +88,7 @@ class UpperPlacementPlanner:
                 atomic_json(output/'candidates.json',[asdict(a) for a in actions]);atomic_json(output/'geometry_report.json',report)
                 rng=np.random.default_rng(seed)
                 seeds=[list(request.start_q)]+rng.uniform(limits[:,0],limits[:,1],size=(config.ik_seed_count-1,6)).tolist()
-                plans=[];attempts=0;ranking=None
+                plans=[];attempts=0;ranking=None;rejections=Counter();common_failure=None
                 atomic_json(output/'plans.json',plans)
                 for action in actions:
                     remaining=deadline-time.monotonic()
@@ -92,7 +99,9 @@ class UpperPlacementPlanner:
                         seeds,config,selection,execution,output/f'action_{attempts:04d}',remaining,seed+attempts,
                         start_attached=request.start_attached,scene_path=self._scene_path)
                     emit(dict(event='action_output',action_id=action.action_id,valid=result.get('valid'),reason=result.get('reason')))
+                    if not result.get('valid'):rejections[result.get('reason') or 'ACTION_PLANNING_REJECTED']+=1
                     if result.get('reason')=='INITIAL_STATE_INVALID':
+                        common_failure='INITIAL_STATE_INVALID'
                         emit(dict(event='common_initial_state_rejected',diagnostic=result.get('diagnostic')))
                         break
                     if result.get('valid'):
@@ -106,13 +115,13 @@ class UpperPlacementPlanner:
                     atomic_json(output/'selection.json',ranking)
             result=dict(valid=ranking['nominal_minimum_met'],request_revision=request.revision,
                 reason='COMPLETE_SCORED_PLANS' if ranking['nominal_minimum_met'] else
-                    'SEARCH_BUDGET_EXHAUSTED' if time.monotonic()>=deadline else 'NO_COMPLETE_PLAN_IN_ACTION_FAMILY',
+                    common_failure if common_failure else 'SEARCH_BUDGET_EXHAUSTED' if time.monotonic()>=deadline else 'NO_COMPLETE_PLAN_IN_ACTION_FAMILY',
                 complete_plans=ranking['achieved'],attempted_actions=attempts,geometry_candidates=len(actions),
-                selected_index=ranking['selected_index'],elapsed_s=time.monotonic()-started,
+                selected_index=ranking['selected_index'],rejection_counts=dict(rejections),elapsed_s=time.monotonic()-started,
                 physical_execution='not_evaluated',contact_uncertainty_admission='not_evaluated')
             atomic_json(output/'summary.json',result)
             manifest.update(capture_complete=True,replay_possible=True)
-            return result
+            return dict(result,plans=plans,selection=ranking)
         except BaseException:
             import traceback
             (output/'error.txt').write_text(traceback.format_exc());raise
@@ -130,7 +139,7 @@ def main():
     repo=Path(__file__).resolve().parents[2]
     planner=UpperPlacementPlanner(repo,args.scene_config,args.config,args.selection_policy,args.execution_policy)
     result=planner.plan(request_from_record(json.loads(args.request.read_text())),args.evidence,args.seed)
-    print(json.dumps(result));return 0 if result['valid'] else 2
+    print(json.dumps({k:v for k,v in result.items() if k not in ('plans','selection')}));return 0 if result['valid'] else 2
 
 
 if __name__=='__main__':raise SystemExit(main())

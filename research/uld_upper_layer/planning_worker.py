@@ -62,6 +62,8 @@ def _worker(repo,snapshot,state,action,start_q,seeds,config,selection_policy,exe
                 result['clearance_score']=score
                 result['valid']=bool(score.get('valid'))
                 if not result['valid']:result['reason']='COMPLETE_PATH_CLEARANCE_REJECTED'
+        if not result.get('valid') and not result.get('reason'):
+            result['reason']=(result.get('diagnostic') or {}).get('reason','ACTION_PLANNING_REJECTED')
         result['search_observed_clearance_lower_bound_m']=scene.minimum_clearance_m
         result['clearance_score_status']=('complete' if result.get('clearance_score',{}).get('valid')
                                           else 'not_accepted')

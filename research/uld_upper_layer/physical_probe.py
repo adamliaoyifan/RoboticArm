@@ -166,8 +166,20 @@ def main():
                                  panel_collision_name=runtime.panel_contact['collision_name'])
         observe=NativeSampleMonitor(runtime,monitor,policy)
         # Warm up the real observation boundary while holding the current arm.
-        q=list(initial.q);hold=dict(positions=[q,q],velocities=[[0.]*6,[0.]*6],time_from_start=[0.,policy.trigger_pre_s])
-        ArmController(runtime).execute(hold,observe,policy.condition_wait_budget_s)
+        if initial.attached:
+            # Retain the existing controller target while draining observations.
+            # Re-commanding the measured loaded position changes its equilibrium
+            # and would invalidate the just-revalidated post-pick start state.
+            end_stamp=initial.stamp_s+policy.trigger_pre_s
+            deadline=time.monotonic()+policy.condition_wait_budget_s
+            while monitor.sample.stamp_s<end_stamp:
+                rclpy.spin_once(runtime.node,timeout_sec=policy.monitor_period_s)
+                reason=observe(runtime.snapshot())
+                if reason:raise RuntimeError(reason)
+                if time.monotonic()>deadline:raise TimeoutError('ATTACHED_OBSERVATION_WARMUP')
+        else:
+            q=list(initial.q);hold=dict(positions=[q,q],velocities=[[0.]*6,[0.]*6],time_from_start=[0.,policy.trigger_pre_s])
+            ArmController(runtime).execute(hold,observe,policy.condition_wait_budget_s)
         if args.capture_rehearsal:raise RuntimeError('DIAGNOSTIC_CAPTURE_REHEARSAL')
         result=(PhysicalExecutor(runtime,monitor,observe,state.dimensions,config,policy).execute(plan) if plan else
                 dict(status='monitor_hold_pass',scope='native_observation_and_actual_controller_hold_only'))

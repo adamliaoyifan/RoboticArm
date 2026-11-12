@@ -48,7 +48,7 @@ def tool_collision(assets, snapshot, tcp, clearance):
     return None
 
 
-def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values, lateral, depth_values, grasp_values, reasons, witnesses, deadline=None, emit=None, final_pose=None, fixed_grasp=None):
+def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values, lateral, depth_values, grasp_values, reasons, witnesses, deadline=None, emit=None, final_pose=None, fixed_grasp=None, push_spins=None):
     """Return immutable geometric candidates and bounded diagnostic records.
 
     Grasp is selected on the original top face. The final box is inverted by
@@ -152,34 +152,42 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
                             # Panel contact normal +X and panel footprint inside
                             # the rear face. Contact is intentional; all other
                             # fixed bodies must clear cargo and the actual hull.
-                            push_r=Rotation.from_euler('y',np.pi/2).as_matrix()
-                            low=top+contact_width[0]/2+edge
-                            high=top+size[2]-contact_width[0]/2-edge
-                            for z in interior_samples(low,high,config.push_height_step_m):
-                                push_start=pose([front-length,y,z],push_r)@surface_T_tool
-                                distance=final_x-handoff[0,3]
-                                push_end=push_start.copy();push_end[0,3]+=distance
-                                push_control_start=push_start.copy();push_control_start[0,3]+=config.push_contact_stroke_m
-                                push_control_end=push_end.copy();push_control_end[0,3]+=config.push_contact_stroke_m
-                                failure=tool_collision(assets,snapshot,push_control_start,config.collision_margin_m)
-                                if not failure:failure=tool_collision(assets,snapshot,push_control_end,config.collision_margin_m)
-                                if failure:
-                                    reasons[failure['reason']]+=1;continue
-                                pid=digest(dict(pose=flat(final),snapshot=snapshot.snapshot_id,
-                                                config=config.revision))[:20]
-                                placement=PlacementCandidate(pid,snapshot.snapshot_id,
-                                    config.revision,flat(final),final_metrics)
-                                aid=digest(dict(pid=pid,grasp=flat(box_to_tool),
-                                                handoff=flat(handoff),push=flat(push_start),
-                                                push_geometry=push_geometry.geometry_id))[:20]
-                                contact_tcp=tcp.copy()
-                                contact_tcp[2,3]-=config.support_contact_stroke_m
-                                yield ActionCandidate(aid,placement,flat(box_to_tool),
-                                    flat(pick),flat(handoff),flat(tcp),flat(contact_tcp),metrics,flat(push_start),
-                                    flat(push_end),flat(push_control_start),flat(push_control_end),(1.,0.,0.),distance,tool_yaw,
-                                    push_geometry.tool_T_push_surface,push_geometry.geometry_id,
-                                    ('SUPPORT_AND_FIXED_TOOL_CHECKED',
-                                     'FULL_ARM_NOT_EVALUATED','PUSH_PHYSICS_NOT_EVALUATED'))
+                            for spin in (config.push_face_spins_deg if push_spins is None else push_spins):
+                                push_r=(Rotation.from_euler('y',np.pi/2).as_matrix()@
+                                        Rotation.from_euler('z',spin,degrees=True).as_matrix())
+                                # Bound the actual CAD push polygon on the rear face,
+                                # rather than treating the suction footprint as the plate.
+                                polygon=np.c_[push_geometry.push_polygon_xy,np.zeros(len(push_geometry.push_polygon_xy))]
+                                rotated=polygon@push_r.T
+                                if np.ptp(rotated[:,1])+2*edge>width:
+                                    reasons['PUSH_FACE_TOO_WIDE']+=1;continue
+                                low=top-float(rotated[:,2].min())+edge
+                                high=top+size[2]-float(rotated[:,2].max())-edge
+                                for z in interior_samples(low,high,config.push_height_step_m):
+                                    push_start=pose([front-length,y,z],push_r)@surface_T_tool
+                                    distance=final_x-handoff[0,3]
+                                    push_end=push_start.copy();push_end[0,3]+=distance
+                                    push_control_start=push_start.copy();push_control_start[0,3]+=config.push_contact_stroke_m
+                                    push_control_end=push_end.copy();push_control_end[0,3]+=config.push_contact_stroke_m
+                                    failure=tool_collision(assets,snapshot,push_control_start,config.collision_margin_m)
+                                    if not failure:failure=tool_collision(assets,snapshot,push_control_end,config.collision_margin_m)
+                                    if failure:
+                                        reasons[failure['reason']]+=1;continue
+                                    pid=digest(dict(pose=flat(final),snapshot=snapshot.snapshot_id,
+                                                    config=config.revision))[:20]
+                                    placement=PlacementCandidate(pid,snapshot.snapshot_id,
+                                        config.revision,flat(final),final_metrics)
+                                    aid=digest(dict(pid=pid,grasp=flat(box_to_tool),
+                                                    handoff=flat(handoff),push=flat(push_start),
+                                                    push_geometry=push_geometry.geometry_id))[:20]
+                                    contact_tcp=tcp.copy()
+                                    contact_tcp[2,3]-=config.support_contact_stroke_m
+                                    yield ActionCandidate(aid,placement,flat(box_to_tool),
+                                        flat(pick),flat(handoff),flat(tcp),flat(contact_tcp),metrics,flat(push_start),
+                                        flat(push_end),flat(push_control_start),flat(push_control_end),(1.,0.,0.),distance,tool_yaw,
+                                        push_geometry.tool_T_push_surface,push_geometry.geometry_id,
+                                        ('SUPPORT_AND_FIXED_TOOL_CHECKED',
+                                         'FULL_ARM_NOT_EVALUATED','PUSH_PHYSICS_NOT_EVALUATED'))
 
 
 def interior_samples(low,high,step):
