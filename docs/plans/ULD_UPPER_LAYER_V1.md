@@ -2359,3 +2359,33 @@ not_evaluated；这是三次实验的AND，不代表已证明某个真实单次�
 
 证据只在primary docs/status/evidence/uld_upper_layer_v1/
 release_calibration_matrix_g12_01/eligibility_60plus.{py,json}。
+
+### 19.41 60%严格边界与63%补充高比例验证
+
+19.40首个60%/0/rep0实际settled输入为面积比例.599999993934204，
+原RELEASE_SUPPORT_AREA_BELOW_POLICY正确拒绝执行准入；仍是有效独立
+诊断校准，完成采集/撤出/稳定后原样审计，不通过取整来修复。原54目录
+和60%余下两次保留，不为得到3/3而继续消耗本轮优先验证预算。
+
+用户要求60%往上且完整panel保留。1%几何筛查60..64，源61/62/63%可用、
+64%拒绝；几何边界不是稳定边界。本轮下一组优先63%/container0/base−Y，
+保留原20mm COM/5mm碰撞/15mmseal margin与全部物理/采集门槛。
+这是新增冻结工作负载，不改写原54catalog，不把约60%试点搬入新组。
+新primary证据release_calibration_upper_range_g12_01/workload.yaml只含
+ratio .63、yaw0、rep0..2。prepare_matrix.py在仿真前检查完整panel投影
+与未支撑区包含关系、全部8工具体、原scene/config/runtime hash。实际
+panel_support_gap8.499993mm，低于门槛的64%以上不运行。
+
+验收与19.40相同：每个单元完整解除/down/out/末尾独立3s，原生1ms
+连续监控、原50Hz实际几何、同stamp下层；capture_complete/teardown、
+全量原生audit12门槛及source/asset/hash绑定通过后才能stable分类。
+缺证据not_evaluated，物理超限必须先保存诊断，不用重新试验填满通过数。
+3个有效单元均稳定才报告63%本组3/3观测；不外推连续60..63%、最低稳定
+比例、真实单次可靠性、全机械臂、真实感知或正式C验收。61/62仅几何
+结果，不当物理样本。原54与全目标未完成部分仍保持open。
+
+独占Gazebo，同一时刻最多一个物理实验。已结束实验的离线冻结回放可在
+下一次独立实验期间运行，但不得修改其artifact，不得遗漏实测处理滞后/
+资源上下文；如观测超限必须原样保存停止，不调门槛。此安排不改变物理
+RTF .25/1ms或各监控策略。精确脚本/参数与源hash归档至各自campaign。
+单元200MB预留、组总5GB，原600sim/1800wall预算。
