@@ -48,3 +48,13 @@ Open. Composition is implementation, not a baseline success witness.
 
 - docs/plans/JOINT_OPERATION_GAZEBO_INTEGRATION_20261112.md
 - docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-GAZEBO-OPERATION/
+
+## Collision follow-up -- 2026-11-12 19:23
+
+Read-only exact-q native replay localizes link6 contact at the ULD upper front rim,
+not O voxels:8000-triangle mesh, zero link6 padding, max reported triangle contact
+depth10.536mm. Wrist origin container z2.116660m is near mesh top2.117807m; camera
+origin is lower at1.864800m. Live named pair is recorded; offline contact coordinates
+must not be presented as captured live contacts. Uniform2cm shell thickness and
+real-model dimensional error are not established. Evidence: collision_review_01/
+summary.json and analyze.py. No product changes; full-cycle baseline remains open.

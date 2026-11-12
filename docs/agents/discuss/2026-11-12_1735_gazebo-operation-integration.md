@@ -122,3 +122,20 @@ for ONE distinct camera view;12 invalid. New diagnostic input selects only that
 view. No live optical coverage claim. rehearsal_07 queued without starting nodes:
 another agent owns Gazebo /tmp/uld_upper_layer_scene_pick_start_g12_03. Baseline
 remains OPEN; next rehearsal proves full-world readiness, then measured view cycle.
+
+## Post -- eng/codex -- 2026-11-12 19:23 -- codex/gpt-6
+
+User asks whether link6 collision is only a2cm thin ULD layer. Read-only replay
+collision_review_01/analyze.py verifies exact equality between cycle04 refused
+observation q and full-scene native request, plus response identity/digests.
+The qualified scene uses8000-triangle STL, no O objects, link6 padding0 and scale1.
+Contact points lie near front upper rim: container x[-.771,-.754],z[2.106,2.116]m;
+max reported per-triangle depth.010536m, not a global penetration-distance claim.
+Full-model FK: link6 origin z2.116660m, camera optical origin z1.864800m, STL
+maxz2.117807m. This observation goal raises wrist to roof height while camera
+remains lower. No physical trajectory was executed for that refused goal.
+The live refusal retained named collision only; coordinates are explicitly the
+same-q offline replay in qualified static geometry, not an unrecorded live scene.
+STL does not establish uniform2cm physical thickness. Model-versus-real thickness
+accuracy remains unverified; cannot classify it as a voxel inflation false positive.
+No product code, padding or geometry changed for this review.
