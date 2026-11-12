@@ -129,3 +129,37 @@ points above the configured inner floor. This is a simulation source repair,
 not a real-LiDAR calibration or planner/O tolerance. Bare launch stays OGRE2;
 resolved run metadata records the backend. Full-model RGB-D compatibility must
 be demonstrated by actual measured detection and source outputs in the next run.
+
+## Release observation review and persistent cycle wiring -- 2026-11-13T05:50+08:00
+
+User's10h delegation supersedes the earlier wait-for-discussion step for this
+measured admission review; recommendation and reason are recorded in
+`docs/status/evidence/three_box_observed/g2/wiring59/decision.json`.
+Diagnostic37 completed all6 original motions and3 actually checked camera views,
+with actual dynamic release/settle. The action still refused at298/475 observed
+columns. Eval-only physical mesh raycast proves38 demanded columns cannot match
+at nominal target height;140 attainable columns remain unobserved. The old100%
+rectangle gate therefore conflates missing observation with a false geometry
+assumption. No reference mesh/pose is supplied to online consumers.
+
+For the explicit joint profile only, release observation uses the existing
+`min_support_ratio` as its minimum directly occupied, height-consistent column
+fraction (currently0.6); unconfigured runtime defaults1.0. This is an explicit
+coarse observation completion witness, not complete box reconstruction, physical
+identity proof or stacking permission. Capture acquisition must still postdate
+actual settle/release. Missing cells remain unchanged. No support/tilt/volume,
+collision, inflation, release-height or motion certificate threshold is changed.
+Future placements consume actual complete O and retain every original hard gate.
+
+The same diagnostic37 O has0 admissible stack candidates;16 near-passing windows
+have support>=0.6 but0.04m height span, exceeding the unchanged0.05 tilt ratio.
+This remains an actual blocker, not reported as successful stacking. Full3box
+functional gate remains AND over3 observed successful terminal empty-tool cycles,
+same persistent epoch and separate physical support reference. Added driver flag
+`--three-box` uses floor/floor/stack intent, exact pinned actual O,4 directions,
+existing query/ranking and native complete route. Finalize preserves each physical
+box before next spawn; return view retains full O but adds no phantom pickup.
+Raw capture rotates per box and triggers on post-place exploration/failure;
+all typed plan/map/certificate boundaries persist independently. No prior
+placement, simulator geometry as online input, new planner or cache is added.
+104 focused behavioral cases pass; build/install/live evidence follows.

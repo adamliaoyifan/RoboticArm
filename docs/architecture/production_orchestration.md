@@ -371,3 +371,18 @@ or artificial free cells are added. After each settled view, at most three O
 snapshots check actual acquisitions newer than both release and settling. The
 existing complete-top-footprint/one-voxel height gate remains unchanged; bounded
 exhaustion is an incomplete operation, never a successful placement observation.
+
+### Explicit joint-operation release observation and persistent diagnostic
+
+The explicit Gazebo joint profile passes its existing `min_support_ratio` into
+`release_observation_min_ratio` (currently0.6); bare consumers default1.0. The
+ratio applies only to fresh directly occupied columns within one source voxel
+of the planned top. Completion does not claim full rectangular reconstruction,
+instance association or support suitability; missing O cells are not filled.
+The next shared placement query retains all support/tilt/known-volume hard gates.
+`joint_operation_sim_driver.py --three-box --failure-hold-s 25` explicitly drives
+floor/floor/stack in one O epoch, initializes empty once, finalizes each actual
+simulated box without deleting it, and returns with actual O before next pickup.
+All slots are filtered/ranked from exact pinned observed surface+volume; simulator
+spawn dimensions/poses remain actuator/eval-only. This diagnostic flag is not a
+new planner or a claim that bare launch defaults changed.

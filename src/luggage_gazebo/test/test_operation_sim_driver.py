@@ -61,10 +61,10 @@ def test_prepare_binds_repository_identity_and_releases_lease_on_refusal(monkeyp
         return PrepareJointOperationV2.Response(success=success,reason='diagnostic',trace_json='[]')
     probe=SimpleNamespace(detect='detect',domain=domain,validity='validity',snapshot='snapshot',
         release_snapshot='release',prepare='prepare',call=call,record=lambda *a:None,
-        joint=JointState(name=module.JOINTS,position=[0.]*6),
+        joint=JointState(name=module.JOINTS,position=[0.]*6),images={},
         launch={'model_sha256':'model','resolved':{'operation_prepare_budget_s':300.}},
         folder=tmp_path)
-    probe.prepare_from_observation=lambda *a:module.OperationSimDriver.prepare_from_observation(probe,*a)
+    probe.prepare_from_observation=lambda *a,**kw:module.OperationSimDriver.prepare_from_observation(probe,*a,**kw)
     if success:module.OperationSimDriver.plan(probe)
     else:
         with pytest.raises(RuntimeError,match='PREPARE:diagnostic'):
@@ -94,16 +94,17 @@ def test_explicit_start_declares_empty_without_mandatory_portal_motion(tmp_path,
         actions.append(args)
         refused=replan and len(actions)==1
         return SimpleNamespace(result=SimpleNamespace(success=not refused,outcome='STOPPED',
-            motion_terminal=True,may_have_payload=False,reason='BOUND_NATIVE_ADMISSION_REQUIRED'))
+            motion_terminal=True,may_have_payload=False,reason='BOUND_NATIVE_ADMISSION_REQUIRED',
+            final_map_source=SimpleNamespace(epoch=2,map_revision=len(actions))))
     probe=SimpleNamespace(args=SimpleNamespace(start=True,views=None,prepick_replans=int(replan),capture_operation=capture),
-        failure_capture=SimpleNamespace(trigger=lambda:capture_events.append('trigger'),close=lambda:capture_events.append('close')),
-        extra_views={},folder=tmp_path,
+        failure_capture=SimpleNamespace(dropped=0,trigger=lambda:capture_events.append('trigger'),close=lambda:capture_events.append('close')),
+        extra_views={},folder=tmp_path,completed_boxes=[],
         launch={'resolved':{'observe_pose_name':'pickup'},'map_owner':{
             'geometry_file':str(geometry),'config_file':str(config_file)}},
         validity='validity',initialize='initialize',spawn='spawn',execute='execute',call=call,
         readiness=lambda:None,observe_pose=lambda p,**kwargs:poses.append(p),
         return_to_pick_observation=lambda plan:poses.append('retry_pick'),
-        stage=lambda name,f:f(),plan=lambda:(JointOperationPlanV2(),DetectedLuggage(),SuctionTopDomainV2(instance_id='observed-instance')),
+        stage=lambda name,f:f(),plan=lambda **kw:(JointOperationPlanV2(),DetectedLuggage(),SuctionTopDomainV2(instance_id='observed-instance')),
         action=action,execute_prepared=lambda plan,detection,domain,name:action('execute',
             module.ExecuteJointOperationV2.Goal(plan=plan,detection=detection,top_domain=domain),name,610.),
         flush=lambda **kwargs:None,capture_failure_state=lambda:None,domain=None,images={})
@@ -203,7 +204,7 @@ def test_terminal_refusal_capture_runs_at_outer_operation_boundary(monkeypatch,r
 def test_late_evidence_flush_preserves_terminal_outcome(tmp_path):
     import threading
     module=driver_module()
-    owner=SimpleNamespace(_record_lock=threading.RLock(),folder=tmp_path,records=[],stages=[])
+    owner=SimpleNamespace(_record_lock=threading.RLock(),folder=tmp_path,records=[],stages=[],completed_boxes=[])
     module.OperationSimDriver.flush(owner,outcome='INCOMPLETE',reason='captured_failure')
     owner.records.append(dict(file='late_lease_release',bytes=12))
     module.OperationSimDriver.flush(owner)
@@ -217,7 +218,7 @@ def test_operation_source_capture_starts_with_first_action_feedback():
     handle=SimpleNamespace(accepted=True,get_result_async=lambda:'terminal')
     def send(goal,**options):
         callback=options['feedback_callback']
-        callback(SimpleNamespace(feedback=SimpleNamespace(next_leg_index=0)))
+        callback(SimpleNamespace(feedback=SimpleNamespace(next_leg_index=0,stage="PREPARE")))
         return handle
     probe=SimpleNamespace(args=SimpleNamespace(capture_operation=True),
         failure_capture=SimpleNamespace(trigger=lambda:events.append('operation_capture')),
@@ -263,3 +264,42 @@ def test_failure_scene_error_preserves_cause_and_still_captures_latest_o():
     failures=module.OperationSimDriver.capture_failure_state(owner)
     assert failures==['planning_scene'] and events[-1]=='latest_o'
     assert 'scene_unavailable' in events[0][1].decode()
+
+
+@pytest.mark.parametrize('changed_epoch',[False,True])
+def test_three_cycles_keep_observed_map_and_finalize_before_next_spawn(tmp_path,monkeypatch,changed_epoch):
+    module=driver_module()
+    from test_joint_operation_observer import configuration
+    from luggage_msgs.msg import JointOperationPlanV2
+    config,geometry,config_file=configuration(tmp_path)
+    events=[];outputs=[]
+    def call(client,request,name,*args):
+        events.append(client)
+        if client=='validity':return SimpleNamespace(epoch=1)
+        if client=='initialize':return SimpleNamespace(status='OK')
+        if client=='finalize':return SimpleNamespace(success=True)
+        raise AssertionError(client)
+    def cycle(driver,*,task_mode,prefix):
+        index=len(outputs);events.append(('cycle',task_mode))
+        result=SimpleNamespace(final_map_source=SimpleNamespace(epoch=3 if changed_epoch and index else 2,map_revision=10+index))
+        outputs.append(result)
+        return JointOperationPlanV2(plan_digest='plan'+str(index)),result
+    monkeypatch.setattr(module,'run_observed_cycle',cycle)
+    probe=SimpleNamespace(args=SimpleNamespace(start=True,views=None,three_box=True,failure_hold_s=0.),
+        failure_capture=None,extra_views={},folder=tmp_path,completed_boxes=[],stages=[],
+        launch={'resolved':{'observe_pose_name':'pickup'},'map_owner':{'geometry_file':str(geometry),'config_file':str(config_file)}},
+        validity='validity',initialize='initialize',finalize='finalize',call=call,readiness=lambda:None,
+        observe_pose=lambda *a,**k:None,stage=lambda name,f:f(),rotate_capture=lambda:events.append('rotate'),
+        return_to_pick_observation=lambda plan,**kw:events.append(('return',kw['pickup_present'])),
+        flush=lambda **kw:events.append(('flush',kw)),capture_failure_state=lambda:[],
+        sensor_diagnostics={},domain=None,images={},joint=None)
+    assert module.OperationSimDriver.run(probe)==(1 if changed_epoch else 0)
+    assert events.count('initialize')==1
+    if changed_epoch:
+        assert len(outputs)==2 and events[-1][1]['outcome']=='INCOMPLETE'
+    else:
+        assert [x for x in events if isinstance(x,tuple) and x[0]=='cycle']==[
+            ('cycle','floor'),('cycle','floor'),('cycle','stack')]
+        assert events.count('finalize')==3
+        assert events.count(('return',False))==2
+        assert events[-1][1]['outcome']=='THREE_BOX_PASS'

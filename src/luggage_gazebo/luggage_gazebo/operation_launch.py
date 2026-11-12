@@ -196,6 +196,7 @@ def operation_composition(config, robot_xml, semantic_xml):
         operation_max_budget_s=float(config.get('operation_execution_budget_s',600.)),
         operation_source_refresh_attempts=int(config.get('operation_source_refresh_attempts',2)),
         operation_post_place_views=int(config.get('operation_post_place_views',0)),
+        release_observation_min_ratio=float(config.get('min_support_ratio',.6)),
         operation_state_file=str(folder/'operation_state.json'),
         operation_evidence_dir=str(folder/'execution'))
     return nodes, runtime

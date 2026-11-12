@@ -30,7 +30,7 @@ from moveit_msgs.msg import PlanningScene, CollisionObject
 from shape_msgs.msg import SolidPrimitive
 from luggage_msgs.action import ExecuteJointOperationV2
 from luggage_msgs.msg import SuctionTopDomainV2, DetectionFrame
-from luggage_msgs.srv import DetectLuggage, PrepareJointOperationV2, SpawnNextBox
+from luggage_msgs.srv import DetectLuggage, PrepareJointOperationV2, SpawnNextBox, FinalizeCurrentBox
 from uld_occ_observer.srv import GetValidity, ResetObservation, GetSnapshot, ReleaseSnapshot, InitializeEmpty
 from uld_occ_observer.msg import UpdateReceipt
 from luggage_mapping.observer import admit_response, identity_record, ObserverConfiguration, ObserverSnapshotPort
@@ -50,11 +50,7 @@ from luggage_description.scene_mesh_utils import container_model_name
 JOINTS = ['elfin_joint%d'%i for i in range(1,7)]
 
 
-def can_reprepare_before_pick(result):
-    """Only a stopped, terminal, empty tool may discard an unexecuted suffix."""
-    return (not result.success and result.outcome=='STOPPED'
-            and result.motion_terminal and not result.may_have_payload
-            and result.reason in ('CURRENT_SOURCE_REFUSED','BOUND_NATIVE_ADMISSION_REQUIRED'))
+from luggage_gazebo.operation_cycle import can_reprepare_before_pick,run_observed_cycle
 
 
 def load_diagnostic_views(path, launch):
@@ -95,6 +91,9 @@ class OperationSimDriver(Node):
         self.sensor_diagnostics = {}
         self.clock_count = 0
         self.failure_capture = None
+        self._static_tf_blocks={}
+        self._capture_number=1
+        self.completed_boxes=[]
         if getattr(args, 'failure_hold_s', 0.) > 0:
             self.failure_capture = ObserverFailureCapture(self.folder/'observer_failure',
                 disk_limit=(768 if getattr(args,'capture_operation',False) else 256)*1024*1024)
@@ -107,10 +106,7 @@ class OperationSimDriver(Node):
                     ('/luggage/observation/self_mask_status',String)]:
                 qos = (QoSProfile(depth=1,durability=DurabilityPolicy.TRANSIENT_LOCAL)
                        if topic=='/tf_static' else qos_profile_sensor_data)
-                self.create_subscription(cls,topic,lambda msg,t=topic,c=cls:
-                    self.failure_capture.add(t,c.__module__+'.'+c.__name__,serialize_message(msg),
-                        persistent=tuple(sorted(v.child_frame_id for v in msg.transforms))
-                            if t=='/tf_static' else False),qos)
+                self.create_subscription(cls,topic,lambda msg,t=topic,c=cls:self.capture_sensor(t,c,msg),qos)
         self.create_subscription(JointState,'/joint_states',lambda msg:setattr(self,'joint',msg),qos_profile_sensor_data)
         self.create_subscription(SuctionTopDomainV2,'/luggage/suction_top_domain_v2',
             lambda msg:setattr(self,'domain',msg),qos_profile_sensor_data)
@@ -141,6 +137,7 @@ class OperationSimDriver(Node):
         self.snapshot = self.create_client(GetSnapshot,'/uld_occ_observer/get_snapshot')
         self.release_snapshot = self.create_client(ReleaseSnapshot,'/uld_occ_observer/release_snapshot')
         self.spawn = self.create_client(SpawnNextBox,'/pickup_box_spawner/spawn_next_box')
+        self.finalize=self.create_client(FinalizeCurrentBox,'/pickup_box_spawner/finalize_current_box')
         self.execute = ActionClient(self,ExecuteJointOperationV2,'/joint_operation/execute')
         self.move = ActionClient(self,MoveGroup,'/move_action')
         self.controllers = self.create_client(ListControllers,'/controller_manager/list_controllers')
@@ -150,6 +147,21 @@ class OperationSimDriver(Node):
         self.observer_rpc=OperationRpc(self.record)
         self.observer=ObserverSnapshotPort(self,configuration=ObserverConfiguration.load(
             owner['geometry_file'],owner['config_file']),call=self.observer_rpc.call,recorder=self.record)
+
+    def capture_sensor(self,topic,cls,message):
+        raw=serialize_message(message);kind=cls.__module__+'.'+cls.__name__
+        key=tuple(sorted(v.child_frame_id for v in message.transforms)) if topic=='/tf_static' else False
+        if key:self._static_tf_blocks[key]=(topic,kind,raw)
+        self.failure_capture.add(topic,kind,raw,persistent=key)
+
+    def rotate_capture(self):
+        if self.failure_capture is None:return
+        self.failure_capture.close()
+        if self.failure_capture.dropped:raise RuntimeError('OBSERVER_WINDOW_DROPPED_RECORDS')
+        self._capture_number+=1
+        self.failure_capture=ObserverFailureCapture(self.folder/('observer_box'+str(self._capture_number)))
+        for key,(topic,kind,raw) in tuple(self._static_tf_blocks.items()):
+            self.failure_capture.add(topic,kind,raw,persistent=key)
 
     def record(self, name, message):
         with self._record_lock:self._record_locked(name,message)
@@ -173,7 +185,7 @@ class OperationSimDriver(Node):
             # terminal result. Keep that result when refreshing the index.
             self._final_status={**getattr(self,'_final_status',{}),**result}
             (self.folder/'manifest.json').write_text(json.dumps(dict(records=self.records,
-                stages=self.stages, **self._final_status),indent=2)+'\n')
+                stages=self.stages,completed_boxes=self.completed_boxes, **self._final_status),indent=2)+'\n')
 
     def wait(self, predicate, timeout, reason):
         deadline = time.monotonic()+timeout
@@ -199,8 +211,13 @@ class OperationSimDriver(Node):
         if not client.wait_for_server(timeout_sec=10.):raise TimeoutError(name+'_UNAVAILABLE')
         self.record(name+'_goal',goal)
         options={}
-        if name.startswith('execute') and getattr(self.args,'capture_operation',False):
-            options['feedback_callback']=lambda message:self.failure_capture.trigger()
+        if name.startswith('execute'):
+            def feedback(message):
+                stage=message.feedback.stage
+                if getattr(self.args,'capture_operation',False) or (getattr(self.args,'three_box',False)
+                        and stage.startswith('post_place_explore:')):
+                    self.failure_capture.trigger()
+            options['feedback_callback']=feedback
         handle = self.future(client.send_goal_async(goal,**options),10.,name+'_ADMISSION_TIMEOUT')
         if not handle.accepted:raise RuntimeError(name+'_REJECTED')
         try:
@@ -309,7 +326,7 @@ class OperationSimDriver(Node):
         for key,msg in self.images.items():self.record('view_'+name+'_'+key,msg)
         self.record('view_'+name+'_joints',self.joint)
 
-    def return_to_pick_observation(self, plan):
+    def return_to_pick_observation(self, plan, *, pickup_present=True):
         """Existing MoveGroup view motion with actual O in its live scene.
 
         Only this diagnostic's generated O objects are applied/removed. Keep
@@ -335,7 +352,7 @@ class OperationSimDriver(Node):
         pickup.primitives=[SolidPrimitive(type=SolidPrimitive.BOX,
             dimensions=list(plan.predicted_attachment.measured_dimensions_wdh))]
         pickup.primitive_poses=[plan.world_from_pick_box]
-        objects.append(pickup)
+        if pickup_present:objects.append(pickup)
         diff=PlanningScene(is_diff=True);diff.robot_state.is_diff=True
         diff.world.collision_objects=objects
         applied=self.call(self.apply_scene,ApplyPlanningScene.Request(scene=diff),'return_view_apply_o')
@@ -348,11 +365,12 @@ class OperationSimDriver(Node):
         if not self.call(self.apply_scene,ApplyPlanningScene.Request(scene=remove),'return_view_remove_o').success:
             raise RuntimeError('OBSERVATION_OCC_CLEANUP_REFUSED')
 
-    def plan(self):
+    def plan(self, *, task_mode=None):
         detection,domain = wait_observed_detection(
             lambda remaining:self.call(self.detect,DetectLuggage.Request(),'detect',timeout=remaining),
             lambda:self.domain,deadline=time.monotonic()+30.)
         self.record('top_domain',domain)
+        for key,message in self.images.items():self.record('detection_'+key,message)
         validity = self.call(self.validity,GetValidity.Request(),'prepare_validity')
         # GetValidity records the validity transition; its map_revision is not
         # the latest repository identity. Pin the actual current snapshot until
@@ -362,11 +380,24 @@ class OperationSimDriver(Node):
         if not lease.handle:raise RuntimeError('MAP_SNAPSHOT:'+lease.status)
         try:
             admit_response(lease,identity_record(lease.identity),lease.validity.generation)
-            return self.prepare_from_observation(detection,domain,lease.identity)
+            slots=()
+            if task_mode is not None:
+                from luggage_gazebo.observed_task_slots import observed_task_slots
+                from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy
+                captured=self.observer.capture(scene_revision=self.launch['scene_revision'],
+                    request_id='explicit-'+task_mode,expected_epoch=lease.identity.epoch,
+                    expected_revision=lease.identity.map_revision,deadline=time.monotonic()+15.,require_latest=False)
+                slots,report=observed_task_slots(captured,tuple(domain.box_wdh),task_mode,
+                    limits=load_attachment_geometry_policy(self.launch['resolved'].get('attachment_geometry_config','')),
+                    margin=self.launch['collision_policy']['collision_margin_m'],
+                    vertical_margin=self.launch['collision_policy']['vertical_collision_margin_m'])
+                self.record('explicit_task_candidates',json.dumps(report,sort_keys=True).encode())
+                if not slots:raise RuntimeError('NO_OBSERVED_'+task_mode.upper()+'_PLACEMENT')
+            return self.prepare_from_observation(detection,domain,lease.identity,slots=slots)
         finally:
             self.call(self.release_snapshot,ReleaseSnapshot.Request(handle=lease.handle),'release_prepare_snapshot')
 
-    def prepare_from_observation(self,detection,domain,identity):
+    def prepare_from_observation(self,detection,domain,identity,*,slots=()):
         joint = self.joint;self.record('prepare_joints',joint)
         positions = dict(zip(joint.name,joint.position))
         request = PrepareJointOperationV2.Request(request_id='gazebo-'+str(time.time_ns()),
@@ -377,6 +408,11 @@ class OperationSimDriver(Node):
             robot_state_stamp_ns=joint.header.stamp.sec*10**9+joint.header.stamp.nanosec,
             start_joints=[positions[name] for name in JOINTS],candidate_limit=8,
             budget_s=float(self.launch['resolved']['operation_prepare_budget_s']))
+        from luggage_planning.place_service import pose_message
+        request.slots=[pose_message(dict(contract_version=2,kind='pose',frame_id='container_link',length_unit='m',
+            stamp_ns=0,time_basis='scene',scene_revision=self.launch['scene_revision'],request_id=request.request_id,
+            reference='box_center',orientation_semantics='box_axis_pi',position=slot.translation,
+            quaternion_xyzw=slot.quaternion_xyzw)) for slot in slots]
         prepared = self.call(self.prepare,request,'prepare',timeout=request.budget_s+10.)
         trace=self.folder/'prepare_trace.json'
         if trace.exists():trace=self.folder/('prepare_trace_'+request.request_id+'.json')
@@ -411,31 +447,34 @@ class OperationSimDriver(Node):
                 self.stage('observe_'+pose,lambda p=pose:self.observe_pose(p))
             self.stage('return_pick_observe',lambda:self.observe_pose(
                 self.launch['resolved']['observe_pose_name'],require_uld_observation=False))
-            spawned = self.stage('physics_spawn',lambda:self.call(self.spawn,SpawnNextBox.Request(),'physics_spawn',30.))
-            if not spawned.success:raise RuntimeError('SPAWN_FAILED')
-            # Ignore response.box; only the simulator actuator owns that truth.
-            plan,detection,domain = self.stage('prepare',self.plan)
-            result = self.stage('execute',lambda:self.execute_prepared(plan,detection,domain,'execute'))
-            original_instance=domain.instance_id
-            for attempt in range(getattr(self.args,'prepick_replans',0)):
-                if not can_reprepare_before_pick(result.result):break
-                # The failed action has finalized its owned scene and released
-                # motion ownership. Acquire NEW measured contact/map evidence,
-                # prepare a NEW complete plan from actual current joints, and
-                # keep the same observed physical instance. Never retarget a seal.
-                self.stage('return_pick_retry_'+str(attempt+1),lambda:self.return_to_pick_observation(plan))
-                plan,detection,domain=self.stage('prepare_retry_'+str(attempt+1),self.plan)
-                if not original_instance or domain.instance_id!=original_instance:
-                    raise RuntimeError('PREPICK_REPLAN_INSTANCE_CHANGED')
-                result=self.stage('execute_retry_'+str(attempt+1),lambda:self.execute_prepared(
-                    plan,detection,domain,'execute_retry_'+str(attempt+1)))
-            if not result.result.success:raise RuntimeError('EXECUTE:'+result.result.outcome+':'+result.result.reason)
-            if getattr(self,'failure_capture',None) is not None:self.failure_capture.close()
-            self.flush(outcome='FULL_CYCLE_PASS',capture_complete=True,replay_possible=True)
+            modes=('floor','floor','stack') if getattr(self.args,'three_box',False) else (None,)
+            epoch=None
+            for index,mode in enumerate(modes):
+                if index:
+                    self.rotate_capture()
+                    self.stage('return_pick_box'+str(index+1),lambda:self.return_to_pick_observation(
+                        previous_plan,pickup_present=False))
+                plan,outcome=run_observed_cycle(self,task_mode=mode,prefix=('box'+str(index+1)+'_') if mode else '')
+                source=outcome.final_map_source
+                if epoch is None:epoch=source.epoch
+                if source.epoch!=epoch:raise RuntimeError('PERSISTENT_O_EPOCH_CHANGED')
+                self.completed_boxes.append(dict(index=index+1,task_mode=mode,plan_digest=plan.plan_digest,
+                    map_epoch=source.epoch,map_revision=source.map_revision,success=True))
+                capture_errors=self.capture_failure_state() or []
+                if capture_errors:raise RuntimeError("CYCLE_BOUNDARY_CAPTURE_INCOMPLETE:"+",".join(capture_errors))
+                if mode is not None:
+                    final=self.call(self.finalize,FinalizeCurrentBox.Request(),'physics_finalize')
+                    if not final.success:raise RuntimeError('PHYSICS_FINALIZE_REFUSED')
+                previous_plan=plan
+            if getattr(self,'failure_capture',None) is not None:
+                self.failure_capture.close()
+                if self.failure_capture.dropped:raise RuntimeError('OBSERVER_WINDOW_DROPPED_RECORDS')
+            self.flush(outcome='THREE_BOX_PASS' if getattr(self.args,'three_box',False) else 'FULL_CYCLE_PASS',capture_complete=True,replay_possible=True)
             return 0
         except Exception as error:
             if (getattr(self,'failure_capture',None) is not None
                     and (str(error).endswith(('CURRENT_SOURCE_REFUSED','BOUND_NATIVE_ADMISSION_REQUIRED'))
+                         or getattr(self.args,'three_box',False)
                          or (getattr(self.args,'capture_operation',False) and 'EXECUTE:' in str(error)))):
                 self.failure_capture.trigger()
                 self.stage('failure_stationary_capture',lambda:time.sleep(self.args.failure_hold_s))
@@ -467,12 +506,15 @@ def main():
         help='Diagnostic stationary observer capture after a terminal source refusal (0..60 s)')
     parser.add_argument('--prepick-replans',type=int,default=0,
         help='Explicit bounded new complete plans after terminal pre-pick map/native refusal (0..2)')
+    parser.add_argument('--three-box',action='store_true',help='Same observed O epoch: floor, floor, stack; requires failure capture')
     parser.add_argument('--capture-operation',action='store_true',
         help='Persist source clouds/TF before map initialization, bounded to768MiB; requires failure hold')
     args = parser.parse_args()
     if not 0 <= args.failure_hold_s <= 60:parser.error('failure hold must be within 0..60 seconds')
     if not 0 <= args.prepick_replans <= 2:parser.error('prepick replans must be within 0..2')
     if args.capture_operation and args.failure_hold_s<=0:parser.error('operation capture requires failure hold')
+    if args.three_box and (args.failure_hold_s<=0 or args.capture_operation):
+        parser.error("three-box requires failure hold and uses bounded per-box exploration capture")
     rclpy.init()
     node = OperationSimDriver(args)
     executor = MultiThreadedExecutor(num_threads=4);executor.add_node(node)

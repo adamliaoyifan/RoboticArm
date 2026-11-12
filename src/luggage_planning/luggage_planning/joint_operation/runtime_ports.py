@@ -102,6 +102,9 @@ class OperationRuntimePorts:
         if not self.revision:raise ValueError('EXPLICIT_OPERATION_SCENE_REVISION_REQUIRED')
         self.container = Transform(param('container_translation',[float('nan')]*3),
                                    param('container_quaternion_xyzw',[float('nan')]*4))
+        self.release_observation_min_ratio=float(param('release_observation_min_ratio',1.))
+        if not math.isfinite(self.release_observation_min_ratio) or not 0<self.release_observation_min_ratio<=1:
+            raise ValueError('RELEASE_OBSERVATION_RATIO_REQUIRED')
         self.margin = float(param('collision_margin_m',.05))
         self.vertical_margin = float(param('vertical_collision_margin_m',self.margin))
         from luggage_planning.joint_operation.preparation_profile import (
@@ -410,15 +413,17 @@ class OperationRuntimePorts:
         self.finalized=True
 
     def observed_target(self, captured):
-        """Require actually occupied top columns at the fixed released target.
+        """Confirm measured released-top coverage, without filling missing cells.
 
-        All raster centres lying inside the physical top face must be observed
-        occupied. Height tolerance is exactly one measured voxel (quantization).
-        No centres => not evaluated, never a successful placement observation.
+        The grouped profile shares its existing support-ratio policy as a minimum
+        observation fraction. This is neither identity proof nor stacking approval:
+        the next placement still checks the unchanged complete O hard gates.
+        Unconfigured consumers retain historical full-rectangle coverage.
         """
         from luggage_planning.joint_operation.release_coverage import release_coverage
         target=self.container.inverse().compose(self.plan.world_from_settled_box)
-        coverage=release_coverage(captured.surface.record(),target,self.geometry.measured_dimensions_wdh)
+        coverage=release_coverage(captured.surface.record(),target,self.geometry.measured_dimensions_wdh,
+            min_observed_ratio=getattr(self,"release_observation_min_ratio",1.))
         self.last_release_coverage=coverage
         return coverage['accepted'],coverage['expected_columns']
 
@@ -431,7 +436,9 @@ class OperationRuntimePorts:
                     and captured.source.last_integrated_stamp_ns>self.release_stamp_ns):
                 accepted,last_count=self.observed_target(captured)
                 self.record('observed_release.json',json.dumps(dict(accepted=accepted,
-                    sample_columns=last_count,matched_columns=self.last_release_coverage['matched_columns'],settled_view_stamp_ns=settled_view_stamp_ns,
+                    sample_columns=last_count,matched_columns=self.last_release_coverage['matched_columns'],
+                    min_observed_ratio=self.last_release_coverage['min_observed_ratio'],
+                    observed_ratio=self.last_release_coverage['observed_ratio'],settled_view_stamp_ns=settled_view_stamp_ns,
                     release_stamp_ns=self.release_stamp_ns,
                     actual_acquisition_stamp_ns=captured.source.last_integrated_stamp_ns,
                     source=captured.source.__dict__),sort_keys=True).encode())

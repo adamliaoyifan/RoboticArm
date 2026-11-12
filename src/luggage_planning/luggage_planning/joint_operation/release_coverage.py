@@ -7,7 +7,9 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 
-def release_coverage(surface,container_from_box,dimensions):
+def release_coverage(surface,container_from_box,dimensions,*,min_observed_ratio=1.):
+    if not np.isfinite(min_observed_ratio) or not 0<min_observed_ratio<=1:
+        raise ValueError("RELEASE_OBSERVATION_RATIO_REQUIRED")
     rotation=Rotation.from_quat(container_from_box.quaternion_xyzw).as_matrix()
     if np.max(abs(rotation[:,2]-np.array((0.,0.,1.))))>1e-9:
         raise ValueError('OBSERVED_RELEASE_TARGET_MUST_BE_UPRIGHT_IN_CONTAINER')
@@ -25,7 +27,9 @@ def release_coverage(surface,container_from_box,dimensions):
     observed=np.asarray(surface['surface_z_container'],dtype=float)
     matches=footprint&(states=='occupied')&np.isfinite(observed)&(abs(observed-top)<=resolution+1e-9)
     count=int(footprint.sum());matched=int(matches.sum())
-    return dict(accepted=count>0 and count==matched,expected_columns=count,matched_columns=matched,
+    return dict(accepted=count>0 and matched/count>=min_observed_ratio,
+        min_observed_ratio=min_observed_ratio,observed_ratio=matched/count if count else 0.,
+        expected_columns=count,matched_columns=matched,
         missing_points_container=points[footprint&~matches].tolist(),
         expected_top_z_container=top,matched_area_m2=matched*resolution**2,
         state_counts={str(state):int(np.count_nonzero(footprint&(states==state)))
