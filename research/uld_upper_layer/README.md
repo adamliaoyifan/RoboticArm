@@ -585,3 +585,15 @@ Neither a final box goal nor a support patch is a TCP goal. TCP poses are derive
 from the box transform and grasp relation inside candidate planning. Surface
 patch `bounds_xy` is `(xmin,ymin,xmax,ymax)` and `surface_z_container` is absolute;
 selected support IDs do not remove unselected OCC obstacles from collision checks.
+
+`physical_probe.py --planning-run RUN --initialize-pick INITIALIZER --replan-live`
+uses RUN's request as the target/support template, initializes the actual grasp,
+and recomputes its start snapshot, joints and measured grasp in the same running
+simulator. `live_planning.plan_while_held` runs the planner in an owned subprocess
+while the parent keeps native contact/lower-cargo monitoring active. It sends no
+hold or cargo pose command, and rejects drift using the existing initial-state
+thresholds. The newly scored action is rebound only at an attached planning hold.
+`plan_artifact.load_scored_plan` validates both offline and live scored artifacts;
+the online plan, not its template, is the executed trajectory. This experiment
+entry point avoids assuming that restarting a loaded robot reproduces the exact
+joint state of an earlier snapshot.

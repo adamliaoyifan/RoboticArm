@@ -42,6 +42,18 @@ class ExecutionMonitor:
                 raise ValueError('INITIAL_ATTACHMENT_DIFFERS_FROM_PLAN')
         scene.set_payload(state.dimensions,'world',scene.world_container@np.array(initial.container_T_box).reshape(4,4),allow_support=True)
 
+    def bind_held_action(self,record):
+        """Rebind a newly scored action only at the monitored attached hold boundary."""
+        from planning_types import action_from_record
+        if self._phase!='planning_hold' or not self._sample.attached:
+            raise ValueError('ACTION_REBIND_REQUIRES_ATTACHED_PLANNING_HOLD')
+        action=action_from_record(record)
+        distance,angle=pose_error(np.linalg.inv(np.array(action.box_T_tool).reshape(4,4)),
+                                  self._sample.tool_T_box_at_attach)
+        if distance>self._config.contact_tolerance_m or angle>self._policy.attachment_rotation_error_deg:
+            raise ValueError('LIVE_ACTION_ATTACHMENT_CHANGED')
+        self._action=action
+
     @property
     def sample(self):return self._sample
 

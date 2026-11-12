@@ -42,6 +42,8 @@ def main():
     parser.add_argument('--scene-dir',type=Path,required=True)
     parser.add_argument('--evidence',type=Path,required=True)
     parser.add_argument('--planning-run',type=Path)
+    parser.add_argument('--replan-live',action='store_true',
+        help='Use the existing request as a goal template; replan from the live attached state while monitoring hold')
     parser.add_argument('--policy',type=Path)
     parser.add_argument('--scene-config',type=Path)
     parser.add_argument('--config',type=Path)
@@ -50,44 +52,18 @@ def main():
     parser.add_argument('--capture-rehearsal',action='store_true',
         help='Deliberate diagnostic failure after controller hold; never a physical action verdict')
     args=parser.parse_args();out=args.evidence.resolve()
+    if args.replan_live and (not args.planning_run or not args.initialize_pick):
+        parser.error('--replan-live requires --planning-run and --initialize-pick')
     if args.capture_after_pick and (not args.initialize_pick or args.planning_run):
         parser.error('--capture-after-pick needs --initialize-pick and no --planning-run')
     if args.capture_rehearsal and args.planning_run:parser.error('capture rehearsal does not execute a plan')
     if not out.is_relative_to(EVIDENCE):raise ValueError('PRIMARY_EVIDENCE_REQUIRED')
     policy=ExecutionPolicy.load(args.policy);config=UpperConfig.load(args.config);plan=None;selection=None;scene_path=args.scene_config
     if args.planning_run:
-        planning_manifest=json.loads((args.planning_run/'manifest.json').read_text())
-        config=UpperConfig.load(args.planning_run/'source/upper_config.yaml')
-        scene_path=planning_manifest.get('scene_config')
-        if scene_path and sha256(scene_path)!=planning_manifest['scene_config_sha256']:
-            raise ValueError('PLANNED_SCENE_CONFIG_CHANGED')
-        plans=json.loads((args.planning_run/'plans.json').read_text())
-        if not plans:raise ValueError('NO_COMPLETE_NOMINAL_PLAN')
-        selection_policy=SelectionPolicy.load(args.planning_run/'source/selection_policy.yaml')
-        if (sha256(args.planning_run/'source/selection_policy.yaml')!=planning_manifest['source_hashes'].get('selection_policy.yaml') or
-            sha256(args.planning_run/'source/upper_config.yaml')!=planning_manifest['source_hashes'].get('upper_config.yaml')):
-            raise ValueError('PLANNING_CONFIG_ARCHIVE_CHANGED')
-        if (sha256(args.planning_run/'source/execution_policy.yaml')!=planning_manifest['source_hashes'].get('execution_policy.yaml') or
-            planning_manifest.get('execution_policy_revision')!=policy.revision):
-            raise ValueError('PLANNED_EXECUTION_POLICY_CHANGED')
-        models=json.loads((args.planning_run/'models.json').read_text())
-        planning_inputs=json.loads((args.planning_run/'inputs.json').read_text())
-        selection=rank_nominal_plans(plans,planning_inputs['snapshot']['snapshot_id'],config,selection_policy,
-            digest(dict(assets=models['asset_hashes'],meshes=models['hashes'])),policy)
-        if not selection['nominal_minimum_met']:raise ValueError('NO_SCORED_NOMINAL_PLAN:'+str(selection['rejected']))
-        plan=plans[selection['selected_index']]
-        if planning_manifest.get('request_revision'):
-            from request_planner import request_from_record
-            request=request_from_record(json.loads((args.planning_run/'request.json').read_text()))
-            if (request.revision!=planning_manifest['request_revision'] or
-                    plan.get('request_revision')!=request.revision):
-                raise ValueError('PLANNED_REQUEST_BINDING_CHANGED')
-        for name in ('candidates.py','placement_request.py','request_planner.py','planning_types.py','full_arm.py','tool_contact_geometry.py','support_contact.py',
-                     'geometry.py','assets.py','path_planning.py','stage_planner.py','action_screen.py','coupled_chain.py','interval_certificate.py','motion_bounds.py',
-                     'plan_clearance.py','push_seam_events.py','clearance_bounds.py','selection_policy.py','plan_selection.py',
-                     'free_box_validation.py','noncontact_admission.py','payload_envelope.py','payload_tube.py','envelope_planning.py','execution_policy.py'):
-            if sha256(Path(__file__).with_name(name))!=planning_manifest['source_hashes'].get(name):
-                raise ValueError('PLANNED_SOURCE_CHANGED:'+name)
+        from plan_artifact import load_scored_plan
+        loaded=load_scored_plan(args.planning_run,policy)
+        plan=loaded['plan'];config=loaded['config'];scene_path=loaded['scene_path']
+        planning_manifest=loaded['manifest'];selection=loaded['selection'];selection_policy=loaded['selection_policy']
     fixture=json.loads((args.scene_dir/'fixture.json').read_text())
     if not fixture.get('ideal_vacuum'):raise ValueError('NATIVE_IDEAL_VACUUM_REQUIRED')
     for name,expected in fixture['source_hashes'].items():
@@ -151,7 +127,7 @@ def main():
                             payload_rotation_deg=angle,joint_max_error_rad=joint_error,
                             original_snapshot_id=old_input['snapshot']['snapshot_id'],fresh_snapshot_id=snapshot.snapshot_id)
             save(out/'initial_state_revalidation.json',validation)
-            if max(errors+[distance])>config.contact_penetration_m or angle>policy.initial_rotation_deg or joint_error>policy.initial_joint_error_rad:
+            if not args.replan_live and (max(errors+[distance])>config.contact_penetration_m or angle>policy.initial_rotation_deg or joint_error>policy.initial_joint_error_rad):
                 raise ValueError('LIVE_INITIAL_STATE_DIFFERS_FROM_NOMINAL_PLAN')
             save(out/'nominal_plan.json',plan)
         else:
@@ -188,6 +164,12 @@ def main():
         else:
             q=list(initial.q);hold=dict(positions=[q,q],velocities=[[0.]*6,[0.]*6],time_from_start=[0.,policy.trigger_pre_s])
             ArmController(runtime).execute(hold,observe,policy.condition_wait_budget_s)
+        if args.replan_live:
+            from live_planning import plan_while_held
+            plan,live_path=plan_while_held(runtime,monitor,observe,assets,snapshot,state,
+                args.planning_run,out,config,policy)
+            save(out/'nominal_plan.json',plan)
+            save(out/'executed_planning_run.json',dict(path=str(live_path)))
         if args.capture_rehearsal:raise RuntimeError('DIAGNOSTIC_CAPTURE_REHEARSAL')
         result=(PhysicalExecutor(runtime,monitor,observe,state.dimensions,config,policy).execute(plan) if plan else
                 dict(status='monitor_hold_pass',scope='native_observation_and_actual_controller_hold_only'))
