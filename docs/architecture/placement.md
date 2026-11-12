@@ -102,6 +102,17 @@ The straight insertion corridor is a ranking hint; it cannot rule out curved
 full-arm routes. Full-model, grasp-bound trajectory validation decides motion
 feasibility. Support and unknown-space rules remain hard gates.
 
+The user's 2026-11-12 aperture ruling makes entry topology a hard requirement:
+any robot geometry or carried payload entering the ULD must pass through its
+configured opening, never through another boundary. This does not require a
+straight opening-to-placement trajectory. Derive opening pose, extent and inward
+normal from the scene geometry; fixed world coordinates and a single fixed
+entrance joint pose are not substitutes. An entrance constraint on one link
+point alone cannot establish whole-robot or payload passage. Retain complete
+static geometry and validate full-model, attachment-bound paths. This paragraph
+states the required behavior; current joint-operation implementation has not
+yet demonstrated this gate end to end.
+
 ### Hull gate and rectangle order (G3 HULL-GATES, 2026-10-25)
 
 Final-placement hull legality is full closed-hull containment of the

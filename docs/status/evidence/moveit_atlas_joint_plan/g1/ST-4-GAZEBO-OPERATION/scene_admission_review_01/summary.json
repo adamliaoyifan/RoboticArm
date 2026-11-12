@@ -1,0 +1,8 @@
+{
+  "scope": "Synthetic ROS message boundary only; no native or motion run",
+  "baseline_world_objects": 0,
+  "private_world_objects": 0,
+  "empty_static_world_accepted": true,
+  "implication": "Snapshot builder does not require deployment static geometry; callers must enforce it",
+  "source_sha256": "c3900458b796236a48a9e26cb43acdabcb5d8fcce10786743b6b795275e09a7a"
+}

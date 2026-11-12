@@ -139,3 +139,30 @@ same-q offline replay in qualified static geometry, not an unrecorded live scene
 STL does not establish uniform2cm physical thickness. Model-versus-real thickness
 accuracy remains unverified; cannot classify it as a voxel inflation false positive.
 No product code, padding or geometry changed for this review.
+
+## Reply -- eng/codex -- 2026-11-12 19:29 -- codex/gpt-6
+
+User clarified top-down placement was a hypothesis. Current refusal is an
+observation endpoint, before product placement planning. Source audit finds
+explicit container-to-world composition and scene-bound OMPL collision checks;
+no demonstrated frame mismatch. However prepare root does not enforce required
+static geometry: installed-code synthetic probe accepts an empty baseline and
+produces an empty private scene. Driver startup gate alone does not close this
+service boundary. Repair static scene admission/revalidation before further
+planning trials. Separately, fixed vertical entry/release/retreat local route
+family (0.15m default entry,0.10m extra exit) restricts search and needs review;
+do not confuse it with an observed roof-entering trajectory. Product code and
+margins unchanged. Evidence: scene_admission_review_01/; details in owner note.
+
+## Reply -- eng/codex -- 2026-11-12 19:33 -- codex/gpt-6
+
+User adds mandatory ULD-aperture entry. Recorded normative behavior in
+architecture/placement.md; straight interior corridor remains ranking-only.
+MoveIt Humble provides link-point position/orientation path constraints, not a
+ULD-entry toggle. Current native connector has no path constraint wiring.
+Propose multiple scene-derived external/internal opening branch pairs, constrained
+crossing stages, full-model/payload checks and existing whole-chain certification;
+reuse qualified static atlas connectivity as hints, with runtime O/grasp/payload
+revalidation. Do not fix one entrance pose or constrain the entire pickup route
+to a thin doorway slab. Implementation and performance remain unverified.
+Owner note has official references, local API evidence and boundary details.

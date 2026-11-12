@@ -58,3 +58,71 @@ origin is lower at1.864800m. Live named pair is recorded; offline contact coordi
 must not be presented as captured live contacts. Uniform2cm shell thickness and
 real-model dimensional error are not established. Evidence: collision_review_01/
 summary.json and analyze.py. No product changes; full-cycle baseline remains open.
+
+## Scene and route audit -- 2026-11-12 19:29
+
+User clarified that top-down entry was a hypothesis from the named upper-rim
+contact, not an observed placement trajectory. cycle04 stopped on the first
+observation target before placement preparation or carrying. This cannot prove
+an over-roof placement route.
+
+Source-established: placement.container_from_box and container-frame O runs are
+explicitly composed with world_from_container; static mesh publication uses the
+same configured world transform. Native connector requires a world-rooted model,
+loads the supplied full scene, checks endpoints, invokes OMPL with that scene,
+and checks sampled output states. No demonstrated frame mismatch in this audit;
+no actual full-placement trajectory was available to certify its transform.
+
+Confirmed admission gap: prepare._scene returns GetPlanningScene without checking
+configured static objects. build_private_snapshot checks is_diff but accepts an
+empty static world; synthetic installed-code probe reproduces this (zero objects
+before/after). Phase scenes retain existing ULD but cannot restore missing ULD.
+Driver static readiness fix is not a service-wide production guarantee. Required
+next repair: enforce configured static geometry/pose identity at the preparation
+boundary and revalidation, before any native search. Do not substitute scene
+hash stability or is_diff=false for object completeness.
+
+Separate search restriction: candidate generation uses vertical place entry
+at release+clearance (default0.15m) and retreat at clearance+0.10m; native local
+paths linearly interpolate TCP entry/contact/exit. Middle connection uses OMPL.
+Thus a fixed local down/up family exists, although it does not require entering
+through the roof. Its constants and route-family scope require review for deep
+packing. No policy, clearance, geometry or product code changed in this audit.
+Evidence: scene_admission_review_01/probe.py and summary.json. This probe only
+demonstrates the Python scene-composition boundary, not a successful native plan
+or actual root-service execution with an empty world.
+
+## Aperture requirement -- 2026-11-12 19:33
+
+User requires all robot/payload entry to use the ULD opening, to avoid searching
+other entry routes. Recorded in architecture/placement.md; straight interior
+corridor remains ranking-only. No implementation or successful run claimed.
+
+MoveIt Humble exposes PositionConstraint/OrientationConstraint and per-request
+path_constraints, but no dedicated ULD-entry switch. PositionConstraint applies
+to one offset point on a named link and must hold throughout its request;
+constraining a whole pickup-to-place request to a thin aperture slab is invalid
+when the start/goal lie outside it. enforce_constrained_state_space selects a
+constraint-solving approach; it does not define opening semantics. Local API
+proof: /opt/ros/humble/share/moveit_msgs/msg/{MotionPlanRequest,PositionConstraint}.msg.
+Native current connector sets goal_constraints only; aperture constraint not wired.
+
+Proposed integration: retain current whole-operation owner; derive aperture from
+opening_inward_datum/scene corners; generate multiple outside/inside joint-branch
+pairs, using qualified atlas hints and the actual predicted grasp/payload. Plan
+to a selected exterior branch, certify the crossing in a bounded aperture region,
+then connect interior branch to admitted placement. Retain exact common joint
+states and full-scene collision certification across joins. Candidate generation
+and native checks reject non-aperture entries, rather than only post-ranking.
+Check every entering body, not just TCP; observation motions obey the same rule
+when any of their robot geometry enters. Starts already inside do not force an
+unnecessary exit/re-entry. Exit after release uses its unloaded phase scene.
+
+Atlas reuse can preserve static opening-connected branch/edge witnesses under
+exact scene/model binding. They remain ordering/seeding evidence; measured O,
+actual grasp, payload and latest scene still determine runtime motion permission.
+No claimed speed gain before measuring portal proposal, native search, failures
+and final certification on the same full-model workload.
+
+Official references: https://moveit.picknik.ai/humble/doc/examples/move_group_interface/move_group_interface_tutorial.html
+and https://moveit.picknik.ai/humble/doc/how_to_guides/using_ompl_constrained_planning/ompl_constrained_planning.html.
