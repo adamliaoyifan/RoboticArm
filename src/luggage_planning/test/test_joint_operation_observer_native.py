@@ -235,7 +235,7 @@ def test_reset_without_new_observation_cannot_prepare(prepare_stack):
     captured=f.root.observer.capture(scene_revision='scene',request_id='partial-real-o',
         expected_epoch=f.request.expected_map_epoch,expected_revision=f.request.expected_map_revision,
         deadline=time.monotonic()+2.)
-    from luggage_planning.placement_prior_volume import blocked_volume_runs
+    from luggage_planning.placement_prior.volume import blocked_volume_runs
     assert captured.volume.states.count(0)>0 and captured.volume.states.count(1)>0
     assert blocked_volume_runs(captured.volume,captured.surface),'unknown active volume must block motion'
 

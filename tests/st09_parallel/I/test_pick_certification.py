@@ -21,7 +21,7 @@ for entry in ("src/luggage_planning", "src/luggage_perception"):
     if path not in sys.path:
         sys.path.append(path)
 
-from luggage_planning.route_producer import (  # noqa: E402
+from luggage_planning.routing.producer import (  # noqa: E402
     certify_unloaded_legs,
     pick_leg_records,
 )

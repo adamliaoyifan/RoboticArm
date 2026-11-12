@@ -8,8 +8,8 @@ from scipy.spatial.transform import Rotation
 from ament_index_python.packages import get_package_share_directory
 from luggage_description.container_geometry import descriptor_from_scene_config
 from luggage_description.scene_tf_config_utils import load_scene_tf_config,world_transform
-from luggage_planning.joint_operation_atlas import load_operation_atlas,AtlasOperationHints
-from luggage_planning.placement_prior_contracts import Transform
+from luggage_planning.joint_operation.atlas import load_operation_atlas,AtlasOperationHints
+from luggage_planning.placement_prior.contracts import Transform
 
 
 def binding():

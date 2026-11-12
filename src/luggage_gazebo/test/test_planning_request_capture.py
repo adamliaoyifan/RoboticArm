@@ -13,7 +13,7 @@ from luggage_gazebo.planning_request_capture import (  # noqa: E402
     candidate_targets_from_rows,
     input_slots_from_messages,
 )
-from luggage_planning.atlas_prior import (  # noqa: E402
+from luggage_planning.atlas.prior import (  # noqa: E402
     replay_captured_candidates,
 )
 

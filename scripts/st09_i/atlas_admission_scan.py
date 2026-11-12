@@ -143,8 +143,8 @@ def _edge_classes(result):
 
 
 def _plan_one(producer, document, surface, slot, box_wdh, stamp_ns, label):
-    from luggage_planning.reachable_graph import RouteGraph
-    from luggage_planning.route_producer import register_attach_from_request
+    from luggage_planning.atlas.graph import RouteGraph
+    from luggage_planning.routing.producer import register_attach_from_request
 
     request = classify._build_request(  # noqa: SLF001
         document, surface, slot, "atlas-admission-scan", stamp_ns)
@@ -322,7 +322,7 @@ def _world_box(container_tf, position, quaternion):
 
 
 def _load_atlas(node, scene_path):
-    from luggage_planning.atlas_runtime import (
+    from luggage_planning.atlas.runtime import (
         compute_reachability_scene_hash,
         compute_scene_tf_hash,
         load_atlas_runtime,
@@ -437,9 +437,9 @@ def main():
 
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_perception.eval.isolated_domain import isolated_replay_env
-    from luggage_planning.lattice_route import LatticeStateChecker
+    from luggage_planning.routing.lattice import LatticeStateChecker
     from luggage_planning.planning_scene_client import PlanningSceneClient
-    from luggage_planning.route_producer import attempt_tier  # noqa: F401
+    from luggage_planning.routing.producer import attempt_tier  # noqa: F401
 
     if os.environ.get("SCAN_OUT"):
         _OUT["dir"] = os.environ["SCAN_OUT"]

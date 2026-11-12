@@ -8,7 +8,7 @@ import pytest
 
 from st09_contracts.graph import LoadState
 
-from luggage_planning.grid_path_search import (
+from luggage_planning.routing.grid_search import (
     MAX_SAME_FAILURE_PER_GOAL,
     SEARCH_INCOMPLETE,
     UNREACHABLE,
@@ -17,7 +17,7 @@ from luggage_planning.grid_path_search import (
     RoutePlanningError,
     RouteSearch,
 )
-from luggage_planning.reachable_graph import GraphRoutePlanner, RouteGraph
+from luggage_planning.atlas.graph import GraphRoutePlanner, RouteGraph
 
 from test_grid_path_search import (
     Q_GOAL_F1,

@@ -8,8 +8,8 @@ from moveit_msgs.msg import AllowedCollisionEntry, AttachedCollisionObject, Coll
 from rclpy.serialization import deserialize_message, serialize_message
 from shape_msgs.msg import SolidPrimitive
 
-from luggage_planning.joint_operation_scenes import build_operation_scenes
-from luggage_planning.placement_prior_contracts import Snapshot, Transform
+from luggage_planning.joint_operation.scenes import build_operation_scenes
+from luggage_planning.placement_prior.contracts import Snapshot, Transform
 from st09_contracts.attachment_geometry import freeze_geometry
 from st09_contracts.payload_envelope import EnvelopeLimits
 from test_joint_operation_contracts import example_plan
@@ -99,7 +99,7 @@ def test_conservative_geometry_is_transformed_once_and_contact_face_preserved():
 
 
 def test_tilted_phase_geometry_preserves_full_pose_and_rejects_flattening():
-    from luggage_planning.joint_operation_scenes import validate_phase_payloads
+    from luggage_planning.joint_operation.scenes import validate_phase_payloads
 
     plan = example_plan()
     geometry = freeze_geometry((.5, .3, .2), (.08, -.03, .1),

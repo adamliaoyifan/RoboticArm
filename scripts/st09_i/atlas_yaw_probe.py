@@ -30,7 +30,7 @@ for _entry in (
     if _entry not in sys.path:
         sys.path.insert(0, _entry)
 
-from luggage_planning.atlas_frame_contracts import (  # noqa: E402
+from luggage_planning.atlas.frame_contracts import (  # noqa: E402
     tool_target_in_base,
     wrapped_yaw_error,
 )
@@ -124,7 +124,7 @@ def fixed_pose_report(scene_yaw):
 
 def atlas_cell_report(scene_yaw, atlas_stem):
     """Seed counts at one interior cell for container yaw versus world yaw."""
-    from luggage_planning.reachability_atlas import ReachabilityAtlas
+    from luggage_planning.atlas.model import ReachabilityAtlas
 
     atlas = ReachabilityAtlas.load(atlas_stem + ".npz", atlas_stem + ".yaml")
     origin = tuple(float(v) for v in atlas.meta["grid"]["origin"])

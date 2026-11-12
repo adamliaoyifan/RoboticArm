@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from luggage_planning.joint_operation_contracts import seal_operation_plan
-from luggage_planning.joint_operation_issuance import IssuedOperationRegistry
+from luggage_planning.joint_operation.contracts import seal_operation_plan
+from luggage_planning.joint_operation.issuance import IssuedOperationRegistry
 from test_joint_operation_contracts import example_plan
 
 
@@ -127,7 +127,7 @@ def test_failed_issue_does_not_replace_original():
 
 
 def test_expiry_while_checking_payload_cannot_return_positive(monkeypatch):
-    import luggage_planning.joint_operation_issuance as module
+    import luggage_planning.joint_operation.issuance as module
     now=[10.];store=registry(clock=lambda:now[0],lifetime_s=5.);p=plan();store.issue(p)
     original=module.admit_operation_plan
     def slow(*args):

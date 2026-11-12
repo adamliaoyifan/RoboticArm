@@ -31,7 +31,7 @@ from route_matrix_eval import (  # noqa: E402
 )
 from route_matrix_eval import Payload as MatrixPayload  # noqa: E402
 from luggage_planning.offline_ik import refine_to_pose  # noqa: E402
-from luggage_planning.route_producer import (  # noqa: E402
+from luggage_planning.routing.producer import (  # noqa: E402
     RouteProducer,
     tool_down_branch_seeds,
 )
@@ -111,7 +111,7 @@ def prove_case(case, scene, urdf, tcp, start_q):
         "solved_by": joint1.get("solved_by"),
         "goal_families": families,
         "producer_file": os.path.abspath(
-            sys.modules["luggage_planning.route_producer"].__file__),
+            sys.modules["luggage_planning.routing.producer"].__file__),
         "position": [float(v) for v in position],
         "quaternion_xyzw": [float(v) for v in quaternion],
         "start_joints": [float(v) for v in start_q],

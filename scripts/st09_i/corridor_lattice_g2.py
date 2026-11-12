@@ -73,7 +73,7 @@ def _commit():
 
 
 def _reference(document, candidate, limits, refine, client, scenes):
-    from luggage_planning.corridor_lattice import (
+    from luggage_planning.routing.corridor_lattice import (
         kinematic_queries,
         prepare_corridor,
         search_prepared,
@@ -105,7 +105,7 @@ def _reference(document, candidate, limits, refine, client, scenes):
 
 
 def _lazy(document, candidate, limits, refine, client, scenes):
-    from luggage_planning.corridor_lattice import (
+    from luggage_planning.routing.corridor_lattice import (
         prepare_corridor,
         search_lazy,
     )

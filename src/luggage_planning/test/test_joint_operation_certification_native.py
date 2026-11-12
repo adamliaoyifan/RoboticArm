@@ -24,7 +24,7 @@ def native_gate():
     import yaml
     from luggage_msgs.srv import ValidateRouteV2
     from test_snapshot_joint_path_native import robot_fixture
-    from luggage_planning.joint_operation_certification import EndpointModel, NativeOperationCertificationPort
+    from luggage_planning.joint_operation.certification import EndpointModel, NativeOperationCertificationPort
     directory = Path(os.environ['JOINT_CERTIFICATION_EVIDENCE_DIR'])
     directory.mkdir(parents=True, exist_ok=False)
     xml, srdf = robot_fixture()
@@ -88,11 +88,11 @@ def operation(model, *, obstacle=False, broad_obstacle_default=False):
     from shape_msgs.msg import SolidPrimitive
     from rclpy.serialization import serialize_message, deserialize_message
     from scipy.spatial.transform import Rotation
-    from luggage_planning.joint_operation_contracts import (
+    from luggage_planning.joint_operation.contracts import (
         OperationIdentity, OperationBarrier, JointOperationPlan, OPERATION_JOINTS, seal_operation_plan)
-    from luggage_planning.joint_operation_planner import OperationCandidate, timed_operation_leg
-    from luggage_planning.joint_operation_scenes import build_operation_scenes
-    from luggage_planning.placement_prior_contracts import Snapshot,Transform
+    from luggage_planning.joint_operation.planner import OperationCandidate, timed_operation_leg
+    from luggage_planning.joint_operation.scenes import build_operation_scenes
+    from luggage_planning.placement_prior.contracts import Snapshot,Transform
     from st09_contracts.attachment_geometry import freeze_geometry
     from st09_contracts.payload_envelope import EnvelopeLimits
     q = [(i*.01,0.,0.,0.,0.,0.) for i in range(7)]
@@ -174,11 +174,11 @@ def test_released_world_obstacle_blocks_retreat_in_real_native_gate(native_gate)
 
 
 def test_wrong_pick_endpoint_fk_refuses_before_native_request(native_gate):
-    from luggage_planning.joint_operation_contracts import seal_operation_plan
+    from luggage_planning.joint_operation.contracts import seal_operation_plan
     draft,candidate=operation(native_gate.model)
     # Joint-continuous path but a wrong claimed spatial grasp: same G remains
     # valid, so structure/digest alone would accept it.
-    from luggage_planning.placement_prior_contracts import Transform
+    from luggage_planning.placement_prior.contracts import Transform
     tool=Transform((4.,4.,4.),draft.world_from_pick_tool.quaternion_xyzw)
     grasp=Transform(draft.predicted_attachment.t_tool_box_translation,
                     draft.predicted_attachment.t_tool_box_quaternion_xyzw)
@@ -197,8 +197,8 @@ def test_cancelled_preparation_has_no_backend_submission(native_gate):
 
 
 def test_settled_target_must_follow_explicit_container_up_release_policy(native_gate):
-    from luggage_planning.placement_prior_contracts import Transform
-    from luggage_planning.joint_operation_contracts import seal_operation_plan
+    from luggage_planning.placement_prior.contracts import Transform
+    from luggage_planning.joint_operation.contracts import seal_operation_plan
     draft,candidate=operation(native_gate.model)
     original=draft.world_from_settled_box
     shifted=Transform((original.translation[0]+.02,*original.translation[1:]),original.quaternion_xyzw)
@@ -266,9 +266,9 @@ def test_unknown_world_object_default_cannot_hide_payload_collision(native_gate)
                     reason='combined gate also requires real native connector')
 def test_actual_start_and_carry_connections_assemble_then_native_certify(native_gate,connection_backend):
     from rclpy.serialization import serialize_message
-    from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
-    from luggage_planning.joint_operation_planner import JointOperationPlanner,LocalEndpointEvidence,LocalJointBranch
-    from luggage_planning.joint_operation_contracts import admit_operation_plan
+    from luggage_planning.joint_operation.connection import NativeSnapshotConnectionPort
+    from luggage_planning.joint_operation.planner import JointOperationPlanner,LocalEndpointEvidence,LocalJointBranch
+    from luggage_planning.joint_operation.contracts import admit_operation_plan
     draft,candidate=operation(native_gate.model)
     evidence=LocalEndpointEvidence(candidate.candidate_id,native_gate.model.model_sha256,
         candidate.scenes.digests,candidate.predicted_attachment.digest(),True,'FK-checked fixture endpoints',

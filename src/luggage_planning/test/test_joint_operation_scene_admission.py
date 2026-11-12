@@ -5,9 +5,9 @@ import pytest
 from geometry_msgs.msg import Pose
 from moveit_msgs.msg import PlanningScene
 
-from luggage_planning.joint_operation_scene_admission import StaticWorldAdmission
+from luggage_planning.joint_operation.scene_admission import StaticWorldAdmission
 from luggage_planning.planning_scene_client import build_mesh_collision_object
-from luggage_planning.placement_prior_contracts import Transform
+from luggage_planning.placement_prior.contracts import Transform
 
 
 def scene_config():

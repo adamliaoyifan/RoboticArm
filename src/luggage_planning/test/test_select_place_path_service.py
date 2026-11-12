@@ -20,7 +20,7 @@ for entry in (str(PKG_DIR), str(PKG_DIR / "scripts")):
         sys.path.insert(0, entry)
 
 from luggage_planning import place_service  # noqa: E402
-from luggage_planning.route_producer import _leg_record  # noqa: E402
+from luggage_planning.routing.producer import _leg_record  # noqa: E402
 from st09_contracts.fixtures import make_timed_trajectory  # noqa: E402
 
 JOINTS = tuple("elfin_joint%d" % i for i in range(1, 7))

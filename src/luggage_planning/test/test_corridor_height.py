@@ -1,7 +1,7 @@
 import math
 from types import SimpleNamespace
 import pytest
-from luggage_planning.corridor_height import required_corridor_height
+from luggage_planning.routing.corridor_height import required_corridor_height
 
 
 def payload(offset=(0, 0, -.1)):

@@ -8,8 +8,8 @@ from dataclasses import dataclass
 import json
 import threading
 
-from luggage_planning.placement_prior_contracts import Transform, finite_tuple
-from luggage_planning.placement_prior_pick import transform_from_pose
+from luggage_planning.placement_prior.contracts import Transform, finite_tuple
+from luggage_planning.placement_prior.pick import transform_from_pose
 from luggage_planning.typed_driver_adapter import grasp_record, tcp_record
 
 
@@ -61,7 +61,7 @@ def plan_attached_box(adapter, attachment, *, request_id, surface, inner_size,
     if attachment.geometry is None:
         raise ValueError('ATTACHMENT_GEOMETRY_MISSING')
     finite_tuple(start_joints, 6, 'start joints')
-    from luggage_planning.placement_prior_adoption import bound_target_slots
+    from luggage_planning.placement_prior.adoption import bound_target_slots
     bound = bound_target_slots(prior, selected_choice, surface, attachment.box_wdh,
                                attachment.scene_revision, request_id)
     if selected_choice is not None:
@@ -73,7 +73,7 @@ def plan_attached_box(adapter, attachment, *, request_id, surface, inner_size,
             conservative_geometry=attachment.geometry,
             scene_revision=attachment.scene_revision, geometry_hash=surface.geometry_hash,
             expected_map_revision=surface.map_revision, max_candidates=2000)
-        from luggage_planning.placement_prior_adoption import _pose_equal
+        from luggage_planning.placement_prior.adoption import _pose_equal
         candidates = [] if placement is None or not placement.success else (
             list(placement.candidates) or [placement.slot])
         if not any(_pose_equal(slots[0].pose, candidate.pose) for candidate in candidates):

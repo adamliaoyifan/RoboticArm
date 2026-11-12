@@ -606,7 +606,7 @@ class TypedDriverAdapter:
         request.excluded_ids = [str(v) for v in excluded_ids]
         request.box_id = str(box_id or "")
         request.generation = int(generation or 0)
-        from luggage_planning.placement_prior_adoption import order_select_candidates
+        from luggage_planning.placement_prior.adoption import order_select_candidates
         if placement_prior is None:
             placement_prior = getattr(self, "_placement_prior", None)
         order = order_select_candidates(request, placement_prior)

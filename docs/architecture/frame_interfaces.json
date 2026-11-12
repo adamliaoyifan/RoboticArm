@@ -268,9 +268,9 @@
    "current": "map-frame suction points; implicit yaw semantics",
    "target": "container TCP paths and box footprints with verified map identity",
    "sources": [
-    "src/luggage_planning/luggage_planning/route_producer.py",
-    "src/luggage_planning/luggage_planning/grid_path_search.py",
-    "src/luggage_planning/luggage_planning/reachable_graph.py",
+    "src/luggage_planning/luggage_planning/routing/producer.py",
+    "src/luggage_planning/luggage_planning/routing/grid_search.py",
+    "src/luggage_planning/luggage_planning/atlas/graph.py",
     "src/luggage_planning/luggage_planning/occupancy_place_paths.py",
     "src/luggage_planning/luggage_planning/place_tcp.py"
    ],
@@ -321,10 +321,10 @@
     "src/luggage_planning/scripts/reachability_atlas_builder.py",
     "scripts/build_reachability_atlas_humble.py",
     "src/luggage_planning/scripts/build_ikfast_task_grid.py",
-    "src/luggage_planning/luggage_planning/reachable_task_grid.py",
-    "src/luggage_planning/luggage_planning/reachability_atlas.py",
-    "src/luggage_planning/luggage_planning/atlas_runtime.py",
-    "src/luggage_planning/luggage_planning/atlas_frame_contracts.py",
+    "src/luggage_planning/luggage_planning/atlas/task_grid.py",
+    "src/luggage_planning/luggage_planning/atlas/model.py",
+    "src/luggage_planning/luggage_planning/atlas/runtime.py",
+    "src/luggage_planning/luggage_planning/atlas/frame_contracts.py",
     "scripts/certify_atlas_seeds.py",
     "src/luggage_planning/data/reachability_atlas/s20_container_collision_aware.npz",
     "src/luggage_planning/data/reachability_atlas/s20_container_collision_aware.yaml",
@@ -445,7 +445,7 @@
     "src/luggage_planning/luggage_planning/attachment_frame_contracts.py",
     "src/luggage_planning/luggage_planning/attachment_frame_adapters.py",
     "src/luggage_planning/scripts/vacuum_controller_node.py",
-    "src/luggage_planning/luggage_planning/joint_operation_attachment.py",
+    "src/luggage_planning/luggage_planning/joint_operation/attachment.py",
     "src/luggage_planning/luggage_planning/attachment_provider.py",
     "st09_contracts/stationary_attachment.py"
    ],
@@ -613,16 +613,16 @@
     "src/luggage_msgs/msg/JointOperationPlanV2.msg",
     "src/luggage_msgs/srv/PrepareJointOperationV2.srv",
     "src/luggage_msgs/srv/CheckPreparedOperationV2.srv",
-    "src/luggage_planning/luggage_planning/joint_operation_contracts.py",
-    "src/luggage_planning/luggage_planning/joint_operation_adapters.py",
-    "src/luggage_planning/luggage_planning/joint_operation_prepare_node.py",
-    "src/luggage_planning/luggage_planning/joint_operation_issuance.py",
+    "src/luggage_planning/luggage_planning/joint_operation/contracts.py",
+    "src/luggage_planning/luggage_planning/joint_operation/adapters.py",
+    "src/luggage_planning/luggage_planning/joint_operation/prepare_node.py",
+    "src/luggage_planning/luggage_planning/joint_operation/issuance.py",
     "src/luggage_msgs/msg/FrozenSuctionObservationV2.msg",
-    "src/luggage_planning/luggage_planning/joint_operation_actual_contact.py",
+    "src/luggage_planning/luggage_planning/joint_operation/actual_contact.py",
     "src/luggage_msgs/msg/OperationMapSourceV2.msg",
-    "src/luggage_planning/luggage_planning/joint_operation_map_source.py",
-    "src/luggage_planning/luggage_planning/joint_operation_observer.py",
-    "src/luggage_planning/luggage_planning/joint_operation_attachment.py"
+    "src/luggage_planning/luggage_planning/joint_operation/map_source.py",
+    "src/luggage_planning/luggage_planning/joint_operation/observer.py",
+    "src/luggage_planning/luggage_planning/joint_operation/attachment.py"
    ],
    "checks": [
     "old_version",
@@ -645,9 +645,9 @@
     "src/luggage_msgs/srv/CheckFrozenSuctionContactV2.srv",
     "src/luggage_perception/luggage_perception/frozen_suction_observation.py",
     "src/luggage_perception/luggage_perception/frozen_suction_service.py",
-    "src/luggage_planning/luggage_planning/joint_operation_actual_contact.py",
+    "src/luggage_planning/luggage_planning/joint_operation/actual_contact.py",
     "src/luggage_msgs/srv/EvaluateFrozenSuctionV2.srv",
-    "src/luggage_planning/luggage_planning/joint_operation_prepare_node.py"
+    "src/luggage_planning/luggage_planning/joint_operation/prepare_node.py"
    ],
    "checks": [
     "wrong_frame"

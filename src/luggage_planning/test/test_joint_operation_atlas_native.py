@@ -19,13 +19,13 @@ from rclpy.serialization import deserialize_message,serialize_message
 from test_joint_operation_endpoints_native import native_stack,robot_fixture
 from test_joint_operation_preparation_native import prepare_stack
 from test_atlas_proposals import artifact
-from luggage_planning.atlas_proposals import AtlasQualification,artifact_digest
-from luggage_planning.joint_operation_atlas import AtlasOperationHints,load_operation_atlas
-from luggage_planning.joint_operation_ik import NativeSnapshotIKPort,ik_evidence
-from luggage_planning.joint_operation_candidates import propose_contact,candidate_for_contact
-from luggage_planning.joint_operation_contacts import contact_query,contact_evidence
-from luggage_planning.placement_prior_contracts import PlacementCandidate,Transform
-from luggage_planning.placement_prior_snapshot import build_private_snapshot
+from luggage_planning.atlas.proposals import AtlasQualification,artifact_digest
+from luggage_planning.joint_operation.atlas import AtlasOperationHints,load_operation_atlas
+from luggage_planning.joint_operation.ik import NativeSnapshotIKPort,ik_evidence
+from luggage_planning.joint_operation.candidates import propose_contact,candidate_for_contact
+from luggage_planning.joint_operation.contacts import contact_query,contact_evidence
+from luggage_planning.placement_prior.contracts import PlacementCandidate,Transform
+from luggage_planning.placement_prior.snapshot import build_private_snapshot
 from luggage_msgs.srv import EvaluateDirectedSuctionV2,RefineSnapshotToolTargetV2
 
 pytestmark=pytest.mark.skipif(not os.environ.get('JOINT_NATIVE_ENDPOINT_EXECUTABLE'),
@@ -190,7 +190,7 @@ def test_same_tool_pose_obstacle_rejects_carried_box_but_accepts_unloaded_arm(at
 @pytest.mark.parametrize('damage',['request_id','snapshot_id','model_sha256','scene_sha256',
     'partial','changed_q','nan_q','checks','reason','elapsed','negative_q'])
 def test_native_ik_response_binding_and_exact_fk_are_independently_admitted(atlas_stack,damage):
-    from luggage_planning.joint_operation_scenes import _pose
+    from luggage_planning.joint_operation.scenes import _pose
     a=atlas_stack;snapshot=a.candidate.scenes.carry
     request=RefineSnapshotToolTargetV2.Request(request_id='receipt',
         snapshot_id=hashlib.sha256(repr(snapshot.identity).encode()).hexdigest(),

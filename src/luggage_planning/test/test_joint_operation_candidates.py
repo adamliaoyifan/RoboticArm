@@ -16,14 +16,14 @@ from shape_msgs.msg import SolidPrimitive
 from luggage_perception.directed_suction_quality import DirectedSuctionContext
 from luggage_perception.directed_suction_service import DirectedSuctionService
 from luggage_perception.ros_suction_domain import domain_to_message
-from luggage_planning.joint_operation_candidates import (
+from luggage_planning.joint_operation.candidates import (
     admit_pickup_association, candidate_for_contact, propose_contact,
 )
-from luggage_planning.joint_operation_contacts import contact_evidence, contact_query
-from luggage_planning.joint_operation_endpoints import build_local_query
-from luggage_planning.joint_operation_scenes import validate_phase_payloads
-from luggage_planning.placement_prior_contracts import PlacementCandidate, Transform
-from luggage_planning.route_producer import anchor_plan
+from luggage_planning.joint_operation.contacts import contact_evidence, contact_query
+from luggage_planning.joint_operation.endpoints import build_local_query
+from luggage_planning.joint_operation.scenes import validate_phase_payloads
+from luggage_planning.placement_prior.contracts import PlacementCandidate, Transform
+from luggage_planning.routing.producer import anchor_plan
 from luggage_planning.waypoint_generator import PLACE_RELEASE_GAP_M
 from st09_contracts.payload_envelope import EnvelopeLimits
 from test_directed_suction_service import request_and_context

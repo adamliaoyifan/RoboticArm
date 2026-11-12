@@ -1,0 +1,16 @@
+{
+  "scope": "native planner fixture; no deployment or whole-chain qualification",
+  "model_sha256": "b0f201c62ee7657c152f44a1d2b1471d8c5cf1d5137ab66ec8b35f1537fdb217",
+  "ros_domain_id": 173,
+  "command": [
+    "/home/adamliao/work/elfin_humble_ws/install-production/luggage_planning/lib/luggage_planning/snapshot_joint_path_node",
+    "--ros-args",
+    "--params-file",
+    "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/planning_route_layout/20261112/native_certification_connector/parameters.yaml"
+  ],
+  "calls": [],
+  "capture_complete": true,
+  "replay_possible": true,
+  "teardown": "native child stopped",
+  "exit_code": 0
+}

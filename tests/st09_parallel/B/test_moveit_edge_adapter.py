@@ -32,7 +32,7 @@ from st09_contracts.fixtures import (  # noqa: E402
     make_snapshot,
 )
 
-from luggage_planning.moveit_edge_adapter import (  # noqa: E402
+from luggage_planning.routing.moveit_edge_adapter import (  # noqa: E402
     CARTESIAN_EXCURSION_RAD_PER_M,
     CARTESIAN_MIN_FRACTION,
     MOVEIT_ACCELERATION_SCALING,
@@ -86,7 +86,7 @@ class TestContractPins:
         env["PYTHONPATH"] = str(REPO_ROOT / "src" / "luggage_planning")
         result = subprocess.run(
             [sys.executable, "-c",
-             "import luggage_planning.moveit_edge_adapter"],
+             "import luggage_planning.routing.moveit_edge_adapter"],
             env=env, cwd=str(tmp_path), capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
 
@@ -191,7 +191,7 @@ class TestSceneHelpers:
         assert _joint_travel(_Traj()) == pytest.approx(0.2, abs=1e-12)
 
     def test_excursion_ratio_semantics(self):
-        from luggage_planning.moveit_edge_adapter import _excursion
+        from luggage_planning.routing.moveit_edge_adapter import _excursion
 
         class _Traj(object):
             positions = ((0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
@@ -229,7 +229,7 @@ def _fk():
         urdf = load_urdf()
     except Exception as err:
         pytest.skip("offline_ik unavailable: %s" % err)
-    from luggage_planning.reachable_graph import make_offline_fk
+    from luggage_planning.atlas.graph import make_offline_fk
     path = urdf.path_to("suction_contact_frame")
     return urdf, path, make_offline_fk(urdf, path)
 
@@ -255,7 +255,7 @@ def _nodes(graph, fk, upper_q, lower_q):
 
 @pytest.fixture(scope="module")
 def _graph(_fk):
-    from luggage_planning.reachable_graph import RouteGraph
+    from luggage_planning.atlas.graph import RouteGraph
     urdf, tcp_path, fk = _fk
     lower_q, _target, _quat = _refined_below(urdf, tcp_path, fk)
     graph = RouteGraph(static_identity="static-test")
@@ -266,7 +266,7 @@ def _graph(_fk):
 class TestMockGraphEdges:
 
     def test_descend_edge_full_trajectory(self, mock_graph, _graph):
-        from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter
+        from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
         graph, (n_upper, n_lower), _ctx, _lower_q = _graph
         adapter = MoveItEdgeAdapter(mock_graph.node)
         adapter.wait_ready(timeout_sec=60.0)
@@ -286,7 +286,7 @@ class TestMockGraphEdges:
         assert adapter.outcomes()[-1].wall_s > 0.0
 
     def test_joint_edge_via_rrtconnect(self, mock_graph, _graph):
-        from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter
+        from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
         graph, (n_upper, n_lower), _ctx, _lower_q = _graph
         far_q = tuple(v + 0.35 for v in Q_SEED)
         urdf, tcp_path, fk = _graph[2]
@@ -303,7 +303,7 @@ class TestMockGraphEdges:
     def test_scene_diffs_carrying_and_unloaded(self, mock_graph, _graph):
         import dataclasses
 
-        from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter
+        from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
         graph, (n_upper, n_lower), _ctx, _lower_q = _graph
         # A suspended small payload exercises the attach/verify/reuse/
         # detach bookkeeping without needing the certifier's
@@ -364,8 +364,8 @@ class TestMockGraphEdges:
         payload must be a NAMED EDGE_BUILD_FAILED with the full-size
         eccentric box at this deep contact pose (support-contact
         exemption belongs to the certifier, not this plan-only judge)."""
-        from luggage_planning.grid_path_search import RoutePlanningError
-        from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter
+        from luggage_planning.routing.grid_search import RoutePlanningError
+        from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
 
         graph, (n_upper, n_lower), _ctx, _lower_q = _graph
         record = make_attachment("eccentric")
@@ -390,13 +390,13 @@ def velocities_times(trajectory):
 
 def test_graph_carrying_and_unloaded_scenes_share_occupied_snapshot():
     from types import SimpleNamespace
-    from luggage_planning.reachable_graph import GraphRoutePlanner
+    from luggage_planning.atlas.graph import GraphRoutePlanner
     snapshot = make_snapshot(2, observed_free=[(1, 1)], occupied=[(14, 5)])
     planner = object.__new__(GraphRoutePlanner)
     planner.scene_states = None
     # The graph receives measured metric columns from the producer; the
     # snapshot's occupied-cell bits alone no longer synthesize box heights.
-    from luggage_planning.moveit_edge_adapter import BoxSpec
+    from luggage_planning.routing.moveit_edge_adapter import BoxSpec
     planner.occupancy_boxes = (BoxSpec('snapshot-cell-14-5', (.7,.25,.1), (.05,.05,.2)),)
     released = object()
     planner._released_box = lambda attachment, candidate: released

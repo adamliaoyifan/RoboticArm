@@ -41,18 +41,18 @@ def main():
         origin_in_world,
     )
     from luggage_description.scene_tf_publisher import rpy_to_quaternion
-    from luggage_planning.placement_prior_requests import measured_detection_view
-    from luggage_planning.placement_prior_pick import (
+    from luggage_planning.placement_prior.requests import measured_detection_view
+    from luggage_planning.placement_prior.pick import (
         candidates_for_prior,
         transform_from_pose,
     )
-    from luggage_planning.placement_prior_contracts import (
+    from luggage_planning.placement_prior.contracts import (
         PriorRequest,
         Snapshot,
         Transform,
         PlacementCandidate,
     )
-    from luggage_planning.placement_prior_local_paths import local_query
+    from luggage_planning.placement_prior.local_paths import local_query
     from geometry_msgs.msg import Pose
 
     root = args.capture / "prior_boundaries"

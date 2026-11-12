@@ -73,7 +73,7 @@ def test_reference_classes_label_generated_cases_only():
 
 def test_tool_down_joint1_branch_is_one_pi_shift():
     import math
-    from luggage_planning.route_producer import (
+    from luggage_planning.routing.producer import (
         TOOL_DOWN_SEED_Q,
         tool_down_branch_seeds,
     )
@@ -87,7 +87,7 @@ def test_tool_down_joint1_branch_is_one_pi_shift():
 def test_dev_zero_goal_case_needs_the_joint1_branch():
     """Nominal tool-down misses this dev goal; the -pi joint-1 prior hits it."""
     module = _eval_module()
-    from luggage_planning.route_producer import tool_down_branch_seeds
+    from luggage_planning.routing.producer import tool_down_branch_seeds
     scene = module.Scene(module.SCENE)
     urdf = module.load_urdf(scene_tf_config=module.SCENE)
     tcp = urdf.path_to("suction_contact_frame")

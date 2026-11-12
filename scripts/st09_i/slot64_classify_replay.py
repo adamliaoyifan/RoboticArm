@@ -229,12 +229,12 @@ def _producer(node, scene_config, scene_path, atlas, stamp_ns, budget_s=None):
     )
     from luggage_planning.attachment_provider import MeasuredAttachmentProvider
     from luggage_planning.map_revalidation import MapRevalidator
-    from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter
+    from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
     from luggage_planning.moveit_state_validity import MoveItStateValidityAdapter
     from luggage_planning.offline_ik import load_urdf, refine_to_pose
     from luggage_planning.planning_scene_client import PlanningSceneClient
-    from luggage_planning.reachable_graph import RouteGraph, make_offline_fk
-    from luggage_planning.route_producer import (
+    from luggage_planning.atlas.graph import RouteGraph, make_offline_fk
+    from luggage_planning.routing.producer import (
         ROUTE_TOTAL_WALL_NS,
         RouteProducer,
         certification_policy_from_contract,
@@ -259,7 +259,7 @@ def _producer(node, scene_config, scene_path, atlas, stamp_ns, budget_s=None):
             pos_tol=2e-3, rot_tol=2e-2)
 
     def atlas_prior(targets, request):
-        from luggage_planning.atlas_prior import prior_for_targets
+        from luggage_planning.atlas.prior import prior_for_targets
         if atlas is None or not targets:
             return None
         return prior_for_targets(
@@ -569,7 +569,7 @@ def _contacts(node, q):
 
 
 def _diagnose(node, builder, urdf, tcp_path, trace, chain, attachment, box_wdh):
-    from luggage_planning.moveit_edge_adapter import (
+    from luggage_planning.routing.moveit_edge_adapter import (
         PayloadSpec,
         SceneState,
         synthesize_waypoints,
@@ -629,7 +629,7 @@ def _descend_and_exit(document, slot, scene_config):
         pedestal_dimensions,
         pedestal_enabled,
     )
-    from luggage_planning.route_producer import anchor_plan
+    from luggage_planning.routing.producer import anchor_plan
 
     replay = json.load(open(os.path.join(OUT, "replay_1.json"), encoding="utf-8"))
     retreat = next(
@@ -659,7 +659,7 @@ def _descend_and_exit(document, slot, scene_config):
 
 def _apply_unloaded(builder, document, slot):
     """Detached tool, released box at the candidate, no second payload."""
-    from luggage_planning.moveit_edge_adapter import BoxSpec, SceneState
+    from luggage_planning.routing.moveit_edge_adapter import BoxSpec, SceneState
     from st09_contracts.attachment import compose_transform
 
     transform = document["container_transform"]
@@ -692,7 +692,7 @@ def _pose_error(fk, joints, target):
 
 
 def _first_failed_waypoint(fraction, waypoint_count):
-    from luggage_planning.moveit_edge_adapter import cartesian_failure_detail
+    from luggage_planning.routing.moveit_edge_adapter import cartesian_failure_detail
     if fraction is None or fraction >= 0.95:
         return None
     detail = cartesian_failure_detail(
@@ -707,12 +707,12 @@ def _first_failed_waypoint(fraction, waypoint_count):
 
 def run_retreat_probe(node, scene_config, document, slot, urdf, tcp_path):
     """Cartesian retreat from the captured descend endpoint. No search change."""
-    from luggage_planning.moveit_edge_adapter import (
+    from luggage_planning.routing.moveit_edge_adapter import (
         MoveItEdgeAdapter,
         synthesize_waypoints,
     )
     from luggage_planning.planning_scene_client import PlanningSceneClient
-    from luggage_planning.reachable_graph import make_offline_fk
+    from luggage_planning.atlas.graph import make_offline_fk
 
     geometry = _descend_and_exit(document, slot, scene_config)
     fk = make_offline_fk(urdf, tcp_path)
@@ -823,7 +823,7 @@ def _release_anchors(document, scene_config):
         pedestal_dimensions,
         pedestal_enabled,
     )
-    from luggage_planning.route_producer import anchor_plan
+    from luggage_planning.routing.producer import anchor_plan
 
     replay = json.load(open(BASELINE_REPLAY, encoding="utf-8"))
     retreat = next(
@@ -862,13 +862,13 @@ def run_reverse_probe(node, scene_config, document, slot, urdf, tcp_path):
     Each hop starts at the previous collision-on endpoint. A segment that
     misses 0.95 stops the probe. The released box is removed afterwards.
     """
-    from luggage_planning.moveit_edge_adapter import (
+    from luggage_planning.routing.moveit_edge_adapter import (
         MoveItEdgeAdapter,
         synthesize_waypoints,
     )
     from luggage_planning.offline_ik import refine_to_pose
     from luggage_planning.planning_scene_client import PlanningSceneClient
-    from luggage_planning.reachable_graph import make_offline_fk
+    from luggage_planning.atlas.graph import make_offline_fk
 
     geometry = _release_anchors(document, scene_config)
     fk = make_offline_fk(urdf, tcp_path)
@@ -1018,15 +1018,15 @@ def main():
     import rclpy
     from rclpy.node import Node
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
-    from luggage_planning.atlas_runtime import (
+    from luggage_planning.atlas.runtime import (
         compute_reachability_scene_hash,
         compute_scene_tf_hash,
         compute_urdf_hash,
         load_atlas_runtime_for_scene,
         load_runtime_atlas,
     )
-    from luggage_planning.route_producer import register_attach_from_request
-    from luggage_planning.grid_path_search import SearchTrace
+    from luggage_planning.routing.producer import register_attach_from_request
+    from luggage_planning.routing.grid_search import SearchTrace
 
     import threading
     from rclpy.executors import MultiThreadedExecutor

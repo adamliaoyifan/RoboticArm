@@ -11,13 +11,13 @@ import unittest
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
-from luggage_planning.moveit_edge_adapter import (
+from luggage_planning.routing.moveit_edge_adapter import (
     BoxSpec,
     PayloadSpec,
     SceneState,
     occupancy_boxes_from_surface,
 )
-from luggage_planning.reachable_graph import RouteGraph, GraphRoutePlanner
+from luggage_planning.atlas.graph import RouteGraph, GraphRoutePlanner
 
 
 # ---------------------------------------------------------------- helpers
@@ -257,7 +257,7 @@ class TestG0FailureMemo(unittest.TestCase):
     """Case 7: failure memo must not permanently block after scene change."""
 
     def test_fail_count_threshold(self):
-        from luggage_planning.grid_path_search import RouteSearch
+        from luggage_planning.routing.grid_search import RouteSearch
         search = RouteSearch.__new__(RouteSearch)
         search._edge_fail_counts = {}
         key = ("a", "b", "TRANSIT")
@@ -270,7 +270,7 @@ class TestG0FailureMemo(unittest.TestCase):
         """_edge_fail_counts is an instance field on RouteSearch, which
         is created fresh per plan_route call — a failed edge in one
         candidate's search does not block the next request."""
-        from luggage_planning.grid_path_search import RouteSearch
+        from luggage_planning.routing.grid_search import RouteSearch
         s1 = RouteSearch.__new__(RouteSearch)
         s1._edge_fail_counts = {}
         s1._edge_fail_counts[("x", "y", "TRANSIT")] = 2

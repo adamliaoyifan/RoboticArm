@@ -9,7 +9,7 @@ belongs to the candidate and never redraws.
 
 import unittest
 
-from luggage_planning.route_producer import SAMPLER_MISS_REBUILDS
+from luggage_planning.routing.producer import SAMPLER_MISS_REBUILDS
 
 
 class _RoutePlanningError(Exception):
@@ -20,7 +20,7 @@ class SamplerMissRedrawTests(unittest.TestCase):
     """Drive the redraw loop through plan_place_route's except block."""
 
     def _make_producer(self, fail_sequence):
-        from luggage_planning.route_producer import RouteProducer
+        from luggage_planning.routing.producer import RouteProducer
         producer = RouteProducer.__new__(RouteProducer)
         producer.budget_ns = 60_000_000_000
         calls = {"n": 0}

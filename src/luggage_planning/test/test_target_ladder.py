@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from luggage_planning.target_ladder import prepare_target_ladder
+from luggage_planning.routing.target_ladder import prepare_target_ladder
 
 
 def targets():

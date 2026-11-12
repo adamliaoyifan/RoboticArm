@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import importlib
+import importlib.util
 import json
 from pathlib import Path
 
@@ -10,16 +11,16 @@ MODULES = (
     'luggage_mapping.observer',
     'luggage_mapping.configuration',
     'luggage_mapping.regions',
-    'luggage_planning.joint_operation_prepare_node',
-    'luggage_planning.aperture_geometry',
-    'luggage_planning.aperture_tool_geometry',
-    'luggage_planning.joint_operation_aperture',
-    'luggage_planning.joint_operation_scene_admission',
-    'luggage_planning.preparation_profile',
-    'luggage_planning.preparation_refresh',
-    'luggage_planning.joint_operation_runtime',
-    'luggage_planning.joint_operation_runtime_ports',
-    'luggage_planning.joint_operation_observer',
+    'luggage_planning.joint_operation.prepare_node',
+    'luggage_planning.joint_operation.aperture_geometry',
+    'luggage_planning.joint_operation.aperture_tool_geometry',
+    'luggage_planning.joint_operation.aperture',
+    'luggage_planning.joint_operation.scene_admission',
+    'luggage_planning.joint_operation.preparation_profile',
+    'luggage_planning.joint_operation.preparation_refresh',
+    'luggage_planning.joint_operation.runtime',
+    'luggage_planning.joint_operation.runtime_ports',
+    'luggage_planning.joint_operation.observer',
     'luggage_description.cargo_grid_parameters',
     'luggage_packing.placement_solver',
     'luggage_packing.placement_query',
@@ -80,6 +81,7 @@ def check_executable(prefix, package, name, *, source=None):
 
 
 def main():
+    from module_layout import load_layout
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--prefix', type=Path, default=ROOT/'install-production')
     parser.add_argument('--output', type=Path, required=True)
@@ -88,13 +90,26 @@ def main():
         parser.error('output already exists; preserve previous result')
     prefix = args.prefix.resolve()
     checks = []
-    for name in MODULES:
+    relocated = load_layout(ROOT)
+    for name in dict.fromkeys((*MODULES, *relocated.values())):
         package = name.split('.')[0]
         candidate = ROOT/'src'/package/Path(*name.split('.')).with_suffix('.py')
         if name == 'st09_contracts':
             candidate = ROOT/'st09_contracts/st09_contracts/__init__.py'
         source = candidate if candidate.is_file() else None
         checks.append(check_module(name, prefix, source=source))
+    package_names = {new.rsplit('.', 1)[0] for new in relocated.values()}
+    for old in relocated:
+        spec = importlib.util.find_spec(old)
+        if old in package_names:
+            # placement_prior.py became placement_prior/. This name now denotes
+            # a package; require that package and absence of the old flat file.
+            path = Path(spec.origin).resolve() if spec and spec.origin else None
+            passed = bool(path and path.name == '__init__.py' and path.is_relative_to(prefix)
+                          and not (path.parent.parent/(path.parent.name+'.py')).exists())
+        else:
+            passed = spec is None
+        checks.append(dict(name=old, check='retired_flat_module_absent', passed=passed))
     for package, names in EXECUTABLES.items():
         for name in names:
             source = ROOT/'src'/package/'scripts'/name if name.endswith('.py') else None

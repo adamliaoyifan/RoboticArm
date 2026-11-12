@@ -10,10 +10,10 @@ from concurrent.futures import Future
 import pytest
 
 from test_joint_operation_certification_native import native_gate, operation
-from luggage_planning.joint_operation_contracts import seal_operation_plan
-from luggage_planning.joint_operation_revalidation import NativeOperationRevalidationPort
-from luggage_planning.joint_operation_scenes import build_operation_scenes
-from luggage_planning.placement_prior_contracts import Transform
+from luggage_planning.joint_operation.contracts import seal_operation_plan
+from luggage_planning.joint_operation.revalidation import NativeOperationRevalidationPort
+from luggage_planning.joint_operation.scenes import build_operation_scenes
+from luggage_planning.placement_prior.contracts import Transform
 from st09_contracts.attachment_geometry import freeze_geometry
 from st09_contracts.payload_envelope import EnvelopeLimits
 
@@ -38,7 +38,7 @@ def port(gate,**changes):
     original=backend.validate
     def captured(plan,**arguments):
         from rclpy.serialization import serialize_message
-        from luggage_planning.joint_operation_adapters import operation_plan_to_message
+        from luggage_planning.joint_operation.adapters import operation_plan_to_message
         from luggage_planning.attachment_geometry_transport import geometry_to_message
         name='boundary_'+str(time.monotonic_ns())
         (gate.directory/(name+'_plan.cdr')).write_bytes(serialize_message(
@@ -243,7 +243,7 @@ def attachment_record(plan,geometry):
 
 
 def test_real_native_receipts_drive_complete_consumer_and_reuse_original_knots(native_gate,issued):
-    from luggage_planning.joint_operation_execution import JointOperationExecution
+    from luggage_planning.joint_operation.execution import JointOperationExecution
     plan,_=issued
     engine=JointOperationExecution(start_tolerance_rad=.01)
     command=engine.start(plan,plan.identity,plan.plan_digest)
@@ -276,7 +276,7 @@ def test_real_native_receipts_drive_complete_consumer_and_reuse_original_knots(n
 
 
 def test_real_native_carry_refusal_faults_consumer_without_release(native_gate,issued):
-    from luggage_planning.joint_operation_execution import JointOperationExecution
+    from luggage_planning.joint_operation.execution import JointOperationExecution
     plan,_=issued;engine=JointOperationExecution(start_tolerance_rad=.01)
     command=engine.start(plan,plan.identity,plan.plan_digest)
     command=engine.validation_finished(command.token,run(native_gate,issued,0).receipt)
@@ -297,7 +297,7 @@ def test_real_native_carry_refusal_faults_consumer_without_release(native_gate,i
 
 
 def test_canonical_named_chain_cannot_move_attachment_barrier_after_pick_lift(native_gate,issued):
-    from luggage_planning.joint_operation_contracts import OperationBarrier
+    from luggage_planning.joint_operation.contracts import OperationBarrier
     plan,candidate=issued
     legs=list(plan.legs);legs[2]=replace(legs[2],phase='pick')
     wrong=seal_operation_plan(replace(plan,legs=tuple(legs),

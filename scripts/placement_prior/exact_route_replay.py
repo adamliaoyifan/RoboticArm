@@ -69,7 +69,7 @@ def main():
     from rosidl_runtime_py.convert import message_to_ordereddict
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_planning.place_service import request_dict,fill_select_response_route
-    from luggage_planning.route_producer_factory import build_production_route_producer
+    from luggage_planning.routing.factory import build_production_route_producer
     b=args.capture/'dumps/typed_service_boundaries'
     rows=[json.loads(line) for line in (b/'boundaries.jsonl').read_text().splitlines()]
     select_indices=[i for i,r in enumerate(rows) if r['boundary']=='/trajectory_selector/select_place_path_v2:request']
@@ -157,7 +157,7 @@ def main():
         original=json.loads((args.capture/('dumps/box_%02d_paths/candidates.json'%args.select_index)).read_text())['rows'][0]
         diag=original.get('atlas') or {}
         if diag.get('loaded'):raise ValueError('this replay requires the captured atlas-unavailable case')
-        from luggage_planning.planning_work_counters import PlanningWorkCounters
+        from luggage_planning.routing.work_counters import PlanningWorkCounters
         work_counters=PlanningWorkCounters()
         producer=build_production_route_producer(node,str(args.scene_tf),lambda:surface,lambda:stats,
             scene=load_scene_tf_config(str(args.scene_tf)),
@@ -171,7 +171,7 @@ def main():
         if producer is None or not producer.edge_builder.wait_ready(timeout_sec=30.):
             raise RuntimeError('producer dependencies unavailable')
         if hardware_consumer:
-            from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+            from luggage_planning.placement_prior.evidence import PriorEvidenceRecorder
             recorder=PriorEvidenceRecorder(args.output/'consumer_boundaries')
             if args.baseline_consumer:
                 from baseline_placement import create_baseline_placement
@@ -185,7 +185,7 @@ def main():
                     'aperture_margin':placement_node.get_parameter('aperture_margin').value,
                     'atlas_enabled':placement_node._atlas_cfg.get('enabled')}
         if args.measure_resources:
-            from luggage_planning.prior_resources import ResourceWindow
+            from luggage_planning.placement_prior.prior_resources import ResourceWindow
             # The producer lives here, and this process owns the MoveIt launch
             # tree. Captured prior hints are data; no prior process is running.
             resource_window=ResourceWindow([os.getpid()],[],interval_s=.05)

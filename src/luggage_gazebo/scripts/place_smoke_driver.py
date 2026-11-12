@@ -1301,7 +1301,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
     def _placement_prior_client(self):
         client = getattr(self, "_placement_prior_client_obj", None)
         if client is None:
-            from luggage_planning.placement_prior_client import (
+            from luggage_planning.placement_prior.client import (
                 PlacementPriorClient)
             client = PlacementPriorClient(
                 self, group=getattr(self, "_group", None))
@@ -1321,7 +1321,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 record["reason"] = "PRIOR_UNAVAILABLE_OR_STALE_SURFACE"
                 self._typed.set_placement_prior(None)  # uniform reset
                 return record
-            from luggage_planning.placement_prior_requests import (
+            from luggage_planning.placement_prior.requests import (
                 measured_detection_view)
             _bound, choice = client.bind(
                 response, measured_detection_view(pick_msg),
@@ -1399,7 +1399,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             container_opening_target_point_in_world,
             container_usable_dimensions, xyz_world_to_base_link)
         from luggage_msgs.msg import SlotSpec
-        from luggage_planning.grid_path_search import route_budget_s
+        from luggage_planning.routing.grid_search import route_budget_s
         from luggage_planning.typed_driver_adapter import (
             container_transform_fields, tcp_record)
 

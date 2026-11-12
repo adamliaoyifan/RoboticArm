@@ -12,12 +12,12 @@ import numpy as np
 import pytest
 import yaml
 
-from luggage_planning.atlas_frame_contracts import atlas_contract_record, payload_hash
-from luggage_planning.atlas_proposals import (
+from luggage_planning.atlas.frame_contracts import atlas_contract_record, payload_hash
+from luggage_planning.atlas.proposals import (
     AtlasProposalReader, AtlasQualification, artifact_digest, refine_atlas_pairs,
 )
-from luggage_planning.joint_operation_connection import GeometricConnection
-from luggage_planning.placement_prior_contracts import Transform
+from luggage_planning.joint_operation.connection import GeometricConnection
+from luggage_planning.placement_prior.contracts import Transform
 
 
 def artifact(tmp_path, *, mutate=None, meta_mutate=None, payload=None):

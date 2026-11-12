@@ -36,7 +36,7 @@ def test_contact_reaches_actual_encoder_and_certification(monkeypatch):
     path = Path(__file__).parents[1] / 'scripts/waypoint_generator_node.py'
     spec = importlib.util.spec_from_file_location('candidate_waypoint_node', path)
     module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-    import luggage_planning.route_producer as producer
+    import luggage_planning.routing.producer as producer
     from st09_contracts.fixtures import make_timed_trajectory
     captured = []; certified = []
     def records(waypoints, **kwargs):

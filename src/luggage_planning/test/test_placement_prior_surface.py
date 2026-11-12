@@ -1,5 +1,5 @@
 import pytest
-from luggage_planning.placement_prior_surface import ConfirmedSurfaceStore
+from luggage_planning.placement_prior.surface import ConfirmedSurfaceStore
 
 
 def pair():

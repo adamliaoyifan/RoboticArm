@@ -130,7 +130,7 @@ def _edge(name, trajectory, edge_class):
 
 
 def _payload():
-    from luggage_planning.moveit_edge_adapter import PayloadSpec
+    from luggage_planning.routing.moveit_edge_adapter import PayloadSpec
     request = json.load(open(os.path.join(
         RUN, "dumps/box_00_paths/planning_request.json"), encoding="utf-8"))
     attachment = request["attachment_transform"]
@@ -171,7 +171,7 @@ def _certify_edges(node, edges, states, budget_s):
 
 
 def _states_for(edges, payload):
-    from luggage_planning.moveit_edge_adapter import SceneState
+    from luggage_planning.routing.moveit_edge_adapter import SceneState
     states = {}
     for edge in edges:
         carrying = edge.edge_id in (
@@ -240,9 +240,9 @@ def _sync(node, scene_json, surface, with_box, with_occupancy):
 
 def _plan_probe(node, probe, budget_s):
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
-    from luggage_planning.lattice_route import LatticeStateChecker
+    from luggage_planning.routing.lattice import LatticeStateChecker
     from luggage_planning.planning_scene_client import PlanningSceneClient
-    from luggage_planning.route_producer import register_attach_from_request
+    from luggage_planning.routing.producer import register_attach_from_request
     from luggage_planning.moveit_state_validity import MoveItStateValidityAdapter
 
     document, surface, _scene, _slot = classify._request_document(  # noqa: SLF001

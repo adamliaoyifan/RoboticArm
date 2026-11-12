@@ -3,9 +3,9 @@ from types import SimpleNamespace
 import math
 import pytest
 from luggage_planning.pose import Pose, Point, Quaternion
-from luggage_planning.placement_prior_pick import candidates_for_prior, bind_choice_to_pick
-from luggage_planning.placement_prior_contracts import Transform, PlacementCandidate
-from luggage_planning.placement_prior import PriorChoice
+from luggage_planning.placement_prior.pick import candidates_for_prior, bind_choice_to_pick
+from luggage_planning.placement_prior.contracts import Transform, PlacementCandidate
+from luggage_planning.placement_prior.core import PriorChoice
 
 
 def detection():

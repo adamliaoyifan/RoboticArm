@@ -45,7 +45,7 @@ def run_once(out, label):
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_msgs.srv import SelectPlacePathV2
     from luggage_planning.place_service import fill_select_response_route
-    from luggage_planning.grid_path_search import route_budget_ns
+    from luggage_planning.routing.grid_search import route_budget_ns
 
     report = {"label": label, "status": "incomplete", "request": "box2"}
     os.makedirs(out, exist_ok=True)

@@ -52,8 +52,8 @@ from luggage_packing.placement_solver import (  # noqa: E402
     solve_placement,
 )
 from luggage_planning.offline_ik import load_urdf, refine_to_pose  # noqa: E402
-from luggage_planning.reachable_graph import make_offline_fk  # noqa: E402
-from luggage_planning.route_producer import (  # noqa: E402
+from luggage_planning.atlas.graph import make_offline_fk  # noqa: E402
+from luggage_planning.routing.producer import (  # noqa: E402
     RELEASE_DROP_M,
     anchor_plan,
     tool_down_branch_seeds,
@@ -342,7 +342,7 @@ def _segment_motion(positions, distance):
 
 
 def _run_chain(node, adapter, urdf, tcp_path, row, size, placed_boxes):
-    from luggage_planning.moveit_edge_adapter import (
+    from luggage_planning.routing.moveit_edge_adapter import (
         BoxSpec,
         PayloadSpec,
         SceneState,
@@ -518,7 +518,7 @@ def _apply(ctx, surface, placed, candidate):
 
 
 def _box_spec(row, size, index):
-    from luggage_planning.moveit_edge_adapter import BoxSpec
+    from luggage_planning.routing.moveit_edge_adapter import BoxSpec
     center, quat = row["_box_world"]
     return BoxSpec(
         object_id="placed-%d" % index,
@@ -613,7 +613,7 @@ def main():
         import threading
         from rclpy.executors import MultiThreadedExecutor
         from rclpy.node import Node
-        from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter
+        from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
         from luggage_planning.planning_scene_client import PlanningSceneClient
         from slot64_classify_replay import _sync_world
 

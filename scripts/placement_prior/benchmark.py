@@ -10,7 +10,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from luggage_planning.prior_benchmark import analyze, schedule, validate_manifest
+from luggage_planning.placement_prior.prior_benchmark import analyze, schedule, validate_manifest
 
 
 def verify_artifacts(artifacts, root):

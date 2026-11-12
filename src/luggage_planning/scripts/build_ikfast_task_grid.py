@@ -34,7 +34,7 @@ from luggage_description.scene_tf_config_utils import (  # noqa: E402
     container_in_base_link,
     load_scene_tf_config,
 )
-from luggage_planning.reachable_task_grid import (  # noqa: E402
+from luggage_planning.atlas.task_grid import (  # noqa: E402
     REACHABLE,
     UNREACHABLE,
     reduce_pose_seeds,

@@ -47,10 +47,10 @@ def prepare_stack(native_stack,request):
     from luggage_perception.directed_suction_service import DirectedSuctionService
     from luggage_perception.frozen_suction_service import register_frozen_suction_services
     from luggage_perception.ros_suction_domain import domain_to_message
-    from luggage_planning.joint_operation_prepare_node import JointOperationPrepareNode
-    from luggage_planning.joint_operation_contracts import OPERATION_JOINTS
-    from luggage_planning.placement_prior_surface import ConfirmedSurface
-    from luggage_planning.placement_prior_requests import enumerate_placements
+    from luggage_planning.joint_operation.prepare_node import JointOperationPrepareNode
+    from luggage_planning.joint_operation.contracts import OPERATION_JOINTS
+    from luggage_planning.placement_prior.surface import ConfirmedSurface
+    from luggage_planning.placement_prior.requests import enumerate_placements
     from luggage_planning.place_service import pose_message
     from test_suction_patch_evaluator import make_model
     from types import SimpleNamespace

@@ -22,12 +22,12 @@ from luggage_description.scene_tf_config_utils import (
     robot_base_in_world,
     world_transform,
 )
-from luggage_planning.atlas_runtime import (
+from luggage_planning.atlas.runtime import (
     load_atlas_runtime_for_scene,
     load_runtime_atlas,
 )
 from luggage_planning.offline_ik import load_urdf, refine_to_pose
-from luggage_planning.reachable_graph import make_offline_fk
+from luggage_planning.atlas.graph import make_offline_fk
 from st09_contracts.attachment import compose_transform, invert_transform
 
 

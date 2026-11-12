@@ -284,7 +284,7 @@ def fill_select_response_route(message, response, producer,
     The response keeps the frozen SelectPlacePathV2 surface — the typed
     legs carry the complete certified trajectories.
     """
-    from luggage_planning.route_producer import register_attach_from_request
+    from luggage_planning.routing.producer import register_attach_from_request
 
     try:
         request = request_dict(message)
@@ -438,12 +438,12 @@ def handle_build_v2(request, response, pick=None, pick_encoder=None):
                     "PLANNING_ROUTE_REQUIRED", "pick",
                     "timed pick legs require the edge builder", None)
             legs = None
-            from luggage_planning.grid_path_search import RoutePlanningError
+            from luggage_planning.routing.grid_search import RoutePlanningError
             candidate_kwargs = {}
             candidate_id = str(request.suction_candidate_id or "")
             if candidate_id or request.pick.suction_candidates:
-                from luggage_planning.placement_prior_requests import measured_detection_view
-                from luggage_planning.placement_prior_pick import candidates_for_prior
+                from luggage_planning.placement_prior.requests import measured_detection_view
+                from luggage_planning.placement_prior.pick import candidates_for_prior
                 # Validate frame/stamp/object/contact-model identity before
                 # passing any selected contact to the timed path encoder.
                 try:

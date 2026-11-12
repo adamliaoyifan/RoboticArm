@@ -7,10 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from luggage_planning.placement_prior import compute_prior
-from luggage_planning.placement_prior_prefetch import PrefetchTemplate, reusable_placements
-from luggage_planning.placement_prior_worker import PriorWorker
-from luggage_planning.placement_prior_schedule import SnapshotQuietGate
+from luggage_planning.placement_prior.core import compute_prior
+from luggage_planning.placement_prior.prefetch import PrefetchTemplate, reusable_placements
+from luggage_planning.placement_prior.worker import PriorWorker
+from luggage_planning.placement_prior.schedule import SnapshotQuietGate
 from test_placement_prior import request, SensorWall, await_result
 from test_placement_prior_requests import confirmed_grid, confirmed_volume
 
@@ -108,9 +108,9 @@ def test_timer_waits_for_confirmation_and_runs_once_per_snapshot(monkeypatch, qu
 
 
 def test_changed_size_preserves_only_regenerated_geometry_and_rechecks_collision():
-    from luggage_planning.placement_prior_requests import enumerate_placements
-    from luggage_planning.placement_prior_prefetch import rank_regenerated_placements
-    from luggage_planning.placement_prior import CollisionVerdict
+    from luggage_planning.placement_prior.requests import enumerate_placements
+    from luggage_planning.placement_prior.prefetch import rank_regenerated_placements
+    from luggage_planning.placement_prior.core import CollisionVerdict
     confirmed = confirmed_grid()
     original = request()
     # Representative measured dimensions from corrected_projection acquisition03.
@@ -145,8 +145,8 @@ def test_changed_size_preserves_only_regenerated_geometry_and_rechecks_collision
 
 
 def test_regenerated_order_never_adds_missing_slots_or_crosses_snapshot_identity():
-    from luggage_planning.placement_prior_prefetch import rank_regenerated_placements
-    from luggage_planning.placement_prior_contracts import PlacementCandidate,Transform
+    from luggage_planning.placement_prior.prefetch import rank_regenerated_placements
+    from luggage_planning.placement_prior.contracts import PlacementCandidate,Transform
     original=request();other=PlacementCandidate('other',Transform((.1,0,.1),(0,0,0,1)))
     current=(other,*original.placements)
     hypothetical=replace(original,measured=False)
@@ -161,8 +161,8 @@ def test_regenerated_order_never_adds_missing_slots_or_crosses_snapshot_identity
 
 
 def test_measured_decode_uses_fresh_size_before_prefetch_order(monkeypatch):
-    import luggage_planning.placement_prior_requests as requests
-    from luggage_planning.placement_prior_contracts import Snapshot
+    import luggage_planning.placement_prior.requests as requests
+    from luggage_planning.placement_prior.contracts import Snapshot
     from test_placement_prior_requests import query
     message=query();message.measured=True;message.slots=[];message.max_slots=8
     snapshot=Snapshot('cal',3,'hull','model',request().snapshot.world_from_container,b'occ',b'world')

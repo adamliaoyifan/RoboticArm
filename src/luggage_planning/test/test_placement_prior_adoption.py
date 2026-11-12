@@ -2,7 +2,7 @@ from copy import deepcopy
 from luggage_msgs.srv import SelectPlacePathV2, PreparePlacementPriorV2
 from luggage_msgs.msg import PlacementPriorChoiceV2
 from luggage_planning.place_service import pose_message
-from luggage_planning.placement_prior_adoption import order_select_candidates
+from luggage_planning.placement_prior.adoption import order_select_candidates
 from test_placement_prior_requests import slot_record
 
 

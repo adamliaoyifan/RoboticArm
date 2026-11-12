@@ -58,7 +58,7 @@ def _synthesize(position, quaternion, grasp=None):
         box_target_from_candidate,
         expand_place_targets,
     )
-    from luggage_planning.route_producer import (
+    from luggage_planning.routing.producer import (
         RELEASE_DROP_M,
         candidate_from_slot,
         register_attach_from_request,

@@ -1,4 +1,4 @@
-"""Offline tests for luggage_planning.atlas_runtime."""
+"""Offline tests for luggage_planning.atlas.runtime."""
 
 from __future__ import division
 
@@ -12,7 +12,7 @@ TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(
     0, os.path.normpath(os.path.join(TEST_DIR, "..")))
 
-from luggage_planning import atlas_runtime as ar  # noqa: E402
+from luggage_planning.atlas import runtime as ar  # noqa: E402
 
 ATLAS_DATA = os.path.normpath(os.path.join(
     TEST_DIR, "..", "data", "reachability_atlas"))

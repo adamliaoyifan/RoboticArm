@@ -15,7 +15,7 @@ from rclpy.qos import qos_profile_sensor_data
 from ament_index_python.packages import get_package_share_directory
 from luggage_msgs.msg import SuctionTopDomainV2
 from luggage_mapping.configuration import owner_configuration
-from luggage_planning.joint_operation_prepare_node import JointOperationPrepareNode
+from luggage_planning.joint_operation.prepare_node import JointOperationPrepareNode
 from test_snapshot_joint_path_native import robot_fixture
 
 

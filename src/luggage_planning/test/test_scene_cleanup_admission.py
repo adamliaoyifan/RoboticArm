@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter
+from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
 
 
 @pytest.mark.parametrize('raises', [False, True])
@@ -39,7 +39,8 @@ def test_partial_cleanup_retains_failed_objects_for_retry(raises):
 
 @pytest.mark.parametrize('planning_raises', [False, True])
 def test_cleanup_failure_never_emits_executable_route(monkeypatch, planning_raises):
-    from luggage_planning import place_service, route_producer
+    from luggage_planning import place_service
+    from luggage_planning.routing import producer as route_producer
     monkeypatch.setattr(place_service, 'request_dict', lambda _: {'box_wdh': [0.5, 0.3, 0.2]})
     monkeypatch.setattr(route_producer, 'register_attach_from_request', lambda *a, **kw: None)
 

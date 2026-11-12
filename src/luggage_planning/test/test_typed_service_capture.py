@@ -4,7 +4,7 @@ from concurrent.futures import Future
 from rclpy.serialization import deserialize_message
 from luggage_msgs.srv import SelectPlacePathV2
 from luggage_planning.typed_driver_adapter import TypedDriverAdapter
-from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+from luggage_planning.placement_prior.evidence import PriorEvidenceRecorder
 
 
 def test_service_boundary_captures_exact_messages_before_caller_mutates(tmp_path):

@@ -3,10 +3,10 @@ import math
 import pytest
 from test_placement_prior import request, I
 from test_placement_prior_pick import detection
-from luggage_planning.placement_prior import CollisionVerdict, compute_prior
-from luggage_planning.placement_prior_contracts import Transform
-from luggage_planning.placement_prior_pick import candidates_for_prior
-from luggage_planning.placement_prior_local_paths import local_query
+from luggage_planning.placement_prior.core import CollisionVerdict, compute_prior
+from luggage_planning.placement_prior.contracts import Transform
+from luggage_planning.placement_prior.pick import candidates_for_prior
+from luggage_planning.placement_prior.local_paths import local_query
 
 
 def measured():
@@ -71,7 +71,7 @@ def test_local_witness_rejects_truncation_and_discontinuity(damage):
     from copy import deepcopy
     from luggage_msgs.msg import GraspLocalBranch
     from trajectory_msgs.msg import JointTrajectoryPoint
-    from luggage_planning.placement_prior_local_paths import valid_branch_paths
+    from luggage_planning.placement_prior.local_paths import valid_branch_paths
 
     branch = GraspLocalBranch()
     branch.incoming.joint_names = ["joint"]

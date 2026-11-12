@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT / "src" / "luggage_planning") not in sys.path:
     sys.path.append(str(ROOT / "src" / "luggage_planning"))
 
-from luggage_planning.corridor_lattice import (  # noqa: E402
+from luggage_planning.routing.corridor_lattice import (  # noqa: E402
     BRANCH_DISTANCE_RAD,
     EXCURSION_MIN_PATH_M,
     LINE_MAX_JUMP_RAD,
@@ -29,11 +29,11 @@ from luggage_planning.corridor_lattice import (  # noqa: E402
     solve_corridor,
     step_reject,
 )
-from luggage_planning.grid_path_search import (  # noqa: E402
+from luggage_planning.routing.grid_search import (  # noqa: E402
     DESCEND_BRANCH_TOL_RAD,
     ROUTE_TOTAL_WALL_S,
 )
-from luggage_planning.moveit_edge_adapter import (  # noqa: E402
+from luggage_planning.routing.moveit_edge_adapter import (  # noqa: E402
     CARTESIAN_EXCURSION_RAD_PER_M,
     CARTESIAN_MIN_FRACTION,
 )
@@ -353,7 +353,7 @@ def test_wrist_margin_argument_does_not_change_the_default_gate():
 
 
 def test_anchor_variants_change_one_family_and_keep_the_slot():
-    from luggage_planning.route_producer import (
+    from luggage_planning.routing.producer import (
         RegionAnchorPlan,
         corridor_anchor_variants,
     )

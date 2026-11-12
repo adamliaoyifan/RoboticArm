@@ -5,10 +5,10 @@ import pytest
 from geometry_msgs.msg import Pose
 from luggage_msgs.srv import PreparePlacementPriorV2
 from luggage_planning.place_service import pose_message, _admit_grasp
-from luggage_planning.placement_prior_contracts import Snapshot, Transform
-from luggage_planning.placement_prior_surface import ConfirmedSurface
-from luggage_planning.placement_prior_requests import decode_request, encode_choices
-from luggage_planning.placement_prior import compute_prior, CollisionVerdict
+from luggage_planning.placement_prior.contracts import Snapshot, Transform
+from luggage_planning.placement_prior.surface import ConfirmedSurface
+from luggage_planning.placement_prior.requests import decode_request, encode_choices
+from luggage_planning.placement_prior.core import compute_prior, CollisionVerdict
 
 I=Transform((0,0,0),(0,0,0,1))
 
@@ -74,7 +74,7 @@ def confirmed_grid(*, floor=.25, unknown=False):
 
 
 def test_generated_slots_use_typed_height_datum():
-    from luggage_planning.placement_prior_requests import enumerate_placements
+    from luggage_planning.placement_prior.requests import enumerate_placements
     slots = enumerate_placements(confirmed_grid(), (.2,.2,.2), 3, volume=confirmed_volume())
     assert 0 < len(slots) <= 3
     for slot in slots:
@@ -94,7 +94,7 @@ def confirmed_volume():
 
 
 def test_generated_slots_refuse_missing_hull_and_shifted_grid():
-    from luggage_planning.placement_prior_requests import enumerate_placements
+    from luggage_planning.placement_prior.requests import enumerate_placements
     confirmed = confirmed_grid()
     with pytest.raises(ValueError, match='geometry_descriptor'):
         enumerate_placements(replace(confirmed, confirmation_json=b'{"inner_size":[1,1,1]}'),

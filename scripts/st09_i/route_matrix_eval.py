@@ -57,8 +57,8 @@ from luggage_description.container_geometry import (
     descriptor_from_scene_config,
     oriented_box_corners,
 )
-from luggage_planning import grid_path_search as gps
-from luggage_planning.grid_path_search import (
+from luggage_planning.routing import grid_search as gps
+from luggage_planning.routing.grid_search import (
     DEFAULT_RETREAT_HOPS,
     RouteBudget,
     RouteBudgetPolicy,
@@ -69,13 +69,13 @@ from luggage_planning.grid_path_search import (
     hops_from_table,
 )
 from luggage_planning.offline_ik import load_urdf, refine_to_pose
-from luggage_planning.reachability_atlas import ReachabilityAtlas
-from luggage_planning.reachable_graph import (
+from luggage_planning.atlas.model import ReachabilityAtlas
+from luggage_planning.atlas.graph import (
     GraphRoutePlanner,
     RouteGraph,
     make_offline_fk,
 )
-from luggage_planning.route_producer import (
+from luggage_planning.routing.producer import (
     TOOL_DOWN_SEED_Q,
     anchor_plan,
     tool_down_branch_seeds,

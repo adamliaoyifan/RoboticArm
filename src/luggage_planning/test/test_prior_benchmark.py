@@ -1,6 +1,6 @@
 from copy import deepcopy
 import pytest
-from luggage_planning.prior_benchmark import BUDGETS, METRICS, analyze, schedule
+from luggage_planning.placement_prior.prior_benchmark import BUDGETS, METRICS, analyze, schedule
 
 
 def fixture():

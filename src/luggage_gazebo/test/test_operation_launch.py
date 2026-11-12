@@ -98,10 +98,10 @@ def test_installed_gazebo_atlas_exact_model_is_admitted():
     from pathlib import Path
     from ament_index_python.packages import get_package_share_directory
     from luggage_gazebo.operation_launch import operation_atlas_config
-    from luggage_planning.atlas_runtime import load_atlas_runtime,resolve_atlas_files
-    from luggage_planning.joint_operation_atlas import load_operation_atlas
+    from luggage_planning.atlas.runtime import load_atlas_runtime,resolve_atlas_files
+    from luggage_planning.joint_operation.atlas import load_operation_atlas
     from luggage_description.scene_tf_config_utils import world_transform,load_scene_tf_config
-    from luggage_planning.placement_prior_contracts import Transform
+    from luggage_planning.placement_prior.contracts import Transform
     from scipy.spatial.transform import Rotation
     npz,meta=resolve_atlas_files(load_atlas_runtime(operation_atlas_config({})))
     folder=Path(npz).parent

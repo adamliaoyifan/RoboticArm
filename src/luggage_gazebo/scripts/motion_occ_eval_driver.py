@@ -147,7 +147,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
     def __init__(self, args):
         super().__init__(args)
         if self._typed is not None and getattr(args, 'dump_dir', ''):
-            from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+            from luggage_planning.placement_prior.evidence import PriorEvidenceRecorder
             self._service_boundary_recorder = PriorEvidenceRecorder(
                 os.path.join(args.dump_dir, 'typed_service_boundaries'))
             self._typed.set_boundary_recorder(self._service_boundary_recorder)
@@ -159,7 +159,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             if self._typed is None:
                 raise ValueError('depth bootstrap requires frame-runtime')
             from luggage_perception.container_depth_observer import ContainerDepthObserver
-            from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+            from luggage_planning.placement_prior.evidence import PriorEvidenceRecorder
             self._depth_observer = ContainerDepthObserver(self, group=self._group,
                 recorder=PriorEvidenceRecorder(os.path.join(args.out, 'depth_bootstrap_boundaries')))
         self._placement_prior_client = None
@@ -168,12 +168,12 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         if bool(getattr(args, 'placement_prior', False)):
             if self._typed is None:
                 raise ValueError('placement prior evaluation requires frame-runtime')
-            from luggage_planning.placement_prior_client import PlacementPriorClient
+            from luggage_planning.placement_prior.client import PlacementPriorClient
             self._placement_prior_client = PlacementPriorClient(self, group=getattr(self,'_group',None))
         self._atlas = None
         self._atlas_diag = {}
         try:
-            from luggage_planning.atlas_runtime import (
+            from luggage_planning.atlas.runtime import (
                 compute_reachability_scene_hash,
                 compute_scene_tf_hash,
                 load_atlas_runtime_for_scene,
@@ -449,7 +449,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         if reason or self._placement_prior_client is None:
             return reason
         self._typed.set_placement_prior(None)
-        from luggage_planning.placement_prior_requests import measured_detection_view
+        from luggage_planning.placement_prior.requests import measured_detection_view
         try:
             response = self._placement_prior_client.prepare(pick_msg,self._frame_request_id('prior'))
             _, choice = self._placement_prior_client.bind(response,measured_detection_view(pick_msg),
@@ -506,7 +506,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         # What the release commit needs later (see _commit_to_cargo_map).
         self._frame_box_wdh = list(box_wdh)
         request_id = self._frame_request_id("place")
-        from luggage_planning.placement_prior_adoption import bound_target_slots
+        from luggage_planning.placement_prior.adoption import bound_target_slots
         try:
             bound = bound_target_slots(getattr(self, '_placement_prior_result', None),
                 getattr(self, '_placement_prior_choice', None), surface_msg, box_wdh,
@@ -592,7 +592,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         inner_size = list(container_usable_dimensions(self._scene_config))
         # The producer stops at 60 s times the box count. The client
         # stays up 30 s past that so it receives the result.
-        from luggage_planning.grid_path_search import route_budget_s
+        from luggage_planning.routing.grid_search import route_budget_s
         box_count = int(getattr(self._args, "n", 1) or 1)
         select_timeout_s = route_budget_s(box_count) + 30.0
         for _attempt in range(attempts):

@@ -73,9 +73,9 @@ def main():
         "src/elfin_description/urdf/S20.urdf.xacro",
         "src/luggage_planning/config/atlas_runtime_deploy_sim.yaml",
         "st09_contracts/resolved_planning_contract.json",
-        "src/luggage_planning/luggage_planning/corridor_lattice.py",
-        "src/luggage_planning/luggage_planning/lattice_route.py",
-        "src/luggage_planning/luggage_planning/route_producer.py",
+        "src/luggage_planning/luggage_planning/routing/corridor_lattice.py",
+        "src/luggage_planning/luggage_planning/routing/lattice.py",
+        "src/luggage_planning/luggage_planning/routing/producer.py",
     ]
     atlas_dir = os.path.join(
         ROOT, "src/luggage_planning/data/reachability_atlas_deploy_sim")

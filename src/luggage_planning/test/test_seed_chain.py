@@ -12,8 +12,8 @@ _PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PKG not in sys.path:
     sys.path.insert(0, _PKG)
 
-from luggage_planning import seed_chain  # noqa: E402
-from luggage_planning.reachability_atlas import ReachabilityAtlas  # noqa: E402
+from luggage_planning.atlas import seed_chain  # noqa: E402
+from luggage_planning.atlas.model import ReachabilityAtlas  # noqa: E402
 
 RES = 0.15
 ORIGIN = [-0.75, -0.3, 0.5]

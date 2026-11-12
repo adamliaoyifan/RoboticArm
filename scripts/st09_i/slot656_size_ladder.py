@@ -40,9 +40,9 @@ def main():
 
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_perception.eval.isolated_domain import isolated_replay_env
-    from luggage_planning.lattice_route import LatticeStateChecker
+    from luggage_planning.routing.lattice import LatticeStateChecker
     from luggage_planning.planning_scene_client import PlanningSceneClient
-    from luggage_planning.route_producer import register_attach_from_request
+    from luggage_planning.routing.producer import register_attach_from_request
 
     os.makedirs(OUT, exist_ok=True)
     residuals = score._residuals()  # noqa: SLF001

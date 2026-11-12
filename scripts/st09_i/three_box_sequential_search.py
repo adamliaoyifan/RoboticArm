@@ -429,8 +429,8 @@ def _spec(row, size, container_tf, inner_size, request_id):
 
 class Planner(object):
     def __init__(self, node, scene, ctx):
-        from luggage_planning.reachable_graph import RouteGraph
-        from luggage_planning.route_producer import register_attach_from_request
+        from luggage_planning.atlas.graph import RouteGraph
+        from luggage_planning.routing.producer import register_attach_from_request
         from slot64_classify_replay import _producer
 
         self.node = node
@@ -491,7 +491,7 @@ class Planner(object):
         self.producer.edge_builder._send_cartesian_request = remember
 
     def plan(self, spec, placed_count, reset_after=True):
-        from luggage_planning.reachable_graph import RouteGraph
+        from luggage_planning.atlas.graph import RouteGraph
 
         self.producer.graph = RouteGraph(
             static_identity="seq-%s" % spec["request_id"])

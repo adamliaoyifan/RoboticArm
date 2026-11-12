@@ -5,9 +5,9 @@ import math
 
 import pytest
 
-from luggage_planning.joint_operation_connection import GeometricConnection
-from luggage_planning.joint_operation_contracts import admit_operation_plan, operation_digest
-from luggage_planning.joint_operation_planner import (
+from luggage_planning.joint_operation.connection import GeometricConnection
+from luggage_planning.joint_operation.contracts import admit_operation_plan, operation_digest
+from luggage_planning.joint_operation.planner import (
     JointOperationPlanner, LocalEndpointEvidence, LocalJointBranch,
     OperationCandidate, OperationCertification,
 )

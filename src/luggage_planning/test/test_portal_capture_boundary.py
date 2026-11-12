@@ -12,7 +12,7 @@ from luggage_planning.boundary_capture import (
     capture_service_request,
     load_service_request,
 )
-from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter
+from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
 from luggage_planning.planning_scene_client import set_acm_pair
 from luggage_planning.portal_goal_classifier import (
     classify_portal_record,
@@ -219,7 +219,7 @@ def test_real_over_limit_goal_is_classified_outside():
 # --- joint-edge interpolation gate and knot densification -------------------
 
 def test_densify_keeps_knots_and_bounds_the_step():
-    from luggage_planning.moveit_edge_adapter import _Knot, densify_knots
+    from luggage_planning.routing.moveit_edge_adapter import _Knot, densify_knots
 
     points = [_Knot([0.0] * 6), _Knot([0.3, 0, 0, 0, 0, -0.12])]
     dense = densify_knots(points, 0.05)
@@ -255,7 +255,7 @@ def _timed():
 
 def _refuse(verdict):
     import types
-    from luggage_planning.moveit_edge_adapter import EdgeClass
+    from luggage_planning.routing.moveit_edge_adapter import EdgeClass
 
     return MoveItEdgeAdapter._refuse_interpolated_collision(
         _GateHost(verdict), types.SimpleNamespace(node_id="a"),
@@ -264,7 +264,7 @@ def _refuse(verdict):
 
 
 def test_interpolated_collision_refuses_edge_but_checker_failure_does_not():
-    from luggage_planning.grid_path_search import RoutePlanningError
+    from luggage_planning.routing.grid_search import RoutePlanningError
 
     with pytest.raises(RoutePlanningError) as caught:
         _refuse({"status": "queried", "valid": False, "reason": "COLLISION",
@@ -291,8 +291,8 @@ def test_joint_rejection_records_retime_and_interpolation_separately(monkeypatch
     from types import SimpleNamespace
     from moveit_msgs.action import MoveGroup
     from trajectory_msgs.msg import JointTrajectoryPoint
-    from luggage_planning.grid_path_search import RoutePlanningError
-    from luggage_planning.moveit_edge_adapter import EdgeClass
+    from luggage_planning.routing.grid_search import RoutePlanningError
+    from luggage_planning.routing.moveit_edge_adapter import EdgeClass
 
     monkeypatch.delenv("ST09_PORTAL_CAPTURE_DIR", raising=False)
     response = MoveGroup.Result()

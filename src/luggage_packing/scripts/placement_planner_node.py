@@ -182,7 +182,7 @@ class PlacementPlannerNode(Node):
         # would close a colcon build cycle (see package.xml NOTE).
         self.declare_parameter("atlas_runtime_config", "")
         try:
-            from luggage_planning.atlas_runtime import (
+            from luggage_planning.atlas.runtime import (
                 PARAM_SPEC,
                 apply_query_semantics,
                 apply_ros_overrides,

@@ -65,7 +65,7 @@ def atlas_query_yaws(atlas, candidate):
     """
     box_yaw = float(candidate.get("box_yaw", 0.0))
     try:
-        from luggage_planning.atlas_runtime import directed_yaw_candidates
+        from luggage_planning.atlas.runtime import directed_yaw_candidates
     except ImportError:  # pragma: no cover - planning package missing
         return [box_yaw % math.pi]
     return directed_yaw_candidates(atlas, box_yaw)
@@ -226,7 +226,7 @@ def make_atlas_annotate(atlas, floor_z, inner_h, score_weight=0.3,
 
     Returns ``hook(candidates) -> (candidates, report)``.
     """
-    from luggage_planning.atlas_runtime import directed_yaw_candidates
+    from luggage_planning.atlas.runtime import directed_yaw_candidates
 
     offset = [float(v) for v in (query_offset or (0.0, 0.0, 0.0))]
 

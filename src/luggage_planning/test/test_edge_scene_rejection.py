@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter
+from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
 
 
 @pytest.mark.parametrize('failure', ['remove', 'add', 'live_detach', 'attach', 'unloaded_detach'])
@@ -43,7 +43,7 @@ def test_scene_rejection_stops_at_failed_operation(failure):
 
 
 def test_scene_rejection_is_named_and_never_calls_motion_planner():
-    from luggage_planning.grid_path_search import RoutePlanningError
+    from luggage_planning.routing.grid_search import RoutePlanningError
     adapter = object.__new__(MoveItEdgeAdapter)
     adapter._failure_log = []
     calls = []

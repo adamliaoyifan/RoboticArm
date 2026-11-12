@@ -224,8 +224,8 @@ class PriorGenerationAndAdoptionTest(unittest.TestCase):
         return host, response
 
     def test_prior_generated_from_measured_volume_and_adopt_shape(self):
-        from luggage_planning.placement_prior_contracts import Transform
-        from luggage_planning.placement_prior_snapshot import (
+        from luggage_planning.placement_prior.contracts import Transform
+        from luggage_planning.placement_prior.snapshot import (
             build_private_snapshot)
         store = _store_with_measured_confirmed()
         host, volume = self._confirmed_record(store)
@@ -260,7 +260,7 @@ class PriorGenerationAndAdoptionTest(unittest.TestCase):
             "origin_container": list(volume.origin_container),
             "dimensions_xyz": list(volume.dimensions_xyz)}
 
-        from luggage_planning.placement_prior_surface import (
+        from luggage_planning.placement_prior.surface import (
             ConfirmedSurface)
         # The confirmation JSON mirrors the owner's confirmation
         # publication (PendingConfirmation.surface_fields) — the join

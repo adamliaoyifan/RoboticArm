@@ -5,10 +5,10 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from luggage_planning.joint_operation_connection import (
+from luggage_planning.joint_operation.connection import (
     NativeSnapshotConnectionPort, validate_connection_response,
 )
-from luggage_planning.joint_operation_contracts import OPERATION_JOINTS
+from luggage_planning.joint_operation.contracts import OPERATION_JOINTS
 
 
 def response():

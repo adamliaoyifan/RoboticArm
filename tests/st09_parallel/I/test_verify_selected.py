@@ -17,7 +17,7 @@ for entry in ("src/luggage_planning", "src/luggage_perception"):
     if path not in sys.path:
         sys.path.append(path)
 
-from luggage_planning.route_producer import RouteProducer  # noqa: E402
+from luggage_planning.routing.producer import RouteProducer  # noqa: E402
 
 
 class _Traj(object):

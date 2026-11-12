@@ -11,12 +11,12 @@ from moveit_msgs.msg import PlanningScene
 from rclpy.serialization import deserialize_message,serialize_message
 from trajectory_msgs.msg import JointTrajectoryPoint
 
-from luggage_planning.joint_operation_contracts import OPERATION_JOINTS
-from luggage_planning.joint_operation_endpoints import (
+from luggage_planning.joint_operation.contracts import OPERATION_JOINTS
+from luggage_planning.joint_operation.endpoints import (
     build_local_query, endpoint_evidence, NativeOperationEndpointPort,
 )
-from luggage_planning.joint_operation_planner import JointSeedHint
-from luggage_planning.placement_prior_contracts import Transform
+from luggage_planning.joint_operation.planner import JointSeedHint
+from luggage_planning.placement_prior.contracts import Transform
 from test_joint_operation_planner import fixture
 
 
@@ -50,7 +50,7 @@ def response(request):
 def test_private_request_removes_exact_target_only_and_never_double_inflates(tilt):
     from st09_contracts.attachment_geometry import freeze_geometry
     from st09_contracts.payload_envelope import EnvelopeLimits
-    from luggage_planning.joint_operation_scenes import build_operation_scenes
+    from luggage_planning.joint_operation.scenes import build_operation_scenes
     from test_joint_operation_scenes import baseline
     _,candidate=fixture()
     old=candidate.predicted_attachment

@@ -32,7 +32,7 @@ def main():
     from trajectory_msgs.msg import JointTrajectoryPoint
     from luggage_msgs.srv import ValidateRouteV2
     from luggage_msgs.msg import RouteLegV2
-    from luggage_planning.lattice_route import retime_positions
+    from luggage_planning.routing.lattice import retime_positions
     from luggage_planning.moveit_state_validity import (
         sample_grid,interpolated_positions,DISTANCE_STRIDE,CERT_BUDGET_S,SERVICE_TIMEOUT_S,
     )

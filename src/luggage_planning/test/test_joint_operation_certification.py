@@ -4,8 +4,8 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from luggage_planning.joint_operation_certification import _valid_response, _wire_leg, EndpointModel
-from luggage_planning.joint_operation_planner import timed_operation_leg
+from luggage_planning.joint_operation.certification import _valid_response, _wire_leg, EndpointModel
+from luggage_planning.joint_operation.planner import timed_operation_leg
 from test_joint_operation_contracts import example_plan
 from test_snapshot_joint_path_native import robot_fixture
 
@@ -45,7 +45,7 @@ def test_per_leg_missing_samples_contacts_and_bad_clearance_refuse(field,value):
 
 def test_wire_uses_controller_quintic_samples_and_original_unmodified_knots():
     from luggage_planning.moveit_state_validity import sample_states,sample_grid
-    from luggage_planning.joint_operation_certification import _trajectory
+    from luggage_planning.joint_operation.certification import _trajectory
     source=timed_operation_leg('carry','carry',((0.,)*6,(.005,)*6,(.01,)*6),
         example_plan().identity,.2,.1)
     original=deepcopy(source)
@@ -62,7 +62,7 @@ def test_wire_uses_controller_quintic_samples_and_original_unmodified_knots():
 
 
 def test_fk_model_keeps_world_base_transform_and_refuses_unsupported_joint_type():
-    from luggage_planning.placement_prior_contracts import Transform
+    from luggage_planning.placement_prior.contracts import Transform
     xml,srdf=robot_fixture()
     shifted=xml.replace('<child link="base"/>','<child link="base"/><origin xyz="1 2 3"/>',1)
     model=EndpointModel(shifted,srdf,position_tolerance_m=.002,orientation_tolerance_rad=.02)

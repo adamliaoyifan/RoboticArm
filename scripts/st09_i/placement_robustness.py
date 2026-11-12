@@ -59,13 +59,13 @@ from luggage_packing.placement_solver import (  # noqa: E402
     generate_candidates,
     solve_placement,
 )
-from luggage_planning.corridor_lattice import (  # noqa: E402
+from luggage_planning.routing.corridor_lattice import (  # noqa: E402
     BRANCH_DISTANCE_RAD,
     LINE_MAX_JUMP_RAD,
     LINE_STEP_M,
     WRIST_SINGULARITY_MARGIN_RAD,
 )
-from luggage_planning.grid_path_search import ROUTE_TOTAL_WALL_S  # noqa: E402
+from luggage_planning.routing.grid_search import ROUTE_TOTAL_WALL_S  # noqa: E402
 from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS  # noqa: E402
 
 SCENE = os.path.join(
@@ -232,7 +232,7 @@ def _annotate(ctx, store, size, candidates):
     # drop the point. The lattice, not this label, decides the route.
     cfg = dict(ctx.atlas_cfg)
     cfg["hash_policy"] = "warn"
-    from luggage_planning.atlas_runtime import load_runtime_atlas
+    from luggage_planning.atlas.runtime import load_runtime_atlas
     atlas, diag = load_runtime_atlas(
         cfg, box_size=list(size), scene_tf_hash=ctx.scene_hash)
     del store
@@ -680,7 +680,7 @@ def _reason_bucket(reason):
 
 
 def _plan_one(producer, request):
-    from luggage_planning.route_producer import register_attach_from_request
+    from luggage_planning.routing.producer import register_attach_from_request
     register_attach_from_request(
         producer.attachment_provider, request,
         box_wdh=request["box_wdh"], box_id=request["box_id"],
@@ -773,7 +773,7 @@ def plan():
         raise SystemExit("residual sim processes: %s" % residuals)
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_perception.eval.isolated_domain import isolated_replay_env
-    from luggage_planning.lattice_route import LatticeStateChecker
+    from luggage_planning.routing.lattice import LatticeStateChecker
     from luggage_planning.planning_scene_client import PlanningSceneClient
     from luggage_planning.typed_driver_adapter import (
         container_transform_fields,
@@ -1155,7 +1155,7 @@ def fallback():
         raise SystemExit("residual sim processes: %s" % residuals)
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_perception.eval.isolated_domain import isolated_replay_env
-    from luggage_planning.lattice_route import LatticeStateChecker
+    from luggage_planning.routing.lattice import LatticeStateChecker
     from luggage_planning.planning_scene_client import PlanningSceneClient
     from luggage_planning.typed_driver_adapter import container_transform_fields
     import rclpy

@@ -1,5 +1,5 @@
 import pytest
-from luggage_planning.placement_prior_schedule import SnapshotQuietGate
+from luggage_planning.placement_prior.schedule import SnapshotQuietGate
 
 
 def test_short_revisions_are_coalesced_and_final_snapshot_becomes_ready():

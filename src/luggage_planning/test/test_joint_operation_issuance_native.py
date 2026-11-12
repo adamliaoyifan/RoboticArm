@@ -46,8 +46,8 @@ def test_real_prepare_issues_plan_and_readonly_check_retains_original(prepare_st
 
 @pytest.mark.parametrize('damage',['certificate','identity','knots','stamp','resealed'])
 def test_check_rpc_refuses_client_changes_even_when_client_reseals(prepare_stack,damage):
-    from luggage_planning.joint_operation_adapters import operation_plan_to_message
-    from luggage_planning.joint_operation_contracts import seal_operation_plan
+    from luggage_planning.joint_operation.adapters import operation_plan_to_message
+    from luggage_planning.joint_operation.contracts import seal_operation_plan
     fixture=prepare_stack;original=prepare(fixture,damage);message=copy.deepcopy(original)
     if damage=='certificate':message.certificate_id='client'
     elif damage=='identity':message.generation+=1
@@ -88,7 +88,7 @@ def test_failed_new_prepare_keeps_previous_issued_plan_current(prepare_stack):
 
 
 def test_owner_restart_expiry_and_capacity_eviction_refuse(prepare_stack):
-    from luggage_planning.joint_operation_issuance import IssuedOperationRegistry
+    from luggage_planning.joint_operation.issuance import IssuedOperationRegistry
     fixture=prepare_stack;retained=fixture.root.issued
     message=prepare(fixture,'expired')
     try:

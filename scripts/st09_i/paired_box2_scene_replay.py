@@ -225,7 +225,7 @@ def _stats_for(surface, clock_ns):
 
 
 def _host(node, scene_config, clock_ns):
-    from luggage_planning.atlas_runtime import (
+    from luggage_planning.atlas.runtime import (
         compute_reachability_scene_hash,
         compute_scene_tf_hash,
         load_atlas_runtime_for_scene,
@@ -293,7 +293,7 @@ def _robot_model(node):
     text = ""
     if result is not None and result.values:
         text = str(result.values[0].string_value or "")
-    from luggage_planning.atlas_runtime import compute_urdf_hash
+    from luggage_planning.atlas.runtime import compute_urdf_hash
     from luggage_planning.offline_ik import default_urdf_xacro, load_urdf
     from luggage_description.xacro_robot_with_scene_base import (
         expand_and_patch,
@@ -567,8 +567,8 @@ def _cert_legs(producer):
 
 def _run_case(node, client, case, clock_holder):
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
-    from luggage_planning.route_producer import register_attach_from_request
-    from luggage_planning.route_producer_factory import (
+    from luggage_planning.routing.producer import register_attach_from_request
+    from luggage_planning.routing.factory import (
         build_production_route_producer,
     )
 

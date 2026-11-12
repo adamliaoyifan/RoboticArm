@@ -1,0 +1,7 @@
+{
+  "path": "docs/architecture/frame_interfaces.json",
+  "preexisting_dirty": true,
+  "working_before_sha256": "d727fb55e89b20fe4f738dddb658d75c5c88f4fbb9f5da4b025b55429d2db8a3",
+  "after_sha256": "ebc11a30a142f71d76024ec6892c6a3c27bd13b50673440ea9a42d1232ecc8bf",
+  "operation": "exact old-to-new registered source path substitution; staged transformed HEAD only"
+}

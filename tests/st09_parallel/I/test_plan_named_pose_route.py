@@ -19,7 +19,7 @@ for entry in ("src/luggage_planning", "src/luggage_perception"):
     if path not in sys.path:
         sys.path.append(path)
 
-from luggage_planning.route_producer import RouteProducer  # noqa: E402
+from luggage_planning.routing.producer import RouteProducer  # noqa: E402
 from st09_contracts.attachment import UNLOADED_ATTACHMENT_DIGEST  # noqa: E402
 
 JOINTS = ["elfin_joint%d" % i for i in range(1, 7)]

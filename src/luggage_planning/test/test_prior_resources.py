@@ -1,6 +1,6 @@
 import subprocess
 import sys
-from luggage_planning.prior_resources import Process, ProcessTreeLedger, ResourceWindow
+from luggage_planning.placement_prior.prior_resources import Process, ProcessTreeLedger, ResourceWindow
 
 
 def p(pid, parent=0, start=1, cpu=0, rss=100):

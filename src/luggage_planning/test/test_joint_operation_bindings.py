@@ -6,10 +6,10 @@ from rclpy.serialization import serialize_message, deserialize_message
 from luggage_msgs.msg import JointOperationPlanV2
 from luggage_msgs.srv import PrepareJointOperationV2
 from luggage_description.frame_contracts import ContractError
-from luggage_planning.joint_operation_adapters import (
+from luggage_planning.joint_operation.adapters import (
     operation_plan_from_message, operation_plan_to_message,
 )
-from luggage_planning.joint_operation_contracts import (
+from luggage_planning.joint_operation.contracts import (
     OPERATION_JOINTS, seal_operation_plan,
 )
 from luggage_planning.motion_frame_contracts import CANONICAL_JOINTS

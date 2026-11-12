@@ -82,7 +82,7 @@ class _Node(object):
 
 class FactoryCollaborators(unittest.TestCase):
     def setUp(self):
-        import luggage_planning.moveit_edge_adapter as adapter
+        import luggage_planning.routing.moveit_edge_adapter as adapter
 
         self._adapter = adapter
         self._original = adapter.MoveItEdgeAdapter
@@ -104,15 +104,15 @@ class FactoryCollaborators(unittest.TestCase):
         from luggage_planning.attachment_provider import (
             MeasuredAttachmentProvider,
         )
-        from luggage_planning.grid_path_search import route_budget_ns
+        from luggage_planning.routing.grid_search import route_budget_ns
         from luggage_planning.map_revalidation import MapRevalidator
         from luggage_planning.planning_scene_client import PlanningSceneClient
-        from luggage_planning.route_producer import (
+        from luggage_planning.routing.producer import (
             RouteProducer,
             certification_policy_from_contract,
             revalidation_policy_from_contract,
         )
-        from luggage_planning.route_producer_factory import (
+        from luggage_planning.routing.factory import (
             build_production_route_producer,
         )
         from luggage_planning.trajectory_certifier import TrajectoryCertifier
@@ -163,7 +163,7 @@ class FactoryCollaborators(unittest.TestCase):
         """[Functional diagnostic] override > 0 replaces the frozen
         n*60s budget IN THE SEARCHER (producer.budget_ns); the default
         (0.0) leaves the frozen contract untouched."""
-        from luggage_planning.route_producer_factory import (
+        from luggage_planning.routing.factory import (
             build_production_route_producer,
         )
         from luggage_description.scene_tf_config_utils import (
@@ -180,7 +180,7 @@ class FactoryCollaborators(unittest.TestCase):
         producer_default = build_production_route_producer(
             node, SCENE, lambda: {}, lambda: None,
             route_budget_override_s=0.0)
-        from luggage_planning.grid_path_search import route_budget_ns
+        from luggage_planning.routing.grid_search import route_budget_ns
         self.assertEqual(producer_default.budget_ns, route_budget_ns(3))
         # Node-param path: the factory reads the declared param when the
         # kwarg is absent (production wiring).
@@ -191,7 +191,7 @@ class FactoryCollaborators(unittest.TestCase):
 
     def test_selector_caches_one_factory_result(self):
         import trajectory_selector_node as selector
-        from luggage_planning import route_producer_factory as factory
+        from luggage_planning.routing import factory
 
         node = selector.TrajectorySelectorNode.__new__(
             selector.TrajectorySelectorNode)
@@ -227,7 +227,7 @@ class StageTimingsTests(unittest.TestCase):
     search residue never borrows prep/certify/revalidate time."""
 
     def test_prep_is_separate_from_search_residue(self):
-        from luggage_planning.route_producer import RouteProducer
+        from luggage_planning.routing.producer import RouteProducer
 
         producer = RouteProducer.__new__(RouteProducer)
         producer.budget_ns = 60_000_000_000
@@ -251,7 +251,7 @@ class StageTimingsTests(unittest.TestCase):
         self.assertEqual(timings["by_reason_ms"], {"IK_SEED_MISS": 4000.0})
 
     def test_prep_missing_counts_as_zero(self):
-        from luggage_planning.route_producer import RouteProducer
+        from luggage_planning.routing.producer import RouteProducer
 
         producer = RouteProducer.__new__(RouteProducer)
         producer.budget_ns = 60_000_000_000

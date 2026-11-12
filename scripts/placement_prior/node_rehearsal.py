@@ -40,8 +40,8 @@ def main():
     from luggage_description.frame_diagnostics import BoundaryContext
     from luggage_description.ros_frame_bindings.surfaces import surface_to_message
     from luggage_planning.place_service import pose_message
-    from luggage_planning.placement_prior_contracts import Transform
-    from luggage_planning.placement_prior_pick import transform_from_pose
+    from luggage_planning.placement_prior.contracts import Transform
+    from luggage_planning.placement_prior.pick import transform_from_pose
     from geometry_msgs.msg import Pose
     workspace=Path(__file__).resolve().parents[2]
     rows=args.probe_log.read_text().splitlines()

@@ -1,7 +1,7 @@
 """Observation preserves solver returns and exceptions without inventing work."""
 import pytest
 
-from luggage_planning.planning_work_counters import PlanningWorkCounters
+from luggage_planning.routing.work_counters import PlanningWorkCounters
 
 
 class EdgeBoundary:

@@ -448,7 +448,7 @@ class MotionExecutor:
         self._wrist_free.discard("")
         self._pose_target_max_delta = float(pose_target_max_joint_delta_rad)
         self._j6_limit = float(j6_rotation_limit_rad)
-        # Reachability-atlas seed chain (see luggage_planning.atlas_runtime):
+        # Reachability-atlas seed chain (see luggage_planning.atlas.runtime):
         # miss-retry re-seeds KDL after an unseeded miss; always-first tries
         # seeds first; joint_goal additionally allows an FK-verified seed to
         # become the goal without an IK service hit.

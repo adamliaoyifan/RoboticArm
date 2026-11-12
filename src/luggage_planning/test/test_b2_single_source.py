@@ -24,7 +24,7 @@ for _entry in (
     if _entry not in sys.path:
         sys.path.append(_entry)
 
-from luggage_planning.route_producer import (  # noqa: E402
+from luggage_planning.routing.producer import (  # noqa: E402
     _same_admitted_map,
     surface_map_from_contract,
 )

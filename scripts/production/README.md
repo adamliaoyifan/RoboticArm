@@ -23,3 +23,11 @@ checks executable installation and package resources. A passing installation
 check is not a map/model/trajectory or whole-cycle qualification. Current default
 flow convergence is tracked in
 `docs/plans/PRODUCTION_PLACEMENT_CONVERGENCE_G3_20261112.md`.
+
+Planning module ownership and actual route entries are indexed in
+`src/luggage_planning/README.md`. After a successful stable-source build, the
+builder removes only the obsolete Python modules explicitly mapped in
+`src/luggage_planning/config/python_module_layout.json`. It first requires every
+replacement source and installed file to exist. The checker imports all relocated
+modules and requires their old paths to be unimportable; stale installed files
+cannot silently preserve an obsolete route implementation.

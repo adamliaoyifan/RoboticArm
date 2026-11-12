@@ -39,7 +39,7 @@ for _path in (
         sys.path.insert(0, _path)
 
 import placement_robustness as scan  # noqa: E402
-from luggage_planning.corridor_lattice import (  # noqa: E402
+from luggage_planning.routing.corridor_lattice import (  # noqa: E402
     WRIST_SINGULARITY_MARGIN_RAD,
     CorridorRequest,
     gate_counts,
@@ -47,7 +47,7 @@ from luggage_planning.corridor_lattice import (  # noqa: E402
     layer_family,
     prepare_corridor,
 )
-from luggage_planning.lattice_route import _chain_sigma_min  # noqa: E402
+from luggage_planning.routing.lattice import _chain_sigma_min  # noqa: E402
 
 OUT = os.path.join(
     ROOT, "docs/status/evidence/frame_migration/ST09-parallel-I-s5/m3",
@@ -93,7 +93,7 @@ def _scene():
 
 def _models():
     from luggage_planning.offline_ik import load_urdf, refine_to_pose
-    from luggage_planning.reachable_graph import make_offline_fk
+    from luggage_planning.atlas.graph import make_offline_fk
 
     urdf = load_urdf(scene_tf_config=scan.SCENE)
     tcp = urdf.path_to("suction_contact_frame")
@@ -116,7 +116,7 @@ def _targets(request):
         box_target_from_candidate,
         expand_place_targets,
     )
-    from luggage_planning.route_producer import (
+    from luggage_planning.routing.producer import (
         RELEASE_DROP_M,
         candidate_from_slot,
         register_attach_from_request,
@@ -146,7 +146,7 @@ def _targets(request):
 
 
 def _anchors_for(point, transform, opening, transit, tcp, box_height):
-    from luggage_planning.route_producer import anchor_plan
+    from luggage_planning.routing.producer import anchor_plan
 
     outward = opening.get("normal")
     inward = None if not outward else [-float(v) for v in outward]
@@ -234,7 +234,7 @@ def layers(limit=None):
                 anchors, tcp.quaternion_xyzw, urdf, refine,
                 request["start_joints"])
             import dataclasses
-            from luggage_planning.route_producer import (
+            from luggage_planning.routing.producer import (
                 corridor_anchor_variants,
             )
             plan = dataclasses.replace(plan, portal=anchors["portal"])
@@ -424,8 +424,8 @@ def plan(condition, limit=None):
         raise SystemExit("residual sim processes: %s" % residuals)
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_perception.eval.isolated_domain import isolated_replay_env
-    from luggage_planning.grid_path_search import ROUTE_TOTAL_WALL_S
-    from luggage_planning.lattice_route import LatticeStateChecker
+    from luggage_planning.routing.grid_search import ROUTE_TOTAL_WALL_S
+    from luggage_planning.routing.lattice import LatticeStateChecker
     from luggage_planning.planning_scene_client import PlanningSceneClient
     from luggage_planning.typed_driver_adapter import container_transform_fields
     import rclpy
@@ -545,7 +545,7 @@ def _lattice_from_rows(rows):
 
 def _plan_recorded(producer, request):
     """One select, plus the lattice detail the summary row needs."""
-    from luggage_planning.route_producer import register_attach_from_request
+    from luggage_planning.routing.producer import register_attach_from_request
 
     register_attach_from_request(
         producer.attachment_provider, request,

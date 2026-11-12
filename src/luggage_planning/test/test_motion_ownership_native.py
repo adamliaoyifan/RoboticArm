@@ -19,7 +19,7 @@ import pytest
 
 from test_joint_operation_motion_native import controller
 from test_joint_operation_revalidation_native import native_gate, issued, context, port
-from luggage_planning.joint_operation_motion import StrictOperationMotionPort
+from luggage_planning.joint_operation.motion import StrictOperationMotionPort
 
 pytestmark = pytest.mark.skipif(not os.environ.get('JOINT_NATIVE_CERTIFIER_EXECUTABLE'),
     reason='explicit isolated native/controller ownership gate')
@@ -52,7 +52,7 @@ def driver(native_gate, controller, request):
     from rclpy.serialization import serialize_message
     from trajectory_msgs.msg import JointTrajectoryPoint
     from luggage_msgs.action import GoToRobotPose, PlanMotion, PlanMotionV2
-    from luggage_planning.joint_operation_contracts import OPERATION_JOINTS
+    from luggage_planning.joint_operation.contracts import OPERATION_JOINTS
     source = Path(__file__).parents[1]/'scripts/motion_planner_node.py'
     spec = importlib.util.spec_from_file_location('owned_motion_node', source)
     module = importlib.util.module_from_spec(spec)

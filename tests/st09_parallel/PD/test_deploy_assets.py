@@ -19,7 +19,7 @@ import pytest
 import yaml
 
 from luggage_planning import deploy_profile as dp
-from luggage_planning.atlas_runtime import (
+from luggage_planning.atlas.runtime import (
     load_atlas_runtime,
     load_runtime_atlas,
     resolve_atlas_files,
@@ -29,7 +29,7 @@ from luggage_planning.deploy_graph_assets import (
     load_deploy_graph,
     validate_graph_structure,
 )
-from luggage_planning.reachable_graph import GraphStore
+from luggage_planning.atlas.graph import GraphStore
 
 from conftest import DATA_DIR, MANIFEST_PATH, PROFILES, requires_assets
 
@@ -71,7 +71,7 @@ def test_four_atlas_pairs_strict_load(cell):
         assert contract["orientation_semantics"] == "concrete_tool_pose"
         assert contract["yaw_period_rad"] > 6.0
         # A strict seed query actually returns usable seeds.
-        from luggage_planning.atlas_runtime import atlas_seeds_for_query
+        from luggage_planning.atlas.runtime import atlas_seeds_for_query
         meta = yaml.safe_load(open(cell["atlas_meta"], encoding="utf-8"))
         del meta
         seeds = atlas_seeds_for_query(atlas, 0.0, 0.0, 0.8, 0.0,

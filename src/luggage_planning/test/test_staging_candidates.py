@@ -1,6 +1,6 @@
 import math
 import pytest
-from luggage_planning.staging_candidates import staging_positions
+from luggage_planning.routing.staging_candidates import staging_positions
 
 
 def test_candidates_follow_container_axes_and_keep_baseline():

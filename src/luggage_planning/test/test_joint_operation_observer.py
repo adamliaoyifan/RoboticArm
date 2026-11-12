@@ -10,8 +10,8 @@ import pytest
 import yaml
 
 from luggage_description.container_geometry import cuboid_from_inner_size
-from luggage_planning.joint_operation_map_source import OperationMapSource
-from luggage_planning.joint_operation_observer import (
+from luggage_planning.joint_operation.map_source import OperationMapSource
+from luggage_planning.joint_operation.observer import (
     ObserverConfiguration, ObserverSnapshotPort, admit_response, assemble_snapshot,
 )
 
@@ -63,7 +63,7 @@ def test_config_uses_exact_native_bytes_and_dimensions(tmp_path):
 
 
 def test_x_fastest_unknown_occupied_and_inactive_are_preserved(tmp_path):
-    from luggage_planning.placement_prior_volume import blocked_volume_runs
+    from luggage_planning.placement_prior.volume import blocked_volume_runs
     config,_,_=configuration(tmp_path)
     states=[1]*64
     states[0]=0;states[1+4*(2+4*1)]=2;states[3+4*(3+4*3)]=3
@@ -90,7 +90,7 @@ def test_partial_known_column_is_not_promoted_to_free_volume(tmp_path):
 
 
 def test_real_candidate_consumer_reads_immutable_observer_volume(tmp_path):
-    from luggage_planning.placement_prior_requests import enumerate_placements
+    from luggage_planning.placement_prior.requests import enumerate_placements
     config,_,_=configuration(tmp_path,size=(1.,1.,.4))
     count=__import__('math').prod(config.dimensions_xyz)
     captured=snapshot(config,[1]*count)
@@ -201,7 +201,7 @@ def test_issuance_retains_map_source_and_refuses_rebinding(tmp_path):
     assert store.map_source(p)==source
     for altered in (None,replace(source,epoch=2)):
         with pytest.raises(ValueError,match='REBIND_REFUSED'):store.issue(p,map_source=altered)
-    from luggage_planning.joint_operation_map_source import map_source_from_message,map_source_to_message
+    from luggage_planning.joint_operation.map_source import map_source_from_message,map_source_to_message
     assert map_source_from_message(map_source_to_message(source))==source
     assert not map_source_to_message(None).bound
 
@@ -231,7 +231,7 @@ def test_page_completion_is_checked_behaviorally(tmp_path,damage):
 
 
 def test_timed_out_acquire_stays_single_flight_and_releases_late_handle_once():
-    from luggage_planning.joint_operation_prepare_node import JointOperationPrepareNode
+    from luggage_planning.joint_operation.prepare_node import JointOperationPrepareNode
     pending=Future();sent=[];released=[];records=[]
     client=SimpleNamespace(service_is_ready=lambda:True,
         call_async=lambda request:(sent.append(request) or pending))
@@ -253,7 +253,7 @@ def test_timed_out_acquire_stays_single_flight_and_releases_late_handle_once():
 
 
 def test_completed_response_cannot_reopen_acquire_before_late_cleanup_consumption():
-    from luggage_planning.joint_operation_prepare_node import JointOperationPrepareNode
+    from luggage_planning.joint_operation.prepare_node import JointOperationPrepareNode
     import threading
     pending=Future();sent=[];entered=threading.Event();allow_cleanup=threading.Event()
     class Client:

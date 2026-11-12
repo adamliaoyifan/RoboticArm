@@ -15,19 +15,19 @@ for _path in (ROOT, ROOT / "src" / "luggage_planning"):
 from st09_contracts.fixtures import make_attachment, make_snapshot  # noqa: E402
 from st09_contracts.graph import GraphEdge, LoadState  # noqa: E402
 
-from luggage_planning.corridor_lattice import (  # noqa: E402
+from luggage_planning.routing.corridor_lattice import (  # noqa: E402
     CorridorRequest,
     prepare_corridor,
     search_lazy,
 )
-from luggage_planning.grid_path_search import RoutePlanningError  # noqa: E402
-from luggage_planning.lattice_route import (  # noqa: E402
+from luggage_planning.routing.grid_search import RoutePlanningError  # noqa: E402
+from luggage_planning.routing.lattice import (  # noqa: E402
     LatticeRoutePlanner,
     chain_segments,
     retime_positions,
 )
-from luggage_planning.reachable_graph import RouteGraph  # noqa: E402
-from luggage_planning.route_producer import route_missing_parts  # noqa: E402
+from luggage_planning.atlas.graph import RouteGraph  # noqa: E402
+from luggage_planning.routing.producer import route_missing_parts  # noqa: E402
 
 ANCHORS = {
     "portal": (0.00, 0.0, 0.10),

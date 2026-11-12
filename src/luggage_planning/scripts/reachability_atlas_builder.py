@@ -45,7 +45,7 @@ _PKG_ROOT = os.path.normpath(os.path.join(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
-from luggage_planning.reachability_wavefront import (  # noqa: E402
+from luggage_planning.atlas.wavefront import (  # noqa: E402
     BRANCH_INTERNAL_LIFT,
     BRANCH_NONE,
     BRANCH_VERTICAL,
@@ -65,7 +65,7 @@ from luggage_planning.reachability_wavefront import (  # noqa: E402
     joint_interpolation_samples,
     select_distinct_branches,
 )
-from luggage_planning.atlas_frame_contracts import (  # noqa: E402
+from luggage_planning.atlas.frame_contracts import (  # noqa: E402
     DIRECTED_YAW_BINS,
     atlas_contract_record,
     container_yaw_offset,
@@ -1003,7 +1003,7 @@ class ReachabilityAtlasBuilder:
         # artifact's own geometry/payload sections, so an existing v1 NPZ
         # cannot be relabelled as v2 by stamping metadata onto it.
         scene_tf_hash = _file_hash(scene_tf_path)
-        from luggage_planning.atlas_runtime import (
+        from luggage_planning.atlas.runtime import (
             compute_reachability_scene_hash,
         )
         reachability_scene_hash = compute_reachability_scene_hash(

@@ -6,8 +6,8 @@ from unittest.mock import patch
 from moveit_msgs.msg import PlanningScene
 from rclpy.serialization import serialize_message, deserialize_message
 from luggage_msgs.srv import CheckPlacementToolV2
-from luggage_planning.placement_prior_collision_port import NativeToolCollisionPort
-from luggage_planning.placement_prior_contracts import Transform
+from luggage_planning.placement_prior.collision_port import NativeToolCollisionPort
+from luggage_planning.placement_prior.contracts import Transform
 
 
 def test_reuses_exact_bytes_and_invalidates_changed_scene_with_same_labels():

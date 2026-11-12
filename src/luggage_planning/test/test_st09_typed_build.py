@@ -32,7 +32,7 @@ def test_pick_build_typed_output():
     box.height_valid = True
     from luggage_planning.pick_authorization import HEIGHT_SOURCE_MEASURED_SUPPORT
     box.height_source = HEIGHT_SOURCE_MEASURED_SUPPORT
-    from luggage_planning.route_producer import _leg_record
+    from luggage_planning.routing.producer import _leg_record
     from st09_contracts.fixtures import make_timed_trajectory
 
     def encoder(pick, *, request_id, scene_revision, stamp_ns):

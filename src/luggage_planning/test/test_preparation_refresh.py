@@ -16,11 +16,11 @@ from rclpy.serialization import deserialize_message, serialize_message
 from luggage_mapping.observer import ObserverVolume
 from luggage_mapping.source import OperationMapSource
 from luggage_mapping.surface import ConfirmedSurface, freeze
-from luggage_planning.joint_operation_contracts import seal_operation_plan
-from luggage_planning.joint_operation_issuance import IssuedOperationRegistry
-from luggage_planning.joint_operation_scenes import build_operation_scenes
-from luggage_planning.placement_prior_snapshot import build_private_snapshot, proposal_scene_hash
-from luggage_planning.preparation_refresh import (
+from luggage_planning.joint_operation.contracts import seal_operation_plan
+from luggage_planning.joint_operation.issuance import IssuedOperationRegistry
+from luggage_planning.joint_operation.scenes import build_operation_scenes
+from luggage_planning.placement_prior.snapshot import build_private_snapshot, proposal_scene_hash
+from luggage_planning.joint_operation.preparation_refresh import (
     LatestMapFinalizer, RefreshCapture, require_source_progress,
 )
 from test_joint_operation_planner import ports, prepare
@@ -138,7 +138,7 @@ def test_baseline_change_requires_new_certificate_even_when_o_has_not_changed():
 
 @pytest.mark.parametrize('damage', ['model', 'transform', 'surface_hash', 'volume_source', 'record_revision'])
 def test_misbound_complete_capture_is_inactive(damage):
-    from luggage_planning.placement_prior_contracts import Transform
+    from luggage_planning.placement_prior.contracts import Transform
     f = setup()
     if damage == 'model':fresh = replace(f.fresh, snapshot=replace(f.fresh.snapshot, model_hash='other'))
     if damage == 'transform':
@@ -257,7 +257,7 @@ def test_retry_budget_is_explicit_and_bounded(attempts):
 
 
 def test_latest_capture_preserves_epoch_but_does_not_request_old_revision():
-    from luggage_planning.joint_operation_prepare_node import JointOperationPrepareNode
+    from luggage_planning.joint_operation.prepare_node import JointOperationPrepareNode
     calls = []
     captured = SimpleNamespace(surface='surface', volume='volume', source='source')
     root = SimpleNamespace(revision='scene', observer=SimpleNamespace(
@@ -274,9 +274,9 @@ def test_real_root_finalization_binds_latest_issuance_and_releases_lock(mode):
     import threading
     import numpy as np
     from luggage_msgs.srv import PrepareJointOperationV2
-    from luggage_planning.joint_operation_adapters import operation_plan_to_message
-    from luggage_planning.joint_operation_prepare_node import JointOperationPrepareNode
-    from luggage_planning.preparation_profile import PreparationBudget
+    from luggage_planning.joint_operation.adapters import operation_plan_to_message
+    from luggage_planning.joint_operation.prepare_node import JointOperationPrepareNode
+    from luggage_planning.joint_operation.preparation_profile import PreparationBudget
     from test_preparation_profile import query_and_inputs
     f = setup(blocked=True)
     request, context, _ = query_and_inputs(30.)
@@ -331,13 +331,13 @@ def test_real_root_finalization_binds_latest_issuance_and_releases_lock(mode):
 def test_real_core_uses_selected_candidate_and_serializes_finalized_identity(accept):
     from luggage_msgs.srv import PrepareJointOperationV2
     from luggage_perception.directed_suction_service import DirectedSuctionService
-    from luggage_planning.joint_operation_contacts import contact_query, contact_evidence
-    from luggage_planning.joint_operation_contracts import OperationBarrier, JointOperationPlan
-    from luggage_planning.joint_operation_planner import timed_operation_leg
-    from luggage_planning.joint_operation_preparation import JointOperationPreparation
-    from luggage_planning.placement_prior_contracts import PlacementCandidate, Transform
-    from luggage_planning.preparation_profile import PreparationBudget
-    from luggage_planning.preparation_refresh import FinalizedPreparation
+    from luggage_planning.joint_operation.contacts import contact_query, contact_evidence
+    from luggage_planning.joint_operation.contracts import OperationBarrier, JointOperationPlan
+    from luggage_planning.joint_operation.planner import timed_operation_leg
+    from luggage_planning.joint_operation.preparation import JointOperationPreparation
+    from luggage_planning.placement_prior.contracts import PlacementCandidate, Transform
+    from luggage_planning.joint_operation.preparation_profile import PreparationBudget
+    from luggage_planning.joint_operation.preparation_refresh import FinalizedPreparation
     from st09_contracts.payload_envelope import EnvelopeLimits
     from test_joint_operation_candidates import placed_pose, service_response
     from test_preparation_profile import query_and_inputs

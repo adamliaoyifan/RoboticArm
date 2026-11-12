@@ -4,12 +4,12 @@ from dataclasses import replace
 import pytest
 
 from luggage_description.frame_contracts import ContractError
-from luggage_planning.joint_operation_contracts import (
+from luggage_planning.joint_operation.contracts import (
     JointKnot, JointOperationPlan, OperationBarrier, OperationIdentity,
     OperationLeg, admit_operation_plan, seal_operation_plan,
     OPERATION_JOINTS,
 )
-from luggage_planning.placement_prior_contracts import Transform
+from luggage_planning.placement_prior.contracts import Transform
 from st09_contracts.attachment_geometry import freeze_geometry
 from st09_contracts.payload_envelope import EnvelopeLimits
 

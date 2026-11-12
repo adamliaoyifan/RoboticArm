@@ -282,7 +282,7 @@ def _request_for(document, candidate, limits):
     from luggage_description.scene_tf_config_utils import (
         load_scene_tf_config,
     )
-    from luggage_planning.corridor_lattice import CorridorRequest
+    from luggage_planning.routing.corridor_lattice import CorridorRequest
     import corridor_lattice_gate as gate
 
     scene = load_scene_tf_config(gate.SCENE)
@@ -304,12 +304,12 @@ def _request_for(document, candidate, limits):
 
 
 def _one_run(document, candidate, limits, refine, client, scenes):
-    from luggage_planning.corridor_lattice import (
+    from luggage_planning.routing.corridor_lattice import (
         kinematic_queries,
         prepare_corridor,
         search_prepared,
     )
-    from luggage_planning.grid_path_search import ROUTE_TOTAL_WALL_S
+    from luggage_planning.routing.grid_search import ROUTE_TOTAL_WALL_S
 
     started = time.perf_counter()
     request, _center, _quat = _request_for(document, candidate, limits)

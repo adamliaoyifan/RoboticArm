@@ -329,17 +329,17 @@ def build_producer(node, runtime, record):
         MeasuredAttachmentProvider,
     )
     from luggage_planning.map_revalidation import MapRevalidator
-    from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter
+    from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
     from luggage_planning.moveit_state_validity import (
         MoveItStateValidityAdapter,
     )
     from luggage_planning.offline_ik import load_urdf, refine_to_pose
     from luggage_planning.planning_scene_client import PlanningSceneClient
-    from luggage_planning.reachable_graph import (
+    from luggage_planning.atlas.graph import (
         RouteGraph,
         make_offline_fk,
     )
-    from luggage_planning.route_producer import (
+    from luggage_planning.routing.producer import (
         RouteProducer,
         certification_policy_from_contract,
     )
@@ -519,7 +519,7 @@ def main():
 
     # -- reposition to the carry pose ------------------------------------
     if not args.skip_reposition:
-        from luggage_planning.route_producer import _leg_record
+        from luggage_planning.routing.producer import _leg_record
         from luggage_description.frame_diagnostics import BoundaryContext
         from luggage_planning.motion_frame_adapters import (
             message_from_admitted,
@@ -694,7 +694,7 @@ def main():
 
     MoveItStateValidityAdapter._ensure_clients = ensure_clients_and_wrap
     try:
-        from luggage_planning.route_producer import register_attach_from_request
+        from luggage_planning.routing.producer import register_attach_from_request
 
         register_attach_from_request(
             producer.attachment_provider, request,

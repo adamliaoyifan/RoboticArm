@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 import pytest
-from luggage_planning.direct_first_route import DirectFirstRoutePlanner
-from luggage_planning.grid_path_search import RoutePlanningError
+from luggage_planning.routing.direct_first import DirectFirstRoutePlanner
+from luggage_planning.routing.grid_search import RoutePlanningError
 
 
 @pytest.mark.parametrize('direct_success', [True, False])

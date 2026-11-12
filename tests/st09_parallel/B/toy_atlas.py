@@ -12,7 +12,7 @@ from __future__ import division
 import math
 from collections import namedtuple
 
-from luggage_planning.atlas_frame_contracts import DIRECTED_YAW_BINS
+from luggage_planning.atlas.frame_contracts import DIRECTED_YAW_BINS
 
 #: Status values mirroring reachability_atlas semantics (>= MARGINAL == 2).
 TOY_GOOD = 3

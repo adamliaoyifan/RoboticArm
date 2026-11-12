@@ -40,7 +40,7 @@ for _extra in (
 from luggage_description.frame_contracts import (  # noqa: E402
     ContractError, validate_atlas,
 )
-from luggage_planning.atlas_frame_contracts import (  # noqa: E402
+from luggage_planning.atlas.frame_contracts import (  # noqa: E402
     DIRECTED_YAW_BINS,
     atlas_contract_record,
     container_yaw_offset,
@@ -50,14 +50,14 @@ from luggage_planning.atlas_frame_contracts import (  # noqa: E402
     tool_target_in_base,
     wrapped_yaw_error,
 )
-from luggage_planning.reachability_atlas import (  # noqa: E402
+from luggage_planning.atlas.model import (  # noqa: E402
     MARGINAL,
     REACHABLE,
     UNREACHABLE,
     UNKNOWN,
     ReachabilityAtlas,
 )
-from luggage_planning import atlas_runtime as ar  # noqa: E402
+from luggage_planning.atlas import runtime as ar  # noqa: E402
 from luggage_packing.placement_reachability import (  # noqa: E402
     annotate_with_atlas,
     make_atlas_annotate,
@@ -1007,7 +1007,7 @@ class TestFKCertification(unittest.TestCase):
 class TestTaskGridIsolation(unittest.TestCase):
 
     def test_task_grid_writes_v1_marker(self):
-        from luggage_planning.reachable_task_grid import (
+        from luggage_planning.atlas.task_grid import (
             V1_SEMANTICS, load_task_grid, save_task_grid,
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -1043,7 +1043,7 @@ class TestRebuiltArtifacts(unittest.TestCase):
     )
 
     def test_all_profiles_directed_v2_with_coverage(self):
-        from luggage_planning.atlas_frame_contracts import DIRECTED_YAW_BINS
+        from luggage_planning.atlas.frame_contracts import DIRECTED_YAW_BINS
         for profile in self.PROFILES:
             npz = os.path.join(self.DATA, profile + ".npz")
             meta_path = os.path.join(self.DATA, profile + ".yaml")

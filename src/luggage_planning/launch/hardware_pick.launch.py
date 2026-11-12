@@ -117,7 +117,7 @@ def _frame_runtime_params(context):
     from luggage_description.runtime_graph import (
         HARDWARE_STACK_PEERS, STACK_PEERS, endpoint_registry, identity_endpoints, resolve_peers)
     from luggage_description.runtime_identity import build_identity
-    from luggage_planning.atlas_runtime import (
+    from luggage_planning.atlas.runtime import (
         load_atlas_runtime_for_scene, resolve_atlas_files)
     from luggage_description.xacro_robot_with_scene_base import expand_and_patch
     scene = LaunchConfiguration("scene_tf_config").perform(context)

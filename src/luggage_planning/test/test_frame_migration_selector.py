@@ -71,8 +71,8 @@ class SelectionSurfaceRemoved(unittest.TestCase):
 
     def test_deleted_entry_points_are_gone(self):
         import luggage_planning.place_tcp as tcp
-        import luggage_planning.reachable_graph as graph
-        import luggage_planning.grid_path_search as search
+        import luggage_planning.atlas.graph as graph
+        import luggage_planning.routing.grid_search as search
         for module, names in (
                 (place_service, ("fill_select_response", "handle_select_v2",
                                  "select_place_v2")),

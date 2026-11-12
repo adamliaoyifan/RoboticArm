@@ -3,7 +3,7 @@ import time
 import pytest
 from rclpy.serialization import deserialize_message
 from std_msgs.msg import String
-from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+from luggage_planning.placement_prior.evidence import PriorEvidenceRecorder
 
 
 def test_exact_capture_and_budget(tmp_path):

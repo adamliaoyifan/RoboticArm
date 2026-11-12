@@ -219,9 +219,9 @@ def actual_ros():
         pytest.skip('explicit isolated frozen-observation ROS RPC gate')
     import rclpy
     from rclpy.executors import MultiThreadedExecutor
-    from luggage_planning.joint_operation_actual_contact import FrozenActualContactPort
-    from luggage_planning.joint_operation_contracts import OperationIdentity
-    from luggage_planning.placement_prior_contracts import Transform
+    from luggage_planning.joint_operation.actual_contact import FrozenActualContactPort
+    from luggage_planning.joint_operation.contracts import OperationIdentity
+    from luggage_planning.placement_prior.contracts import Transform
     from st09_contracts.attachment_geometry import freeze_geometry
     from st09_contracts.payload_envelope import EnvelopeLimits
     from scipy.spatial.transform import Rotation

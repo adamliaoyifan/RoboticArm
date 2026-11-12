@@ -43,7 +43,7 @@ def heading(quat):
 
 
 def test_compute_and_complete_prepare_preserve_the_same_directed_candidates():
-    from luggage_planning.joint_operation_prepare_node import JointOperationPrepareNode
+    from luggage_planning.joint_operation.prepare_node import JointOperationPrepareNode
     stub, request, response, confirmed, volume = compute_fixture()
     result = stub._handle_v2(request, response)
     assert result.success, result.message

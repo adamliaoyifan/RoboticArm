@@ -11,7 +11,7 @@ import numpy as np
 import yaml
 
 
-from luggage_planning.reachability_atlas import (  # noqa: E402
+from luggage_planning.atlas.model import (  # noqa: E402
     MARGINAL,
     REACHABLE,
     UNKNOWN,

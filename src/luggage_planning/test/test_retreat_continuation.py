@@ -1,6 +1,6 @@
 import math
 import pytest
-from luggage_planning.retreat_continuation import refine_retreat
+from luggage_planning.routing.retreat_continuation import refine_retreat
 
 
 def test_large_total_joint_travel_is_continuous_locally():

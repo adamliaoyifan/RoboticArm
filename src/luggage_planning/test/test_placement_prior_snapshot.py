@@ -6,9 +6,9 @@ import pytest
 pytest.importorskip('moveit_msgs.msg')
 from moveit_msgs.msg import PlanningScene, CollisionObject
 from rclpy.serialization import serialize_message, deserialize_message
-from luggage_planning.placement_prior_contracts import Transform
-from luggage_planning.placement_prior_surface import ConfirmedSurface
-from luggage_planning.placement_prior_snapshot import build_private_snapshot
+from luggage_planning.placement_prior.contracts import Transform
+from luggage_planning.placement_prior.surface import ConfirmedSurface
+from luggage_planning.placement_prior.snapshot import build_private_snapshot
 
 
 def test_world_copy_keeps_static_geometry_and_rotates_unknown_and_occupied_columns():
@@ -72,9 +72,9 @@ def ordering_fixture():
 
 def test_moving_joint_samples_preserve_order_only_not_cached_collision_result():
     from dataclasses import replace
-    from luggage_planning.placement_prior_prefetch import rank_regenerated_placements,reusable_placements
-    from luggage_planning.placement_prior_contracts import PlacementCandidate
-    from luggage_planning.placement_prior import compute_prior
+    from luggage_planning.placement_prior.prefetch import rank_regenerated_placements,reusable_placements
+    from luggage_planning.placement_prior.contracts import PlacementCandidate
+    from luggage_planning.placement_prior.core import compute_prior
     from test_placement_prior import request,SensorWall
     scene,snapshot=ordering_fixture();before=snapshot(scene)
     moved=copy.deepcopy(scene)

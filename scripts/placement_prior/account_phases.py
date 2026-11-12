@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from luggage_planning.prior_phase_accounting import account_phases
+from luggage_planning.placement_prior.prior_phase_accounting import account_phases
 
 
 def main():

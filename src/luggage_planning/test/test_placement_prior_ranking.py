@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 import numpy as np
-from luggage_planning.placement_prior_ranking import rank_payload_clearance
+from luggage_planning.placement_prior.ranking import rank_payload_clearance
 
 
 def test_clear_payload_precedes_deep_unknown_without_dropping_candidates():

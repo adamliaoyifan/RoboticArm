@@ -31,7 +31,7 @@ from st09_contracts.graph import GraphEdge, LoadState  # noqa: E402
 from luggage_planning.attachment_provider import (  # noqa: E402
     MeasuredAttachmentProvider,
 )
-from luggage_planning.grid_path_search import RoutePlanningError  # noqa: E402
+from luggage_planning.routing.grid_search import RoutePlanningError  # noqa: E402
 from luggage_planning.map_revalidation import (  # noqa: E402
     MapRevalidator,
     RevalidationPolicy,
@@ -41,13 +41,13 @@ from luggage_planning.moveit_validity_adapter import (  # noqa: E402
     StaticMoveItValidityAdapter,
     ValiditySample,
 )
-from luggage_planning.reachable_graph import RouteGraph  # noqa: E402
-from luggage_planning.atlas_prior import (  # noqa: E402
+from luggage_planning.atlas.graph import RouteGraph  # noqa: E402
+from luggage_planning.atlas.prior import (  # noqa: E402
     prior_for_targets,
     prior_from_statuses,
     replay_captured_candidates,
 )
-from luggage_planning.route_producer import (  # noqa: E402
+from luggage_planning.routing.producer import (  # noqa: E402
     RouteProducer,
     _soft_sampled_unreachable,
     admit_attachment_for_route,
@@ -370,7 +370,7 @@ class TestAttachmentStampAdmission:
 
 
 def test_cartesian_failure_names_the_unreached_waypoint():
-    from luggage_planning.moveit_edge_adapter import cartesian_failure_detail
+    from luggage_planning.routing.moveit_edge_adapter import cartesian_failure_detail
     detail = cartesian_failure_detail(
         [0.1], [0.2], [1.0, 0.0, 0.5], [1.2, 0.0, 0.5],
         0.286, 0.95, 8)
@@ -405,7 +405,7 @@ class TestGoalRefineEvidence:
         assert record["attempts"][0]["pos_err_m"] == 0.52
 
     def test_joint1_goal_records_that_seed_not_the_fallback(self):
-        from luggage_planning.route_producer import tool_down_branch_seeds
+        from luggage_planning.routing.producer import tool_down_branch_seeds
 
         producer, _clock = build_producer()
         shifted = tool_down_branch_seeds()[1][1]
@@ -1185,7 +1185,7 @@ class TestLegRecords:
 
 def _hop_pairs(producer, *, opening, transit_clearance_z):
     """Run one plan and return the entry and retreat hops."""
-    import luggage_planning.reachable_graph as reachable
+    import luggage_planning.atlas.graph as reachable
 
     producer.opening_info = opening
     producer.transit_clearance_z = transit_clearance_z

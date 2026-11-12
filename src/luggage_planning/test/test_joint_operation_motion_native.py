@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from test_joint_operation_revalidation_native import native_gate, issued, context, port
-from luggage_planning.joint_operation_motion import MeasuredJointSample, StrictOperationMotionPort
+from luggage_planning.joint_operation.motion import MeasuredJointSample, StrictOperationMotionPort
 
 pytestmark = pytest.mark.skipif(not os.environ.get('JOINT_NATIVE_CERTIFIER_EXECUTABLE'),
     reason='explicit isolated native/controller diagnostic gate')

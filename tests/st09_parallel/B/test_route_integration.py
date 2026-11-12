@@ -24,9 +24,9 @@ from st09_contracts.planning import (  # noqa: E402
     PlacementCandidate,
 )
 
-from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter  # noqa: E402
+from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter  # noqa: E402
 from luggage_planning.place_targets import GoalSeed  # noqa: E402
-from luggage_planning.reachable_graph import (  # noqa: E402
+from luggage_planning.atlas.graph import (  # noqa: E402
     GraphRoutePlanner,
     RouteGraph,
     make_offline_fk,

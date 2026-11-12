@@ -15,9 +15,9 @@ from rclpy.serialization import deserialize_message, serialize_message
 from luggage_msgs.srv import PreparePlacementPriorV2, CheckPlacementToolV2
 from moveit_msgs.msg import PlanningScene
 from luggage_description.scene_tf_config_utils import load_scene_tf_config, world_transform
-from luggage_planning.placement_prior_contracts import Transform
-from luggage_planning.placement_prior_surface import ConfirmedSurface
-from luggage_planning.placement_prior_snapshot import build_private_snapshot
+from luggage_planning.placement_prior.contracts import Transform
+from luggage_planning.placement_prior.surface import ConfirmedSurface
+from luggage_planning.placement_prior.snapshot import build_private_snapshot
 
 
 def main():

@@ -684,7 +684,7 @@ def _frame_runtime_params(cfg, scene_tf_config, initial_joint_args):
     from luggage_description.runtime_graph import (
         endpoint_registry, identity_endpoints, resolve_peers)
     from luggage_description.runtime_identity import build_identity
-    from luggage_planning.atlas_runtime import (
+    from luggage_planning.atlas.runtime import (
         load_atlas_runtime_for_scene, resolve_atlas_files)
     peers = resolve_peers(cfg["frame_driver_peer"])
     xacro_path = os.path.join(

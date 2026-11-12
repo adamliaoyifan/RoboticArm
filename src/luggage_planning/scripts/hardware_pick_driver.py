@@ -268,7 +268,7 @@ class HardwarePickDriver(Node):
         self._measured_attachment = None
         self._place_planner = None
         if bool(getattr(args, 'placement_prior', False)):
-            from luggage_planning.placement_prior_client import PlacementPriorClient
+            from luggage_planning.placement_prior.client import PlacementPriorClient
             self._placement_prior_client = PlacementPriorClient(self, group=self._group)
         self.create_subscription(
             VacuumState, "/vacuum/state", self._on_vacuum, 10,
@@ -314,7 +314,7 @@ class HardwarePickDriver(Node):
             evidence_dir = str(getattr(args, 'planning_evidence_dir', '') or '')
             if evidence_dir:
                 from pathlib import Path
-                from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+                from luggage_planning.placement_prior.evidence import PriorEvidenceRecorder
                 root = Path(evidence_dir)
                 root.mkdir(parents=True, exist_ok=False)
                 (root / 'runtime_identity.json').write_text(

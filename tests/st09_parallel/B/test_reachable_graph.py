@@ -26,8 +26,8 @@ scipy_rot = pytest.importorskip("scipy.spatial.transform").Rotation
 from st09_contracts.graph import GraphEdge, LoadState  # noqa: E402
 from st09_contracts.fixtures import make_timed_trajectory  # noqa: E402
 
-from luggage_planning import reachable_graph as rg  # noqa: E402
-from luggage_planning.reachable_graph import (  # noqa: E402
+from luggage_planning.atlas import graph as rg  # noqa: E402
+from luggage_planning.atlas.graph import (  # noqa: E402
     GraphStore,
     RegionAnchor,
     RouteGraph,
@@ -74,7 +74,7 @@ class TestLegacyLayerRemoved(object):
     """[ST09-I integration] the legacy atlas-cell layer is deleted."""
 
     def test_section_a_symbols_are_gone(self):
-        from luggage_planning import reachable_graph as graph
+        from luggage_planning.atlas import graph
         for name in ("build_reachable_graph", "ReachableGraph",
                      "grid_disable_reason", "cell_center", "AtlasCellNode"):
             assert not hasattr(graph, name), name

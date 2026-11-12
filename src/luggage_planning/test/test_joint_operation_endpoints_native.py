@@ -47,9 +47,9 @@ def robot_fixture():
 def native_stack():
     import rclpy
     import yaml
-    from luggage_planning.joint_operation_endpoints import NativeOperationEndpointPort
-    from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
-    from luggage_planning.joint_operation_certification import EndpointModel,NativeOperationCertificationPort
+    from luggage_planning.joint_operation.endpoints import NativeOperationEndpointPort
+    from luggage_planning.joint_operation.connection import NativeSnapshotConnectionPort
+    from luggage_planning.joint_operation.certification import EndpointModel,NativeOperationCertificationPort
     directory = Path(os.environ['JOINT_ENDPOINT_EVIDENCE_DIR'])
     directory.mkdir(parents=True,exist_ok=False)
     xml,srdf = robot_fixture()
@@ -129,10 +129,10 @@ def candidate_for(model, *, pick_q=None, place_q=None):
     from scipy.spatial.transform import Rotation
     from moveit_msgs.msg import PlanningScene
     from rclpy.serialization import serialize_message
-    from luggage_planning.joint_operation_contracts import OperationIdentity,OPERATION_JOINTS
-    from luggage_planning.joint_operation_planner import OperationCandidate,JointSeedHint
-    from luggage_planning.joint_operation_scenes import build_operation_scenes
-    from luggage_planning.placement_prior_contracts import Snapshot,Transform
+    from luggage_planning.joint_operation.contracts import OperationIdentity,OPERATION_JOINTS
+    from luggage_planning.joint_operation.planner import OperationCandidate,JointSeedHint
+    from luggage_planning.joint_operation.scenes import build_operation_scenes
+    from luggage_planning.placement_prior.contracts import Snapshot,Transform
     from st09_contracts.attachment_geometry import freeze_geometry
     from st09_contracts.payload_envelope import EnvelopeLimits
     pick_q=pick_q or (0.,-.6,1.2,0.,-.6,math.pi)
@@ -176,8 +176,8 @@ def test_real_native_ik_skips_bad_hint_and_retains_alternative_branch_provenance
 
 
 def test_complete_plan_uses_real_native_endpoints_connections_and_certificate(native_stack):
-    from luggage_planning.joint_operation_planner import JointOperationPlanner
-    from luggage_planning.joint_operation_contracts import admit_operation_plan
+    from luggage_planning.joint_operation.planner import JointOperationPlanner
+    from luggage_planning.joint_operation.contracts import admit_operation_plan
     identity,start,candidate=candidate_for(native_stack.model)
     planner=JointOperationPlanner(native_stack.endpoints,native_stack.connections,native_stack.certifier,
         velocity_scale=.2,acceleration_scale=.1,certification_reserve_s=2.5)
@@ -206,7 +206,7 @@ def test_legacy_empty_hints_still_produce_native_local_paths(native_stack):
 
 @pytest.mark.parametrize('hints',[[0.]*5,[0.]*24,[float('nan')]*6])
 def test_native_rejects_malformed_entry_seed_arrays(native_stack,hints):
-    from luggage_planning.joint_operation_endpoints import build_local_query
+    from luggage_planning.joint_operation.endpoints import build_local_query
     from luggage_msgs.srv import CheckGraspLocalPaths
     from rclpy.serialization import serialize_message
     _,_,candidate=candidate_for(native_stack.model)
@@ -224,7 +224,7 @@ def test_native_rejects_malformed_entry_seed_arrays(native_stack,hints):
 
 
 def test_current_world_obstacle_rejects_even_with_valid_hint(native_stack):
-    from luggage_planning.joint_operation_endpoints import build_local_query,endpoint_evidence
+    from luggage_planning.joint_operation.endpoints import build_local_query,endpoint_evidence
     from luggage_msgs.srv import CheckGraspLocalPaths
     from moveit_msgs.msg import CollisionObject
     from shape_msgs.msg import SolidPrimitive

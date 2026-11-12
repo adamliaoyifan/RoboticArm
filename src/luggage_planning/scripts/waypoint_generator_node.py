@@ -48,7 +48,7 @@ from luggage_msgs.srv import BuildMotionSequence, BuildMotionSequenceV2
 
 from luggage_perception.locked_stamp_window import LockedStampWindow
 from luggage_planning import ros_message_adapters as adapters
-from luggage_planning.reachability_wavefront import (
+from luggage_planning.atlas.wavefront import (
     SAFE_TOOL_Z,
     container_tool_z_in_frame,
 )
@@ -337,9 +337,9 @@ class WaypointGeneratorNode(Node):
         """Lazy MoveIt edge builder stack for timed pick legs (ST09-I)."""
         if getattr(self, "_pick_stack", None) is not None:
             return self._pick_stack
-        from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter
+        from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
         from luggage_planning.offline_ik import load_urdf, refine_to_pose
-        from luggage_planning.reachable_graph import (
+        from luggage_planning.atlas.graph import (
             RouteGraph,
             make_offline_fk,
         )
@@ -371,7 +371,7 @@ class WaypointGeneratorNode(Node):
         from luggage_planning.planning_scene_client import (
             PlanningSceneClient,
         )
-        from luggage_planning.route_producer import (
+        from luggage_planning.routing.producer import (
             certification_policy_from_contract,
         )
         from luggage_planning.trajectory_certifier import TrajectoryCertifier
@@ -456,8 +456,8 @@ class WaypointGeneratorNode(Node):
             origin_in_world,
         )
         from luggage_description.scene_tf_publisher import rpy_to_quaternion
-        from luggage_planning.grid_path_search import RoutePlanningError
-        from luggage_planning.moveit_edge_adapter import (
+        from luggage_planning.routing.grid_search import RoutePlanningError
+        from luggage_planning.routing.moveit_edge_adapter import (
             OccupancyColumnError,
             SceneState,
             occupancy_boxes_from_surface,
@@ -465,7 +465,7 @@ class WaypointGeneratorNode(Node):
         from luggage_planning.moveit_state_validity import (
             MoveItStateValidityAdapter,
         )
-        from luggage_planning.route_producer import certify_unloaded_legs
+        from luggage_planning.routing.producer import certify_unloaded_legs
 
         snapshot = self._pick_cert_snapshot(scene_revision)
         if snapshot is None:
@@ -527,8 +527,8 @@ class WaypointGeneratorNode(Node):
         """Encode the frozen pick waypoint ladder as timed joint legs."""
         def encode(pick, *, request_id, scene_revision, stamp_ns,
                    suction_candidate=None):
-            from luggage_planning.grid_path_search import RoutePlanningError
-            from luggage_planning.route_producer import pick_leg_records
+            from luggage_planning.routing.grid_search import RoutePlanningError
+            from luggage_planning.routing.producer import pick_leg_records
 
             start_q = getattr(self, "_joints_live", None)
             if not start_q:

@@ -216,7 +216,7 @@ class SceneManagerNode(Node):
         from luggage_description.scene_tf_config_utils import (
             origin_in_world, resolve_scene_tf_config_path,
         )
-        from luggage_planning.atlas_runtime import compute_scene_tf_hash
+        from luggage_planning.atlas.runtime import compute_scene_tf_hash
         from luggage_planning.scene_box_v2 import handle_add_scene_box_v2
         _gate = getattr(self, "_gate_mutation", None)
         if _gate is not None and not _gate(

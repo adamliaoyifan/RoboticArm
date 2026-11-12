@@ -7,7 +7,7 @@ import pytest
 from luggage_planning.anchor_payload_gate import (
     REASON_COLLISION, REASON_NOT_EVALUATED, AnchorPayloadGate)
 from st09_contracts.graph import LoadState
-from luggage_planning.reachable_graph import GraphRoutePlanner, RouteGraph
+from luggage_planning.atlas.graph import GraphRoutePlanner, RouteGraph
 
 
 def _node(node_id, q, region="portal"):
@@ -154,8 +154,8 @@ class _LiveChecker(object):
 
 
 def _producer_double(scene_ref, log):
-    from luggage_planning.moveit_edge_adapter import PayloadSpec, SceneState
-    from luggage_planning.route_producer import RouteProducer
+    from luggage_planning.routing.moveit_edge_adapter import PayloadSpec, SceneState
+    from luggage_planning.routing.producer import RouteProducer
 
     state = SceneState(
         load_state="carrying",
@@ -247,7 +247,7 @@ class _NoEdgeBuilder(object):
 
 
 def test_all_portals_rejected_ends_finitely_without_submitting_or_bin_full():
-    from luggage_planning.grid_path_search import (
+    from luggage_planning.routing.grid_search import (
         RoutePlanningError, RouteSearch, hops_from_table)
 
     class _RejectAll(_LiveChecker):

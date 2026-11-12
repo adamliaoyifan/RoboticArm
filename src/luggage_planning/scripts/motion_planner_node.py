@@ -48,7 +48,7 @@ from luggage_description.scene_tf_config_utils import (
 from luggage_msgs.action import GoToRobotPose, PlanMotion, PlanMotionV2
 from luggage_msgs.srv import ProbeMotionSegment, ProbeMotionSegmentV2
 from luggage_planning.debug_capture import write_failure_capture
-from luggage_planning.atlas_runtime import (
+from luggage_planning.atlas.runtime import (
     PARAM_SPEC,
     apply_query_semantics,
     apply_ros_overrides,

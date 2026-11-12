@@ -550,7 +550,7 @@ def _loop_select_request(chain, request_id, placement, grasp, near_y):
 
 def _timed_joint_leg(chain, request_id, target_q, duration_s=4.0):
     """One admitted joint_path leg (linear rest-to-rest) for reposition."""
-    from luggage_planning.route_producer import _leg_record
+    from luggage_planning.routing.producer import _leg_record
     from st09_contracts.fixtures import make_timed_trajectory
 
     from luggage_description.frame_diagnostics import BoundaryContext

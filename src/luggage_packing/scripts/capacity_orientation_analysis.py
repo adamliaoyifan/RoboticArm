@@ -75,7 +75,7 @@ from luggage_packing.placement_solver import (  # noqa: E402
     solve_placement,
 )
 from luggage_packing.placement_reachability import make_atlas_annotate  # noqa: E402
-from luggage_planning.atlas_runtime import (  # noqa: E402
+from luggage_planning.atlas.runtime import (  # noqa: E402
     apply_query_semantics,
     compute_scene_tf_hash,
     load_atlas_runtime,

@@ -6,11 +6,11 @@ import time
 
 import pytest
 
-from luggage_planning.placement_prior_contracts import (
+from luggage_planning.placement_prior.contracts import (
     Transform, Snapshot, GraspCandidate, PlacementCandidate, PriorRequest,
 )
-from luggage_planning.placement_prior import CollisionVerdict, compute_prior
-from luggage_planning.placement_prior_worker import PriorWorker
+from luggage_planning.placement_prior.core import CollisionVerdict, compute_prior
+from luggage_planning.placement_prior.worker import PriorWorker
 
 I = Transform((0, 0, 0), (0, 0, 0, 1))
 

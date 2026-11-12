@@ -5,7 +5,7 @@ from its separate captured controller response, never from a proposed grasp.
 The live graph must independently provide the matching scene and map.
 """
 from luggage_planning.hardware_place_planning import attachment_from_response, plan_attached_box
-from luggage_planning.placement_prior_adoption import _pose_equal
+from luggage_planning.placement_prior.adoption import _pose_equal
 from luggage_planning.typed_driver_adapter import tcp_record
 
 

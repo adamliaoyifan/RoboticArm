@@ -1,8 +1,8 @@
 import json
 from types import SimpleNamespace
 import pytest
-from luggage_planning.placement_prior_surface import ConfirmedSurface
-from luggage_planning.placement_prior_volume import blocked_volume_runs
+from luggage_planning.placement_prior.surface import ConfirmedSurface
+from luggage_planning.placement_prior.volume import blocked_volume_runs
 
 
 def fixture():

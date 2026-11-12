@@ -43,7 +43,7 @@ def main():
     if args.prefetch_template:
         if not args.simulate_cycle:
             parser.error('--prefetch-template requires --simulate-cycle')
-        from luggage_planning.placement_prior_prefetch import PrefetchTemplate
+        from luggage_planning.placement_prior.prefetch import PrefetchTemplate
         template_bytes = args.prefetch_template.read_bytes()
         template = json.loads(template_bytes)
         validated = PrefetchTemplate(template['box_wdh'], template['grasps_flat'])
@@ -145,7 +145,7 @@ def main():
         elif args.probe_carry_replacement:
             from luggage_msgs.srv import SpawnNextBox
             from std_srvs.srv import SetBool
-            from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+            from luggage_planning.placement_prior.evidence import PriorEvidenceRecorder
             record = PriorEvidenceRecorder(out/'entity_probe_boundaries')
 
             def call_probe(service_type, name, request):

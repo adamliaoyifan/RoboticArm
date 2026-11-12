@@ -122,7 +122,7 @@ class E4Harness:
         """One plan() through the product entry; returns a classification
         dict (never raises past the product's own ValueError surface)."""
         from luggage_planning.hardware_place_planning import MeasuredAttachment
-        from luggage_planning.placement_prior_contracts import Transform
+        from luggage_planning.placement_prior.contracts import Transform
         client = self._client
         now = client.clock_now_ns()
 

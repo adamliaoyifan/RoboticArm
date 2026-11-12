@@ -34,12 +34,12 @@ from st09_contracts.reasons import Reason  # noqa: E402
 
 from luggage_planning.place_targets import GoalSeed  # noqa: E402
 
-from luggage_planning.grid_path_search import (  # noqa: E402
+from luggage_planning.routing.grid_search import (  # noqa: E402
     RoutePlanningError,
     RouteSearch,
     RouteBudget,
 )
-from luggage_planning.reachable_graph import (  # noqa: E402
+from luggage_planning.atlas.graph import (  # noqa: E402
     GraphRoutePlanner,
     RouteGraph,
 )

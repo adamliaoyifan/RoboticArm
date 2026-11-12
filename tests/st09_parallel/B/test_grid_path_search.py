@@ -23,7 +23,7 @@ from st09_contracts.planning import (  # noqa: E402
     PlacementCandidate,
 )
 
-from luggage_planning.grid_path_search import (  # noqa: E402
+from luggage_planning.routing.grid_search import (  # noqa: E402
     DEFAULT_ENTRY_HOPS,
     DEFAULT_RETREAT_HOPS,
     EDGE_CLASSES,
@@ -42,7 +42,7 @@ from luggage_planning.grid_path_search import (  # noqa: E402
     map_edge_failure,
     route_bearing_sort_key,
 )
-from luggage_planning.reachable_graph import (  # noqa: E402
+from luggage_planning.atlas.graph import (  # noqa: E402
     RegionAnchor,
     RouteGraph,
     build_route_graph_from_atlas,
@@ -426,7 +426,7 @@ class TestRouteSearchChains:
         assert anchor.node_id != ladder.node_id
 
     def test_insert_refines_from_the_frontier_heading_only(self):
-        from luggage_planning.reachable_graph import GraphRoutePlanner
+        from luggage_planning.atlas.graph import GraphRoutePlanner
 
         graph = RouteGraph(static_identity="static-test")
         approach_q = (0.20, -0.40, 0.80, -0.30, 1.20, 0.40)
@@ -493,8 +493,8 @@ class TestRouteSearchChains:
         The retreat chain still completes: continuation refines each
         anchor pose from the frontier and registers an unloaded node.
         """
-        from luggage_planning.grid_path_search import hops_from_table
-        from luggage_planning.reachable_graph import GraphRoutePlanner
+        from luggage_planning.routing.grid_search import hops_from_table
+        from luggage_planning.atlas.graph import GraphRoutePlanner
 
         graph = RouteGraph(static_identity="static-test")
         release = _node(graph, Q_GOAL_F1, "slot", LoadState.UNLOADED, "f1",
@@ -884,6 +884,6 @@ class TestSectionARemoved(object):
     selection bypass; the bounded Section B search is the only layer."""
 
     def test_section_a_symbols_are_gone(self):
-        from luggage_planning import grid_path_search as search
+        from luggage_planning.routing import grid_search as search
         for name in ("PROFILES", "GridPath", "search_paths", "_dijkstra"):
             assert not hasattr(search, name), name

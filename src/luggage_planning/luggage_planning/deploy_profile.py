@@ -22,7 +22,7 @@ from __future__ import division
 
 import os
 
-from luggage_planning.atlas_runtime import (
+from luggage_planning.atlas.runtime import (
     compute_reachability_scene_hash,
     compute_scene_tf_hash,
     compute_urdf_hash,

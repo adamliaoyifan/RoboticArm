@@ -177,7 +177,7 @@ def _nodes_opaque(context):
 def build_frame_params(ws, scene_tf):
     """Measured identity for the graph (same sources the launches use)."""
     sys.path.insert(0, str(Path(ws) / "src" / "luggage_description"))
-    from luggage_planning.atlas_runtime import (
+    from luggage_planning.atlas.runtime import (
         load_atlas_runtime_for_scene, resolve_atlas_files)
     from luggage_description.runtime_graph import (
         endpoint_registry, identity_endpoints, resolve_peers)

@@ -21,8 +21,8 @@ for entry in ("src/luggage_planning", "src/luggage_perception",
     if path not in sys.path:
         sys.path.append(path)
 
-import luggage_planning.route_producer as rp  # noqa: E402
-from luggage_planning.route_producer import RouteProducer  # noqa: E402
+import luggage_planning.routing.producer as rp  # noqa: E402
+from luggage_planning.routing.producer import RouteProducer  # noqa: E402
 
 SCENE_PATH = os.path.join(
     _ROOT, "src", "luggage_description", "config", "scene_tf_deploy.yaml")

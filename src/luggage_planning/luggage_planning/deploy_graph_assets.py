@@ -16,7 +16,7 @@ from __future__ import division
 import math
 from collections import deque
 
-from luggage_planning.reachable_graph import GraphStore
+from luggage_planning.atlas.graph import GraphStore
 
 #: Region semantics of the canonical offline chain.
 START_REGIONS = ("portal",)

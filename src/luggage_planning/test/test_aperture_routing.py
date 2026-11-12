@@ -5,11 +5,11 @@ import numpy as np
 import pytest
 from scipy.spatial.transform import Rotation
 
-from luggage_planning.aperture_geometry import ApertureGeometry, box_vertices, transform_vertices
-from luggage_planning.joint_operation_aperture import ApertureRouter
-from luggage_planning.joint_operation_connection import GeometricConnection
-from luggage_planning.joint_operation_ik import SnapshotIKResult
-from luggage_planning.placement_prior_contracts import Transform
+from luggage_planning.joint_operation.aperture_geometry import ApertureGeometry, box_vertices, transform_vertices
+from luggage_planning.joint_operation.aperture import ApertureRouter
+from luggage_planning.joint_operation.connection import GeometricConnection
+from luggage_planning.joint_operation.ik import SnapshotIKResult
+from luggage_planning.placement_prior.contracts import Transform
 
 
 def aperture():

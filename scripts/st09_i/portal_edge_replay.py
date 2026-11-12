@@ -64,7 +64,7 @@ def main():
     from rclpy.node import Node
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_perception.eval.isolated_domain import isolated_replay_env
-    from luggage_planning.moveit_edge_adapter import (
+    from luggage_planning.routing.moveit_edge_adapter import (
         EdgeClass,
         MoveItEdgeAdapter,
         PayloadSpec,

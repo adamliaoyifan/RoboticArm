@@ -114,11 +114,11 @@ states the required behavior; current joint-operation implementation has not
 yet demonstrated this gate end to end.
 
 The `joint_operation` preparation root owns opening-waypoint generation; external
-callers do not supply entrance points. `aperture_geometry` derives proposal regions
+callers do not supply entrance points. `joint_operation.aperture_geometry` derives proposal regions
 from scene corners and the already-conservative grasp-bound payload.
-`aperture_tool_geometry` derives the fixed tool component from the same full URDF;
+`joint_operation.aperture_tool_geometry` derives the fixed tool component from the same full URDF;
 its projected bounds rank/propose passage geometry, while native collision checks
-remain authoritative. `joint_operation_aperture` refines qualified atlas/current
+remain authoritative. `joint_operation.aperture` refines qualified atlas/current
 joint seeds to ordered exterior/plane/interior poses and connects them before the
 existing local place-entry pose. It tries alternative points and directed headings
 within explicit parameter bounds (`aperture_max_points_per_heading`, default6;

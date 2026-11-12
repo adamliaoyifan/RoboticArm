@@ -3,8 +3,8 @@
 
 import unittest
 
-import luggage_planning.reachability_wavefront as builder
-from luggage_planning.reachability_wavefront import (
+import luggage_planning.atlas.wavefront as builder
+from luggage_planning.atlas.wavefront import (
     MIN_LIFT,
     adaptive_lift_clearance,
     contact_below_interference,

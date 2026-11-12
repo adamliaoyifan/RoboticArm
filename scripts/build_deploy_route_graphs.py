@@ -189,7 +189,7 @@ class PayloadScene(object):
 
 def load_fk(urdf_path):
     from luggage_planning.offline_ik import Urdf
-    from luggage_planning.reachable_graph import make_offline_fk
+    from luggage_planning.atlas.graph import make_offline_fk
     with open(urdf_path, "rb") as handle:
         urdf = Urdf(handle.read())
     full_path = urdf.path_to("suction_contact_frame")
@@ -255,7 +255,7 @@ def select_targets(atlas, payload, targets_per_yaw):
 
 
 def seeds_at(atlas, x, y, z, yaw, seed_set, max_seeds=2):
-    from luggage_planning.atlas_runtime import atlas_seeds_for_query
+    from luggage_planning.atlas.runtime import atlas_seeds_for_query
     record = atlas_seeds_for_query(
         atlas, x, y, z, yaw, seed_set=seed_set, max_seeds=max_seeds)
     return [tuple(float(v) for v in row)
@@ -364,9 +364,9 @@ def planner_config(targets_per_yaw):
 
 def build_one_graph(node, data_dir, graph_id, basename, payload, scene_path,
                     targets_per_yaw):
-    from luggage_planning.atlas_frame_contracts import geometry_hash
-    from luggage_planning.reachable_graph import GraphStore, RouteGraph
-    from luggage_planning.reachability_atlas import ReachabilityAtlas
+    from luggage_planning.atlas.frame_contracts import geometry_hash
+    from luggage_planning.atlas.graph import GraphStore, RouteGraph
+    from luggage_planning.atlas.model import ReachabilityAtlas
 
     npz = os.path.join(data_dir, basename + ".npz")
     meta_path = os.path.join(data_dir, basename + ".yaml")

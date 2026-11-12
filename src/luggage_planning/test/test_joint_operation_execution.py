@@ -4,8 +4,8 @@ from dataclasses import replace
 import pytest
 
 from luggage_description.frame_contracts import ContractError
-from luggage_planning.joint_operation_contracts import seal_operation_plan
-from luggage_planning.joint_operation_execution import (
+from luggage_planning.joint_operation.contracts import seal_operation_plan
+from luggage_planning.joint_operation.execution import (
     JointOperationExecution, ValidationReceipt,
 )
 from st09_contracts.attachment import (

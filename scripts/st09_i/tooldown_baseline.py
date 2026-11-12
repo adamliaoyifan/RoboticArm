@@ -36,7 +36,7 @@ for _path in (
 
 import corridor_ablation as ablation  # noqa: E402
 import placement_robustness as scan  # noqa: E402
-from luggage_planning.corridor_lattice import (  # noqa: E402
+from luggage_planning.routing.corridor_lattice import (  # noqa: E402
     CorridorRequest,
     has_kinematic_chain,
     prepare_corridor,
@@ -216,8 +216,8 @@ def collide():
         raise SystemExit("residual sim processes: %s" % residuals)
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_perception.eval.isolated_domain import isolated_replay_env
-    from luggage_planning.grid_path_search import ROUTE_TOTAL_WALL_S
-    from luggage_planning.lattice_route import LatticeStateChecker
+    from luggage_planning.routing.grid_search import ROUTE_TOTAL_WALL_S
+    from luggage_planning.routing.lattice import LatticeStateChecker
     from luggage_planning.planning_scene_client import PlanningSceneClient
     from luggage_planning.typed_driver_adapter import container_transform_fields
     import rclpy
@@ -480,8 +480,8 @@ def fallback():
         raise SystemExit("residual sim processes: %s" % residuals)
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_perception.eval.isolated_domain import isolated_replay_env
-    from luggage_planning.grid_path_search import ROUTE_TOTAL_WALL_S
-    from luggage_planning.lattice_route import LatticeStateChecker
+    from luggage_planning.routing.grid_search import ROUTE_TOTAL_WALL_S
+    from luggage_planning.routing.lattice import LatticeStateChecker
     from luggage_planning.planning_scene_client import PlanningSceneClient
     from luggage_planning.typed_driver_adapter import container_transform_fields
     import rclpy

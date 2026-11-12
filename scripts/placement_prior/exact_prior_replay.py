@@ -50,7 +50,7 @@ def main():
     from moveit_msgs.srv import GetPlanningScene
     from luggage_msgs.msg import SurfaceContractV2, PoseContractV2
     from luggage_msgs.srv import PreparePlacementPriorV2, GetCargoVolumeV2
-    from luggage_planning.prior_resources import ResourceWindow
+    from luggage_planning.placement_prior.prior_resources import ResourceWindow
     boundary = args.capture / 'prior_boundaries'
     rows = [json.loads(line) for line in (boundary / 'boundaries.jsonl').read_text().splitlines()]
     starts = [i for i, row in enumerate(rows) if row['boundary'] == 'prepare_request']
@@ -133,7 +133,7 @@ def main():
         'map_parameter_service:=/recorded_occ/get_parameters',
         'evidence_dir:=' + str(args.output / 'boundaries')]
     if args.prefetch_template:
-        from luggage_planning.placement_prior_prefetch import PrefetchTemplate
+        from luggage_planning.placement_prior.prefetch import PrefetchTemplate
         data=args.prefetch_template.read_bytes()
         template=json.loads(data)
         validated=PrefetchTemplate(template['box_wdh'],template['grasps_flat'])

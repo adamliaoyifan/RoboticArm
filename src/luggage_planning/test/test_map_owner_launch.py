@@ -71,11 +71,11 @@ def test_invalid_owner_and_tampered_effective_configuration_reject(tmp_path):
 
 def test_planning_compatibility_exports_are_same_classes():
     from luggage_mapping.source import OperationMapSource, OperationMapRefresh
-    from luggage_planning.joint_operation_map_source import OperationMapSource as LegacySource
-    from luggage_planning.joint_operation_map_source import OperationMapRefresh as LegacyRefresh
+    from luggage_planning.joint_operation.map_source import OperationMapSource as LegacySource
+    from luggage_planning.joint_operation.map_source import OperationMapRefresh as LegacyRefresh
     from luggage_mapping.surface import ConfirmedSurface
-    from luggage_planning.placement_prior_surface import ConfirmedSurface as LegacySurface
-    from luggage_planning.joint_operation_observer import ObserverSnapshotPort as LegacyPort
+    from luggage_planning.placement_prior.surface import ConfirmedSurface as LegacySurface
+    from luggage_planning.joint_operation.observer import ObserverSnapshotPort as LegacyPort
     assert (LegacySource, LegacyRefresh, LegacySurface, LegacyPort) == (
         OperationMapSource, OperationMapRefresh, ConfirmedSurface, ObserverSnapshotPort)
 

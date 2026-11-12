@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from luggage_planning.moveit_edge_adapter import (
+from luggage_planning.routing.moveit_edge_adapter import (
     BoxSpec, MoveItEdgeAdapter, PayloadSpec, SceneState,
 )
 

@@ -17,9 +17,9 @@ from st09_contracts.fixtures import make_attachment
 from st09_contracts.graph import LoadState
 from st09_contracts.planning import GeometryVerdict, PlacementCandidate
 
-from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter
+from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
 from luggage_planning.place_targets import GoalSeed
-from luggage_planning.reachable_graph import (
+from luggage_planning.atlas.graph import (
     GraphRoutePlanner,
     RouteGraph,
     make_offline_fk,

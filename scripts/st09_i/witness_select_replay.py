@@ -456,7 +456,7 @@ def _request_slots(witness, scene_config):
         container_opening_normal_in_world,
         container_opening_target_point_in_world,
     )
-    from luggage_planning.route_producer import _opening_depth
+    from luggage_planning.routing.producer import _opening_depth
 
     rows = [
         row for row in _load(os.path.join(
@@ -553,7 +553,7 @@ def _stats_for(surface, clock_ns):
 
 
 def _host(node, scene_config, clock_ns):
-    from luggage_planning.atlas_runtime import (
+    from luggage_planning.atlas.runtime import (
         compute_reachability_scene_hash,
         compute_scene_tf_hash,
         load_atlas_runtime_for_scene,
@@ -702,8 +702,8 @@ def _classify_row(row):
 
 def _run_select(node, witness, slots, witness_index, clock_ns):
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
-    from luggage_planning.route_producer import register_attach_from_request
-    from luggage_planning.route_producer_factory import (
+    from luggage_planning.routing.producer import register_attach_from_request
+    from luggage_planning.routing.factory import (
         build_production_route_producer,
     )
 

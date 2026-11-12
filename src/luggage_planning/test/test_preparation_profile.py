@@ -6,10 +6,10 @@ import threading
 import pytest
 
 from luggage_msgs.srv import PrepareJointOperationV2
-from luggage_planning.preparation_profile import PreparationBudget, StageTimings
-from luggage_planning.joint_operation_prepare_node import JointOperationPrepareNode
-from luggage_planning.joint_operation_preparation import JointOperationPreparation, PreparationInputs
-from luggage_planning.placement_prior_contracts import Transform
+from luggage_planning.joint_operation.preparation_profile import PreparationBudget, StageTimings
+from luggage_planning.joint_operation.prepare_node import JointOperationPrepareNode
+from luggage_planning.joint_operation.preparation import JointOperationPreparation, PreparationInputs
+from luggage_planning.placement_prior.contracts import Transform
 from st09_contracts.payload_envelope import EnvelopeLimits
 from test_directed_suction_service import request_and_context
 from test_joint_operation_candidates import snapshot
@@ -132,8 +132,8 @@ def test_native_stage_timing_preserves_plan_bytes_and_deadlines():
 def test_candidate_stage_profile_runs_actual_proposal_quality_and_binding():
     from dataclasses import replace
     from luggage_perception.directed_suction_service import DirectedSuctionService
-    from luggage_planning.joint_operation_contacts import contact_query, contact_evidence
-    from luggage_planning.placement_prior_contracts import PlacementCandidate
+    from luggage_planning.joint_operation.contacts import contact_query, contact_evidence
+    from luggage_planning.placement_prior.contracts import PlacementCandidate
     from test_joint_operation_candidates import placed_pose, service_response
     request, context, inputs = query_and_inputs(30.)
     service = DirectedSuctionService(clock=lambda:0.)

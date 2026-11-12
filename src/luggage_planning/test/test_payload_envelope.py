@@ -171,8 +171,8 @@ def test_attachment_binding_and_nominal_target_preserved():
 
 def test_scenes_and_graph_identity_share_geometry():
     from types import SimpleNamespace
-    from luggage_planning.route_producer import RouteProducer
-    from luggage_planning.reachable_graph import GraphRoutePlanner
+    from luggage_planning.routing.producer import RouteProducer
+    from luggage_planning.atlas.graph import GraphRoutePlanner
     _, attachment = envelope_attachment()
     env = attachment.collision_envelope
     producer = object.__new__(RouteProducer)

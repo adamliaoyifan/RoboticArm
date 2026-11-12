@@ -1,6 +1,6 @@
 from copy import deepcopy
 import pytest
-from luggage_planning.prior_phase_accounting import account_phases
+from luggage_planning.placement_prior.prior_phase_accounting import account_phases
 
 
 def fixture():

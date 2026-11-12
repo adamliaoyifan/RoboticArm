@@ -114,7 +114,7 @@ def _anchors_for(candidate, request, scene_config):
         container_opening_normal_in_world,
         container_opening_target_point_in_world,
     )
-    from luggage_planning.route_producer import anchor_plan
+    from luggage_planning.routing.producer import anchor_plan
 
     target = candidate["targets"][0]
     plan = anchor_plan(

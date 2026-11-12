@@ -47,7 +47,7 @@ for _pkg in ("luggage_planning", "luggage_description"):
     if os.path.isdir(_path) and _path not in sys.path:
         sys.path.insert(0, _path)
 
-from luggage_planning.atlas_frame_contracts import (  # noqa: E402
+from luggage_planning.atlas.frame_contracts import (  # noqa: E402
     tool_target_in_base,
 )
 from luggage_planning.offline_ik import JOINTS, Urdf  # noqa: E402

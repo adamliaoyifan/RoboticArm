@@ -17,7 +17,7 @@ def main():
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_msgs.srv import SelectPlacePathV2, ValidateRouteV2
     from luggage_planning.place_service import fill_select_response_route
-    from luggage_planning import grid_path_search as gps
+    from luggage_planning.routing import grid_search as gps
     import slot64_classify_replay as classify
 
     stack = common.MoveItStack(out, "debug_hops")
@@ -36,7 +36,7 @@ def main():
         common.paired._purge(client)
         producer, clock, _ = frozen.build_host_and_producer(node, request_msg, surface, scene_config)
         producer.edge_builder.wait_ready(timeout_sec=60.0)
-        from luggage_planning import reachable_graph as rg
+        from luggage_planning.atlas import graph as rg
         refine_log = []
         orig_ref = rg.GraphRoutePlanner._refine_one
 
@@ -57,7 +57,7 @@ def main():
                     print(json.dumps({"retreat_missing_at": frontier.node_id, "region": frontier.region,
                                       "load": str(frontier.load_state), "q": [round(v, 3) for v in frontier.q],
                                       "hop": str(hops[0]), "frontier_quat": [round(v,4) for v in frontier.tcp_quaternion_xyzw], "entry_ids": [n[:22] for n in getattr(self, "entry_node_ids", ())],
-                                      "entry_nodes": [(n.node_id[:22], n.region, str(n.load_state), n.ik_family, [round(v,3) for v in n.q], [round(v,3) for v in n.tcp_position], [round(v,4) for v in n.tcp_quaternion_xyzw]) for n in (self.graph.nodes.get(i) for i in getattr(self, "entry_node_ids", ())) if n is not None], "portals": [(n.node_id[:22], str(n.load_state), n.ik_family, [round(v,4) for v in n.tcp_quaternion_xyzw], n.node_id in (self_planner[0].scope or ()), [round(v,3) for v in n.q], [round(v,4) for v in n.tcp_position], list(__import__("luggage_planning.grid_path_search", fromlist=["x"]).descend_pair_rank(frontier.q, n.q))) for n in self.graph.nodes_by_region("portal")], "last_refines": refine_log[-4:],
+                                      "entry_nodes": [(n.node_id[:22], n.region, str(n.load_state), n.ik_family, [round(v,3) for v in n.q], [round(v,3) for v in n.tcp_position], [round(v,4) for v in n.tcp_quaternion_xyzw]) for n in (self.graph.nodes.get(i) for i in getattr(self, "entry_node_ids", ())) if n is not None], "portals": [(n.node_id[:22], str(n.load_state), n.ik_family, [round(v,4) for v in n.tcp_quaternion_xyzw], n.node_id in (self_planner[0].scope or ()), [round(v,3) for v in n.q], [round(v,4) for v in n.tcp_position], list(__import__("luggage_planning.routing.grid_search", fromlist=["x"]).descend_pair_rank(frontier.q, n.q))) for n in self.graph.nodes_by_region("portal")], "last_refines": refine_log[-4:],
                                       "region_poses": {k: [round(x, 3) for x in v] for k, v in (self_planner[0].region_poses or {}).items()}}, default=str))
                     raise _Stop()
                 raise

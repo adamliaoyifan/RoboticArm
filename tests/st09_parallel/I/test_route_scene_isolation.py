@@ -17,7 +17,7 @@ SOURCE = ROOT / "src" / "luggage_planning"
 if str(SOURCE) not in sys.path:
     sys.path.insert(0, str(SOURCE))
 
-from luggage_planning.moveit_edge_adapter import (  # noqa: E402
+from luggage_planning.routing.moveit_edge_adapter import (  # noqa: E402
     BoxSpec,
     OccupancyColumnError,
     PayloadSpec,
@@ -31,7 +31,7 @@ from luggage_planning.moveit_state_validity import (  # noqa: E402
 from luggage_planning.planning_scene_client import (  # noqa: E402
     build_collision_object,
 )
-from luggage_planning.route_producer import RouteProducer  # noqa: E402
+from luggage_planning.routing.producer import RouteProducer  # noqa: E402
 from moveit_msgs.msg import (  # noqa: E402
     AllowedCollisionEntry,
     AllowedCollisionMatrix,

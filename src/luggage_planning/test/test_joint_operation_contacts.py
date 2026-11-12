@@ -17,10 +17,10 @@ from rclpy.serialization import deserialize_message, serialize_message
 from luggage_perception.directed_suction_quality import DirectedSuctionContext
 from luggage_perception.directed_suction_service import DirectedSuctionService
 from luggage_perception.ros_suction_domain import domain_to_message
-from luggage_planning.joint_operation_contacts import (
+from luggage_planning.joint_operation.contacts import (
     contact_query, contact_evidence, grasp_for_contact, DirectedContactPort,
 )
-from luggage_planning.placement_prior_contracts import Transform
+from luggage_planning.placement_prior.contracts import Transform
 from test_directed_suction_quality import context_inputs
 from test_directed_suction_service import request_and_context
 

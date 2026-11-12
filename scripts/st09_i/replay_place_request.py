@@ -21,7 +21,7 @@ if GAZEBO_SRC not in sys.path:
 from luggage_gazebo.planning_request_capture import (  # noqa: E402
     audit_replay_bundle,
 )
-from luggage_planning.atlas_prior import (  # noqa: E402
+from luggage_planning.atlas.prior import (  # noqa: E402
     replay_captured_candidates,
 )
 
@@ -72,7 +72,7 @@ def _search(case_id):
 
 def _load_atlas_query(_document):
     """Production atlas query. Atlas-off never calls it."""
-    from luggage_planning.reachability_atlas import ReachabilityAtlas
+    from luggage_planning.atlas.model import ReachabilityAtlas
 
     directory = os.path.join(
         ROOT, "src", "luggage_planning", "data",
@@ -640,7 +640,7 @@ def _route(args, document):
         IsolatedDomainError,
         isolated_replay_env,
     )
-    from luggage_planning.route_producer import register_attach_from_request
+    from luggage_planning.routing.producer import register_attach_from_request
 
     bag = args.bag or _sibling(args.fixture, "..", "..", "bag")
     reference = args.reference or _sibling(args.fixture, "candidates.json")

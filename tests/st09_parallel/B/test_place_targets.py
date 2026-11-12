@@ -369,7 +369,7 @@ class TestRealUrdfGoals:
         self.urdf = urdf
 
     def _place_target(self, quaternion_xyzw):
-        from luggage_planning.atlas_frame_contracts import tool_target_in_base
+        from luggage_planning.atlas.frame_contracts import tool_target_in_base
         position, _tool_down = tool_target_in_base(
             -0.37, -0.61, 0.875, math.pi / 2.0, *self.CONTAINER_IN_BASE)
         record = make_attachment("centered", symmetry="none")
@@ -392,7 +392,7 @@ class TestRealUrdfGoals:
         return goal_set.goals
 
     def test_refine_converges_and_matches_fk(self):
-        from luggage_planning.atlas_frame_contracts import TOOL_DOWN_QUAT
+        from luggage_planning.atlas.frame_contracts import TOOL_DOWN_QUAT
         position, _target = self._place_target(TOOL_DOWN_QUAT)
         goals = self._run(TOOL_DOWN_QUAT)
         assert len(goals) == 1
@@ -401,7 +401,7 @@ class TestRealUrdfGoals:
             assert abs(got - want) <= 5e-4
 
     def test_q_minus_q_target_refines_identically(self):
-        from luggage_planning.atlas_frame_contracts import TOOL_DOWN_QUAT
+        from luggage_planning.atlas.frame_contracts import TOOL_DOWN_QUAT
         forward = self._run(TOOL_DOWN_QUAT)
         negated = self._run(tuple(-v for v in TOOL_DOWN_QUAT))
         assert forward and negated

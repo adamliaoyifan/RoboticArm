@@ -48,7 +48,7 @@ def backend():
     from luggage_msgs.srv import PlanSnapshotJointPathV2
     from rclpy.serialization import serialize_message
     from moveit_msgs.msg import PlanningScene
-    from luggage_planning.joint_operation_contracts import OPERATION_JOINTS
+    from luggage_planning.joint_operation.contracts import OPERATION_JOINTS
 
     directory = Path(os.environ["JOINT_NATIVE_EVIDENCE_DIR"])
     directory.mkdir(parents=True, exist_ok=False)
@@ -144,7 +144,7 @@ def backend():
 
 
 def test_free_scene_uses_native_planner_and_checks_preserved_endpoints(backend):
-    from luggage_planning.joint_operation_connection import validate_connection_response
+    from luggage_planning.joint_operation.connection import validate_connection_response
     req = backend.request()
     response = backend.call(req)
     assert response.success and response.complete, response.reason
@@ -313,7 +313,7 @@ def test_attached_payload_in_snapshot_participates_in_native_collision_check(bac
 
 def test_production_python_port_consumes_native_connection(backend):
     import threading
-    from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
+    from luggage_planning.joint_operation.connection import NativeSnapshotConnectionPort
     req = backend.request()
     snapshot = SimpleNamespace(identity=("fixture", 1), model_hash=backend.model_hash,
                                scene_cdr=bytes(req.scene_cdr))

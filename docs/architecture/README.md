@@ -5,6 +5,11 @@ build) and `status/` (what we measured), the documents here define **how code
 must be structured**. A change that contradicts them is a defect, not a style
 preference.
 
+Current product route orientation: [`docs/CONTEXT.md`](../CONTEXT.md).
+Completed calibration / YOLO closed-loop / platform-free / early-migration
+plans are under [`docs/archive/`](../archive/README.md) and are not current
+contracts.
+
 - [Perception module architecture](perception_architecture.md): algorithm
   classes versus ROS nodes, state ownership, output contracts.
 - [Sensor data pipeline](sensor_data_pipeline.md): per-frame data structures,
@@ -24,6 +29,8 @@ preference.
   the solver reads `surface_2d`.
 - [Placement prior](placement_prior.md): read-only snapshot ownership, grasp
   binding, native rigid-tool screening and adoption boundaries.
+- [Planning route ownership](../../src/luggage_planning/README.md): whole-operation,
+  segmented routing, candidate prior and atlas package boundaries and actual entries.
 - [Real-scenario packing](real_scenario.md): no successive perfect priors;
   occupancy and box size from perception; defect catalog `RS-1` .. `RS-27`.
 - [Privilege boundary](privilege_boundary.md): chain modules read measured
@@ -62,7 +69,12 @@ these documents win and the rule file is the bug.
 
 Existing code predates these documents. The deviations below are **tracked
 exceptions**, not precedent. New code must not copy them, and any change that
-touches these files should move them toward compliance.
+touches these files should move them toward compliance. This inventory is not
+the active production route description; prefer
+[production_orchestration.md](production_orchestration.md),
+[placement.md](placement.md), and [cargo_grid.md](cargo_grid.md) for current
+behavior. Some rows (for example legacy cartesian place motion) may lag the
+joint-operation path and remain open defects until closed with evidence.
 
 | Deviation | Location | Target |
 |---|---|---|

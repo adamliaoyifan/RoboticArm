@@ -16,7 +16,7 @@ import yaml
 from luggage_description.runtime_identity import scene_revision_from_path
 from luggage_description.scene_tf_config_utils import load_scene_tf_config, world_transform
 from luggage_mapping.configuration import owner_configuration
-from luggage_planning.atlas_runtime import load_atlas_runtime_for_scene, resolve_atlas_files
+from luggage_planning.atlas.runtime import load_atlas_runtime_for_scene, resolve_atlas_files
 
 
 def operation_atlas_config(config):

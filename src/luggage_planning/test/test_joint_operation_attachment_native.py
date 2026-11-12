@@ -29,10 +29,10 @@ def seal_case(prepare_stack, request):
     from luggage_msgs.srv import VacuumCommandV2
     from luggage_planning.attachment_provider import MeasuredAttachmentProvider
     from luggage_planning.attachment_frame_adapters import handle_vacuum_command_v2
-    from luggage_planning.joint_operation_actual_contact import RetainedContactObservation
-    from luggage_planning.joint_operation_attachment import StationaryOperationAttachmentPort
+    from luggage_planning.joint_operation.actual_contact import RetainedContactObservation
+    from luggage_planning.joint_operation.attachment import StationaryOperationAttachmentPort
     from luggage_planning.place_service import pose_message
-    from luggage_planning.placement_prior_contracts import Transform
+    from luggage_planning.placement_prior.contracts import Transform
 
     f = prepare_stack
     query = copy.deepcopy(f.request)
@@ -101,7 +101,7 @@ def seal_case(prepare_stack, request):
 
 @pytest.mark.parametrize('contact', ['planned', 'center'])
 def test_real_stationary_seal_preserves_two_stamps_and_frozen_actual_footprint(seal_case, contact):
-    from luggage_planning.placement_prior_contracts import Transform
+    from luggage_planning.placement_prior.contracts import Transform
     c = seal_case
     if contact == 'center':
         G = c.plan.world_from_pick_box.inverse().compose(c.plan.world_from_pick_tool)
@@ -128,7 +128,7 @@ def test_real_stationary_seal_preserves_two_stamps_and_frozen_actual_footprint(s
     'future','reversed','stale','outside_face','wrong_request_box','wrong_generation','wrong_observation',
     'request_version','response_units','request_time_basis','response_time_basis'])
 def test_real_seal_negative_never_freezes_a_record(seal_case, damage):
-    from luggage_planning.placement_prior_contracts import Transform
+    from luggage_planning.placement_prior.contracts import Transform
     c = seal_case
     reply = copy.deepcopy(c.response)
     request = copy.deepcopy(c.request)

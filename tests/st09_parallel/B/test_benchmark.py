@@ -90,7 +90,7 @@ class TestBenchmark:
             json.dump(report, handle, indent=1, sort_keys=True)
 
         if os.environ.get("ST09_B_SAVE_FIXTURE") == "1":
-            from luggage_planning.reachable_graph import GraphStore
+            from luggage_planning.atlas.graph import GraphStore
             fixtures = REPO_ROOT / "tests" / "st09_parallel" / "B" / "fixtures"
             store = GraphStore(fixtures)
             store.save(chain["graph"], "healthy_graph")
@@ -109,7 +109,7 @@ class TestHealthyFixture:
         if not fixture.exists():
             pytest.skip("healthy_graph.json not captured yet "
                         "(run once with ST09_B_SAVE_FIXTURE=1)")
-        from luggage_planning.reachable_graph import GraphStore
+        from luggage_planning.atlas.graph import GraphStore
         graph = GraphStore(fixture.parent).load("healthy_graph")
         assert graph.candidate_edges, "stored trajectories must load as candidates"
         assert graph.prior_gaps == ()

@@ -26,7 +26,7 @@ from luggage_description.scene_tf_config_utils import (
     origin_in_world,
     resolve_scene_tf_config_path,
 )
-from luggage_planning.atlas_runtime import (
+from luggage_planning.atlas.runtime import (
     compute_reachability_scene_hash,
     compute_scene_tf_hash,
     load_atlas_runtime_for_scene,
@@ -326,7 +326,7 @@ class TrajectorySelectorNode(Node):
         """Build the unified route producer once, on first use."""
         if self._route_producer is not None:
             return self._route_producer
-        from luggage_planning.route_producer_factory import (
+        from luggage_planning.routing.factory import (
             build_production_route_producer,
         )
 

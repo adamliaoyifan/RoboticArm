@@ -9,7 +9,7 @@ is visible before the timer fires again.
 
 from __future__ import division
 
-from luggage_planning.atlas_runtime import compute_urdf_hash
+from luggage_planning.atlas.runtime import compute_urdf_hash
 
 
 class UrdfIdentity(object):

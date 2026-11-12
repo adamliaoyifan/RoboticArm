@@ -418,7 +418,7 @@ class VacuumControllerNode(Node):
     def _handle_command_v2(self, request, response):
         from luggage_planning.attachment_frame_adapters import (
             bound_attachment_scene_revision, handle_vacuum_command_v2)
-        from luggage_planning.atlas_runtime import compute_scene_tf_hash
+        from luggage_planning.atlas.runtime import compute_scene_tf_hash
         from luggage_description.scene_tf_config_utils import resolve_scene_tf_config_path
         if getattr(self, "_frame_runtime", None) is not None:
             from luggage_description.frame_contracts import ContractError

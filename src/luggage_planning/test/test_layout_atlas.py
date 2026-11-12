@@ -9,7 +9,7 @@ import unittest
 import numpy as np
 
 
-import luggage_planning.layout_atlas as la  # noqa: E402
+import luggage_planning.atlas.layout as la  # noqa: E402
 
 UNKNOWN = la.UNKNOWN
 UNREACHABLE = la.UNREACHABLE

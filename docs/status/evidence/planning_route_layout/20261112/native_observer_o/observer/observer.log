@@ -1,0 +1,2 @@
+[INFO] [1794487847.136620840] [uld_occ_observer.uld_occ_observer]: Ready: independent observer, OctoMap 1.9.8, input_mode=service
+[INFO] [1794487850.826982156] [rclcpp]: signal_handler(SIGINT/SIGTERM)

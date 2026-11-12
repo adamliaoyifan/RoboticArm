@@ -13,11 +13,11 @@ from rclpy.serialization import deserialize_message,serialize_message
 from moveit_msgs.msg import PlanningScene
 
 from test_joint_operation_endpoints_native import native_stack,candidate_for
-from luggage_planning.aperture_geometry import ApertureGeometry
-from luggage_planning.aperture_tool_geometry import fixed_tool_vertices
-from luggage_planning.joint_operation_aperture import ApertureRouter
-from luggage_planning.joint_operation_ik import NativeSnapshotIKPort
-from luggage_planning.placement_prior_contracts import Transform
+from luggage_planning.joint_operation.aperture_geometry import ApertureGeometry
+from luggage_planning.joint_operation.aperture_tool_geometry import fixed_tool_vertices
+from luggage_planning.joint_operation.aperture import ApertureRouter
+from luggage_planning.joint_operation.ik import NativeSnapshotIKPort
+from luggage_planning.placement_prior.contracts import Transform
 
 pytestmark=pytest.mark.skipif(not os.environ.get('JOINT_NATIVE_ENDPOINT_EXECUTABLE'),
                              reason='explicit native opening routing fixture')
@@ -29,7 +29,7 @@ def passage(stack):
     identity,planning_start,base=candidate_for(stack.model,pick_q=start,place_q=goal)
     # A measured-source-independent geometric fixture, facing +Y, with no
     # production coordinates. Four obstacles bound a finite opening.
-    from luggage_planning.joint_operation_scenes import _box
+    from luggage_planning.joint_operation.scenes import _box
     scene=deserialize_message(base.scenes.carry.scene_cdr,PlanningScene)
     for name,centre,size in (
         ('left',(-.35,0.,.85),(1.3,.04,.7)),
@@ -72,7 +72,7 @@ def test_native_grasp_bound_ordered_passage_has_collision_checked_plane_witness(
 
 
 def test_native_complete_six_leg_plan_certifies_the_ordered_opening(native_stack):
-    from luggage_planning.joint_operation_planner import JointOperationPlanner
+    from luggage_planning.joint_operation.planner import JointOperationPlanner
     stack=native_stack
     identity,start,candidate,router,_,_=passage(stack)
     planner=JointOperationPlanner(stack.endpoints,stack.connections,stack.certifier,
@@ -94,7 +94,7 @@ def test_native_complete_six_leg_plan_certifies_the_ordered_opening(native_stack
 
 def test_native_current_obstacle_refuses_all_proposed_plane_states(native_stack):
     import hashlib
-    from luggage_planning.joint_operation_scenes import _box
+    from luggage_planning.joint_operation.scenes import _box
     stack=native_stack
     _,_,candidate,router,start,goal=passage(stack)
     scene=deserialize_message(candidate.scenes.carry.scene_cdr,PlanningScene)

@@ -110,8 +110,8 @@ def _watch_edges(builder, node, client, sink):
 
 def _one(node, client, document, surface, slots, repeat):
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
-    from luggage_planning.route_producer import register_attach_from_request
-    from luggage_planning.route_producer_factory import (
+    from luggage_planning.routing.producer import register_attach_from_request
+    from luggage_planning.routing.factory import (
         build_production_route_producer,
     )
 

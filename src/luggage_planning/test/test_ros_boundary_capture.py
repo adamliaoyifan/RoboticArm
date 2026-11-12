@@ -89,7 +89,7 @@ def test_typed_admission_and_executor_submit_preserve_acceleration_semantics(acc
     from luggage_planning.motion_frame_adapters import record_from_message
     from luggage_planning.motion_frame_contracts import ExecutionContext, TARGET_LINK
     from luggage_planning.place_service import _route_boundary, _route_motion_messages
-    from luggage_planning.route_producer import _leg_record
+    from luggage_planning.routing.producer import _leg_record
 
     trajectory = action_request(accelerations).goal.trajectory
     source = SimpleNamespace(joint_names=trajectory.joint_names,

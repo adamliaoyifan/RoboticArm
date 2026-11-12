@@ -7,7 +7,7 @@ import unittest
 
 import numpy as np
 
-from luggage_planning.reachable_task_grid import (
+from luggage_planning.atlas.task_grid import (
     MARGINAL,
     REACHABLE,
     UNREACHABLE,

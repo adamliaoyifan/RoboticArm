@@ -21,14 +21,14 @@ from luggage_msgs.srv import PreparePlacementPriorV2, GetCargoVolumeV2
 
 from luggage_description.frame_diagnostics import BoundaryContext
 from luggage_description.ros_frame_bindings.surfaces import surface_from_message
-from luggage_planning.placement_prior_contracts import Transform
-from luggage_planning.placement_prior_surface import ConfirmedSurfaceStore
-from luggage_planning.placement_prior_snapshot import build_private_snapshot
-from luggage_planning.placement_prior_collision_port import NativeToolCollisionPort
-from luggage_planning.placement_prior_requests import decode_request, encode_choices
-from luggage_planning.placement_prior_worker import PriorWorker
-from luggage_planning.placement_prior_prefetch import PrefetchTemplate
-from luggage_planning.placement_prior_schedule import SnapshotQuietGate
+from luggage_planning.placement_prior.contracts import Transform
+from luggage_planning.placement_prior.surface import ConfirmedSurfaceStore
+from luggage_planning.placement_prior.snapshot import build_private_snapshot
+from luggage_planning.placement_prior.collision_port import NativeToolCollisionPort
+from luggage_planning.placement_prior.requests import decode_request, encode_choices
+from luggage_planning.placement_prior.worker import PriorWorker
+from luggage_planning.placement_prior.prefetch import PrefetchTemplate
+from luggage_planning.placement_prior.schedule import SnapshotQuietGate
 
 
 class PlacePriorNode(Node):
@@ -49,7 +49,7 @@ class PlacePriorNode(Node):
         evidence_dir=self.declare_parameter('evidence_dir','').value
         self._recorder=None
         if evidence_dir:
-            from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+            from luggage_planning.placement_prior.evidence import PriorEvidenceRecorder
             self._recorder=PriorEvidenceRecorder(evidence_dir)
         self._collision=NativeToolCollisionPort(self, recorder=self._record_collision)
         self._worker=PriorWorker(self._collision)

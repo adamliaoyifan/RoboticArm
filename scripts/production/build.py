@@ -8,6 +8,8 @@ from pathlib import Path
 import subprocess
 import time
 
+from module_layout import prune_relocated_modules
+
 ROOT = Path(__file__).resolve().parents[2]
 TARGETS = ('luggage_planning', 'luggage_packing', 'luggage_perception',
            'uld_occ_observer', 'luggage_gazebo')
@@ -64,6 +66,12 @@ def main():
         result = 124
     after = source_hashes(packages)
     changes = sorted(key for key in before.keys() | after.keys() if before.get(key) != after.get(key))
+    if result == 0 and not changes:
+        try:
+            manifest['removed_relocated_modules'] = prune_relocated_modules(ROOT, ROOT/'install-production')
+        except Exception as error:
+            manifest['module_cleanup_error'] = type(error).__name__+': '+str(error)
+            result = 1
     manifest.update(exit_code=result, elapsed_s=time.monotonic()-started,
                     source_after=after, concurrent_changes=changes,
                     capture_complete=True, replay_possible=not changes,

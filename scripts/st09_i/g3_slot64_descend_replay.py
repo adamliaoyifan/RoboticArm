@@ -19,7 +19,7 @@ import math
 import os
 
 from luggage_gazebo.integration_acceptance import RETREAT_START_TOLERANCE_RAD
-from luggage_planning.grid_path_search import (
+from luggage_planning.routing.grid_search import (
     MAX_EDGE_REPAIR_ATTEMPTS,
     ROUTE_TOTAL_WALL_S,
     RouteBudget,
@@ -27,12 +27,12 @@ from luggage_planning.grid_path_search import (
     SINGLE_NEW_EDGE_WALL_S,
     descend_pair_rank,
 )
-from luggage_planning.moveit_edge_adapter import (
+from luggage_planning.routing.moveit_edge_adapter import (
     CARTESIAN_MIN_FRACTION,
     synthesize_waypoints,
 )
 from luggage_planning.offline_ik import load_urdf, refine_to_pose
-from luggage_planning.reachable_graph import RouteGraph, make_offline_fk
+from luggage_planning.atlas.graph import RouteGraph, make_offline_fk
 from st09_contracts.graph import GraphEdge, LoadState
 from st09_contracts.fixtures import make_timed_trajectory
 
