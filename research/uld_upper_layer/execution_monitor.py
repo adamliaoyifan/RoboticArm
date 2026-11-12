@@ -20,9 +20,11 @@ def pose_error(reference,observed):
 
 
 class ExecutionMonitor:
-    def __init__(self,reader,scene,state,action,config,policy,initial,trace,panel_collision_name=None):
+    def __init__(self,reader,scene,state,action,config,policy,initial,trace,panel_collision_name=None,
+                 failure_capture=None):
         self._reader=reader;self._scene=scene;self._state=state;self._action=action
         self._config=config;self._policy=policy;self._trace=trace
+        self._failure_capture=failure_capture
         self._baseline={b.name:b.container_T_body for b in initial.lower}
         self._initial_stamp=initial.stamp_s;self._started=time.monotonic()
         self._last=None;self._phase='initial';self._expected_attached=initial.attached
@@ -108,6 +110,9 @@ class ExecutionMonitor:
             stamp=details.pop('offending_stamp_s',self._sample.stamp_s)
             self._failure=dict(reason=reason,phase=self._phase,stamp_s=stamp,
                                full_monitor_stamp_s=self._sample.stamp_s,**details)
+            # Preserve the native ring at detection, before controller cancel
+            # or formatting a potentially large invalid observation.
+            if self._failure_capture:self._failure_capture(stamp)
             self._trace.write(json.dumps(dict(event='failure',**self._failure))+'\n');self._trace.flush()
         return self._failure['reason']
 

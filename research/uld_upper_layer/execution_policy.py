@@ -36,6 +36,7 @@ class ExecutionPolicy:
     max_case_bytes: int
     failure_capture_reserve_bytes: int
     controller_tracking_error_rad: float = .01
+    failure_capture_lag_s: float = 1.
 
     def __post_init__(self):
         for field in fields(self):
@@ -46,6 +47,8 @@ class ExecutionPolicy:
             raise ValueError('CAPTURE_RESERVE_EXCEEDS_CASE_BUDGET')
         if self.monitor_period_s>self.monitor_max_gap_s or self.monitor_max_gap_s>self.observation_max_age_s:
             raise ValueError('INCONSISTENT_MONITOR_PERIOD')
+        if self.failure_capture_lag_s<self.observation_max_age_s:
+            raise ValueError('CAPTURE_RETENTION_BELOW_OBSERVATION_AGE')
 
     @classmethod
     def load(cls,path=None):

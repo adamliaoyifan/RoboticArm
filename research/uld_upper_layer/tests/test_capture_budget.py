@@ -45,3 +45,27 @@ class CaptureBudgetContracts(unittest.TestCase):
             self.assertTrue(stats['trigger_complete'])
             self.assertEqual([r['index'] for r in window],list(range(290,591)))
             self.assertLess(stats['archived'],stats['seen']//10)
+
+    def test_failed_backlog_is_retained_independently_of_freshness_limit(self):
+        # Observed detection+cancel delay exceeded the100ms freshness budget.
+        # An invalid stream must still have a complete diagnostic pre-window.
+        for lag,complete in ((.1,False),(1.,True)):
+            with self.subTest(lag=lag),tempfile.TemporaryDirectory() as temp:
+                trace=BoundedTrace(Path(temp)/'native.jsonl.gz',period_s=.01,
+                    pre_s=2.,post_s=1.,lag_s=lag)
+                for i in range(3210):trace.append(dict(index=i),i*.001)
+                trace.start_trigger(3.)
+                for i in range(3210,4001):trace.append(dict(index=i),i*.001)
+                self.assertEqual(trace.metrics()['trigger_complete'],complete)
+                trace.close()
+
+    def test_failure_capture_occurs_once_before_trace_serialization(self):
+        events=[]
+        monitor=object.__new__(ExecutionMonitor)
+        monitor._failure=None;monitor._phase='carry';monitor._sample=SimpleNamespace(stamp_s=3.)
+        monitor._failure_capture=lambda stamp:events.append(('capture',stamp))
+        monitor._trace=SimpleNamespace(write=lambda text:events.append(('write',text)),flush=lambda:None)
+        monitor.fail_execution('FAILED',offending_stamp_s=2.9)
+        monitor.fail_execution('SECOND_FAILURE')
+        self.assertEqual(events[0],('capture',2.9));self.assertEqual(len(events),2)
+        self.assertEqual(monitor.failure['reason'],'FAILED')

@@ -111,7 +111,7 @@ class RuntimeIO:
                 self.vacuum_spec['state_topic'],self._accept_vacuum,max_bytes=self._capture_limit or 75_000_000,
                 trace_options=(dict(period_s=self._capture_policy.monitor_period_s,
                     pre_s=self._capture_policy.trigger_pre_s,post_s=self._capture_policy.trigger_post_s,
-                    lag_s=self._capture_policy.observation_max_age_s) if self._capture_policy else None))
+                    lag_s=self._capture_policy.failure_capture_lag_s) if self._capture_policy else None))
             self.vacuum_capture.start()
         deadline=time.monotonic()+25
         while time.monotonic()<deadline:

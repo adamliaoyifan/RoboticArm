@@ -637,5 +637,11 @@ record the number of checks, maximum feedback age and maximum position error.
 Tune `joint_speed_scaling` to measured tracking capability; source speed limits
 alone do not establish the controller's tracking accuracy. A longer engineering
 time/capture budget is separate from collision, support and tracking thresholds.
+Likewise, pace offline physics to the measured mesh-check throughput; preserve
+the native integration step and simulated trajectory timing. This is a compute
+profile, not evidence of real-time hardware readiness. The diagnostic
+`failure_capture_lag_s` retains raw states beyond the pre-window independently of
+`observation_max_age_s`. A monitor failure triggers raw capture before controller
+cancellation; delayed or invalid observations still need durable failure data.
 Source actuator parameters, collision thresholds and material properties are
 not changed to accommodate a failed motion.
