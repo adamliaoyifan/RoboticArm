@@ -52,11 +52,11 @@ Livox input using correct frame transformation. Plan5febcde5 defines the gates.
 
 ## Verification
 
--199 required Python cases pass,60 frame-contract subtests pass; zero skips.
--9 CTest executables/checks pass in Release,130.30s. The added initial-input
+- 199 required Python cases pass,60 frame-contract subtests pass; zero skips.
+- 9 CTest executables/checks pass in Release,130.30s. The added initial-input
   checker covers first-hit override, old acquisition rejection, source audit,
   checkpoint round trip, reset/lease invalidation and separate validity.
--2 actual O tests pass,2.63s: LiDAR-only domain178 and mixed domain179. Real
+- 2 actual O tests pass,2.63s: LiDAR-only domain178 and mixed domain179. Real
   PointCloud2 subscription + stamped TF yaw90/translation reaches cell[1,2,1].
   Missing TF/wrong frame leaves revision unchanged; mixed camera/LiDAR uses one
   writer. Full request/response CDR and frozen harness retained; both owned
@@ -87,3 +87,5 @@ or a PointCloud2 driver configuration rather than blind topic relabelling.
 - docs/status/evidence/o_initial_livox/20261112/summary.json
 - src/uld_occ_observer/README.md
 - docs/architecture/cargo_grid.md
+
+Code commit: `f03b27366137b4ad875630b4bd708909a157d597`.

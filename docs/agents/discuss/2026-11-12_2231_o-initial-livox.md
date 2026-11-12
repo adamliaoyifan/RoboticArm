@@ -1,6 +1,6 @@
 # 2026-11-12 -- O initial empty and Livox inputs
 
-- status: open
+- status: done
 - to_role: eng
 - to_agent: codex
 - to_model: gpt-6
@@ -29,4 +29,13 @@ No delegation, simulator truth or changes to physical collision margins.
 - claimed_generation: 1
 - claimed_plan_revision: 5febcde5
 - claimed_dependencies: none
+
+## Result -- eng/codex -- 2026-11-12 23:08 -- codex/gpt-6
+
+- outcome: pass
+- completed_at: 2026-11-12T23:08:48+08:00
+- revision: f03b27366137b4ad875630b4bd708909a157d597
+- tests: 199 Python cases plus60 subtests,9 CTest checks,2 actual O input modes,191 installed checks,13 package rebuild pass;3 exploratory legacy test failures reproduced against base.
+- summary: Initial-empty provenance and separate LiDAR-only/mixed XYZ input verified; full Gazebo cycle remains open.
+- evidence: docs/status/evidence/o_initial_livox/20261112/summary.json
 

@@ -195,3 +195,20 @@ success is claimed. This resolves the root static-scene admission gap in source,
 but observed coverage and successful full Gazebo cycle remain integration work.
 Existing local release/retreat policy still needs its separately discussed review.
 Evidence: `docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/summary.json`.
+
+## Initial empty and LiDAR source -- 2026-11-12 23:10
+
+User authorizes declared initial empty ULD without a dedicated initial ULD
+observation motion. Implemented at f03b27366137b4ad875630b4bd708909a157d597:
+source-owned initialization with separate declaration/sensor provenance, shared
+placement/prepare consumption, and independent stationary LiDAR XYZ input.
+Driver no longer defaults to portal observation; pickup observation and exact
+static ULD admission remain. Native source/interface gates pass, including
+LiDAR-only and mixed RGB-D/LiDAR; no full S20/Gazebo execution witness.
+
+The old first-observation collision/initial coverage failures do not establish
+failure of this new entry. Next integration uses this installed source and
+records first actual failing stage, qualified atlas consumption, and actual
+release/adoption/exit. Post-release affected-space authority still requires
+measured cargo evidence; initial empty is not a recurring occupancy reset.
+Evidence: docs/status/evidence/o_initial_livox/20261112/summary.json.

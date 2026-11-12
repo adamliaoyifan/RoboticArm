@@ -1192,5 +1192,6 @@
   "teardown": "Both final native owners exit0; both executor threads joined; no Gazebo started",
   "max_run_bytes": 268435456,
   "max_total_bytes": 1073741824,
-  "dirty_state_rule": "Shared working-tree validation, not isolated clean checkout. Pre-existing scene/default/profile and runtime changes preserved; build manifest hashes exact effective package inputs. Commit stages only owned changes."
+  "dirty_state_rule": "Shared working-tree validation, not isolated clean checkout. Pre-existing scene/default/profile and runtime changes preserved; build manifest hashes exact effective package inputs. Commit stages only owned changes.",
+  "code_revision": "f03b27366137b4ad875630b4bd708909a157d597"
 }
