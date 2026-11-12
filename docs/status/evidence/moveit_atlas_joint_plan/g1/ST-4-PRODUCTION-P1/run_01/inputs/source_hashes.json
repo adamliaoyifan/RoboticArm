@@ -1,0 +1,7 @@
+{
+  "src/luggage_planning/launch/hardware_pick.launch.py": "6467b70f76c96cf44b7c53a7298ff6624f3261a4da089bb63e41b2cd08509b90",
+  "src/luggage_planning/luggage_planning/joint_operation_observer.py": "28b53619074c0c14763c124bb88251d88a66b3916dad1a67b3edce4630f4ca98",
+  "src/luggage_planning/luggage_planning/joint_operation_map_source.py": "b8802bb82f2004c4af9e9fc028ec7021401a3f1de4a3d6e7be47fe49d6ec3c9b",
+  "src/luggage_planning/luggage_planning/placement_prior_surface.py": "dfdae4337e9df98ded0f6a181265fc7d8d0f34299b4beedc51bde0f2de99e82a",
+  "src/luggage_packing/scripts/placement_planner_node.py": "1e031966dbdf0ce4f82edb3ae8be2f4371c6103d8e1363969aa94fc883134970"
+}

@@ -1,0 +1,40 @@
+Traceback (most recent call last):
+  File "/opt/ros/humble/lib/python3.10/site-packages/ament_index_python/packages.py", line 58, in get_package_prefix
+    content, package_prefix = get_resource('packages', package_name)
+  File "/opt/ros/humble/lib/python3.10/site-packages/ament_index_python/resources.py", line 86, in get_resource
+    raise LookupError(
+LookupError: Could not find the resource 'elfin_trajectory_executor' of type 'packages'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/opt/ros/humble/lib/python3.10/site-packages/launch/launch_description_sources/any_launch_file_utilities.py", line 54, in get_launch_description_from_any_launch_file
+    return loader(launch_file_path)
+  File "/opt/ros/humble/lib/python3.10/site-packages/launch/launch_description_sources/python_launch_file_utilities.py", line 70, in get_launch_description_from_python_launch_file
+    return getattr(launch_file_module, 'generate_launch_description')()
+  File "/home/adamliao/work/elfin_humble_ws/install-production/luggage_planning/share/luggage_planning/launch/hardware_pick.launch.py", line 771, in generate_launch_description
+    return with_profile(_launch_description())
+  File "/home/adamliao/work/elfin_humble_ws/install-production/luggage_planning/share/luggage_planning/launch/hardware_pick.launch.py", line 442, in _launch_description
+    exec_share = get_package_share_directory("elfin_trajectory_executor")
+  File "/opt/ros/humble/lib/python3.10/site-packages/ament_index_python/packages.py", line 80, in get_package_share_directory
+    path = os.path.join(get_package_prefix(package_name), 'share', package_name)
+  File "/opt/ros/humble/lib/python3.10/site-packages/ament_index_python/packages.py", line 60, in get_package_prefix
+    raise PackageNotFoundError(
+ament_index_python.packages.PackageNotFoundError: "package 'elfin_trajectory_executor' not found, searching: ['/home/adamliao/work/elfin_humble_ws/install-production/luggage_gazebo', '/home/adamliao/work/elfin_humble_ws/install-production/luggage_planning', '/home/adamliao/work/elfin_humble_ws/install-production/luggage_packing', '/home/adamliao/work/elfin_humble_ws/install-production/luggage_mapping', '/home/adamliao/work/elfin_humble_ws/install-production/uld_occ_observer', '/home/adamliao/work/elfin_humble_ws/install-production/st09_contracts', '/home/adamliao/work/elfin_humble_ws/install-production/pymoveit2', '/home/adamliao/work/elfin_humble_ws/install-production/luggage_perception', '/home/adamliao/work/elfin_humble_ws/install-production/luggage_description', '/home/adamliao/work/elfin_humble_ws/install-production/luggage_msgs', '/home/adamliao/work/elfin_humble_ws/install-production/elfin_moveit_config', '/home/adamliao/work/elfin_humble_ws/install-production/elfin_description', '/home/adamliao/work/elfin_humble_ws/install-production/elfin_control', '/opt/ros/humble']"
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/opt/ros/humble/bin/ros2", line 33, in <module>
+    sys.exit(load_entry_point('ros2cli==0.18.19', 'console_scripts', 'ros2')())
+  File "/opt/ros/humble/lib/python3.10/site-packages/ros2cli/cli.py", line 91, in main
+    rc = extension.main(parser=parser, args=args)
+  File "/opt/ros/humble/lib/python3.10/site-packages/ros2launch/command/launch.py", line 170, in main
+    return print_arguments_of_launch_file(launch_file_path=path)
+  File "/opt/ros/humble/lib/python3.10/site-packages/ros2launch/api/api.py", line 123, in print_arguments_of_launch_file
+    launch_description = get_launch_description_from_any_launch_file(launch_file_path)
+  File "/opt/ros/humble/lib/python3.10/site-packages/launch/launch_description_sources/any_launch_file_utilities.py", line 57, in get_launch_description_from_any_launch_file
+    raise InvalidLaunchFileError(extension, likely_errors=exceptions)
+launch.invalid_launch_file_error.InvalidLaunchFileError: Caught multiple exceptions when trying to load file of format [py]:
+ - PackageNotFoundError: "package 'elfin_trajectory_executor' not found, searching: ['/home/adamliao/work/elfin_humble_ws/install-production/luggage_gazebo', '/home/adamliao/work/elfin_humble_ws/install-production/luggage_planning', '/home/adamliao/work/elfin_humble_ws/install-production/luggage_packing', '/home/adamliao/work/elfin_humble_ws/install-production/luggage_mapping', '/home/adamliao/work/elfin_humble_ws/install-production/uld_occ_observer', '/home/adamliao/work/elfin_humble_ws/install-production/st09_contracts', '/home/adamliao/work/elfin_humble_ws/install-production/pymoveit2', '/home/adamliao/work/elfin_humble_ws/install-production/luggage_perception', '/home/adamliao/work/elfin_humble_ws/install-production/luggage_description', '/home/adamliao/work/elfin_humble_ws/install-production/luggage_msgs', '/home/adamliao/work/elfin_humble_ws/install-production/elfin_moveit_config', '/home/adamliao/work/elfin_humble_ws/install-production/elfin_description', '/home/adamliao/work/elfin_humble_ws/install-production/elfin_control', '/opt/ros/humble']"
+ - InvalidFrontendLaunchFileError: The launch file may have a syntax error, or its format is unknown

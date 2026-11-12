@@ -326,7 +326,12 @@ class PlacementPlannerNode(Node):
         self.declare_parameter("volume_observer_prefix",
                                "/uld_occ_observer")
         self.declare_parameter("volume_max_age_ms", 1000)
-        self.declare_parameter("volume_observer_resolution", 0.02)
+        # Zero inherits the exact owner configuration; a positive legacy override
+        # is only a consistency assertion and cannot change the received grid.
+        self.declare_parameter("volume_observer_resolution", 0.0)
+        self.declare_parameter("volume_observer_geometry_file", "")
+        self.declare_parameter("volume_observer_config_file", "")
+        self.declare_parameter("volume_operation_timeout_s", 20.0)
         self.declare_parameter("volume_service_timeout_s", 2.0)
         # [G v2 production wiring, 2026-11-09] "grid_g" = the G mapper's
         # own typed query services: ONE snapshot token supplies BOTH the
@@ -783,157 +788,57 @@ class PlacementPlannerNode(Node):
         return self._observer_snapshot_compute()
 
     def _observer_snapshot_compute(self):
-        """One observer lease -> (surface, volume verifier).
-
-        The lease's ValidityStamp must read VALID at the epoch this
-        planner's validity stream is bound to (reset contract), and the
-        lease-built surface enters the SAME admission gate as topic
-        surfaces. Transport, binding, admission, or completeness
-        failures raise RuntimeError (fail closed)."""
+        """Use the same owner-bound reader as complete-operation preparation."""
         import time as _time
-        from uld_occ_observer.srv import (GetSnapshot, ReadCells,
-                                          ReadSurface, ReleaseSnapshot)
-        try:
-            import occ_surface_bridge as _bridge
-        except ImportError as error:
-            # Deployment pairing: the observer package ships the bridge
-            # module beside its scripts (not a compiled library); the
-            # deployment must put it on PYTHONPATH. Fail closed, named.
-            raise RuntimeError(
-                "occ_surface_bridge not importable (the observer "
-                "package must ship it on PYTHONPATH): %s" % error)
+        from luggage_mapping.observer import ObserverConfiguration, ObserverSnapshotPort
+        configuration = ObserverConfiguration.load(
+            str(self.get_parameter("volume_observer_geometry_file").value),
+            str(self.get_parameter("volume_observer_config_file").value))
+        declared = float(self.get_parameter("volume_observer_resolution").value)
+        if declared > 0 and abs(declared-configuration.resolution_m) > 1e-12:
+            raise RuntimeError("OBSERVER_SOURCE_RESOLUTION_MISMATCH")
+        deadline = _time.monotonic()+float(self.get_parameter("volume_operation_timeout_s").value)
+        service_timeout = float(self.get_parameter("volume_service_timeout_s").value)
 
-        if self._volume_clients is None:
-            prefix = str(
-                self.get_parameter("volume_observer_prefix").value)
-            self._volume_clients = {
-                name: self.create_client(srv, "%s/%s" % (prefix, name))
-                for name, srv in (
-                    ("get_snapshot", GetSnapshot),
-                    ("read_surface", ReadSurface),
-                    ("read_cells", ReadCells),
-                    ("release_snapshot", ReleaseSnapshot))}
-
-        timeout_s = float(
-            self.get_parameter("volume_service_timeout_s").value)
-
-        def call(client, request):
+        def call(client, request, operation_deadline, stage, late_response=None):
+            limit = min(operation_deadline, _time.monotonic()+service_timeout)
             future = client.call_async(request)
-            deadline = _time.monotonic() + max(timeout_s, 10.0)
             while not future.done():
-                if _time.monotonic() > deadline:
-                    raise RuntimeError(
-                        "service timeout: %s" % client.srv_name)
-                _time.sleep(0.02)
-            return future.result()
+                if _time.monotonic() >= limit:
+                    if late_response is not None:
+                        def release_late(completed):
+                            if completed.exception() is None and completed.result() is not None:
+                                late_response(completed.result())
+                        future.add_done_callback(release_late)
+                    raise TimeoutError("%s deadline" % stage)
+                _time.sleep(0.002)
+            response = future.result()
+            if response is None:
+                raise RuntimeError("%s returned no response" % stage)
+            return response
 
-        for client in self._volume_clients.values():
-            if not client.wait_for_service(timeout_sec=timeout_s):
-                raise RuntimeError(
-                    "service missing: %s" % client.srv_name)
-        lease = call(
-            self._volume_clients["get_snapshot"],
-            GetSnapshot.Request(max_age_ms=int(
-                self.get_parameter("volume_max_age_ms").value)))
-        if str(lease.status) != "OK":
-            raise RuntimeError("get_snapshot %s" % lease.status)
-        # Reset-contract binding ON THE LEASE: the observer's validity
-        # board must be VALID, at the epoch this planner is bound to,
-        # when the snapshot was taken (the stamp is from the response's
-        # own commit check).
-        stamp = lease.validity
-        if str(stamp.state) != "VALID":
-            raise RuntimeError(
-                "observer validity %s (%s)" % (stamp.state, stamp.reason))
-        current_epoch = str(
-            getattr(self._admission.validity, "epoch", "") or "")
-        if current_epoch and str(stamp.epoch) != current_epoch:
-            raise RuntimeError(
-                "lease epoch %s != admitted epoch %s"
-                % (stamp.epoch, current_epoch))
-        identity = {
-            "geometry_hash": str(lease.identity.geometry_hash),
-            "map_revision": int(lease.identity.map_revision),
-            "epoch": int(lease.identity.epoch),
-            "observed_revision": int(lease.identity.observed_revision),
-            "last_integrated_stamp_ns":
-                int(lease.identity.last_integrated_stamp_ns),
-            "clock_domain": str(lease.identity.clock_domain),
-            "validity_generation": int(stamp.generation),
-        }
-        resolution = float(
-            self.get_parameter("volume_observer_resolution").value)
-        try:
-            columns = []
-            cursor, done = 0, False
-            while not done:
-                page = call(
-                    self._volume_clients["read_surface"],
-                    ReadSurface.Request(handle=lease.handle, cursor=cursor,
-                                        limit=65536))
-                if str(page.status) != "OK":
-                    raise RuntimeError(
-                        "read_surface %s" % page.status)
-                for i in range(len(page.x)):
-                    columns.append({
-                        "x": page.x[i], "y": page.y[i],
-                        "active_count": page.active_count[i],
-                        "known_count": page.known_count[i],
-                        "has_occupied": page.has_occupied[i],
-                        "top_z": page.top_z[i]})
-                cursor, done = page.next_cursor, page.done
-            geometry = dict(self._hull.descriptor())
-            geometry["_resolution"] = resolution
-            surface = _bridge.build_surface_map(columns, geometry, identity)
-            if "error" in surface:
-                raise RuntimeError(
-                    "surface build: %s" % surface["error"])
-            # the lease surface passes the SAME admission gate as topic
-            # surfaces: epoch / validity generation / map progression
-            if not self._admit_surface_map(surface, "observer_lease"):
-                raise RuntimeError(
-                    "lease surface rejected by admission gate")
-            nx, ny = int(surface["nx"]), int(surface["ny"])
-            inner_h = float(surface["inner_size"][2])
-            nz = int(math.ceil(inner_h / resolution - 1e-9))
-            pages = []
-            cursor, done = 0, False
-            while not done:
-                page = call(
-                    self._volume_clients["read_cells"],
-                    ReadCells.Request(handle=lease.handle,
-                                      begin=[0, 0, 0], end=[nx, ny, nz],
-                                      cursor=cursor, limit=65536))
-                if str(page.status) != "OK":
-                    raise RuntimeError("read_cells %s" % page.status)
-                pages.append({
-                    "status": str(page.status),
-                    "states": page.states,
-                    "identity": {
-                        "geometry_hash": str(page.identity.geometry_hash),
-                        "map_revision": int(page.identity.map_revision),
-                        "epoch": int(page.identity.epoch),
-                        "observed_revision":
-                            int(page.identity.observed_revision),
-                    }})
-                cursor, done = int(page.next_cursor), bool(page.done)
-                if len(pages) > 64:
-                    raise RuntimeError("read_cells paging did not finish")
-        finally:
-            self._volume_clients["release_snapshot"].call_async(
-                ReleaseSnapshot.Request(handle=lease.handle))
-        evidence = volume_evidence_from_pages(
-            pages, resolution=resolution, nx=nx, ny=ny, nz=nz,
-            origin_xy=[-nx * resolution * 0.5, -ny * resolution * 0.5],
-            floor_z=float(geometry["floor_z"]), identity=identity)
-        if "error" in evidence:
-            raise RuntimeError(
-                "cells evidence: %s" % evidence["error"])
-        self.get_logger().info(
-            "observer lease epoch=%s rev=%d gen=%d -> %d columns, "
-            "%d cells pages" % (identity["epoch"], identity["map_revision"],
-                                identity["validity_generation"],
-                                len(columns), len(pages)))
+        port = getattr(self, "_observer_snapshot_port", None)
+        if port is None:
+            port = ObserverSnapshotPort(self, configuration=configuration, call=call,
+                prefix=str(self.get_parameter("volume_observer_prefix").value),
+                max_age_ms=int(self.get_parameter("volume_max_age_ms").value))
+            self._observer_snapshot_port = port
+        elif port.config != configuration:
+            raise RuntimeError("OBSERVER_CONFIGURATION_CHANGED_RESTART_REQUIRED")
+        epoch = int(getattr(self._admission.validity, "epoch", "") or 0)
+        captured = port.capture(scene_revision=self._frame_scene_revision,
+            request_id="placement-%d" % _time.monotonic_ns(), expected_epoch=epoch,
+            expected_revision=None, deadline=deadline)
+        surface = json.loads(captured.surface.confirmation_json)
+        if not self._admit_surface_map(surface, "observer_lease"):
+            raise RuntimeError("lease surface rejected by admission gate")
+        self._constraint_margin = (configuration.resolution_m
+            if float(self.get_parameter("hull_margin").value) < 0.0
+            else float(self.get_parameter("hull_margin").value))
+        nx, ny, nz = captured.volume.dimensions_xyz
+        evidence = dict(resolution=configuration.resolution_m, nx=nx, ny=ny, nz=nz,
+            origin_xy=list(captured.volume.origin_container[:2]),
+            floor_z=float(surface.get("floor_z", 0.0)), states=captured.volume.states)
         return surface, make_volume_verifier(evidence)
 
     def _grid_g_snapshot_compute(self):

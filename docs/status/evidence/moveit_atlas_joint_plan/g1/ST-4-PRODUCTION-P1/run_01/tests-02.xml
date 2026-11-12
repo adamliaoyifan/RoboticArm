@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="2" failures="0" skipped="0" tests="2" time="0.100" timestamp="2026-11-12T15:19:28.964969+08:00" hostname="adamliao-X870-EAGLE-WIFI7"><testcase classname="" name="src.luggage_planning.test.test_map_owner_launch" time="0.000"><error message="collection failure">ImportError while importing test module '/home/adamliao/work/elfin_humble_ws/src/luggage_planning/test/test_map_owner_launch.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+src/luggage_planning/test/test_map_owner_launch.py:9: in &lt;module&gt;
+    from luggage_mapping.configuration import owner_configuration
+src/luggage_mapping/luggage_mapping/configuration.py:12: in &lt;module&gt;
+    from luggage_description.scene_tf_config_utils import load_scene_tf_config
+src/luggage_description/luggage_description/scene_tf_config_utils.py:11: in &lt;module&gt;
+    from luggage_description._share import ENV_SCENE_TF, description_config_path
+src/luggage_description/luggage_description/_share.py:5: in &lt;module&gt;
+    from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
+E   ModuleNotFoundError: No module named 'ament_index_python'</error></testcase><testcase classname="" name="src.luggage_planning.test.test_hardware_plan_only_launch" time="0.000"><error message="collection failure">ImportError while importing test module '/home/adamliao/work/elfin_humble_ws/src/luggage_planning/test/test_hardware_plan_only_launch.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+src/luggage_planning/test/test_hardware_plan_only_launch.py:4: in &lt;module&gt;
+    from launch import LaunchContext
+E   ImportError: cannot import name 'LaunchContext' from 'launch' (unknown location)</error></testcase></testsuite></testsuites>

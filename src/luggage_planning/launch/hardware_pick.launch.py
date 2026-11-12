@@ -124,8 +124,13 @@ def _frame_runtime_params(context):
     driver = str(
         LaunchConfiguration("frame_driver_peer").perform(context)
         or "hardware_pick_driver")
-    peers = resolve_peers(driver, stack=STACK_PEERS if _placement_enabled(context)
-                          else HARDWARE_STACK_PEERS)
+    stack = STACK_PEERS if _placement_enabled(context) else HARDWARE_STACK_PEERS
+    if (_placement_enabled(context) and
+            LaunchConfiguration('occupancy_backend', default='observer').perform(context) == 'observer'):
+        # O has independent digest/validity admission; it is not a G writer peer
+        # and must not leave a nonexistent cargo_volume_mapper in the ready gate.
+        stack = tuple(peer for peer in stack if peer != 'cargo_volume_mapper')
+    peers = resolve_peers(driver, stack=stack)
     xacro_path = os.path.join(
         get_package_share_directory("luggage_description"),
         "urdf", "elfin_s20_with_camera.urdf.xacro")
@@ -247,12 +252,23 @@ def _placement_service_nodes(context, *args, **kwargs):
     if not _placement_enabled(context):
         return []
     from luggage_planning.hardware_placement_launch import placement_nodes
+    from luggage_mapping.configuration import owner_configuration
+    backend = LaunchConfiguration('occupancy_backend', default='observer').perform(context)
+    observer_share = get_package_share_directory('uld_occ_observer')
+    owner = owner_configuration(backend=backend,
+        scene=LaunchConfiguration('scene_tf_config').perform(context),
+        resolution_override=LaunchConfiguration('cargo_map_resolution_m', default='').perform(context),
+        observer_config=(LaunchConfiguration('observer_config_file', default='').perform(context)
+            or os.path.join(observer_share, 'config', 'observer.yaml')))
     return placement_nodes(
         frame=_frame_runtime_params(context),
         scene=LaunchConfiguration("scene_tf_config"),
         atlas=LaunchConfiguration("atlas_runtime_config"),
         poses=LaunchConfiguration("robot_poses_config"),
-        cargo_map_resolution_m=LaunchConfiguration("cargo_map_resolution_m", default="").perform(context))
+        owner=owner,
+        observer_input_mode=LaunchConfiguration('observer_input_mode', default='service').perform(context),
+        observer_cloud_topic=LaunchConfiguration('observer_cloud_topic', default='').perform(context),
+        observer_optical_frame=LaunchConfiguration('observer_optical_frame', default='').perform(context))
 
 
 def _certification_nodes(context, *args, **kwargs):
@@ -273,7 +289,7 @@ def _deploy_profile_gate(context, *args, **kwargs):
     """ST09-PD: fail-closed deploy asset resolution at launch time.
 
     Empty arguments must select the installed deploy scene and
-    atlas_runtime_deploy.yaml, never a simulation asset. Missing,
+    atlas_runtime_deploy_update.yaml, never a simulation asset. Missing,
     ambiguous, sim-named, or hash-mismatched assets raise here so the
     hardware chain never starts on the wrong cell identity. The
     atlas/manifest identity checks run with the planning chain; a
@@ -428,12 +444,12 @@ def _launch_description():
     # ST09-PD: empty arguments select the installed deploy assets. Never
     # fall back to scene_tf.yaml[.example] -- that silent sim reuse is
     # exactly what the deploy profile gate rejects.
-    default_scene = os.path.join(desc_share, "config", "scene_tf_deploy.yaml")
+    default_scene = os.path.join(desc_share, "config", "scene_tf_deploy_update.yaml")
     default_atlas_cfg = os.path.join(
-        planning_share, "config", "atlas_runtime_deploy.yaml")
+        planning_share, "config", "atlas_runtime_deploy_update.yaml")
     poses = os.path.join(desc_share, "config", "robot_poses.deploy.yaml")
-    sim_poses = os.path.join(desc_share, "config", "robot_poses.yaml.example")
-    sim_scene = os.path.join(desc_share, "config", "scene_tf.yaml.example")
+    sim_poses = os.path.join(desc_share, "config", "robot_poses.sim_deploy_update.yaml")
+    sim_scene = os.path.join(desc_share, "config", "scene_tf_deploy_update.yaml")
     live_pp = os.path.join(perc_share, "config", "preprocessor_d555_live.yaml")
     semantic = os.path.join(perc_share, "config", "semantic_segmenter.yaml")
     site_pp = os.path.join(perc_share, "config", "preprocessor_d555_site.yaml")
@@ -450,7 +466,7 @@ def _launch_description():
                 default_value=default_scene,
                 description=(
                     "Deploy scene file. The default is the installed "
-                    "scene_tf_deploy.yaml; %s and scene_tf.yaml are "
+                    "scene_tf_deploy_update.yaml; %s is "
                     "simulation assets and are rejected on this cell."
                     % os.path.basename(sim_scene)
                 ),
@@ -460,7 +476,7 @@ def _launch_description():
                 default_value=default_atlas_cfg,
                 description=(
                     "Reachability-atlas runtime YAML. Default is the "
-                    "installed atlas_runtime_deploy.yaml (atlas identity "
+                    "installed atlas_runtime_deploy_update.yaml (atlas identity "
                     "strict); atlas_runtime.yaml is the simulation cell "
                     "and is rejected on this cell."
                 ),
@@ -513,6 +529,14 @@ def _launch_description():
                 "plan_only", default_value="false",
                 description="Disable CPS startup and MoveIt execution; use a vacuum stub for offline interface checks."),
             DeclareLaunchArgument("start_placement_prior", default_value="false"),
+            DeclareLaunchArgument('occupancy_backend', default_value='observer',
+                                  choices=['observer', 'grid_g']),
+            DeclareLaunchArgument('observer_config_file', default_value='',
+                description='Empty selects the installed O owner configuration.'),
+            DeclareLaunchArgument('observer_input_mode', default_value='service',
+                                  choices=['service', 'subscription']),
+            DeclareLaunchArgument('observer_cloud_topic', default_value=''),
+            DeclareLaunchArgument('observer_optical_frame', default_value=''),
             DeclareLaunchArgument("cargo_map_resolution_m", default_value="",
                                   description="Shared OCC/surface spacing; startup-only."),
             DeclareLaunchArgument("start_placement", default_value="false",

@@ -77,6 +77,8 @@ def test_placement_launch_starts_required_providers_with_shared_identity(monkeyp
     module=launch_module()
     context=LaunchContext()
     context.launch_configurations["cargo_map_resolution_m"]=grid_resolution
+    context.launch_configurations['occupancy_backend']='grid_g'
+    context.launch_configurations['scene_tf_config']='/unused-for-grid-g.yaml'
     context.launch_configurations.update({enabled_by: 'true', 'start_planning':'true'})
     peers=resolve_peers('hardware_pick_driver', stack=STACK_PEERS)
     frame=dict(frame_runtime=True,frame_peers=','.join(peers),frame_identity_json='frozen')

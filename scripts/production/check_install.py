@@ -7,6 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULES = (
+    'luggage_mapping.observer',
+    'luggage_mapping.configuration',
     'luggage_planning.joint_operation_prepare_node',
     'luggage_planning.joint_operation_runtime',
     'luggage_planning.joint_operation_runtime_ports',
@@ -87,7 +89,7 @@ def main():
         from ament_index_python.packages import get_package_prefix, get_package_share_directory
         for package in ('luggage_description', 'luggage_planning', 'luggage_packing',
                         'luggage_perception', 'uld_occ_observer', 'luggage_msgs',
-                        'luggage_gazebo', 'st09_contracts'):
+                        'luggage_gazebo', 'luggage_mapping', 'st09_contracts'):
             found = Path(get_package_prefix(package)).resolve()
             checks.append({'name': package, 'path': str(found),
                            'passed': found == prefix/package, 'kind': 'ament_package'})

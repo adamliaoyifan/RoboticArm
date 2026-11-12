@@ -20,6 +20,17 @@ these at startup; an integrated launch must feed the same value. Actual received
 surface maps carry and use their owner's resolution, not the floor-prior value.
 Changing it requires a fresh map instance/epoch; no live regrid is provided.
 
+The integrated hardware placement launch selects one owner using
+`occupancy_backend=observer|grid_g` (default observer). It never creates both.
+O receives immutable effective geometry/config bytes from
+`luggage_mapping.configuration`; ComputePlacement and complete-operation prepare
+use the shared `luggage_mapping.observer` reader and that owner's grid. A legacy
+consumer resolution is only a consistency assertion, never a regrid. O input
+readiness requires real optical-ray integration; launch alone does not certify
+free space. G's separate snapshot adapter remains behind the same placement
+surface/volume evidence boundary. This selection does not by itself qualify the
+legacy selector or a complete-operation execution client for both backends.
+
 Deployment accepts 0.005 through 0.05 m, finite. Allocation and volume transport
 share MAX_VOLUME_CELLS=8,000,000. Counts are validated before buffers are allocated;
 an excessive grid is refused rather than silently coarsened. 1cm on the current
