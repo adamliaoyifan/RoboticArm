@@ -15,12 +15,15 @@ from launch_ros.parameter_descriptions import ParameterValue
 def generate_launch_description():
     parameters = [LaunchConfiguration('model_parameters'),{
         'max_preparation_budget_s':ParameterValue(LaunchConfiguration('max_preparation_budget_s'),value_type=float),
+        'preparation_refresh_attempts':ParameterValue(LaunchConfiguration('preparation_refresh_attempts'),value_type=int),
     }]
     return LaunchDescription([
         DeclareLaunchArgument('model_parameters',description='Pinned native/root ROS parameter file'),
         DeclareLaunchArgument('start_native_backends',default_value='true'),
         DeclareLaunchArgument('max_preparation_budget_s',default_value='300.0',
             description='Diagnostic preparation watchdog; production latency target awaits full-model baseline'),
+        DeclareLaunchArgument('preparation_refresh_attempts',default_value='2',
+            description='Bounded latest O full-chain recertification attempts within the original deadline'),
         *[Node(package='luggage_planning',executable=executable,name=name,output='screen',
             parameters=parameters,condition=IfCondition(LaunchConfiguration('start_native_backends')))
           for executable,name in [('grasp_local_check_node','grasp_local_check'),

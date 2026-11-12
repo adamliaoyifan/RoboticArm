@@ -539,9 +539,24 @@ ceiling minus floor. All RPCs share the original deadline. Release acquired
 leases even on refusal, including late acquisitions after a transport timeout;
 unconfirmed release prevents another allocation. Final source checking acquires
 a fresh lease because GetValidity carries transition-time map revision.
-Preparation currently refuses changed revision/content. Execution adoption
-must separately check fresh O geometry and original remaining trajectories;
-the retained original revision is not execution permission.
+Before publication, unchanged O and baseline semantics use the existing final
+gate. When O advances within the same epoch/config/hull/model/deployment, retain
+the selected pick/place/grasp/J6, all six timed legs and event barriers. Capture
+the latest complete O volume and full baseline, rebuild all three phase scenes,
+and obtain a new controller-sampled native whole-chain certificate. Rebind the
+plan snapshot/map and certificate/digest, and retain that latest source in the
+issuance registry. This performs no IK, connection search, retiming or carving.
+The nominal box volume must remain known-free; the complete source-cell support
+patch (state, absolute height, confidence, including positive edge overlap) must
+remain exactly unchanged so the original placement admission can be reused.
+Changed local support returns incomplete evidence requiring a fresh request.
+Source/baseline changes during certification repeat this process under the same
+deadline, bounded by `preparation_refresh_attempts` (default2, range1..8).
+Instability, resets, backwards identity, expired data or certification failure
+return no plan. The 1000ms observer age policy is unchanged and awaits measured
+sensor/latency evidence. Explicit G keeps its strict final snapshot gate.
+Execution adoption must separately check fresh O geometry and original remaining
+trajectories; the retained issuance source is not execution permission.
 
 `map_backend=grid_g` retains the old explicit G confirmation/volume join for
 compatibility. Default O creates no G client or topic subscription. A fixture

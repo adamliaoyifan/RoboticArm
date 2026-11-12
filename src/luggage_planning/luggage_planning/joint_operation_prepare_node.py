@@ -40,6 +40,7 @@ from luggage_planning.joint_operation_ik import NativeSnapshotIKPort
 from luggage_planning.joint_operation_atlas import AtlasOperationHints, load_operation_atlas
 from luggage_planning.joint_operation_planner import JointOperationPlanner
 from luggage_planning.joint_operation_preparation import JointOperationPreparation, PreparationInputs
+from luggage_planning.preparation_refresh import LatestMapFinalizer, RefreshCapture
 from luggage_planning.pickup_collision import pickup_collision_aabb
 from luggage_planning.placement_prior_contracts import PlacementCandidate, Transform
 from luggage_planning.placement_prior_requests import enumerate_placements
@@ -59,6 +60,9 @@ class JointOperationPrepareNode(Node):
         def param(name,default): return self.declare_parameter(name,default).value
         self.budget = PreparationBudget(float(param('max_preparation_budget_s',
                                                    DEFAULT_MAX_PREPARATION_BUDGET_S)))
+        self.refresh_attempts = param('preparation_refresh_attempts',2)
+        if type(self.refresh_attempts) is not int or not 1 <= self.refresh_attempts <= 8:
+            raise ValueError('BOUNDED_REFRESH_ATTEMPTS_REQUIRED')
         self.revision = param('frame_scene_revision','')
         xml,semantic = param('robot_description',''),param('robot_description_semantic','')
         if not self.revision or not xml or not semantic:
@@ -266,10 +270,11 @@ class JointOperationPrepareNode(Node):
                 clean_late()
             else:consumed.set()
 
-    def _capture_map(self,request,deadline):
+    def _capture_map(self,request,deadline,*,latest=False):
         if self.observer is not None:
             captured = self.observer.capture(scene_revision=self.revision,request_id=request.request_id,
-                expected_epoch=request.expected_map_epoch,expected_revision=request.expected_map_revision,
+                expected_epoch=request.expected_map_epoch,
+                expected_revision=None if latest else request.expected_map_revision,
                 deadline=deadline)
             return captured.surface,captured.volume,captured.source
         parameters = self._call(self.map_parameters,GetParameters.Request(names=['require_confirmed_map']),deadline,'map_parameters')
@@ -372,22 +377,44 @@ class JointOperationPrepareNode(Node):
             placements = timing.call('placement_candidates',self._placements,request,confirmed,volume)
             reference = Transform.from_matrix(self.model.urdf.tcp(list(request.start_joints),self.model.path))
             inputs = PreparationInputs(snapshot,domain,placements,reference,self.pickup_id,observed)
+            def observation_current(limit):
+                checked = self.observed_contacts.retain(domain,request.detection,
+                    request_id=request.request_id,observation_id=request.observation_id,
+                    expected_observation=observed,deadline=limit,cancelled=lambda:False)
+                return (checked.retained and checked.observation.binding==observed.binding
+                    and self._current(request,frozen_domain=domain).digest()==domain.digest())
             def revalidate(current,limit):
                 # Check again after the asynchronous scene read: subscriptions
                 # can advance the map/domain/joints while that read is pending.
                 scene = self._scene(limit)
-                checked = self.observed_contacts.retain(domain,request.detection,
-                    request_id=request.request_id,observation_id=request.observation_id,
-                    expected_observation=observed,deadline=limit,cancelled=lambda:False)
+                observed_current = observation_current(limit)
                 latest = self.store.current()
                 map_current = (self.observer.current(map_source,deadline=limit) if self.observer is not None
                                else latest is not None and latest.identity==confirmed.identity)
                 return (map_current
-                    and checked.retained and checked.observation.binding==observed.binding
-                    and self._current(request,frozen_domain=domain).digest()==current.domain.digest()
+                    and observed_current
                     and proposal_scene_hash(scene)==expected_world)
-            timing.call('whole_preparation',self.preparation.prepare,
-                        request,response,inputs,deadline=deadline,revalidate=revalidate)
+            finalize = None
+            if self.observer is not None:
+                def capture_latest(limit):
+                    surface,latest_volume,source = self._capture_map(request,limit,latest=True)
+                    scene = self._scene(limit)
+                    fresh_snapshot = build_private_snapshot(surface,scene,self.model.model_sha256,self.container,
+                        collision_margin_m=self.margin,volume=latest_volume)
+                    return RefreshCapture(surface,latest_volume,source,scene,fresh_snapshot)
+                finalizer = LatestMapFinalizer(original_surface=confirmed,original_source=map_source,
+                    original_snapshot=snapshot,baseline_hash=expected_world,capture=capture_latest,
+                    read_baseline=self._scene,source_current=lambda source,limit:
+                        self.observer.current(source,deadline=limit),observation_current=observation_current,
+                    certification=self.preparation.planner.certification,attempts=self.refresh_attempts)
+                def finalize(plan,candidate,current,limit):
+                    nonlocal map_source
+                    result = finalizer.finalize(plan,candidate,current,limit)
+                    if result.plan is not None:map_source = result.map_source
+                    return result
+            kwargs = dict(deadline=deadline,revalidate=revalidate)
+            if finalize is not None:kwargs['finalize'] = finalize
+            timing.call('whole_preparation',self.preparation.prepare,request,response,inputs,**kwargs)
             if response.success:
                 # Internal owner output, before publication; external check
                 # requests instead decode against the retained owner identity.

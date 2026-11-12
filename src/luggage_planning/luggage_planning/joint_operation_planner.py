@@ -118,6 +118,15 @@ class OperationCertification:
     certificate_id: str = ""
 
 
+def certificate_matches(receipt, draft, candidate):
+    """Exact native receipt binding, shared by initial and refreshed scenes."""
+    return (type(receipt) is OperationCertification and receipt.passed is True
+            and receipt.identity == draft.identity and receipt.candidate_id == draft.candidate_id
+            and receipt.draft_digest == operation_digest(draft)
+            and receipt.phase_scene_digests == candidate.scenes.digests
+            and isinstance(receipt.certificate_id, str) and bool(receipt.certificate_id.strip()))
+
+
 @dataclass(frozen=True)
 class PreparationResult:
     status: str
@@ -285,7 +294,7 @@ class JointOperationPlanner:
                         deadline=deadline, cancelled=cancelled)
                     if stopped(deadline):
                         return finish("CANCELLED" if cancelled() else "SEARCH_INCOMPLETE")
-                    if not self._certificate_matches(receipt, draft, candidate):
+                    if not certificate_matches(receipt, draft, candidate):
                         trace.append((branch_id, "WHOLE_CHAIN_CERTIFICATION_REFUSED"))
                         continue
                     plan = seal_operation_plan(replace(draft, certificate_id=receipt.certificate_id))
@@ -328,8 +337,4 @@ class JointOperationPlanner:
 
     @staticmethod
     def _certificate_matches(receipt, draft, candidate):
-        return (type(receipt) is OperationCertification and receipt.passed is True
-                and receipt.identity == draft.identity and receipt.candidate_id == draft.candidate_id
-                and receipt.draft_digest == operation_digest(draft)
-                and receipt.phase_scene_digests == candidate.scenes.digests
-                and isinstance(receipt.certificate_id, str) and bool(receipt.certificate_id.strip()))
+        return certificate_matches(receipt, draft, candidate)

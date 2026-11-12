@@ -12,6 +12,7 @@ from luggage_planning.joint_operation_contracts import OperationIdentity
 from luggage_perception.observed_suction_domain import ObservedSuctionDomain
 from luggage_planning.placement_prior_contracts import PlacementCandidate, Snapshot, Transform
 from luggage_planning.preparation_profile import PreparationBudget, StageTimings
+from luggage_planning.preparation_refresh import FinalizedPreparation
 
 
 @dataclass(frozen=True)
@@ -49,7 +50,7 @@ class JointOperationPreparation:
         if type(self.budget) is not PreparationBudget:
             raise ValueError('TYPED_PREPARATION_BUDGET_REQUIRED')
 
-    def prepare(self, request, response, inputs, *, deadline, revalidate, cancelled=lambda:False):
+    def prepare(self, request, response, inputs, *, deadline, revalidate, finalize=None, cancelled=lambda:False):
         from luggage_msgs.msg import JointOperationPlanV2
         began = self.clock()
         response.success,response.reason = False,'SEARCH_INCOMPLETE'
@@ -77,7 +78,9 @@ class JointOperationPreparation:
                 snapshot.model_hash,snapshot.map_revision,request.observation_id,domain.stamp_ns,
                 int(request.robot_state_stamp_ns),domain.box_id,domain.generation,domain.contact_model_hash)
             planning_deadline = deadline-self.planner.reserve_s
+            selected = None
             def candidates():
+                nonlocal selected
                 groups = 0
                 for placement in inputs.placements:
                     timing.unit = placement.slot_id
@@ -113,6 +116,7 @@ class JointOperationPreparation:
                                 candidate,request_id=request.request_id,
                                 deadline=planning_deadline,cancelled=cancelled,clock=self.clock)
                             trace.extend(atlas_trace)
+                        selected = candidate
                         yield candidate
             if stopped(): return finish('CANCELLED_OR_DEADLINE')
             result = self.planner.prepare(identity,tuple(float(v) for v in request.start_joints),candidates(),
@@ -121,10 +125,21 @@ class JointOperationPreparation:
             if stopped(): return finish('CANCELLED_OR_DEADLINE')
             if result.status != 'PLAN_READY' or result.plan is None:
                 return finish(result.status)
-            if not timing.call('snapshot_revalidation',revalidate,inputs,deadline):
+            final_plan = result.plan
+            if finalize is not None:
+                if selected is None or selected.candidate_id != final_plan.candidate_id:
+                    return finish('PREPARATION_SELECTED_CANDIDATE_MISMATCH')
+                final = timing.call('latest_map_finalization',finalize,final_plan,selected,inputs,deadline)
+                if type(final) is not FinalizedPreparation:
+                    return finish('PREPARATION_FINALIZATION_RESULT_INVALID')
+                trace.extend(final.trace)
+                if final.plan is None:return finish(final.reason)
+                final_plan = final.plan
+            elif not timing.call('snapshot_revalidation',revalidate,inputs,deadline):
                 return finish('PREPARATION_SNAPSHOT_CHANGED')
             if stopped(): return finish('CANCELLED_OR_DEADLINE')
-            message = operation_plan_to_message(result.plan,identity,result.plan.plan_digest)
+            output_identity = final_plan.identity if finalize is not None else identity
+            message = operation_plan_to_message(final_plan,output_identity,final_plan.plan_digest)
             if stopped(): return finish('CANCELLED_OR_DEADLINE')
             response.plan,response.success = message,True
             return finish('PLAN_READY')

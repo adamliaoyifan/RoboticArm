@@ -1,0 +1,17 @@
+{
+  "boundary": "placement proof reason transport",
+  "stage": "focused-01",
+  "first_observed_failure": "three assertions expected uppercase VOLUME reason while implementation forwarded lowercase solver reason",
+  "mechanism": "reason string formatting only; all tested unsafe volumes were refused",
+  "fix": "normalize outward finalization reason to uppercase, preserving refusal semantics",
+  "artifacts": [
+    "focused-01/manifest.json",
+    "focused-01/test.log.gz",
+    "focused-01/tests.xml.gz",
+    "focused-01/replay"
+  ],
+  "capture_complete": true,
+  "replay_possible": true,
+  "retention": "keep through integration qualification",
+  "teardown": "not_needed"
+}
