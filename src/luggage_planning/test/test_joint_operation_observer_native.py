@@ -156,7 +156,7 @@ def refresh_request(fixture):
 
 
 @pytest.mark.parametrize('prepare_stack',['observer'],indirect=True)
-def test_current_guard_reads_latest_map_instead_of_transition_time_validity(prepare_stack):
+def test_current_guard_detects_changed_map_instead_of_transition_time_validity(prepare_stack):
     from uld_occ_observer.srv import GetValidity
     f=prepare_stack
     original=f.root.observer.capture(scene_revision='scene',request_id='guard',
@@ -166,25 +166,33 @@ def test_current_guard_reads_latest_map_instead_of_transition_time_validity(prep
     transition=f.observer.call('get_validity',GetValidity.Request())
     assert transition.observed_revision==original.source.observed_revision
     assert f.observer.lease.identity.observed_revision>original.source.observed_revision
+    assert f.observer.lease.identity.map_revision>original.source.map_revision
     assert f.root.observer.current(original.source,deadline=time.monotonic()+2.) is False
 
 
 @pytest.mark.parametrize('prepare_stack',['observer'],indirect=True)
-def test_o_advancing_after_native_certification_cannot_issue(prepare_stack,monkeypatch):
+def test_changed_o_after_native_certification_requires_recertification_before_issuance(prepare_stack,monkeypatch):
     f=prepare_stack;f.state.scene_calls=0
     original=f.root.observed_contacts.retain
+    changed=[]
     def advance(*args,**kwargs):
         result=original(*args,**kwargs)
-        if kwargs.get('expected_observation') is not None:f.observer.observe()
+        if kwargs.get('expected_observation') is not None and not changed:
+            before=f.observer.lease.identity.map_revision
+            latest=f.observer.observe()
+            assert latest.identity.map_revision>before,'must exercise changed content'
+            changed.append(latest.identity.map_revision)
         return result
     monkeypatch.setattr(f.root.observed_contacts,'retain',advance)
     try:
         request=copy.deepcopy(f.request);request.request_id='late-o-change'
         response=f.call(request)
-        assert f.state.scene_calls==2,'must reach final source check after native certification'
-        assert not response.success and response.reason=='PREPARATION_SNAPSHOT_CHANGED'
-        assert not response.plan.legs
-        assert all(entry.plan.identity.request_id!=request.request_id for entry in f.root.issued._entries.values())
+        assert f.state.scene_calls==4,'initial certification plus a complete fresh-map certification'
+        assert response.success and response.reason=='PLAN_READY',response.reason
+        assert sum(row[0]=='map_recertification' for row in json.loads(response.trace_json))==1
+        assert len(response.plan.legs)==6 and response.plan.map_revision==changed[0]
+        provenance=check(f,response.plan)
+        assert provenance.current and provenance.map_source.map_revision==changed[0]
     finally:
         refresh_request(f)
 
@@ -230,3 +238,30 @@ def test_reset_without_new_observation_cannot_prepare(prepare_stack):
     from luggage_planning.placement_prior_volume import blocked_volume_runs
     assert captured.volume.states.count(0)>0 and captured.volume.states.count(1)>0
     assert blocked_volume_runs(captured.volume,captured.surface),'unknown active volume must block motion'
+
+
+@pytest.mark.parametrize('prepare_stack',['observer'],indirect=True)
+def test_real_owner_repeated_unchanged_observation_keeps_original_evidence_current(prepare_stack):
+    f=prepare_stack
+    # Repeated identical rays eventually reach the owner's configured probability
+    # clamp. Bound the workload; failure to obtain unchanged content is a failure
+    # to exercise this case, rather than a vacuous successful liveness check.
+    for _ in range(20):
+        before=f.observer.lease.identity.map_revision
+        latest=f.observer.observe()
+        if latest.identity.map_revision==before:
+            break
+    else:
+        pytest.fail('unchanged-content integration not observed in 20 identical-ray samples')
+    refresh_request(f)
+    original=f.root.observer.capture(scene_revision='scene',request_id='unchanged-real-o',
+        expected_epoch=f.request.expected_map_epoch,expected_revision=f.request.expected_map_revision,
+        deadline=time.monotonic()+2.)
+    latest=f.observer.observe()
+    assert latest.identity.map_revision==original.source.map_revision
+    assert latest.identity.observed_revision>original.source.observed_revision
+    assert latest.identity.last_integrated_stamp_ns>original.source.last_integrated_stamp_ns
+    assert f.root.observer.current(original.source,deadline=time.monotonic()+2.) is True
+    assert original.volume.source==original.source
+    assert original.source.last_integrated_stamp_ns<latest.identity.last_integrated_stamp_ns
+    refresh_request(f)

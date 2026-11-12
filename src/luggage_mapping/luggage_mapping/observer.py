@@ -11,6 +11,7 @@ import json
 import math
 from pathlib import Path
 import threading
+import time
 
 import yaml
 
@@ -59,6 +60,10 @@ class ObserverConfiguration:
 
 IDENTITY_FIELDS = ('epoch', 'map_revision', 'observed_revision', 'last_integrated_stamp_ns',
                    'geometry_hash', 'config_digest', 'clock_domain')
+# A lease page must match IDENTITY_FIELDS exactly. A later lease may contain
+# repeated observations of unchanged content: O advances map_revision for every
+# changed CellValue, including known/unknown, occupancy and log-odds changes.
+CONTENT_VERSION_FIELDS = ('epoch', 'map_revision', 'geometry_hash', 'config_digest', 'clock_domain')
 # ReadCells/ReadSurface owner transport maximum, not a spatial coverage limit.
 OBSERVER_PAGE_CELLS = 65536
 
@@ -204,17 +209,29 @@ class ObserverSnapshotPort:
         return self.call(self.clients['get_snapshot'], request, deadline, 'observer_get_snapshot',
                          late_response=self._release)
 
+    def _await_releases(self, deadline):
+        # Release is asynchronous. A following content refresh must wait for its
+        # acknowledgement rather than mistaking an ordinary in-flight RPC for
+        # a permanent backend fault. No new lease is allocated while uncertain.
+        with self._release_lock:
+            pending = tuple(self._pending_releases)
+        for future in pending:
+            if not future.done():
+                completed = threading.Event()
+                future.add_done_callback(lambda _future, event=completed: event.set())
+                completed.wait(max(0., deadline-time.monotonic()))
+            if not self._released(future):
+                raise RuntimeError('OBSERVER_RELEASE_BACKEND_BUSY')
+        if self._capture_fault is not None:
+            raise RuntimeError('OBSERVER_RELEASE_CAPTURE_FAILED') from self._capture_fault
+
     def capture(self, *, scene_revision, request_id, expected_epoch, expected_revision, deadline,
                 require_latest=True):
         if expected_epoch <= 0:
             raise ValueError('OBSERVER_EXPECTED_EPOCH_REQUIRED')
         if self._capture_fault is not None:
             raise RuntimeError('OBSERVER_RELEASE_CAPTURE_FAILED') from self._capture_fault
-        # A timed-out release remains owned until its response arrives; do not
-        # repeatedly allocate leases while the previous lifetime is uncertain.
-        with self._release_lock:
-            if any(not self._released(f) for f in self._pending_releases):
-                raise RuntimeError('OBSERVER_RELEASE_BACKEND_BUSY')
+        self._await_releases(deadline)
         exact = expected_revision is not None
         request = self.services['get_snapshot'].Request(expected_epoch=expected_epoch,
             exact_revision=exact, expected_revision=expected_revision if exact else 0,
@@ -315,6 +332,8 @@ class ObserverSnapshotPort:
                 and 0 <= lease.age_ns <= self.max_age_ms*1_000_000
                 and lease.validity.state == 'VALID' and lease.validity.epoch == source.epoch
                 and lease.validity.generation == source.validity_generation
-                and all(getattr(lease.identity,name) == getattr(source,name) for name in IDENTITY_FIELDS))
+                and all(getattr(lease.identity,name) == getattr(source,name) for name in CONTENT_VERSION_FIELDS)
+                and lease.identity.observed_revision >= source.observed_revision
+                and lease.identity.last_integrated_stamp_ns >= source.last_integrated_stamp_ns)
         finally:
             self._release(lease)

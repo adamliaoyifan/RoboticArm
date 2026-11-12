@@ -124,6 +124,74 @@ def test_every_page_carries_the_entire_lease_identity(tmp_path,field,value):
     with pytest.raises(ValueError,match='IDENTITY_OR_VALIDITY'):admit_response(page,original,2)
 
 
+@pytest.mark.parametrize('change,expected',[
+    ({}, True),
+    ({'observed_revision': 10, 'last_integrated_stamp_ns': 13_000_000_000}, True),
+    ({'map_revision': 8}, False),
+    ({'epoch': 2}, False),
+    ({'geometry_hash': 'different'}, False),
+    ({'config_digest': 'different'}, False),
+    ({'clock_domain': 'other'}, False),
+    ({'observed_revision': 8}, False),
+    ({'last_integrated_stamp_ns': 11_000_000_000}, False),
+    ({'generation': 3}, False),
+    ({'state': 'INVALID'}, False),
+    ({'stale': True}, False),
+    ({'age_ns': 1_000_000_001}, False),
+    ({'age_ns': -1}, False),
+])
+def test_current_checks_content_version_without_renewing_original_evidence(tmp_path,change,expected):
+    from uld_occ_observer.srv import GetSnapshot
+    config,_,_=configuration(tmp_path)
+    source=snapshot(config,[1]*64).source
+    original=asdict(source)
+    latest=identity(config)
+    latest.update({key:value for key,value in change.items() if key in latest})
+    lease=SimpleNamespace(status='OK',handle='latest',stale=change.get('stale',False),
+        age_ns=change.get('age_ns',0),identity=SimpleNamespace(**latest),
+        validity=SimpleNamespace(state=change.get('state','VALID'),epoch=latest['epoch'],
+            generation=change.get('generation',source.validity_generation)))
+    port=object.__new__(ObserverSnapshotPort)
+    port._capture_fault=None;port.max_age_ms=1000
+    port.services={'get_snapshot':GetSnapshot}
+    requests=[];released=[]
+    port._get=lambda request,deadline:(requests.append(request) or lease)
+    port._release=lambda response:released.append(response.handle)
+    assert port.current(source,deadline=time.monotonic()+1.) is expected
+    assert asdict(source)==original,'later sensor activity must not renew original evidence'
+    assert released==['latest']
+    assert not requests[0].exact_revision and not requests[0].allow_stale
+    assert requests[0].max_age_ms==1000
+
+
+def test_release_acknowledgement_is_awaited_within_original_deadline():
+    import threading
+    pending=Future()
+    port=object.__new__(ObserverSnapshotPort)
+    port._release_lock=threading.Lock();port._pending_releases=[pending];port._capture_fault=None
+    entered=threading.Event()
+    original=pending.add_done_callback
+    def register(callback):
+        original(callback);entered.set()
+    pending.add_done_callback=register
+    worker=threading.Thread(target=lambda:(entered.wait(1.),pending.set_result(SimpleNamespace(status='OK'))))
+    worker.start()
+    try:port._await_releases(time.monotonic()+1.)
+    finally:worker.join(timeout=1.)
+    assert entered.is_set() and pending.done() and not worker.is_alive()
+
+
+@pytest.mark.parametrize('completed',[False,True])
+def test_unacknowledged_release_cannot_allocate_another_lease(completed):
+    import threading
+    pending=Future()
+    if completed:pending.set_result(SimpleNamespace(status='INVALID_HANDLE'))
+    port=object.__new__(ObserverSnapshotPort)
+    port._release_lock=threading.Lock();port._pending_releases=[pending];port._capture_fault=None
+    with pytest.raises(RuntimeError,match='RELEASE_BACKEND_BUSY'):
+        port._await_releases(time.monotonic())
+
+
 def test_issuance_retains_map_source_and_refuses_rebinding(tmp_path):
     from test_joint_operation_issuance import plan,registry
     config,_,_=configuration(tmp_path);source=snapshot(config,[1]*64).source

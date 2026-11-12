@@ -29,9 +29,13 @@ explicit start diagnostic driver; installed source checks.
 
 ## Verification
 
-- Production source runner:32 deterministic selection/depth cases pass.
+- Selection/depth/client/readiness:38 cases pass; DDS Best Effort delivery regression passes.
 - scripts/production/build.sh --evidence docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-GAZEBO-OPERATION/build_01:13 packages pass,6.48s,zero concurrent source changes.
-- Full-model sensor/controller integration: pending.
+- Rehearsals04/05/06: full-model sensor/controller startup ready;50 installed checks pass; owned teardown has zero residuals.
+- cycles01..03: measured observation motions execute, detection/domain joined; no product-box carry yet. Failures and CDR retained.
+- Full-model atlas:12,098 states native/FK requalified; distribution unchanged; hardware asset untouched.
+- Map-version policy:133 offline and10 actual O/native service tests pass. Content change recertifies before issuance, duplicate observation preserves original time. Release RPC completion is awaited inside original deadline.
+- Known next blocker: measured O only0.919% known active volume,0 placement candidates. Old portal view central ray points outside ULD by full-model FK;14 geometry-derived IK solutions still require native collision and live optical verification.
 
 ## Result
 

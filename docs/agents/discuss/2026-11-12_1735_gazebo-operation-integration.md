@@ -66,3 +66,34 @@ product box, no collision-policy change. Evidence: cycle_02/failure_summary.json
 Separately, observed O INTEGRATED receipts with zero free/hit keys advance the
 global stamp; they cannot establish regional ULD freshness. Keep this limitation
 visible for the map-age design review instead of claiming fresh ULD coverage.
+
+## Post -- eng/codex -- 2026-11-12 19:08 -- codex/gpt-6
+
+User clarification supersedes observation-counter equality: unchanged content may
+retain original certification, preserving original evidence time; changed content
+requires full recertification. Same epoch, validity generation, geometry/config,
+clock and map revision remain mandatory, counters/stamps cannot regress. Exact
+lease-page identity remains mandatory. O currently advances map revision for
+probability changes too, conservatively beyond classification changes. Global
+lease age is not regional coverage or freshness; no regional renewal is claimed.
+
+cycle_03 failed after complete67-page1cm O capture1.693s solely because observation
+counter30->39 advanced with map revision5 unchanged. Its full pages/CDR are durable.
+Actual map replay has0.919% known active cells and0 common-placement candidates.
+No physical no-space inference. Full-model FK shows old portal observation pose
+points its central optical ray outside the current ULD; geometry-derived diagnostic
+view candidates have14 IK solutions, not yet collision/visibility approved.
+
+Rehearsal_06 STARTUP_READY,50 installed checks passed, no residual processes.
+Full-model atlas requalification passed all12,098 stored states with native static
+scene checks and FK tolerances; original distribution/NPZ unchanged. Both common
+placement and prepare now select its reviewed Gazebo configuration; operation
+hull SHA and sampler bounds MD5 have separate explicit bindings.
+
+Current-policy offline tests133pass; actual O owner plus MoveIt native tests10pass
+(content_version_native_06,4.56s). Changed content performs complete recertification
+before PLAN_READY; repeated saturated observations preserve original evidence.
+This also measured/fixed asynchronous release acknowledgement racing a following
+refresh: await it inside original deadline, no lease allocation while uncertain.
+Earlier test-harness/import failures and obsolete exact-revision test expectations
+remain in offline logs; these were not Gazebo product attempts. Baseline OPEN.

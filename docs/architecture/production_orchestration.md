@@ -175,9 +175,22 @@ validity generation and full content digest. CheckPreparedOperationV2 returns
 typed OperationMapSourceV2; duplicate issuance cannot replace or drop it and
 its bytes count against retention. The default preparation root reads one O
 lease for both surface and volume and rechecks a fresh lease before issuance.
-Changed ordinary revisions need fresh native validation before execution;
+Changed map content needs fresh native validation before execution;
 changed epoch/config/model/hull invalidate the original source association.
 Legacy explicit G has an unbound O source and cannot enter an O-only consumer.
+
+A later O lease remains current for an original source when epoch, validity
+generation, hull/config digests, clock and map_revision match, observation
+revision and acquisition stamp have not gone backwards, and the owner's live
+lease is valid and within the configured age limit. Repeated observations alone
+do not require recertification. O currently advances map_revision on every
+changed cell value, including probability changes; this conservatively triggers
+recertification even when the collision classification remains unchanged.
+Each page of one lease still requires its entire exact snapshot identity.
+Retain the original source acquisition stamp and provenance; record the later
+lease separately. Global observation activity does not renew the age of an
+unobserved region or establish per-region freshness. Regional age admission
+requires spatial coverage evidence and is not supplied by this version check.
 
 The ULD static-world premise is conditional: during a normal operation only the
 current cargo moves. Contact by the robot or current cargo can displace other
