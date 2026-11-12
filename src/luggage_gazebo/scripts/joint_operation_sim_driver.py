@@ -17,11 +17,12 @@ import rclpy
 from rclpy.action import ActionClient
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import qos_profile_sensor_data, QoSProfile, DurabilityPolicy
 from rclpy.serialization import serialize_message
 from sensor_msgs.msg import JointState, Image, CameraInfo, PointCloud2
 from std_msgs.msg import String
 from rosgraph_msgs.msg import Clock
+from tf2_msgs.msg import TFMessage
 from moveit_msgs.action import MoveGroup
 from moveit_msgs.msg import Constraints, JointConstraint
 from moveit_msgs.srv import GetPlanningScene
@@ -34,6 +35,7 @@ from luggage_mapping.observer import admit_response, identity_record
 from controller_manager_msgs.srv import ListControllers
 import yaml
 from luggage_gazebo.operation_readiness import wait_active_controllers, wait_observed_detection, wait_static_scene
+from luggage_gazebo.observer_failure_capture import ObserverFailureCapture
 from luggage_description.scene_tf_config_utils import load_scene_tf_config, pedestal_enabled
 from luggage_description.scene_mesh_utils import container_model_name
 
@@ -77,6 +79,19 @@ class OperationSimDriver(Node):
         self.images = {}
         self.sensor_diagnostics = {}
         self.clock_count = 0
+        self.failure_capture = None
+        if getattr(args, 'failure_hold_s', 0.) > 0:
+            self.failure_capture = ObserverFailureCapture(self.folder/'observer_failure')
+            for topic,cls in [('/joint_states',JointState),('/tf',TFMessage),
+                    ('/tf_static',TFMessage),('/uld_occ_observer/receipts',UpdateReceipt),
+                    ('/luggage/observation/optical_points',PointCloud2),
+                    ('/luggage/observation/lidar_points',PointCloud2)]:
+                qos = (QoSProfile(depth=1,durability=DurabilityPolicy.TRANSIENT_LOCAL)
+                       if topic=='/tf_static' else qos_profile_sensor_data)
+                self.create_subscription(cls,topic,lambda msg,t=topic,c=cls:
+                    self.failure_capture.add(t,c.__module__+'.'+c.__name__,serialize_message(msg),
+                        persistent=tuple(sorted(v.child_frame_id for v in msg.transforms))
+                            if t=='/tf_static' else False),qos)
         self.create_subscription(JointState,'/joint_states',lambda msg:setattr(self,'joint',msg),qos_profile_sensor_data)
         self.create_subscription(SuctionTopDomainV2,'/luggage/suction_top_domain_v2',
             lambda msg:setattr(self,'domain',msg),qos_profile_sensor_data)
@@ -295,6 +310,11 @@ class OperationSimDriver(Node):
             self.flush(outcome='FULL_CYCLE_PASS',capture_complete=True,replay_possible=True)
             return 0
         except Exception as error:
+            if (getattr(self,'failure_capture',None) is not None
+                    and str(error).endswith('CURRENT_SOURCE_REFUSED')):
+                self.failure_capture.trigger()
+                self.stage('failure_stationary_capture',lambda:time.sleep(self.args.failure_hold_s))
+                self.failure_capture.close()
             for name,msg in self.sensor_diagnostics.items():self.record('failure_'+name,msg)
             if self.domain is not None:self.record('failure_top_domain',self.domain)
             for name,msg in self.images.items():self.record('failure_'+name,msg)
@@ -312,7 +332,10 @@ def main():
     parser.add_argument('--evidence',required=True)
     parser.add_argument('--views',help='Optional supplemental site-pose names; no default initial ULD observation motion')
     parser.add_argument('--view-poses',help='Exact model/scene-bound diagnostic observation goals JSON')
+    parser.add_argument('--failure-hold-s',type=float,default=0.,
+        help='Diagnostic stationary observer capture after a terminal source refusal (0..60 s)')
     args = parser.parse_args()
+    if not 0 <= args.failure_hold_s <= 60:parser.error('failure hold must be within 0..60 seconds')
     rclpy.init()
     node = OperationSimDriver(args)
     executor = MultiThreadedExecutor(num_threads=4);executor.add_node(node)

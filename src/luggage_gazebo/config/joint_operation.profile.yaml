@@ -11,6 +11,9 @@ runtime:
   operation_connection_max_edge_s: 5.0
   operation_max_branch_attempts: 8
   operation_max_branch_attempts_per_candidate: 2
+  # Diagnostic20: both sensors converge ~1.4s after the second map capture;
+  # allow one more complete recertification, within the same action deadline.
+  operation_source_refresh_attempts: 3
   cargo_map_resolution_m: 0.02
 features:
   use_perception: true

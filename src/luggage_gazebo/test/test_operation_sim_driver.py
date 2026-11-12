@@ -116,3 +116,18 @@ def test_pickup_view_does_not_require_an_unrelated_uld_hit(tmp_path,monkeypatch,
             module.OperationSimDriver.observe_pose(probe,'pickup',require_uld_observation=True)
     else:
         module.OperationSimDriver.observe_pose(probe,'pickup',require_uld_observation=False)
+
+
+@pytest.mark.parametrize('reason,expected',[
+    ('EXECUTE:CARRY_FAULT:CURRENT_SOURCE_REFUSED',['trigger',25.,'close']),
+    ('EXECUTE:STOPPED:CONTROLLER_TIMEOUT',[])])
+def test_terminal_refusal_capture_runs_at_outer_operation_boundary(monkeypatch,reason,expected):
+    module=driver_module();events=[]
+    monkeypatch.setattr(module.time,'sleep',events.append)
+    def fail():raise RuntimeError(reason)
+    probe=SimpleNamespace(args=SimpleNamespace(failure_hold_s=25.),readiness=fail,
+        stage=lambda name,fn:fn(),failure_capture=SimpleNamespace(
+            trigger=lambda:events.append('trigger'),close=lambda:events.append('close')),
+        sensor_diagnostics={},domain=None,images={},joint=None,flush=lambda **kwargs:None)
+    assert module.OperationSimDriver.run(probe)==1
+    assert events==expected

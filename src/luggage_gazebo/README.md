@@ -21,3 +21,18 @@ The prior rehearsal starts its launch in a private session and tears down with
 `scripts/stop_sim.sh --owned-pgid <launch-pid>`. This mode never searches for a
 replacement launch or uses a foreign pidfile. Keep the one-simulation rule;
 private teardown scope does not authorize concurrent worlds.
+
+The explicit `joint_operation.profile.yaml` selects observed, retained whole-chain
+planning. `operation_source_refresh_attempts` bounds full suffix recertifications
+after a source-change refusal before controller submission; every retry retains
+the original action deadline and all O/static-model collision checks. The profile
+uses three attempts after diagnostic20 measured both sensors converging just
+after the second capture. Other launches retain the two-attempt default.
+
+For source-change diagnosis, `joint_operation_sim_driver.py --failure-hold-s 25`
+retains ten seconds of mapper input clouds, TF, joints and O receipts, then records
+a stationary post-refusal window. It only triggers on terminal
+`CURRENT_SOURCE_REFUSED`, performs no motion or map writes, and bounds RAM to
+96MiB and stored CDR blocks to256MiB. `observer_failure/index.jsonl` locates each
+independently gzip-compressed message in `cdr.gzblocks`; `summary.json` reports
+capture gaps. This instrumented timing is diagnostic, not a latency benchmark.
