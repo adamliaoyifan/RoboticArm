@@ -6,10 +6,13 @@ find_package(rosidl_default_generators REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 find_package(moveit_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/CargoObservationPartitionV2.msg"
+  "srv/GetCargoObservationV2.srv"
   "msg/OperationMapSourceV2.msg"
   "msg/FrozenSuctionObservationV2.msg"
   "srv/RetainSuctionObservationV2.srv"
@@ -122,7 +125,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/AimCameraAtContainer.action"
   "action/ValidateMotionSequence.action"
   "action/PlanNextCargoView.action"
-  DEPENDENCIES builtin_interfaces geometry_msgs std_msgs trajectory_msgs moveit_msgs
+  DEPENDENCIES builtin_interfaces geometry_msgs std_msgs sensor_msgs trajectory_msgs moveit_msgs
 )
 
 ament_export_dependencies(rosidl_default_runtime)

@@ -653,6 +653,28 @@
     "wrong_frame"
    ],
    "migration_state": "pending"
+  },
+  {
+   "id": "F27",
+   "producer": "exact-acquisition cargo observation service",
+   "consumer": "released cargo association and O source provenance (pending adoption)",
+   "transport": "CargoObservationPartitionV2 / GetCargoObservationV2",
+   "scope": "production",
+   "current": "read-only exact RGBD/mask/calibration/TF partitions; no physical box identity or O replacement",
+   "target": "truthful optical acquisition, complete immutable point/pixel/label source binding; conditional unique association and exclusive provenance required downstream",
+   "sources": [
+    "src/luggage_msgs/msg/CargoObservationPartitionV2.msg",
+    "src/luggage_msgs/srv/GetCargoObservationV2.srv",
+    "src/luggage_perception/luggage_perception/cargo_observation_partition.py",
+    "src/luggage_perception/luggage_perception/cargo_observation_service.py",
+    "src/luggage_perception/scripts/cargo_observation_node.py"
+   ],
+   "checks": [
+    "missing_stamp",
+    "wrong_frame",
+    "dynamic_tf_stale"
+   ],
+   "migration_state": "pending"
   }
  ]
 }

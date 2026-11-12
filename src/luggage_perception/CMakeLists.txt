@@ -41,6 +41,7 @@ if(BUILD_TESTING)
 endif()
 
 install(PROGRAMS
+  scripts/cargo_observation_node.py
   scripts/luggage_detector_node.py
   scripts/sensor_preprocessor_node.py
   scripts/d555_transport_adapter_node.py

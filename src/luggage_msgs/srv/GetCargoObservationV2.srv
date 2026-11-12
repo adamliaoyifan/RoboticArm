@@ -1,0 +1,7 @@
+# Exact positive acquisition stamp. No latest/nearest observation fallback.
+string request_id
+uint64 acquisition_stamp_ns
+---
+bool valid
+string reason
+CargoObservationPartitionV2 observation
