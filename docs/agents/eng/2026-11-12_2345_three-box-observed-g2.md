@@ -1034,3 +1034,14 @@ wiring before spending another three-box integration run.
 Native references: installed6.18 detachable_joint.sdf and plugin library;
 https://raw.githubusercontent.com/gazebosim/gz-sim/ign-gazebo6/src/systems/detachable_joint/DetachableJoint.cc
 https://raw.githubusercontent.com/gazebosim/gz-sim/ign-gazebo6/src/SystemManager.cc
+
+Rigid rehearsal48: readiness7.99s, then native plugin loaded but explicit attach
+state wait timed out17.04s including fixture setup; preserved typed inputs,
+parent entity query Model[49], plugin/launch logs; teardown0. No packing unit or
+product motion. Installed6.18 binary lacks `initial_attach`, unlike current
+ign-gazebo6 branch source. It auto-attaches at configure; one-shot state precedes
+subscription, repeated attach emits nothing. Correct installed-version handshake:
+while arm remains stationary before seal confirmation, obtain explicit detached
+then attached states. No material pose change or carry is permitted between;
+next rehearsal must verify motion and release. Do not count48 against product
+reliability or claim attach success from queued plugin-load acknowledgement.

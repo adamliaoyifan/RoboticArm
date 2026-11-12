@@ -57,7 +57,7 @@ class FortressRigidAttachment:
         topic='/luggage/physical_attachment/'+model
         plugin=ET.Element('parameters')
         for key,value in dict(parent_link=self.parent_link,child_model=model,
-                child_link='suitcase_link',initial_attach='false',
+                child_link='suitcase_link',
                 attach_topic=topic+'/attach',detach_topic=topic+'/detach',
                 output_topic=topic+'/state').items():
             ET.SubElement(plugin,key).text=value
@@ -74,6 +74,10 @@ class FortressRigidAttachment:
             info=self._run(['ign','topic','-i','-t',topic+'/state'])
             if 'ignition.msgs.StringMsg' in info:break
             if time.monotonic()>=deadline:raise RuntimeError('RIGID_PLUGIN_NOT_READY')
+        # Installed Fortress6.18 auto-attaches on plugin load. Its one-shot
+        # output can precede discovery. While the arm is still stationary and
+        # before seal confirmation, detach then attach for correlated states.
+        self._transition(topic,'detached')
         self._transition(topic,'attached')
         self.attached_model=model
 
