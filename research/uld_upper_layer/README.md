@@ -463,3 +463,10 @@ pacing while preserving the physics step and every source collider/material.
 This optional explicit profile field is recorded in scene metadata; default
 construction preserves source pacing. The first trial uses0.25 because the
 measured 2000-step observation replay requires3.74s of wall time for2s simulated.
+
+Clock domains are explicit: `observation_max_age_s` limits simulation-stamp
+backlog against the independently received clock/latest native stamp. It is
+not a wall silence limit. A halted clock/native stream uses the existing
+`condition_wait_budget_s` wall budget, and failure snapshots retain both ages,
+simulation stamps and queue depth. A physics pause advances no cargo or
+simulation age; it must not fail solely because wall time exceeds100ms.

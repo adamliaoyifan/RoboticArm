@@ -22,6 +22,7 @@ class ReleaseRuntime:
         self.latest = None; self.clock = None; self.clock_wall = None; self.native_wall = None
         self.process = None; self.log = None; self.native = None; self.clock_capture = None
         self.max_backlog_s = 0.; self.last_delivered = None
+        self.freshness_failure = None
 
     def _native(self, row):
         try:
@@ -81,11 +82,22 @@ class ReleaseRuntime:
             if capture.error:
                 raise RuntimeError(capture.error)
         with self._lock:
+            # observation_max_age_s is in simulation stamp time. A physics
+            # pause advances neither cargo nor that clock; use the separate
+            # condition-wait WALL budget to detect a stalled transport/server.
+            wall_now = time.monotonic()
             if check_fresh and self._armed and (
                     self.clock_wall is None or self.native_wall is None
-                    or time.monotonic()-self.clock_wall > self.policy.observation_max_age_s
-                    or time.monotonic()-self.native_wall > self.policy.observation_max_age_s):
-                raise RuntimeError('RELEASE_OBSERVATION_STALE')
+                    or wall_now-self.clock_wall > self.policy.condition_wait_budget_s
+                    or wall_now-self.native_wall > self.policy.condition_wait_budget_s):
+                self.freshness_failure = dict(reason='RELEASE_STREAM_WALL_TIMEOUT',
+                    clock_silence_wall_s=None if self.clock_wall is None else wall_now-self.clock_wall,
+                    native_silence_wall_s=None if self.native_wall is None else wall_now-self.native_wall,
+                    condition_wait_budget_wall_s=self.policy.condition_wait_budget_s,
+                    queue_count=len(self._queue), clock_stamp_s=self.clock,
+                    latest_native_stamp_s=self.latest['sim_time_s'] if self.latest else None)
+                save(self.output/'freshness_failure.json', self.freshness_failure)
+                raise RuntimeError('RELEASE_STREAM_WALL_TIMEOUT')
             row = self._queue.popleft() if self._armed and self._queue else None
             if not self._armed and self.latest and self.latest['sim_time_s'] != self.last_delivered:
                 row = self.latest
@@ -96,7 +108,12 @@ class ReleaseRuntime:
                     raise RuntimeError('RELEASE_CLOCK_MISSING')
                 lag = max(self.clock, self.latest['sim_time_s'])-row['sim_time_s']
                 self.max_backlog_s = max(self.max_backlog_s, lag)
-                if lag > self.policy.observation_max_age_s or time.monotonic()-self.clock_wall > self.policy.observation_max_age_s:
+                if lag > self.policy.observation_max_age_s:
+                    self.freshness_failure = dict(reason='RELEASE_OBSERVATION_STALE',
+                        processing_backlog_sim_s=lag, observation_max_age_sim_s=self.policy.observation_max_age_s,
+                        clock_stamp_s=self.clock, native_stamp_s=row['sim_time_s'],
+                        latest_native_stamp_s=self.latest['sim_time_s'], queue_count=len(self._queue))
+                    save(self.output/'freshness_failure.json', self.freshness_failure)
                     raise RuntimeError('RELEASE_OBSERVATION_STALE')
             self.last_delivered = row['sim_time_s']
             return row
