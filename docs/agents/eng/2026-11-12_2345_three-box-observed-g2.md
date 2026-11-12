@@ -583,3 +583,34 @@ satisfy these product gates.
   reference_tf_review.json,sensor_extrinsics_review.json,carried_voxel_review.json,
   latest_suffix46}; floor_sensor_{ogre2,ogre}_360/{world.sdf,result.json,
   target_area.json,*.cdr.gz}. Known plane and simulator poses are eval-only.
+
+## Diagnostic32 -- 2026-11-13T04:36+08:00
+
+- OGRE full-model startup8.14s, measured detection/prepare15.03s pass; actual
+  seal/lift/carry pass in123.27s execution. No descent submission or release.
+  Actual initial O35 then49 occupied, compared with hundreds in earlier runs.
+  Same URDF/SRDF and reviewed atlas identity; RGB-D detector compatibility is
+  actually exercised, not inferred from the isolated LiDAR calibration.
+- At carried endpoint the latest O5010 occupied,48 floor-layer, no occupied
+  centres inside/near actual carried envelope. Filtered actual LiDAR endpoints
+  have zero own-body halfspace residuals within1cm in the saved last cloud.
+- IMPORTANT: latest full O native replay accepts BOTH retained descent and
+  retreat. No source deletion, extra margin change or replanning was needed
+  for that offline test. It is diagnostic evidence, not physical execution.
+- Actual runtime stops CURRENT_SOURCE_REFUSED while the new view is still
+  converging. Receipt history shows last occupancy class change150.46s after
+  capture begins, about7s after three attempts expire; next18.7s unchanged.
+  Latest transitions go206,101,1,2 cells then stop; the last2 changed voxels
+  are side-wall/floor boundary near x=.725,y~-.035m, not carried payload.
+- Recommended minimal repair: existing profile retry count3->8, within existing
+  validated1..8 range and600s action budget. Every retry still captures fresh O,
+  checks exact classified map equality, target admission and complete native
+  suffix. No synthetic stable map, sleep-until-guessed-success, erased cells,
+  hysteresis or spatially weakened certification is introduced. Reason: the
+  measured fusion convergence window exceeds the former count; full latest
+  native paths already pass. Not a success-rate claim; next live verification
+  must actually reach release/retreat/adoption.
+- Evidence: diagnostic32/{observer_window_review.json,observer_receipts.json,
+  map_changes.json,self_surface_residual.json,carried_voxel_review.json,
+  latest_suffix47}. Raw source archive complete/no drops and failed-boundary
+  O/full scene preserved; owned teardown0. Three-box gate remains open.
