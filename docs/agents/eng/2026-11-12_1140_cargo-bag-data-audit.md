@@ -4,11 +4,12 @@
 - agent: codex
 - model: gpt-6
 - cli: codex
-- status: open
+- status: done
 - parent: MOVEIT-ATLAS-JOINT-PLAN-20261111
 - subtask: ST-4-OBS-DATA-AUDIT
 - base_revision: c1ef631125cac8e698eff3c37c618a33bd9f37fb
 - started_at: 2026-11-12T11:28:28+08:00
+- completed_at: 2026-11-12T11:40:01+08:00
 
 ## Summary
 
@@ -54,8 +55,8 @@ Closest architecture clarifies proposal-mask and calibration semantics.
 
 ## Result
 
-Implementation and bounded audit pass; awaiting lifecycle closure at exact
-commit. Next review is real camera-model projection and geometric qualification,
+Implementation and bounded audit pass at cc2909baa991b2bb874d7beb5a166b89ab63ec02;
+closed through agent_complete.sh. Next review is real camera-model projection and geometric qualification,
 then a separately frozen repeatability/uncertainty workload and native O
 provenance. Missing calibration evidence must not become a guessed default.
 
