@@ -78,7 +78,9 @@ def operation_composition(config, robot_xml, semantic_xml):
         container_translation=list(translation),
         container_quaternion_xyzw=Rotation.from_euler('xyz', rpy).as_quat().tolist(),
         observer_geometry_file=owner.geometry_file, observer_config_file=owner.observer_config_file,
-        scene_tf_config=scene, collision_margin_m=0.05)
+        # User's three-box qualification policy: 2cm per-side O expansion.
+        # This does not change static mesh, payload or release geometry.
+        scene_tf_config=scene, collision_margin_m=0.02)
     kinematics_path = Path(get_package_share_directory('elfin_moveit_config'))/'config/kinematics.yaml'
     kinematics = {'robot_description_kinematics': yaml.safe_load(kinematics_path.read_text())}
     nodes = [Node(package='uld_occ_observer', executable='observer_node', name='uld_occ_observer',

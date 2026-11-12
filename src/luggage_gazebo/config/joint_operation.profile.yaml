@@ -6,6 +6,7 @@ runtime:
   use_rviz: false
   use_moveit: true
   frame_runtime: false
+  cargo_map_resolution_m: 0.02
 features:
   use_perception: true
   use_semantic: true
