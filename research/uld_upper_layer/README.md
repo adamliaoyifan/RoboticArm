@@ -554,3 +554,25 @@ rotation and approach legs are IK/collision checked and included in the same
 timed trajectory and interval certificate; no additional cargo contact is added.
 The final executor checks current joints/box against the scored start and
 requires actual support/contact plus stable separation at completion.
+
+Constrained pushes are back-seeded from collision-screened final joint branches.
+The hypothetical world-box pose moves backwards with the TCP during that search.
+Only a branch connected through the complete push and contact approach is exposed
+as an entry goal for free motion. Whole-path integer-turn shifts select a source
+joint-limit-valid winding near the withdrawal state; individual samples are never
+wrapped. The actual forward cubic trajectory and moving-box sweep are still
+certified before admission.
+
+| Boundary | Input | Output / consumer |
+| --- | --- | --- |
+| `PlacementRequest` | geometric-centre box transform/size/COM, immutable snapshot, current joints, optional confirmed grasp, exact final transforms, support IDs | validated frozen request for `UpperPlacementPlanner` |
+| `target_actions` | request, source assets, runtime policy | multiple coupled grasp/handoff/push actions and geometric rejection counts |
+| `plan_action` | one action, measured start, private collision scene | connected timed stages plus certificates, or preserved stage failure |
+| `rank_nominal_plans` | complete certified plans and current model/policy identities | collision-first selection, target/minimum counts and rejected-plan reasons |
+| `PhysicalExecutor` | selected immutable plan and live observation/controller/attachment | monitored physical completion or explicit abort; never moves a cargo pose directly |
+
+`UpperPlacementPlanner` stores only dependency paths; scenes, search seeds and
+worker state are private to one call. `plan()` returns `plans` and `selection`
+as well as bounded summary metadata. Public configuration is runtime YAML; a
+request captures a single revision so a mid-request edit cannot silently change
+its certificate. A new observation, grasp or start state requires a new request.

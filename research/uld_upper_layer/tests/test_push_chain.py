@@ -6,10 +6,19 @@ import sys
 import unittest
 import numpy as np
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from coupled_chain import push_branches
+from coupled_chain import push_branches,nearest_path_winding
 from planning_types import UpperConfig
 
 class PushChain(unittest.TestCase):
+    def test_whole_path_winding_preserves_angles_without_crossing_limits(self):
+        path=[[-3.4,5.9],[-3.1,6.2]]
+        shifted=nearest_path_winding(path,[3.,-.2],[[-6.3,6.3],[-6.3,6.3]])
+        np.testing.assert_allclose(np.sin(shifted),np.sin(path))
+        np.testing.assert_allclose(np.diff(shifted,axis=0),np.diff(path,axis=0))
+        self.assertGreater(shifted[0][0],0)
+        self.assertLess(shifted[0][1],0)
+        self.assertIsNone(nearest_path_winding([[0.],[7.]],[0.],[[-3.,3.]]))
+
     def test_blocked_end_branch_backtracks_and_reverses_box_and_joint_path(self):
         handoff=np.eye(4);final=np.eye(4);final[0,3]=.3
         action=SimpleNamespace(handoff_box_pose=handoff.ravel(),

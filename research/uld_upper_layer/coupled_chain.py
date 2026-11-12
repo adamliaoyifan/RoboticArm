@@ -38,7 +38,24 @@ def handoff_branches(scene,action,approach,seeds,config,emit,goals=None):
                    lowering_path=list(reversed(lowering)))
 
 
-def push_branches(scene,state,action,goals,config,emit):
+def nearest_path_winding(path,reference,limits):
+    """Shift an entire revolute-joint path by whole turns within source limits.
+
+    A constant shift preserves FK and its swept geometry. Never wrap individual
+    samples: that would insert discontinuities into the controller trajectory.
+    """
+    points=np.asarray(path,dtype=float);bounds=np.asarray(limits,dtype=float)
+    shifts=[]
+    for joint in range(points.shape[1]):
+        low=int(np.ceil((bounds[joint,0]-points[:,joint].min())/(2*np.pi)))
+        high=int(np.floor((bounds[joint,1]-points[:,joint].max())/(2*np.pi)))
+        if low>high:return None
+        turn=min(range(low,high+1),key=lambda k:abs(points[0,joint]+2*np.pi*k-reference[joint]))
+        shifts.append(turn*2*np.pi)
+    return (points+shifts).tolist()
+
+
+def push_branches(scene,state,action,goals,config,emit,reference_q=None):
     """Connect the moving-box push backwards before choosing its entry branch.
 
     Endpoint reachability alone cannot select a branch for a constrained push.
@@ -70,5 +87,13 @@ def push_branches(scene,state,action,goals,config,emit):
         if failure:
             emit(dict(event='push_branch_rejected',branch=index,stage='push_pre',diagnostic=failure))
             continue
-        yield dict(branch=index,pre_q=entry[-1],contact_path=list(reversed(entry)),
-                   push_path=list(reversed(reverse)))
+        contact_path=list(reversed(entry));push_path=list(reversed(reverse))
+        if reference_q is not None:
+            joined=nearest_path_winding(contact_path+push_path[1:],reference_q,scene.urdf.joint_limits())
+            if joined is None:
+                emit(dict(event='push_branch_rejected',branch=index,stage='joint_winding',
+                          diagnostic=dict(reason='NO_LIMIT_VALID_WINDING')))
+                continue
+            count=len(contact_path);contact_path=joined[:count];push_path=joined[count-1:]
+        yield dict(branch=index,pre_q=contact_path[0],contact_path=contact_path,
+                   push_path=push_path)

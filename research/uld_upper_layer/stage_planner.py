@@ -195,7 +195,7 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
     prefix_count=len(stages);withdraw_q=list(q);connected=False
     nominal=lambda t:world@shifted(handoff,[action.push_distance_m*t,0,0])
     for branch in push_branches(scene,state,action,
-            screened['endpoints']['push_end']['q_solutions'],config,emit):
+            screened['endpoints']['push_end']['q_solutions'],config,emit,reference_q=withdraw_q):
         del stages[prefix_count:];q=list(withdraw_q)
         payload('world',handoff,True)
         failure=stage('push_pre',pre_push,'joint',goal_q=branch['pre_q'])
