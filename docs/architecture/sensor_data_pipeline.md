@@ -484,3 +484,31 @@ restore latest-only replacement. The queue remains one pending plus one in
 flight. This scheduling preference does not authorize a pick: normal exact-stamp
 support fitting, five-fit stability, current-generation and freshness checks
 still run; DetectLuggage still selects the latest produced frame.
+
+## Joint-operation carried-payload self-filter barrier
+
+The explicit joint-operation simulation starts unloaded and requires the native
+observer self-mask to acknowledge `/luggage/observation/set_payload_mask` before
+vacuum physical effects. The vacuum owner initializes NONE; before attach or
+release it obtains a PENDING acknowledgement. PENDING drops entire clouds,
+including their free-space rays. Only a successful confirmed measured attachment
+may switch to ATTACHED, using its frozen conservative box in
+`suction_contact_frame`; successful physical release switches to NONE. A failed
+measurement or acknowledgement leaves PENDING and execution holds. Acknowledgement
+failure must not turn a physically held vacuum state into an unloaded report.
+
+The self-mask retains 64 acquisition-time state boundaries. Each cloud uses its
+own timestamp, the associated attachment interval and exact-stamp tool TF. Late
+clouds preceding release therefore still use their attached shape. Clouds older
+than retained history, missing TF, or unresolved transitions are refused.
+Robot URDF shape filtering and its source-derived range-error padding remain.
+Only endpoints inside the current conservative attached shape are removed; each
+removal discards the whole ray. Existing O evidence is never erased by this
+filter, and released cargo is no longer excluded. This is sensor self-return
+rejection, not obstacle identity association or permission to move through an
+obstacle. A return within the physical load's uncertainty envelope is inherently
+ambiguous; it cannot independently detect another object contacting that load.
+The launch manifest records this policy. Legacy routes leave this opt-in barrier
+disabled. Restarting either owner while carrying requires explicit recovery;
+unloaded initialization is only valid for the fresh unloaded joint-operation
+simulation startup, not arbitrary hardware recovery.

@@ -70,6 +70,38 @@ def test_exact_shape_origin_preserves_external_points_and_refuses_missing_tf(tmp
         assert [int(p['intensity']) for p in read_points(result)]==[13,14]
         assert any('robot_removed=2' in s and 'clipped=0' in s for s in statuses)
         assert result.width==2 and result.height==1 and len(result.data)==32
+        from luggage_msgs.srv import SetObserverPayloadMask
+        service=node.create_client(SetObserverPayloadMask,'/luggage/observation/set_payload_mask')
+        until(lambda:service.service_is_ready())
+        def transition(mode, operation='box1', frame='tool'):
+            request=SetObserverPayloadMask.Request(state=mode,operation_id=operation,tool_frame=frame)
+            request.geometry.geometry_digest='confirmed-measured-fixture'
+            request.geometry.tool_conservative_translation=[.35,0.,0.]
+            request.geometry.tool_conservative_quaternion_xyzw=[0.,0.,0.,1.]
+            request.geometry.conservative_dimensions_wdh=[.1,.1,.1]
+            future=service.call_async(request);until(future.done)
+            return future.result()
+        assert not transition(2).accepted,'cannot invent attachment without pending barrier'
+        assert transition(1).accepted
+        before=len(outputs);count=len(statuses)
+        cloud.header.stamp=node.get_clock().now().to_msg();pub.publish(cloud)
+        until(lambda:len(statuses)>count)
+        assert len(outputs)==before and 'payload transition unresolved' in statuses[-1]
+        assert not transition(2,operation='other-box').accepted
+        assert transition(2).accepted
+        cloud.header.stamp=node.get_clock().now().to_msg();attached_stamp=cloud.header.stamp
+        pub.publish(cloud);until(lambda:len(outputs)>before)
+        assert [int(p['intensity']) for p in read_points(outputs[-1])]==[14]
+        assert any('payload_removed=1' in s for s in statuses)
+        assert transition(1,operation='release-box1').accepted
+        assert transition(0,operation='release-box1').accepted
+        before=len(outputs);cloud.header.stamp=node.get_clock().now().to_msg();pub.publish(cloud)
+        until(lambda:len(outputs)>before)
+        assert [int(p['intensity']) for p in read_points(outputs[-1])]==[13,14]
+        # Out-of-order delivery after release retains acquisition-time ownership.
+        before=len(outputs);cloud.header.stamp=attached_stamp;pub.publish(cloud)
+        until(lambda:len(outputs)>before)
+        assert [int(p['intensity']) for p in read_points(outputs[-1])]==[14]
     finally:
         executor.shutdown();node.destroy_node();context.shutdown();process.terminate()
         try:process.wait(timeout=8.)

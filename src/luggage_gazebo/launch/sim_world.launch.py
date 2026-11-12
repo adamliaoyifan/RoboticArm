@@ -1322,7 +1322,8 @@ def _launch_setup(context):
             name="vacuum_controller",
             output="screen",
             parameters=[{"use_sim_time": True, "attachment_geometry_config": str(cfg["attachment_geometry_config"]),
-                         "physical_release_on_detach": complete_operation, **frame_params}],
+                         "physical_release_on_detach": complete_operation,
+                         "observer_payload_mask_barrier": complete_operation, **frame_params}],
             condition=IfCondition(_bool_text(cfg["use_vacuum"])),
         ),
         *_robot_state_publisher_actions(

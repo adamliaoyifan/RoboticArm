@@ -305,6 +305,10 @@ class VacuumControllerNode(Node):
         self.create_service(
             VacuumCommandV2, "/vacuum/command_v2", self._handle_command_v2,
             callback_group=group)
+        self._observer_payload_mask = None
+        if self.declare_parameter('observer_payload_mask_barrier', False).value:
+            from luggage_planning.observer_payload_mask import ObserverPayloadMaskBarrier
+            self._observer_payload_mask = ObserverPayloadMaskBarrier(self, group, self._panel_frame)
         # ST09 F21: identity heartbeat + peer readiness. Attachment effects
         # are admitted per request; refusal preserves backend state (a
         # carried box is never detached by a gate failure). Off = legacy.
@@ -480,13 +484,30 @@ class VacuumControllerNode(Node):
                 "quaternion_xyzw": [rotation.x, rotation.y, rotation.z, rotation.w],
             }
 
+        mask = getattr(self, '_observer_payload_mask', None)
+        operation_id = '%s:%s:%s:%s' % (request.request_id, request.box_id,
+                                       request.generation, 'attach' if request.enable else 'release')
+        if mask is not None and not mask.transition(1, operation_id):
+            response.success = False
+            response.message = 'OBSERVER_PAYLOAD_PENDING_BARRIER_REFUSED'
+            return response
         response = handle_vacuum_command_v2(
             request, response, scene_revision=revision, generation=generation,
             resolve_tool=resolve_tool, backend=self._backend,
             geometry_policy=self._geometry_policy)
+        physical_effect_succeeded = response.success
+        if mask is not None and response.success:
+            state = 2 if request.enable else 0
+            if (request.enable and not response.has_measured_attachment) or not mask.transition(
+                    state, operation_id, response.conservative_geometry if request.enable else None):
+                # The physical effect may already have happened. Leave filtering
+                # unresolved and report failure so execution holds; never detach.
+                response.success = False
+                response.message = 'OBSERVER_PAYLOAD_CONFIRMATION_REFUSED_HOLD_STATE'
         # v1 publishes /vacuum/state before returning. The pick driver treats
         # that latched state as the attach proof, so the v2 path must too.
-        self._vacuum_on = bool(request.enable and response.success)
+        if physical_effect_succeeded:
+            self._vacuum_on = bool(request.enable)
         self._last_fail_reason = "" if response.success else str(response.message or "")
         self._publish_state()
         self._publish_event(

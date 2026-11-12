@@ -1,0 +1,14 @@
+# Barrier owned by the vacuum controller, acknowledged before physical effects.
+# PENDING drops complete sensor clouds; ATTACHED uses confirmed measured geometry.
+# NONE is admitted only at initialization or after a PENDING release barrier.
+uint8 NONE=0
+uint8 PENDING=1
+uint8 ATTACHED=2
+uint8 state
+string operation_id
+string tool_frame
+luggage_msgs/AttachmentGeometryV2 geometry
+---
+bool accepted
+string reason
+builtin_interfaces/Time effective_stamp

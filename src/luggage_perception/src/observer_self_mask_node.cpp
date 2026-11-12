@@ -12,8 +12,11 @@
 #include <srdfdom/model.h>
 #include <openssl/sha.h>
 #include <cstring>
+#include <algorithm>
+#include <array>
 #include <map>
 #include <sstream>
+#include "observer_payload_mask.hpp"
 
 using Cloud = sensor_msgs::msg::PointCloud2;
 using Handle = point_containment_filter::ShapeHandle;
@@ -50,6 +53,19 @@ public:
     if (!semantic->initString(*urdf, semantic_xml))
       throw std::runtime_error("actual semantic description required");
     model_ = std::make_shared<moveit::core::RobotModel>(urdf, semantic);
+    payload_ = std::make_unique<ObserverPayloadMask>(
+        declare_parameter<bool>("require_payload_mask_barrier", false));
+    payload_service_ = create_service<ObserverPayloadMask::Service>(
+        "/luggage/observation/set_payload_mask",
+        [this](const ObserverPayloadMask::Service::Request::SharedPtr request,
+               ObserverPayloadMask::Service::Response::SharedPtr response) {
+          try {
+            const auto now=get_clock()->now();
+            payload_->transition(*request,now.nanoseconds());
+            response->accepted=true; response->reason="PAYLOAD_MASK_BARRIER_ACK";
+            response->effective_stamp=now;
+          } catch (const std::exception& error) { response->reason=error.what(); }
+        });
     padding_ = declare_parameter<double>("self_mask_padding_m", 0.);
     if (!std::isfinite(padding_) || padding_ < 0.)
       throw std::runtime_error("finite nonnegative self-mask error bound required");
@@ -79,7 +95,7 @@ public:
 private:
   void update(const Cloud& input, const rclcpp::Publisher<Cloud>::SharedPtr& publisher,
               const std::string& sensor) {
-    size_t removed = 0, clipped = 0;
+    size_t removed = 0, clipped = 0, payload_removed = 0;
     std::string reason = "FILTERED";
     try {
       if (input.header.frame_id.empty() ||
@@ -93,6 +109,22 @@ private:
       // Resolve EVERY body first; missing exact-stamp TF drops the whole cloud.
       std::map<std::string, Eigen::Isometry3d> links;
       const rclcpp::Time stamp(input.header.stamp);
+      const auto& payload=payload_->at(stamp.nanoseconds());
+      if (payload.mode==1) throw std::runtime_error("payload transition unresolved");
+      Eigen::Isometry3d box_input=Eigen::Isometry3d::Identity();
+      if (payload.mode==2) box_input=(transform(buffer_.lookupTransform(
+          input.header.frame_id,payload.tool_frame,stamp).transform)*payload.tool_box).inverse();
+      std::array<size_t,3> xyz_offsets{};
+      if (payload.mode==2) {
+        for (size_t axis=0; axis<3; ++axis) {
+          const std::string name(1,"xyz"[axis]);
+          auto field=std::find_if(input.fields.begin(),input.fields.end(),
+              [&](const auto& f){return f.name==name && f.datatype==7 && f.count==1;});
+          if (field==input.fields.end() || field->offset+sizeof(float)>input.point_step)
+            throw std::runtime_error("payload mask requires float32 xyz");
+          xyz_offsets[axis]=field->offset;
+        }
+      }
       for (const auto& [handle, body] : bodies_) {
         if (!links.count(body.link))
           links.emplace(body.link, transform(buffer_.lookupTransform(
@@ -110,6 +142,15 @@ private:
         if (labels[i] == point_containment_filter::ShapeMask::INSIDE) { ++removed; continue; }
         if (labels[i] != point_containment_filter::ShapeMask::OUTSIDE) { ++clipped; continue; }
         const auto offset = (i / input.width) * input.row_step + (i % input.width) * input.point_step;
+        if (payload.mode==2) {
+          Eigen::Vector3d point;
+          for (size_t axis=0; axis<3; ++axis) {
+            float value; std::memcpy(&value,input.data.data()+offset+xyz_offsets[axis],sizeof(float));
+            point[axis]=value;
+          }
+          if (point.allFinite() && ((box_input*point).cwiseAbs().array() <=
+              (payload.half_size.array()+padding_)).all()) { ++payload_removed; continue; }
+        }
         output.data.insert(output.data.end(), input.data.begin() + offset,
                            input.data.begin() + offset + input.point_step);
         ++output.width;
@@ -124,6 +165,7 @@ private:
     report << "sensor=" << sensor << " stamp=" << input.header.stamp.sec << '.'
            << input.header.stamp.nanosec << " input=" << input.width * input.height
            << " robot_removed=" << removed << " clipped=" << clipped << " bodies=" << bodies_.size()
+           << " payload_removed=" << payload_removed
            << " padding_m=" << padding_
            << " model_sha256=" << model_sha_ << " reason=" << reason;
     std_msgs::msg::String status; status.data = report.str(); status_->publish(status);
@@ -135,6 +177,8 @@ private:
   std::map<Handle, Body> bodies_;
   std::map<Handle, Eigen::Isometry3d> poses_;
   std::string model_sha_;
+  std::unique_ptr<ObserverPayloadMask> payload_;
+  rclcpp::Service<ObserverPayloadMask::Service>::SharedPtr payload_service_;
   double padding_ = 0.;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_;
   std::vector<rclcpp::Subscription<Cloud>::SharedPtr> subscriptions_;

@@ -918,3 +918,39 @@ only a genuinely truncating call diversifies. Add explicit full-capacity order
 check. All original failed raw/native inputs retained; teardown0. No blind
 repeat or geometry exemption. Freeze65 after the same focused tests and first
 verify the saved43 snapshot still chooses deep targets before interior reserve.
+
+### Diagnostic45 / carried-load self-return repair (23:20 UTC)
+
+Frozen65/build65/install192 first prepare PLAN_READY48.99s. Actual align,
+contact, lift and carry executed; carry246.91s and J6 cumulative29.8rad document
+an unresolved route-efficiency limitation. Before leg4 descent, latest-map
+settled admission refused. No release occurred; still held. Capture complete,
+25s failure hold and owned teardown0. This is a planning/admission failure, not
+proof of physical collision. Replay of the saved O places its target-footprint
+surface1.18m above the floor with insufficient support, instead of the original
+floor pose.
+
+Measured competing explanation: exact acquisition TF and actual confirmed
+attachment show all26 sampled filtered optical/LiDAR clouds still contain the
+carried-box envelope, at most3030 points/frame. Native self-mask source filters
+15 URDF collision bodies only, no attached geometry. Thus a real source defect
+exists; its exact contribution to every target-footprint occupied cell is still
+being audited. Evidence: diagnostic45/{carried_cloud_review,
+settled_admission_review}.json and raw observer_failure window.
+
+Recommended minimum repair under delegated decisions: acknowledge a PENDING
+sensor-filter barrier before vacuum physical effects, drop whole clouds during
+unresolved transitions, then filter the confirmed measured conservative attached
+box at cloud-acquisition TF. On physical release restore NONE; retain bounded
+state history for delayed clouds. No O erasure, no ignored external collision,
+no nominal-catalog or simulator-reference shape. Existing O and full-model
+motion gates unchanged. Conservative-envelope self-return filtering cannot
+independently detect a second object contacting/inside that uncertainty region;
+this limitation is explicit in architecture. Fresh unloaded simulation startup
+only, not hardware restart recovery. New narrow SetObserverPayloadMask service
+is required to order physical effects and filtering; no new planning route.
+
+Build66 compiled successfully but its source-freeze gate correctly reports two
+headers edited during compilation; it is NOT a frozen live-run artifact. Freeze
+and rebuild67 after native behavioural checks (pending, measured box removal,
+wrong identity, release, delayed pre-release cloud).

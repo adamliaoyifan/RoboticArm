@@ -11,6 +11,7 @@ find_package(trajectory_msgs REQUIRED)
 find_package(moveit_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "srv/SetObserverPayloadMask.srv"
   "msg/CargoObservationPartitionV2.msg"
   "srv/GetCargoObservationV2.srv"
   "msg/OperationMapSourceV2.msg"

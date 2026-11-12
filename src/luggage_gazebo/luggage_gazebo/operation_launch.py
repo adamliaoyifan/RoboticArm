@@ -151,6 +151,7 @@ def operation_composition(config, robot_xml, semantic_xml):
         Node(package='luggage_perception', executable='observer_self_mask_node', name='observer_self_mask',
             output='screen', parameters=[dict(use_sim_time=True,
                 self_mask_padding_m=self_mask_error,
+                require_payload_mask_barrier=True,
                 robot_description=common['robot_description'],
                 robot_description_semantic=common['robot_description_semantic'])]),
         Node(package='luggage_packing', executable='placement_planner_node.py', name='placement_planner',
@@ -186,6 +187,9 @@ def operation_composition(config, robot_xml, semantic_xml):
     manifest['perception_policy'] = operation_perception_parameters(config)
     manifest['issued_plan_lifetime_s'] = operation_evidence_lifetime_s(config)
     manifest['observer_self_mask'] = dict(geometry='actual_urdf_collision_shapes',
+        payload_geometry='confirmed_measured_conservative_attachment',
+        payload_state='acknowledged_vacuum_barrier_acquisition_time_history',
+        unresolved_payload='refuse_whole_cloud',
         scale=1.,padding_m=self_mask_error,padding_source='half_simulator_range_resolution',
         transform_time='cloud_acquisition',
         missing_transform='refuse_whole_cloud',removed_endpoint='discard_whole_ray')
