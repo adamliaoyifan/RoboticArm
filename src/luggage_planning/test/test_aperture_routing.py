@@ -176,3 +176,17 @@ def test_independent_plane_fk_witness_rejects_missing_or_wrong_region():
     assert not router.has_plane_witness(draft((start,end)),candidate)
     assert not router.has_plane_witness(draft((start,(-.7,3.,1.,0.,0.,0.),end)),candidate)
     assert router.has_plane_witness(draft((start,(-.7,0.,1.,0.,0.,0.),end)),candidate)
+
+
+def test_atlas_cannot_starve_two_endpoint_seed_fallbacks_at_bounded_cap():
+    _,_,_,router=fixture()
+    router.max_seeds=3
+    start=(0.,)*5+(6.,)
+    goal=(.2,0.,0.,0.,0.,6.2)
+    # Preserve raw winding: -6 is a long move even if FK is nearly periodic.
+    branches=[SimpleNamespace(branch_id=name,contact_joints=q) for name,q in (
+        ('far',(0.,)*5+(-6.,)),('near',(.1,0.,0.,0.,0.,6.1)),
+        ('other',(1.,1.,1.,1.,1.,1.)))]
+    router.atlas=SimpleNamespace(query=lambda *args:SimpleNamespace(branches=branches))
+    seeds=router._seeds(Transform((0.,0.,1.),(0.,0.,0.,1.)),start,goal)
+    assert seeds==(('current-carry',start),('place-entry',goal),('atlas:near',branches[1].contact_joints))

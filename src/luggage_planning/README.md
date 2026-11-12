@@ -41,6 +41,8 @@ checks decide whether a candidate has a valid complete trajectory.
 The standalone native connector derives OMPL's segment fraction from its own
 joint-check step and the loaded group's extent. Search and returned-path checks
 therefore use compatible resolution even when no external OMPL YAML is supplied.
+Opening IK retains both endpoint seeds before its bounded atlas proposals;
+remaining atlas seeds are ranked by raw joint travel, preserving winding.
 Prepare evidence stores lossless gzip CDR files; `boundaries.jsonl` records raw
 and stored sizes/hashes. Decompress before deserialization; the budget counts
 stored bytes and still refuses when full.

@@ -52,14 +52,20 @@ class ApertureRouter:
         return snapshot.world_from_container.inverse().compose(world)
 
     def _seeds(self, target, start, goal):
-        result = []
+        # Keep both coupled endpoints represented before applying the seed cap.
+        # A full atlas cell must not silently remove all online fallbacks.
+        result = [('current-carry', start), ('place-entry', goal)]
         if self.atlas is not None:
             x_axis = Rotation.from_quat(target.quaternion_xyzw).apply((1., 0., 0.))
             yaw = math.atan2(x_axis[1], x_axis[0])
             proposals = self.atlas.query(*target.translation, yaw)
-            for branch in proposals.branches:
+            # Rank proposals by raw joint travel via the endpoints. Never wrap
+            # J6 (or any other bounded joint) to make a distant winding cheap.
+            branches = sorted(proposals.branches,key=lambda branch:
+                np.linalg.norm(np.asarray(branch.contact_joints)-start)
+                + np.linalg.norm(np.asarray(branch.contact_joints)-goal))
+            for branch in branches:
                 result.append(('atlas:'+branch.branch_id, branch.contact_joints))
-        result.extend((('current-carry', start), ('place-entry', goal)))
         unique = []
         for name, q in result:
             if not any(tuple(q) == old[1] for old in unique):
