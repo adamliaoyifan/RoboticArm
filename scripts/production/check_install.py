@@ -24,6 +24,7 @@ MODULES = (
     'luggage_perception.suction_patch_evaluator',
     'luggage_perception.observer_depth',
     'luggage_gazebo.operation_launch',
+    'luggage_gazebo.operation_readiness',
     'st09_contracts',
     'luggage_msgs.srv._prepare_joint_operation_v2',
     'luggage_msgs.action._execute_joint_operation_v2',
@@ -105,6 +106,10 @@ def main():
         for package, relative in (
             ('luggage_planning', 'launch/hardware_pick.launch.py'),
             ('luggage_planning', 'launch/joint_operation_prepare.launch.py'),
+            ('luggage_planning', 'config/atlas_runtime_gazebo_operation.yaml'),
+            ('luggage_planning', 'data/reachability_atlas_deploy_update_gazebo/operation_atlas_qualification.json'),
+            ('luggage_planning', 'data/reachability_atlas_deploy_update_gazebo/s20_container_collision_aware.npz'),
+            ('luggage_planning', 'data/reachability_atlas_deploy_update_gazebo/s20_container_collision_aware.yaml'),
             ('luggage_description', 'config/scene_tf_deploy_update.yaml'),
             ('uld_occ_observer', 'config/observer.yaml'),
         ):
