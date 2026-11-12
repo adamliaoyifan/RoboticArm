@@ -120,6 +120,20 @@ def main():
         with (folder/'launch.log').open('w') as log:
             launch=subprocess.Popen(command,env=env,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
             pidfile.write_text(str(launch.pid)+'\n');manifest['launch_pid']=launch.pid;write()
+            # Launch materializes the model/owner identity before starting nodes.
+            # A client cannot read that identity until the file is complete.
+            config_ready=False
+            config_deadline=time.monotonic()+45.
+            while launch.poll() is None and time.monotonic()<config_deadline:
+                try:
+                    resolved=json.loads((folder/'runtime/launch.json').read_text())
+                    config_ready=resolved.get('pipeline')=='joint_operation'
+                except (FileNotFoundError,json.JSONDecodeError):
+                    pass
+                if config_ready:break
+                time.sleep(.1)
+            manifest['configuration_ready']=config_ready;write()
+            if not config_ready:raise RuntimeError('LAUNCH_CONFIGURATION_NOT_READY')
             topics=['/camera/color/image_raw','/camera/depth/image_raw','/camera/depth/camera_info',
                 '/luggage/preprocessed/camera/color/image','/luggage/preprocessed/camera/depth/image',
                 '/luggage/preprocessed/camera/depth/camera_info','/tf','/tf_static','/joint_states',
