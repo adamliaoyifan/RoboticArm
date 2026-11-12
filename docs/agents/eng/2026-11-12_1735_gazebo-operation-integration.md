@@ -178,3 +178,21 @@ grasp or model/scene conditions require applicable revalidation. A static path
 cache is not an authorization cache. Benchmark region extraction, branch lookup,
 IK/collision, short crossing, middle connection and complete certification
 separately before assigning production latency targets. Current code is unchanged.
+
+## Aperture implementation -- 2026-11-12 20:30
+
+ST-4-APERTURE-ROUTING passes at `ba3a1cde79ca30e07aa6f4a8ee6f7bbeeefede05`.
+The preparation root now requires exact configured static ULD mesh/pose and enabled
+pedestal on scene reads, including latest-scene recertification. It generates
+grasp-bound opening exterior/plane/interior poses inside the carry leg and applies
+native MoveIt position constraints to crossing connections. Exact plane FK witness
+is independently required by the full certificate when starting outside.
+
+121 behavioral cases and54 installed checks pass;13 packages rebuilt with stable
+input hashes. A real native isolated fixture certifies all six legs with the
+ordered gate, and a blocked-opening case refuses. Full S20 validation is currently
+static model/scene identity replay only; no full-model carry trajectory/controller
+success is claimed. This resolves the root static-scene admission gap in source,
+but observed coverage and successful full Gazebo cycle remain integration work.
+Existing local release/retreat policy still needs its separately discussed review.
+Evidence: `docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/summary.json`.

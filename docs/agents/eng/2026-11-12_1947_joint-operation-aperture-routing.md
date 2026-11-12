@@ -4,12 +4,12 @@
 - agent: codex
 - model: gpt-6
 - cli: codex
-- status: open
+- status: done
 - parent: MOVEIT-ATLAS-JOINT-PLAN-20261111
 - subtask: ST-4-APERTURE-ROUTING
 - base_revision: 6fd7338b302c8bde2135765d6e20d2e41fe88a58
 - started_at: 2026-11-12T19:47:35+08:00
-- completed_at: n/a
+- completed_at: 2026-11-12T20:29:56+08:00
 
 ## Summary
 
@@ -57,7 +57,7 @@ No fabricated occupancy, guessed world waypoint, or new physical margin.
 
 ## Result
 
-Verification passes; implementation commit pending. Complete observed full S20
+Pass at `ba3a1cde79ca30e07aa6f4a8ee6f7bbeeefede05`. Complete observed full S20
 carry/place/exit execution, observation coverage, and production timing remain
 under the open integration task. Existing local release/retreat policy is unchanged;
 this subtask does not add or certify a complete retreat to outside the opening.
