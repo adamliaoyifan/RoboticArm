@@ -5,6 +5,7 @@ wrist branch can continue through insertion. Solve the tight chain backwards;
 the free joint-space hop must arrive at that actual chain endpoint.
 """
 import numpy as np
+from itertools import product
 from candidates import matrix
 from path_planning import cartesian_path
 
@@ -20,6 +21,7 @@ def handoff_branches(scene,action,approach,seeds,config,emit,goals=None):
     else:diagnostic=dict(source='full_collision_screened_handoff_branches')
     emit(dict(event='handoff_ik_branches',action_id=action.action_id,
               count=len(goals),diagnostic=diagnostic))
+    seen=set()
     for index,q in enumerate(goals):
         scene.payload['allow_support']=True
         failure=scene.check_state(q,config.collision_margin_m,True)
@@ -31,11 +33,29 @@ def handoff_branches(scene,action,approach,seeds,config,emit,goals=None):
         insertion,detail=cartesian_path(scene,lowering[-1],approach,config,True)
         if insertion is None:
             emit(dict(event='branch_rejected',branch=index,stage='reverse_insert',diagnostic=detail));continue
-        emit(dict(event='constrained_branch_connected',branch=index,
-                  approach_q=insertion[-1],handoff_q=q))
-        yield dict(branch=index,approach_q=insertion[-1],
-                   insertion_path=list(reversed(insertion)),
-                   lowering_path=list(reversed(lowering)))
+        forward_insert=list(reversed(insertion));forward_lower=list(reversed(lowering))
+        joined=forward_insert+forward_lower[1:]
+        for winding,points in enumerate(path_winding_variants(joined,seeds[0],scene.urdf.joint_limits())):
+            key=tuple(np.round(points[0],5))
+            if key in seen:continue
+            seen.add(key);count=len(forward_insert)
+            emit(dict(event='constrained_branch_connected',branch=index,winding=winding,
+                      approach_q=points[0],handoff_q=points[-1]))
+            yield dict(branch=index,winding=winding,approach_q=points[0],
+                       insertion_path=points[:count],lowering_path=points[count-1:])
+
+
+def path_winding_variants(path,reference,limits):
+    """Enumerate source-limit-valid whole-path revolutions, closest entry first."""
+    points=np.asarray(path,dtype=float);bounds=np.asarray(limits,dtype=float);choices=[]
+    for joint in range(points.shape[1]):
+        low=int(np.ceil((bounds[joint,0]-points[:,joint].min())/(2*np.pi)))
+        high=int(np.floor((bounds[joint,1]-points[:,joint].max())/(2*np.pi)))
+        if low>high:return
+        choices.append(range(low,high+1))
+    options=list(product(*choices))
+    options.sort(key=lambda turns:np.linalg.norm(points[0]+2*np.pi*np.array(turns)-reference))
+    for turns in options:yield (points+2*np.pi*np.array(turns)).tolist()
 
 
 def nearest_path_winding(path,reference,limits):

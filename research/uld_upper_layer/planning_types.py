@@ -56,6 +56,11 @@ class UpperConfig:
     ompl_resolution_fraction: float
     distance_query_timeout_s: float
     push_face_spins_deg: tuple = (0.,90.,180.,270.)
+    carry_collision_margin_m: float = .010
+    payload_effort_screen_enabled: bool = False
+    payload_effort_reserve_nm: float = 5.
+    payload_effort_joint_step_rad: float = .02
+    gravity_world_mps2: tuple = (0.,0.,-9.8)
 
     def __post_init__(self):
         for field in fields(self):
@@ -65,6 +70,9 @@ class UpperConfig:
                     raise ValueError(f'invalid {field.name}')
             elif not math.isfinite(value) or value < 0:
                 raise ValueError(f'invalid {field.name}')
+        if type(self.payload_effort_screen_enabled) is not bool or self.payload_effort_reserve_nm<=0 or self.payload_effort_joint_step_rad<=0:
+            raise ValueError('INVALID_PAYLOAD_EFFORT_POLICY')
+        if len(self.gravity_world_mps2)!=3:raise ValueError('INVALID_GRAVITY_VECTOR')
         if not 0 < self.support_area_ratio_min <= 1:
             raise ValueError('support_area_ratio_min outside (0, 1]')
         for name in ('grid_resolution_m', 'placement_step_m', 'handoff_step_m',
@@ -96,7 +104,7 @@ class UpperConfig:
     def load(cls, path=None, **overrides):
         values = yaml.safe_load(Path(path or Path(__file__).with_name('upper_config.yaml')).read_text())
         values.update(overrides)
-        for key in ('box_yaws_deg', 'tool_yaws_deg','push_face_spins_deg'):
+        for key in ('box_yaws_deg', 'tool_yaws_deg','push_face_spins_deg','gravity_world_mps2'):
             if key in values:values[key] = tuple(values[key])
         return cls(**values)
 
@@ -138,6 +146,7 @@ class BoxState:
     container_T_box: tuple
     com_local: tuple
     com_source: str = 'geometric_center_assumption'
+    mass_kg: float | None = None
 
 
 @dataclass(frozen=True)

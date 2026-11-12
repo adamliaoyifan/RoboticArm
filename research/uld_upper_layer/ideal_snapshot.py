@@ -35,7 +35,7 @@ def capture_fixture(scene_dir, assets, config):
     pickup = np.linalg.inv(assets['world_container']) @ np.array([
         [1,0,0,xyz[0]], [0,1,0,xyz[1]], [0,0,1,xyz[2]], [0,0,0,1]])
     state = BoxState(data['pickup_payload']['name'], tuple(data['payload']['size_m']),
-                     tuple(pickup.ravel()), (0.,0.,0.))
+                     tuple(pickup.ravel()), (0.,0.,0.),mass_kg=float(data['payload']['mass_kg']))
     return snapshot, state
 
 

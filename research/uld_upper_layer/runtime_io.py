@@ -30,7 +30,10 @@ class RuntimeIO:
         self.contact_topic='/upper_layer_payload/contacts'
         self.vacuum_spec=None;self.vacuum_capture=None;self.vacuum_state=None
         self._native_history=deque(maxlen=256)
+        self.world_name=None
         if scene_dir:
+            import xml.etree.ElementTree as ET
+            self.world_name=ET.parse(Path(scene_dir)/'overlay.sdf').getroot().find('world').get('name')
             self.env['ULD_UPPER_SCENE']=str(scene_dir)
             fixture=json.loads((Path(scene_dir)/'fixture.json').read_text())
             if fixture.get('robot_poses_config'):
@@ -39,6 +42,7 @@ class RuntimeIO:
             self.native_step_s=float(fixture['physics_step_s'])
             if not 0<self.native_step_s:raise ValueError('INVALID_NATIVE_PHYSICS_STEP')
             self.contact_topic=fixture.get('contact_observation_topic',self.contact_topic)
+        self.controller_trace=None
         self.launch=None;self.pose_capture=None;self.contact_capture=None
         self.clock_capture=None
         self.contacts=None;self.contact_stamp=None;self.contact_count=0
@@ -77,6 +81,16 @@ class RuntimeIO:
         from rclpy.qos import qos_profile_sensor_data
         rclpy.init()
         self.node=rclpy.create_node('upper_layer_ideal_experiment')
+        from control_msgs.msg import JointTrajectoryControllerState
+        from controller_trace import ControllerTrace
+        self.controller_trace=ControllerTrace(self.output/'controller_state.jsonl.gz')
+        from rclpy.qos import QoSProfile,ReliabilityPolicy
+        # Tracking needs the latest aligned reference/feedback pair, not queued
+        # historical states. Native physics-step capture remains lossless.
+        controller_qos=QoSProfile(depth=1,reliability=ReliabilityPolicy.BEST_EFFORT)
+        topic='/elfin_arm_controller/controller_state'
+        self.node.create_subscription(JointTrajectoryControllerState,topic,
+            lambda msg:self.controller_trace.observe(msg,topic),controller_qos)
         self.joint_trace=(self.output/'joint_states.jsonl').open('w')
         def joints(msg):
             names=[f'elfin_joint{i}' for i in range(1,7)]
@@ -241,6 +255,20 @@ class RuntimeIO:
                         native_contact_samples=self.native_contact_samples,
                         native_empty_contact_samples=self.native_empty_contact_samples)
 
+    def set_physics_paused(self,paused):
+        if not self.launch or self.launch.poll() is not None or not self.world_name:
+            raise RuntimeError('OWNED_SIM_REQUIRED_FOR_CLOCK_CONTROL')
+        command=['ign','service','-s',f'/world/{self.world_name}/control',
+            '--reqtype','ignition.msgs.WorldControl','--reptype','ignition.msgs.Boolean',
+            '--timeout','3000','--req','pause: '+('true' if paused else 'false')]
+        result=subprocess.run(command,env=self.env,capture_output=True,text=True,timeout=5)
+        accepted=result.returncode==0 and re.search(r'data:\s*true',result.stdout) is not None
+        with (self.output/'planning_clock_control.jsonl').open('a') as stream:
+            stream.write(json.dumps(dict(wall=time.time(),pause=paused,
+                native_stamp_s=(self.snapshot().get('vacuum') or {}).get('sim_time_s'),
+                accepted=accepted,command=command,response=result.stdout,stderr=result.stderr))+'\n')
+        if not accepted:raise RuntimeError('PLANNING_CLOCK_CONTROL_REJECTED')
+
     def stop(self):
         if self.clock_capture:self.clock_capture.stop()
         if self.pose_capture:self.pose_capture.stop()
@@ -250,6 +278,7 @@ class RuntimeIO:
             import rclpy
             self.node.destroy_node()
             if rclpy.ok():rclpy.shutdown()
+        if self.controller_trace:self.controller_trace.close()
         if hasattr(self,'joint_trace'):self.joint_trace.close()
         if self.launch:
             # launch_scene has its own inner setsid launch; use its owned pidfile,

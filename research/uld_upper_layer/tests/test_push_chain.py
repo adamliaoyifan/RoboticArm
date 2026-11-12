@@ -6,10 +6,20 @@ import sys
 import unittest
 import numpy as np
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from coupled_chain import push_branches,nearest_path_winding
+from coupled_chain import push_branches,nearest_path_winding,path_winding_variants
 from planning_types import UpperConfig
 
 class PushChain(unittest.TestCase):
+    def test_carry_enumerates_both_limit_valid_winding_directions(self):
+        path=[[-3.4,-1.5],[-3.1,-1.4]]
+        variants=list(path_winding_variants(path,[3.,1.5],[[-6.3,6.3],[-6.3,6.3]]))
+        self.assertGreater(variants[0][0][0],0)
+        self.assertTrue(any(v[0][1]>4 for v in variants))
+        self.assertTrue(any(v[0][1]<0 for v in variants))
+        for variant in variants:
+            np.testing.assert_allclose(np.sin(variant),np.sin(path))
+            np.testing.assert_allclose(np.diff(variant,axis=0),np.diff(path,axis=0))
+
     def test_whole_path_winding_preserves_angles_without_crossing_limits(self):
         path=[[-3.4,5.9],[-3.1,6.2]]
         shifted=nearest_path_winding(path,[3.,-.2],[[-6.3,6.3],[-6.3,6.3]])

@@ -36,7 +36,7 @@ def load_scored_plan(planning_run,policy):
                 plan.get('request_revision')!=request.revision):
             raise ValueError('PLANNED_REQUEST_BINDING_CHANGED')
     for name in ('candidates.py','placement_request.py','request_planner.py','planning_types.py','full_arm.py','tool_contact_geometry.py','support_contact.py',
-                 'geometry.py','assets.py','path_planning.py','stage_planner.py','action_screen.py','coupled_chain.py','interval_certificate.py','motion_bounds.py',
+                 'payload_dynamics.py','geometry.py','assets.py','path_planning.py','stage_planner.py','action_screen.py','coupled_chain.py','interval_certificate.py','motion_bounds.py',
                  'plan_clearance.py','push_seam_events.py','clearance_bounds.py','selection_policy.py','plan_selection.py',
                  'free_box_validation.py','noncontact_admission.py','payload_envelope.py','payload_tube.py','envelope_planning.py','execution_policy.py'):
         if sha256(Path(__file__).with_name(name))!=planning_manifest['source_hashes'].get(name):

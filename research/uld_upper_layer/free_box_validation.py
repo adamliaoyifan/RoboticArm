@@ -56,6 +56,7 @@ def prepare_free_box_motion(assets, snapshot, state, plan, config, selection_pol
         scene = FreeBoxEnvelopeScene(assets, snapshot, config, selection_policy.distance_numeric_error_m,
             execution_policy.push_lateral_error_m, np.deg2rad(execution_policy.push_rotation_error_deg))
         scene.query_observer = query_observer
+        if hasattr(scene,'configure_payload_dynamics'):scene.configure_payload_dynamics(state)
         scene.set_payload(state.dimensions, 'world',
             scene.world_container @ np.array(stage['box_reference_container']).reshape(4, 4),
             np.array(candidate['action']['box_T_tool']).reshape(4, 4), allow_support=True)
@@ -70,6 +71,10 @@ def prepare_free_box_motion(assets, snapshot, state, plan, config, selection_pol
             return reject('ENVELOPE_ROUTE_NOT_FOUND', detail)
         if not np.array_equal(path[0], start) or not np.array_equal(path[-1], goal):
             return reject('ENVELOPE_ROUTE_ENDPOINT_CHANGED')
+        from payload_dynamics import screen_path
+        effort=screen_path(scene,path,config,deadline)
+        if not effort['valid']:return reject('ENVELOPE_ROUTE_EFFORT_REJECTED',effort)
+        stage['effort_screen']=effort
         stage['trajectory'] = time_path(scene, path, config)
         stage['certificate'] = detail['certificate']
         stage['planning_diagnostic'] = detail

@@ -21,7 +21,8 @@ def expected_stages(plan):
 class PhysicalExecutor:
     def __init__(self,runtime,monitor,observe,dimensions,config,policy):
         self._runtime=runtime;self._monitor=monitor;self._config=config;self._policy=policy
-        self._controller=ArmController(runtime)
+        self._controller=ArmController(runtime,tracking_error_rad=policy.controller_tracking_error_rad,
+            feedback_max_age_s=policy.observation_max_age_s)
         self._observe=observe
         self._dimensions=tuple(dimensions)
         self._deadline=time.monotonic()+policy.wall_budget_s

@@ -42,6 +42,8 @@ def main():
     parser.add_argument('--scene-dir',type=Path,required=True)
     parser.add_argument('--evidence',type=Path,required=True)
     parser.add_argument('--planning-run',type=Path)
+    parser.add_argument('--live-request',type=Path)
+    parser.add_argument('--planning-seed',type=int,default=0)
     parser.add_argument('--replan-live',action='store_true',
         help='Use the existing request as a goal template; replan from the live attached state while monitoring hold')
     parser.add_argument('--policy',type=Path)
@@ -52,7 +54,11 @@ def main():
     parser.add_argument('--capture-rehearsal',action='store_true',
         help='Deliberate diagnostic failure after controller hold; never a physical action verdict')
     args=parser.parse_args();out=args.evidence.resolve()
-    if args.replan_live and (not args.planning_run or not args.initialize_pick):
+    if args.live_request:
+        if args.planning_run or not args.scene_config or not args.config:
+            parser.error('--live-request needs --scene-config and --config, without --planning-run')
+        args.replan_live=True
+    if args.replan_live and (not (args.planning_run or args.live_request) or not args.initialize_pick):
         parser.error('--replan-live requires --planning-run and --initialize-pick')
     if args.capture_after_pick and (not args.initialize_pick or args.planning_run):
         parser.error('--capture-after-pick needs --initialize-pick and no --planning-run')
@@ -113,6 +119,8 @@ def main():
                 candidate=json.loads(path.read_text())
                 if candidate['action']['action_id']==action.action_id:old_input=candidate;break
             if old_input is None:raise ValueError('PLANNED_INPUT_NOT_PRESERVED')
+            if config.payload_effort_screen_enabled and old_input['box'].get('mass_kg')!=state.mass_kg:
+                raise ValueError('LIVE_PAYLOAD_MASS_DIFFERS_FROM_PLAN')
             if tuple(old_input['box']['dimensions'])!=state.dimensions:
                 raise ValueError('LIVE_BOX_DIMENSIONS_DIFFER_FROM_PLAN')
             errors=[]
@@ -130,6 +138,8 @@ def main():
             if not args.replan_live and (max(errors+[distance])>config.contact_penetration_m or angle>policy.initial_rotation_deg or joint_error>policy.initial_joint_error_rad):
                 raise ValueError('LIVE_INITIAL_STATE_DIFFERS_FROM_NOMINAL_PLAN')
             save(out/'nominal_plan.json',plan)
+        elif args.live_request:
+            action=action_from_record(json.loads(args.initialize_pick.read_text())['action'])
         else:
             actions,_=generate_actions(assets,snapshot,state,replace(config,max_action_candidates=1))
             if not actions:raise ValueError('NO_GEOMETRIC_ACTION_FOR_MONITOR_HOLD')
@@ -167,7 +177,8 @@ def main():
         if args.replan_live:
             from live_planning import plan_while_held
             plan,live_path=plan_while_held(runtime,monitor,observe,assets,snapshot,state,
-                args.planning_run,out,config,policy)
+                args.live_request or args.planning_run/'request.json',out,config,policy,
+                scene_path,args.planning_seed)
             save(out/'nominal_plan.json',plan)
             save(out/'executed_planning_run.json',dict(path=str(live_path)))
         if args.capture_rehearsal:raise RuntimeError('DIAGNOSTIC_CAPTURE_REHEARSAL')

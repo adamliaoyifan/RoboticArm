@@ -63,7 +63,8 @@ def initialize_pick(runtime,assets,scene_dir,record_path,config,policy,output):
         monitor.begin_phase('attach_transition',True,None,True)
         runtime.toggle_vacuum(True,monitor=observe)
         monitor.begin_phase('pick_lift',True,True,True)
-        controller=ArmController(runtime)
+        controller=ArmController(runtime,tracking_error_rad=policy.controller_tracking_error_rad,
+            feedback_max_age_s=policy.observation_max_age_s)
         controller.execute(trajectory,observe,policy.wall_budget_s)
         monitor.begin_phase('held_after_pick',True,True,False)
         q=list(monitor.sample.q)

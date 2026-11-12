@@ -63,6 +63,8 @@ class PlacementRequest:
         if len(self.box.dimensions)!=3 or not np.isfinite(self.box.dimensions).all() or min(self.box.dimensions)<=0:
             raise ValueError('INVALID_BOX_DIMENSIONS')
         if len(self.box.com_local)!=3 or not np.isfinite(self.box.com_local).all():raise ValueError('INVALID_COM')
+        if self.box.mass_kg is not None and (not np.isfinite(self.box.mass_kg) or self.box.mass_kg<=0):
+            raise ValueError('INVALID_BOX_MASS')
         rigid_pose(self.box.container_T_box,'box')
         if not self.final_box_poses:raise ValueError('FINAL_BOX_POSES_REQUIRED')
         for value in self.final_box_poses:rigid_pose(value,'final_box_pose')

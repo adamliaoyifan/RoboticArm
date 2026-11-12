@@ -35,6 +35,7 @@ class ExecutionPolicy:
     trigger_post_s: float
     max_case_bytes: int
     failure_capture_reserve_bytes: int
+    controller_tracking_error_rad: float = .01
 
     def __post_init__(self):
         for field in fields(self):

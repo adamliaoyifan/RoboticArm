@@ -27,3 +27,6 @@ max_case_bytes: 200000000
 
 # Reserved for compressed failure trigger, post-window and final metadata.
 failure_capture_reserve_bytes: 20000000
+
+# Aligned controller reference/feedback in radians; no current/torque feedback.
+controller_tracking_error_rad: 0.01

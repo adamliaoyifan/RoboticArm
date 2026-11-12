@@ -4,7 +4,7 @@ All intermediate poses are derived from the measured box and candidate grasp.
 The private collision scene changes contact mode explicitly at each boundary.
 No function in this module commands the simulator or a physical object.
 """
-from dataclasses import asdict
+from dataclasses import asdict,replace
 import time
 import numpy as np
 from candidates import matrix
@@ -20,6 +20,7 @@ def plan_action(scene,state,action,start_q,seeds,config,emit,start_attached=Fals
     """Backtrack pick joint branches as well as coupled handoff branches."""
     from action_screen import screen_push,screen_handoff
     started=time.monotonic()
+    if hasattr(scene,'configure_payload_dynamics'):scene.configure_payload_dynamics(state)
     if start_attached:
         actual=scene.container_world@scene.urdf.tcp(start_q,scene.urdf.path_to('suction_contact_frame'))
         expected=matrix(state.container_T_box)@matrix(action.box_T_tool)
@@ -82,6 +83,8 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
 
     def stage(name,target,kind='cartesian',contact=False,speed=None,box_motion=None,goal_q=None,goal_solutions=None,prepared_path=None):
         nonlocal q
+        route_config=(replace(config,collision_margin_m=max(config.collision_margin_m,config.carry_collision_margin_m))
+                      if name=='invert_and_approach' else config)
         boundary=dict(stage=name,start_q=q,target_container=target.tolist(),
                       payload_mode=scene.payload['mode'],contact_tool=contact)
         emit(dict(event='stage_input',**boundary))
@@ -105,15 +108,20 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
                 diagnostics.append(detail)
             for goal in sorted(goals,key=lambda v:np.linalg.norm(np.array(v)-q)):
                 if path:break
-                path,detail=joint_path(scene,q,goal,config,contact)
+                path,detail=joint_path(scene,q,goal,route_config,contact)
                 diagnostics.append(detail)
                 if path:break
             detail=dict(ik=ik,connections=diagnostics,
                         certificate=diagnostics[-1].get('certificate') if path else None)
         else:
-            path,detail=cartesian_path(scene,q,target,config,contact,box_motion)
+            path,detail=cartesian_path(scene,q,target,route_config,contact,box_motion)
         if not path:
             result=dict(reason='STAGE_PATH_FAILED',**boundary,diagnostic=detail)
+            emit(dict(event='stage_rejected',**result));return result
+        from payload_dynamics import screen_path
+        effort=screen_path(scene,path,config,started+config.search_budget_s)
+        if not effort['valid']:
+            result=dict(reason='STAGE_EFFORT_REJECTED',**boundary,diagnostic=effort)
             emit(dict(event='stage_rejected',**result));return result
         timed=time_path(scene,path,config,speed)
         # The actual planned interpolation (cubic controller input) is checked,
@@ -128,12 +136,12 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
             total=distances[-1]
             motion=lambda index,t:box_motion((distances[index]+t*(distances[index+1]-distances[index]))/total)
         emit(dict(event='sweep_input',stage=name,trajectory=timed))
-        certificate=detail.get('certificate') or certify_path(scene,timed,config,contact,motion,
+        certificate=detail.get('certificate') or certify_path(scene,timed,route_config,contact,motion,
                                  deadline=started+config.search_budget_s,interval_bounds=box_motion is None)
         if not certificate['valid']:
             result=dict(reason='SWEEP_REJECTED',**boundary,certificate=certificate)
             emit(dict(event='stage_rejected',**result));return result
-        record=dict(name=name,trajectory=timed,certificate=certificate,planning_diagnostic=detail,
+        record=dict(name=name,planning_collision_margin_m=route_config.collision_margin_m,trajectory=timed,certificate=certificate,effort_screen=effort,planning_diagnostic=detail,
                     motion_kind=kind,
                     box_motion_model=('straight_push' if box_motion is not None else
                         'fixed_world' if scene.payload['mode']=='world' else 'attached'),

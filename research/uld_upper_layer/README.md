@@ -597,3 +597,32 @@ thresholds. The newly scored action is rebound only at an attached planning hold
 the online plan, not its template, is the executed trajectory. This experiment
 entry point avoids assuming that restarting a loaded robot reproduces the exact
 joint state of an earlier snapshot.
+
+Physical feasibility also needs payload mass. `BoxState.mass_kg` is optional for
+geometric studies and required when `payload_effort_screen_enabled` is true.
+The ideal fixture adapter reads its actual configured mass. `payload_dynamics`
+uses source URDF masses/COMs, joint axes, effort limits, friction and damping;
+it rejects sampled quasistatic gravity demand beyond the remaining effort
+budget. `payload_effort_reserve_nm` and `payload_effort_joint_step_rad` are runtime
+parameters. Timing bounds damping demand by that reserve. This is not full
+inverse dynamics or a claim about unmeasured real actuator torques.
+
+`carry_collision_margin_m` adds configurable clearance to free attached carry;
+the effective value is at least `collision_margin_m`. Intended support/contact
+stages keep their original contact contracts. Whole constrained-chain winding
+variants preserve source joint limits and geometry; free carry can select a
+different route for each variant rather than assuming endpoint reachability.
+
+The standalone `--live-request REQUEST.json` entry point needs `--scene-config`,
+`--config` and `--initialize-pick`. It uses the requested target/support geometry,
+then captures the actual box and grasp in the same simulator. Offline computation
+runs with the owned physics clock paused and restores it before any trajectory
+submission, including on failures. No pose/controller target is changed by clock
+control. `planning_clock_control.jsonl` records every request/response.
+
+Controller commands and aligned reference/feedback are archived separately.
+Feedback subscriptions retain the newest sample; native contact capture remains
+at every physics step. `controller_tracking_error_rad` in execution policy adds
+a position-tracking stop without joint current, torque or tactile feedback.
+Source actuator parameters, collision thresholds and material properties are
+not changed to accommodate a failed motion.

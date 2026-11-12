@@ -88,6 +88,7 @@ class FullArmScene:
         self._add_environment()
         self.last_witness=None
         self.payload=None
+        self.payload_dynamics=None
         from motion_bounds import SourceMotionBounds
         self._motion_bounds=SourceMotionBounds(self.urdf,self.robot_parts,self.world_parts)
         self.set_joints(np.zeros(6))
@@ -375,11 +376,25 @@ class FullArmScene:
             return {i for i in range(6) if f'elfin_joint{i+1}' in path}
         return ancestors(pair[0])^ancestors(pair[1])
 
+    def configure_payload_dynamics(self,state):
+        if not self.config.payload_effort_screen_enabled:return
+        mass=getattr(state,'mass_kg',None)
+        if mass is None:raise ValueError('PAYLOAD_MASS_REQUIRED_FOR_EFFORT_SCREEN')
+        from payload_dynamics import PayloadGravityModel
+        self.payload_dynamics=PayloadGravityModel(self.urdf,mass,state.com_local,
+            self.config.gravity_world_mps2,self.config.payload_effort_reserve_nm)
+
     def check_state(self,q,margin,contact_tool=False):
         self.sample_distances=[]
         self.sample_clearance_m=float('inf')
         failure=self.check_robot(q,margin)
-        return failure or self.check_payload(contact_tool=contact_tool,margin=margin)
+        failure=failure or self.check_payload(contact_tool=contact_tool,margin=margin)
+        if failure:return failure
+        if self.payload_dynamics is not None and self.payload is not None:
+            result=self.payload_dynamics.evaluate(self.transforms,
+                self.payload_transform(),self.payload['mode']=='attached')
+            if not result['valid']:return result
+        return None
 
     def endpoint_solutions(self,target_container,seeds,margin,budget_s):
         import time

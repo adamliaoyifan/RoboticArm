@@ -39,6 +39,9 @@ def _rejection(plan,snapshot_id,config,policy,model_identity,execution_policy):
         if (tuple(s['name'] for s in plan['stages'])!=expected_stages(plan) or
             not all(s['certificate'].get('valid') for s in plan['stages'])):
             return 'INCOMPLETE_OR_INVALID_NOMINAL_PLAN'
+        if config.payload_effort_screen_enabled and not all(
+                stage.get('effort_screen',{}).get('valid') for stage in plan['stages']):
+            return 'MISSING_OR_REJECTED_EFFORT_SCREEN'
         if (score['snapshot_id']!=snapshot_id or score['config_revision']!=config.revision or
             score['clearance_policy_revision']!=policy.clearance_revision or score['model_identity']!=model_identity):
             return 'STALE_SCORE_INPUT_OR_MODEL'

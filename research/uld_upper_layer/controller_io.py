@@ -7,10 +7,12 @@ import time
 
 
 class ArmController:
-    def __init__(self,runtime,action_name='/elfin_arm_controller/follow_joint_trajectory'):
+    def __init__(self,runtime,action_name='/elfin_arm_controller/follow_joint_trajectory',
+                 tracking_error_rad=None,feedback_max_age_s=.1):
         from control_msgs.action import FollowJointTrajectory
         from rclpy.action import ActionClient
         self.runtime=runtime;self.action_type=FollowJointTrajectory
+        self.tracking_error_rad=tracking_error_rad;self.feedback_max_age_s=feedback_max_age_s
         self.client=ActionClient(runtime.node,FollowJointTrajectory,action_name)
 
     def _wait(self,future,deadline,monitor=None):
@@ -21,6 +23,9 @@ class ArmController:
             if monitor:
                 reason=monitor(self.runtime.snapshot())
                 if reason:raise RuntimeError(reason)
+                if self.tracking_error_rad is not None:
+                    from controller_trace import check_tracking
+                    check_tracking(self.runtime,self.tracking_error_rad,self.feedback_max_age_s)
         return future.result()
 
     def execute(self,trajectory,monitor,wall_budget_s):
@@ -37,8 +42,11 @@ class ArmController:
             if point.time_from_start.nanosec==1_000_000_000:
                 point.time_from_start.sec+=1;point.time_from_start.nanosec=0
             goal.trajectory.points.append(point)
+        from controller_trace import record_command
+        record_command(self.runtime,'trajectory_request',trajectory=trajectory,header_stamp_s=0.)
         deadline=time.monotonic()+wall_budget_s
         handle=self._wait(self.client.send_goal_async(goal),deadline)
+        record_command(self.runtime,'trajectory_response',accepted=handle.accepted)
         if not handle.accepted:raise RuntimeError('ARM_TRAJECTORY_REJECTED')
         try:
             response=self._wait(handle.get_result_async(),deadline,monitor)

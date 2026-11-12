@@ -22,26 +22,42 @@ def validate_held_start(request,sample,config,policy):
     return dict(joint_max_error_rad=joint_error,payload_translation_m=distance,payload_rotation_deg=angle)
 
 
-def plan_while_held(runtime,monitor,observe,assets,snapshot,state,template_run,output,config,policy):
+def plan_while_held(runtime,monitor,observe,assets,snapshot,state,template_path,output,config,policy,
+                    scene_path,seed=0):
+    from planning_pause import paused_for_planning
+    with paused_for_planning(runtime):
+        return _plan_while_held(runtime,monitor,observe,assets,snapshot,state,template_path,
+                               output,config,policy,scene_path,seed)
+
+
+def _plan_while_held(runtime,monitor,observe,assets,snapshot,state,template_path,output,config,policy,
+                     scene_path,seed):
     import rclpy
-    template_run=Path(template_run);output=Path(output)
-    template=request_from_record(json.loads((template_run/'request.json').read_text()))
+    output=Path(output)
+    template=request_from_record(json.loads(Path(template_path).read_text()))
     row=runtime.snapshot();snapshot,state=from_observation(snapshot,state,row,assets)
+    if tuple(template.box.dimensions)!=state.dimensions:raise ValueError('LIVE_BOX_DIMENSIONS_DIFFER_FROM_REQUEST')
+    if template.box.mass_kg is not None and template.box.mass_kg!=state.mass_kg:
+        raise ValueError('LIVE_PAYLOAD_MASS_DIFFERS_FROM_REQUEST')
     sample=monitor.sample
     if not sample.attached or sample.tool_T_box_at_attach is None:
         raise ValueError('LIVE_PLANNING_REQUIRES_CONFIRMED_ATTACHMENT')
     request=replace(template,request_id=template.request_id+'-live',box=state,snapshot=snapshot,
-        start_q=tuple(sample.q),start_attached=True,
+        start_q=tuple(row['vacuum']['q']),start_attached=True,
         confirmed_box_T_tool=tuple(np.linalg.inv(np.array(sample.tool_T_box_at_attach).reshape(4,4)).ravel()))
     request_path=output/'live_request.json';request_path.write_text(json.dumps(asdict(request),indent=2)+'\n')
     destination=output/'live_planning';repo=Path(__file__).resolve().parents[2]
-    manifest=json.loads((template_run/'manifest.json').read_text())
+    import yaml
+    from selection_policy import SelectionPolicy
+    config_path=output/'live_upper_config.yaml';config_path.write_text(yaml.safe_dump(asdict(config)))
+    selection_path=output/'live_selection_policy.yaml';selection_path.write_text(yaml.safe_dump(asdict(SelectionPolicy.load())))
+    execution_path=output/'live_execution_policy.yaml';execution_path.write_text(yaml.safe_dump(asdict(policy)))
     command=[sys.executable,str(Path(__file__).with_name('request_planner.py')),
-        '--request',str(request_path),'--scene-config',manifest['scene_config'],
-        '--config',str(template_run/'source/upper_config.yaml'),
-        '--selection-policy',str(template_run/'source/selection_policy.yaml'),
-        '--execution-policy',str(template_run/'source/execution_policy.yaml'),
-        '--evidence',str(destination),'--seed',str(manifest['seed'])]
+        '--request',str(request_path),'--scene-config',str(scene_path),
+        '--config',str(config_path),
+        '--selection-policy',str(selection_path),
+        '--execution-policy',str(execution_path),
+        '--evidence',str(destination),'--seed',str(seed)]
     monitor.begin_phase('planning_hold',True,True,False)
     deadline=time.monotonic()+config.search_budget_s+policy.condition_wait_budget_s
     with (output/'live_planning.log').open('w') as log:

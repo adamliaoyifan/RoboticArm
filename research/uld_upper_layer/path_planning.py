@@ -65,6 +65,12 @@ def joint_path(scene,start_q,goal_q,config,contact_tool=False):
             qa=[a[i] for i in range(6)];qb=[b[i] for i in range(6)]
             identity=key(qa,qb)
             if identity not in cache:
+                from payload_dynamics import screen_path
+                effort=screen_path(scene,[qa,qb],config,active_deadline)
+                if not effort['valid']:
+                    cache[identity]=effort
+                    if not witness:witness.append(effort)
+                    return False
                 cache[identity]=certify_joint_intervals(scene,[qa,qb],config,radius,
                                                        contact_tool,active_deadline)
             detail=cache[identity]
@@ -143,6 +149,9 @@ def time_path(scene,path,config,tcp_speed=None):
         delta=np.abs(np.array(b)-a)
         duration=max(float(np.max(1.5*delta/velocities)),
                      float(np.max(np.sqrt(6*delta/config.joint_acceleration_radps2))),.001)
+        model=getattr(scene,'payload_dynamics',None)
+        if model is not None:
+            duration=max(duration,float(np.max(1.5*delta*model.damping/model.reserve)))
         if tcp_speed:
             pa=scene.urdf.tcp(a,tcp_path)[:3,3];pb=scene.urdf.tcp(b,tcp_path)[:3,3]
             duration=max(duration,1.5*np.linalg.norm(pb-pa)/tcp_speed,
