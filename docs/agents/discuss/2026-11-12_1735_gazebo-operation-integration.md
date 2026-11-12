@@ -31,4 +31,3 @@ Wire explicit observed O full-model Gazebo operation pipeline and client; rehear
 - claimed_generation: 1
 - claimed_plan_revision: 983e80e1
 - claimed_dependencies: ST-4-PREPARATION-LATEST-MAP=1
-

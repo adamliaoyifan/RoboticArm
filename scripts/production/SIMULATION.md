@@ -60,3 +60,16 @@ Capture bounded raw sensor/TF/joint data during integration for replay.
 `start_placement_prior`, `volume_evidence_source` or `frame_runtime` alone never
 select complete-operation planning. New mode is the explicit integration entry;
 whole-cycle success, default production promotion and real baseline remain open.
+
+The owned runner captures a bounded sensor snapshot and tears down its process
+group automatically. Readiness rehearsal (add `--start` for one explicit cycle):
+
+```bash
+scripts/production/run.sh /usr/bin/python3 scripts/production/simulation.py \
+  --evidence /absolute/fresh/rehearsal \
+  --semantic-deps /absolute/frozen/semantic/dependencies
+```
+
+`runtime/launch.json` reports whether the existing reviewed atlas matches the
+actual full simulation model. A mismatch remains an explicit online-IK fallback;
+the runtime never reissues an atlas receipt to hide a model change.
