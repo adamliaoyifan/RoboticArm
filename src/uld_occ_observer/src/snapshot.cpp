@@ -51,7 +51,10 @@ Snapshot::Snapshot(SnapshotIdentity identity, std::shared_ptr<const UldDomain> d
 }
 
 std::shared_ptr<const Snapshot> Snapshot::with_identity(SnapshotIdentity identity) const {
-  if (identity.map_revision != identity_.map_revision || identity.epoch != identity_.epoch)
+  if (identity.map_revision != identity_.map_revision || identity.epoch != identity_.epoch ||
+      identity.initialization_id != identity_.initialization_id ||
+      identity.declared_by != identity_.declared_by ||
+      identity.initialization_stamp_ns != identity_.initialization_stamp_ns)
     throw Error("SNAPSHOT_IDENTITY_MISMATCH");
   return std::make_shared<const Snapshot>(std::move(identity), domain_, blocks_, surface_cache_);
 }

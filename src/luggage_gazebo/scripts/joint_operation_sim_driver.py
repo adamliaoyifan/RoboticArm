@@ -27,7 +27,7 @@ from moveit_msgs.srv import GetPlanningScene
 from luggage_msgs.action import ExecuteJointOperationV2
 from luggage_msgs.msg import SuctionTopDomainV2
 from luggage_msgs.srv import DetectLuggage, PrepareJointOperationV2, SpawnNextBox
-from uld_occ_observer.srv import GetValidity, ResetObservation, GetSnapshot, ReleaseSnapshot
+from uld_occ_observer.srv import GetValidity, ResetObservation, GetSnapshot, ReleaseSnapshot, InitializeEmpty
 from luggage_mapping.observer import admit_response, identity_record
 from controller_manager_msgs.srv import ListControllers
 import yaml
@@ -86,6 +86,7 @@ class OperationSimDriver(Node):
         self.detect = self.create_client(DetectLuggage,'/luggage_detector/detect_luggage')
         self.validity = self.create_client(GetValidity,'/uld_occ_observer/get_validity')
         self.reset = self.create_client(ResetObservation,'/uld_occ_observer/reset_observation')
+        self.initialize = self.create_client(InitializeEmpty,'/uld_occ_observer/initialize_empty')
         self.snapshot = self.create_client(GetSnapshot,'/uld_occ_observer/get_snapshot')
         self.release_snapshot = self.create_client(ReleaseSnapshot,'/uld_occ_observer/release_snapshot')
         self.spawn = self.create_client(SpawnNextBox,'/pickup_box_spawner/spawn_next_box')
@@ -253,13 +254,18 @@ class OperationSimDriver(Node):
                 self.flush(outcome='READY_ONLY',capture_complete=True,replay_possible=True)
                 return 0
             # --start is an explicit operator authorization for this diagnostic.
-            def reset():
-                current = self.call(self.validity,GetValidity.Request(),'reset_validity')
-                result = self.call(self.reset,ResetObservation.Request(expected_epoch=current.epoch,
-                    reset_id='gazebo-start-'+str(time.time_ns()),reason='explicit_simulation_start'),'reset')
-                if result.status!='OK':raise RuntimeError('RESET:'+result.status)
-            self.stage('reset',reset)
-            views=self.args.views.split(',') if self.args.views else (list(self.extra_views) or ['portal_observe_sim'])
+            def initialize():
+                from luggage_mapping.observer import ObserverConfiguration
+                owner=self.launch['map_owner']
+                config=ObserverConfiguration.load(owner['geometry_file'],owner['config_file'])
+                current=self.call(self.validity,GetValidity.Request(),'initial_validity')
+                request=InitializeEmpty.Request(expected_epoch=current.epoch,
+                    geometry_hash=config.descriptor()['geometry_hash'],config_digest=config.config_digest,
+                    declaration_id='initial-empty-'+self.folder.name,declared_by='explicit_operator_start')
+                result=self.call(self.initialize,request,'initialize_empty')
+                if result.status!='OK':raise RuntimeError('INITIALIZE_EMPTY:'+result.status)
+            self.stage('initialize_empty',initialize)
+            views=self.args.views.split(',') if self.args.views else list(self.extra_views)
             for pose in views:
                 self.stage('observe_'+pose,lambda p=pose:self.observe_pose(p))
             self.stage('return_pick_observe',lambda:self.observe_pose(self.launch['resolved']['observe_pose_name']))
@@ -288,7 +294,7 @@ def main():
     parser.add_argument('--start',action='store_true',help='Explicitly authorize one simulation cycle')
     parser.add_argument('--run-dir',required=True)
     parser.add_argument('--evidence',required=True)
-    parser.add_argument('--views',help='Comma separated site-pose names; defaults to explicit diagnostic views or portal_observe_sim')
+    parser.add_argument('--views',help='Optional supplemental site-pose names; no default initial ULD observation motion')
     parser.add_argument('--view-poses',help='Exact model/scene-bound diagnostic observation goals JSON')
     args = parser.parse_args()
     rclpy.init()

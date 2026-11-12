@@ -13,6 +13,7 @@
 #include "uld_occ_observer/srv/read_surface.hpp"
 #include "uld_occ_observer/srv/release_snapshot.hpp"
 #include "uld_occ_observer/srv/reset_observation.hpp"
+#include "uld_occ_observer/srv/initialize_empty.hpp"
 #include "uld_occ_observer/srv/checkpoint_observation.hpp"
 #include "uld_occ_observer/srv/get_observation_status.hpp"
 #include "uld_occ_observer/srv/wait_snapshot.hpp"
@@ -79,8 +80,13 @@ class ObserverNode : public rclcpp::Node {
     mode_ = declare_parameter<std::string>("input_mode", "service");
     optical_frame_ = declare_parameter<std::string>("optical_frame", "");
     sensor_id_ = declare_parameter<std::string>("sensor_id", "d555");
+    lidar_frame_ = declare_parameter<std::string>("lidar_frame", "livox_frame");
+    lidar_sensor_id_ = declare_parameter<std::string>("lidar_sensor_id", "livox");
+    const auto lidar_topic = declare_parameter<std::string>("lidar_cloud_topic", "");
+    if (lidar_sensor_id_ == sensor_id_ || lidar_frame_.empty()) throw Error("INVALID_LIDAR_SOURCE");
     if (mode_ != "service" && mode_ != "subscription") throw Error("INVALID_INPUT_MODE");
-    if (mode_ == "subscription" && optical_frame_.empty()) throw Error("OPTICAL_FRAME_REQUIRED");
+    if (mode_ == "subscription" && optical_frame_.empty() && lidar_topic.empty())
+      throw Error("OPTICAL_FRAME_REQUIRED");
     if (config_.clock_domain != "ros") throw Error("ROS_CLOCK_DOMAIN_REQUIRED");
     store_ = std::make_unique<ObservationStore>(config_.geometry,config_.resolution,
         config_.depth,config_.clock_domain,config_.digest,config_.discretize_endpoints);
@@ -115,9 +121,13 @@ class ObserverNode : public rclcpp::Node {
       tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
       rclcpp::SubscriptionOptions options; options.callback_group = input_group_;
       const auto topic = declare_parameter<std::string>("cloud_topic", "optical_points");
-      cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
+      if (!optical_frame_.empty()) cloud_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
           topic, rclcpp::QoS(rclcpp::KeepLast(32)).reliable(),
           [this](sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud) { on_cloud(*cloud); }, options);
+      if (!lidar_topic.empty())
+        lidar_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
+            lidar_topic, rclcpp::QoS(rclcpp::KeepLast(32)).reliable(),
+            [this](sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud) { on_cloud(*cloud, true); }, options);
       adapter_ = std::thread([this] { adapt_loop(); });
     }
     install_services();
@@ -185,14 +195,16 @@ class ObserverNode : public rclcpp::Node {
   OpticalObservation convert(const sensor_msgs::msg::PointCloud2& cloud,
       const geometry_msgs::msg::TransformStamped& tf, const std::string& sensor,
       const std::string& id, const std::string& clock, const std::string& geometry,
-      std::uint64_t epoch) {
-    if (!optical_frame_.empty() && cloud.header.frame_id != optical_frame_)
+      std::uint64_t epoch, bool lidar = false) {
+    const auto& expected_frame = lidar ? lidar_frame_ : optical_frame_;
+    if (!expected_frame.empty() && cloud.header.frame_id != expected_frame)
       throw Error("OPTICAL_FRAME_MISMATCH");
     OpticalObservation observation;
     observation.identity = {sensor,id,cloud.header.frame_id,clock,geometry,epoch,
       static_cast<std::int64_t>(cloud.header.stamp.sec)*1000000000+cloud.header.stamp.nanosec};
     observation.uld_from_optical = rigid_transform(tf,cloud.header.frame_id);
     observation.points_m = optical_points(cloud);
+    observation.lidar_xyz = lidar;
     return observation;
   }
   msg::UpdateReceipt publish_message(msg::UpdateReceipt receipt) {
@@ -214,40 +226,43 @@ class ObserverNode : public rclcpp::Node {
     return publish_message(receipt);
   }
   void reject_subscribed(std::uint64_t epoch, const std::string& id, const std::string& status,
-                         std::int64_t stamp, bool stored, std::int64_t enter_ns = 0) {
+                         std::int64_t stamp, bool stored, std::int64_t enter_ns = 0, const std::string& source = "") {
+    const auto& sensor = source.empty() ? sensor_id_ : source;
     ++adapter_rejected_;
     if (stored) {
       UpdateReceipt receipt;
       receipt.status = status;
-      receipt.sensor_id = sensor_id_;
+      receipt.sensor_id = sensor;
       receipt.observation_id = id;
       receipt.input_stamp_ns = stamp;
       const auto entered = enter_ns != 0 ? enter_ns
-          : ledger_entered(epoch, id);
+          : ledger_entered(epoch, id, sensor);
       if (entered != 0) receipt.callback_enter_ns = entered;
-      const auto sealed = seal_inflight(ledger_, board_, epoch, sensor_id_, id, std::move(receipt),
+      const auto sealed = seal_inflight(ledger_, board_, epoch, sensor, id, std::move(receipt),
                                         std::chrono::steady_clock::now());
       if (sealed.stored) {
         publish_sealed(sealed);
         return;
       }
     } else if (status != "DUPLICATE") {
-      note_unstored_rejection(board_, epoch, sensor_id_, id, status, stamp);
+      note_unstored_rejection(board_, epoch, sensor, id, status, stamp);
     }
-    publish_open(sensor_id_, id, status, stamp, enter_ns);
+    publish_open(sensor, id, status, stamp, enter_ns);
   }
   // The admission entry stamp recorded for this id, if the ledger kept it.
-  std::int64_t ledger_entered(std::uint64_t epoch, const std::string& id) {
-    const auto record = ledger_.query(epoch, sensor_id_, id);
+  std::int64_t ledger_entered(std::uint64_t epoch, const std::string& id, const std::string& sensor) {
+    const auto record = ledger_.query(epoch, sensor, id);
     return record ? record->entered_ns : 0;
   }
-  void on_cloud(const sensor_msgs::msg::PointCloud2& cloud) {
+  void on_cloud(const sensor_msgs::msg::PointCloud2& cloud, bool lidar = false) {
+    const auto& sensor = lidar ? lidar_sensor_id_ : sensor_id_;
+    const auto& frame = lidar ? lidar_frame_ : optical_frame_;
     // First statement: the subscription callback entry moment, CLOCK_MONOTONIC.
     const auto enter_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
-    if (cloud.header.frame_id != optical_frame_) {
+    if (cloud.header.frame_id != frame) {
       ++adapter_rejected_;
-      publish_open("", "", "OPTICAL_FRAME_MISMATCH", rclcpp::Time(cloud.header.stamp).nanoseconds(),
+      publish_open(sensor, "", lidar ? "LIDAR_FRAME_MISMATCH" : "OPTICAL_FRAME_MISMATCH", rclcpp::Time(cloud.header.stamp).nanoseconds(),
                    enter_ns);
       return;
     }
@@ -255,20 +270,20 @@ class ObserverNode : public rclcpp::Node {
     const auto id = std::to_string(stamp);
     const auto epoch = store_->published_epoch();
     const auto now = std::chrono::steady_clock::now();
-    const auto admitted = ledger_.admit(epoch, sensor_id_, id, now, enter_ns);
+    const auto admitted = ledger_.admit(epoch, sensor, id, now, enter_ns);
     if (!admitted.accepted) {
-      reject_subscribed(epoch, id, admitted.status, stamp, false, enter_ns);
+      reject_subscribed(epoch, id, admitted.status, stamp, false, enter_ns, sensor);
       return;
     }
     ObservationIngress::Item item;
-    item.sensor_id = sensor_id_;
+    item.sensor_id = sensor;
     item.observation_id = id;
     item.epoch = epoch;
     item.payload = std::make_shared<sensor_msgs::msg::PointCloud2>(cloud);
     item.payload_bytes = cloud.data.size();
     const auto queued = ingress_.try_admit(std::move(item));
     if (!queued.accepted) {
-      reject_subscribed(epoch, id, queued.status, stamp, true, enter_ns);
+      reject_subscribed(epoch, id, queued.status, stamp, true, enter_ns, sensor);
       return;
     }
     adapter_cv_.notify_one();
@@ -296,7 +311,7 @@ class ObserverNode : public rclcpp::Node {
   }
   void adapt(const ObservationIngress::Item& item) {
     const auto reject = [&](const std::string& status, std::int64_t stamp) {
-      reject_subscribed(item.epoch, item.observation_id, status, stamp, true);
+      reject_subscribed(item.epoch, item.observation_id, status, stamp, true, 0, item.sensor_id);
     };
     if (item.epoch != store_->published_epoch()) {
       reject("EPOCH_MISMATCH", 0);
@@ -313,7 +328,7 @@ class ObserverNode : public rclcpp::Node {
         return;
       }
       auto observation = convert(*cloud, tf, item.sensor_id, item.observation_id, config_.clock_domain,
-          config_.geometry.geometry_hash, item.epoch);
+          config_.geometry.geometry_hash, item.epoch, item.sensor_id == lidar_sensor_id_);
       const auto stamp = observation.identity.stamp_ns;
       const auto epoch = item.epoch;
       const auto sensor = item.sensor_id;
@@ -619,6 +634,7 @@ class ObserverNode : public rclcpp::Node {
           response->next_cursor = page.next_cursor; response->done = page.done;
           response->states.reserve(page.cells.size());
           response->log_odds.reserve(page.cells.size());
+          response->evidence_sources.reserve(page.cells.size());
           // Deterministic V1 injection boundary: payload serialization.
           test::gate_checkpoint("response_serialization");
           // Second epoch/state check (plan §2): a request whose lease lost the
@@ -626,7 +642,7 @@ class ObserverNode : public rclcpp::Node {
           {
             const auto validity = validity_.load();
             if (!validity_admits(snapshot->identity().epoch)) {
-              response->states.clear(); response->log_odds.clear();
+              response->states.clear(); response->log_odds.clear(); response->evidence_sources.clear();
               response->states.shrink_to_fit(); response->log_odds.shrink_to_fit();
               response->validity = ros_validity(validity);
               response->server_total_ms = std::chrono::duration<double, std::milli>(
@@ -640,8 +656,9 @@ class ObserverNode : public rclcpp::Node {
           for (const auto& cell : page.cells) {
             response->states.push_back(!cell.active ? 3 : !cell.known ? 0 : cell.value.occupied ? 2 : 1);
             response->log_odds.push_back(cell.known ? cell.value.log_odds : 0);
+            response->evidence_sources.push_back(!cell.known ? 0 : cell.value.declared_free ? 2 : 1);
           }
-          inflight = repository_->begin_response(reserved_bytes(response->states) + reserved_bytes(response->log_odds));
+          inflight = repository_->begin_response(reserved_bytes(response->states) + reserved_bytes(response->log_odds) + reserved_bytes(response->evidence_sources));
           response->response_fill_ms = std::chrono::duration<double, std::milli>(
               std::chrono::steady_clock::now() - fill_started).count();
           response->surface_build_ms = 0;
@@ -816,6 +833,29 @@ class ObserverNode : public rclcpp::Node {
           // -- a legal result, never padded with unknown-as-free candidates.
           response->status = snapshot->known_entry_count() == 0 ? "NO_DATA"
               : page.feasible_total == 0 ? "NO_KNOWN_FREE" : "OK";
+        } catch (const std::exception& error) { response->status = error.what(); }
+      });
+    initialize_ = service<srv::InitializeEmpty>("initialize_empty",
+      [this](const std::shared_ptr<srv::InitializeEmpty::Request> request,
+             std::shared_ptr<srv::InitializeEmpty::Response> response) {
+        try {
+          if (request->geometry_hash != config_.geometry.geometry_hash ||
+              request->config_digest != config_.digest) throw Error("INITIALIZATION_IDENTITY_MISMATCH");
+          const auto id = store_->initialize_empty(request->expected_epoch,
+              request->declaration_id, request->declared_by, now().nanoseconds());
+          // A replay in a live VALID epoch must not churn its generation.
+          if (validity_.load()->epoch != id.epoch) {
+            validity_.commit_reset(id.epoch, "declared_initial_empty", request->declaration_id);
+            validity_.begin_building(id.epoch);
+          }
+          if (id.observed_revision == 0) validity_.publish_initialized(id);
+          else maybe_publish_valid();
+          response->identity = ros_identity(id);
+          response->validity = ros_validity(validity_.load());
+          publish_validity(validity_.load());
+          worker_->refresh_store_diagnostics();
+          board_.drop_other_epochs(id.epoch); ledger_.drop_terminal_other_epochs(id.epoch);
+          response->status = "OK";
         } catch (const std::exception& error) { response->status = error.what(); }
       });
     reset_ = service<srv::ResetObservation>("reset_observation",
@@ -1182,7 +1222,7 @@ class ObserverNode : public rclcpp::Node {
     std_msgs::msg::String message; message.data = YAML::Dump(health); health_pub_->publish(message);
   }
   ObserverConfiguration config_;
-  std::string mode_, optical_frame_, sensor_id_;
+  std::string mode_, optical_frame_, sensor_id_, lidar_frame_, lidar_sensor_id_;
   std::unique_ptr<ObservationStore> store_;
   std::unique_ptr<SnapshotRepository> repository_;
   std::unique_ptr<ObservationWorker> worker_;
@@ -1210,7 +1250,7 @@ class ObserverNode : public rclcpp::Node {
   rclcpp::CallbackGroup::SharedPtr service_group_, input_group_, health_group_;
   rclcpp::Publisher<msg::UpdateReceipt>::SharedPtr receipt_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr health_pub_;
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_sub_, lidar_sub_;
   rclcpp::TimerBase::SharedPtr health_timer_;
   rclcpp::Service<srv::IntegrateObservation>::SharedPtr integrate_;
   rclcpp::Service<srv::GetSnapshot>::SharedPtr acquire_;
@@ -1220,6 +1260,7 @@ class ObserverNode : public rclcpp::Node {
   rclcpp::Service<srv::ReleaseSnapshot>::SharedPtr release_;
   rclcpp::Service<srv::QueryFreespace>::SharedPtr freespace_;
   rclcpp::Service<srv::ResetObservation>::SharedPtr reset_;
+  rclcpp::Service<srv::InitializeEmpty>::SharedPtr initialize_;
   rclcpp::Service<srv::CheckpointObservation>::SharedPtr checkpoint_;
   rclcpp::Service<srv::GetObservationStatus>::SharedPtr status_;
   rclcpp::Service<srv::GetResourceUsage>::SharedPtr resource_;

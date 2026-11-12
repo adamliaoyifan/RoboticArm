@@ -1,4 +1,5 @@
 #include "uld_occ_observer/observer.hpp"
+#include "uld_occ_observer/initial_empty.hpp"
 #include "uld_occ_observer/resource_usage.hpp"
 #include "uld_occ_observer/interface_trace.hpp"
 #include "uld_occ_observer/block_storage.hpp"
@@ -23,7 +24,7 @@ std::string fingerprint(const OpticalObservation& observation) {
   stream << std::setprecision(17);
   const auto& id = observation.identity;
   stream << id.stamp_ns << ':' << id.epoch << ':' << std::quoted(id.optical_frame)
-         << std::quoted(id.clock_domain) << std::quoted(id.geometry_hash);
+         << std::quoted(id.clock_domain) << std::quoted(id.geometry_hash) << observation.lidar_xyz;
   for (double value : observation.uld_from_optical.rotation) stream << ':' << value;
   const auto& t = observation.uld_from_optical.translation;
   stream << ':' << t.x << ':' << t.y << ':' << t.z << ':' << observation.uld_from_optical.stamp_ns;
@@ -52,7 +53,8 @@ ObservationStore::ObservationStore(GeometryDescriptor descriptor, double resolut
 }
 SnapshotIdentity ObservationStore::identity_unlocked() const {
   return {epoch_, map_revision_, observed_revision_, last_integrated_stamp_ns_,
-          domain_->descriptor().geometry_hash, config_digest_, clock_domain_};
+          domain_->descriptor().geometry_hash, config_digest_, clock_domain_,
+          initialization_id_, declared_by_, initialization_stamp_ns_};
 }
 
 UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation, ProfileMode profile_mode) {
@@ -85,6 +87,8 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
     const auto& id = observation.identity;
     { auto span = diagnostic.span(ProfileStage::Validation);
       if (id.epoch != epoch_) throw Error("EPOCH_MISMATCH");
+      if (initialization_stamp_ns_ && id.stamp_ns < initialization_stamp_ns_)
+        throw Error("OBSERVATION_PREDATES_INITIALIZATION");
       if (id.geometry_hash != domain_->descriptor().geometry_hash) throw Error("GEOMETRY_MISMATCH");
       if (id.clock_domain != clock_domain_) throw Error("CLOCK_DOMAIN_MISMATCH");
       observation.uld_from_optical.validate(id.stamp_ns);
@@ -111,7 +115,11 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
     }
     FilterResult filtered;
     { auto span = diagnostic.span(ProfileStage::DepthFilter);
-      filtered = preprocessor_.prepare(observation.points_m); }
+      if (observation.lidar_xyz) {
+        filtered.raw_count = observation.points_m.size();
+        for (const auto& p : observation.points_m)
+          if (finite(p) && (p.x != 0 || p.y != 0 || p.z != 0)) filtered.optical_points.push_back(p);
+      } else filtered = preprocessor_.prepare(observation.points_m); }
     UldObservation frame;
     { auto span = diagnostic.span(ProfileStage::Transform);
       frame = UldFrameAdapter::transform(id, filtered, observation.uld_from_optical); }
@@ -150,7 +158,7 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
           ++receipt.changed_keys;
           if (!change.existed || change.old_occupied != change.occupied)
             ++receipt.occupancy_changed_keys;
-          if (!change.existed) ++known_cells_;
+          if (!change.existed && initialization_id_.empty()) ++known_cells_;
           batch->write(change.index, CellValue{change.new_log_odds, change.occupied});
         }
         batch->commit(blocks_);
@@ -183,7 +191,7 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
 
 std::shared_ptr<const Snapshot> ObservationStore::snapshot() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!last_integrated_stamp_ns_) throw Error("NO_DATA");
+  if (!last_integrated_stamp_ns_ && initialization_id_.empty()) throw Error("NO_DATA");
   if (cached_snapshot_) return cached_snapshot_;
   auto result = std::make_shared<const Snapshot>(identity_unlocked(), domain_, blocks_);
   cached_snapshot_ = result;
@@ -192,7 +200,7 @@ std::shared_ptr<const Snapshot> ObservationStore::snapshot() const {
 std::shared_ptr<const Snapshot> ObservationStore::try_snapshot() const {
   std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
   if (!lock.owns_lock()) return nullptr;
-  if (!last_integrated_stamp_ns_) throw Error("NO_DATA");
+  if (!last_integrated_stamp_ns_ && initialization_id_.empty()) throw Error("NO_DATA");
   if (cached_snapshot_) return cached_snapshot_;
   auto result = std::make_shared<const Snapshot>(identity_unlocked(), domain_, blocks_);
   cached_snapshot_ = result;
@@ -235,6 +243,7 @@ std::uint64_t ObservationStore::reset(std::uint64_t expected_epoch) {
   ++epoch_; map_revision_ = observed_revision_ = 0; last_integrated_stamp_ns_ = 0;
   published_epoch_.store(epoch_, std::memory_order_release);
   known_cells_ = 0; blocks_.clear(); cached_snapshot_.reset();
+  initialization_id_.clear(); declared_by_.clear(); initialization_stamp_ns_ = 0;
   sensor_stamps_.clear(); fingerprints_.clear(); fingerprint_order_.clear();
   return epoch_;
 }
@@ -250,7 +259,9 @@ std::uint64_t ObservationStore::restore(const Checkpoint& checkpoint, std::uint6
   if (id.geometry_hash != domain_->descriptor().geometry_hash || id.config_digest != config_digest_ ||
       id.clock_domain != clock_domain_ || checkpoint.fingerprints.size() > 4096 ||
       checkpoint.fingerprints.size() != checkpoint.fingerprint_order.size() ||
-      id.last_integrated_stamp_ns < 0) throw Error("CHECKPOINT_IDENTITY_MISMATCH");
+      id.last_integrated_stamp_ns < 0 ||
+      (id.initialization_id.empty() != id.declared_by.empty()) ||
+      (id.initialization_id.empty() ? id.initialization_stamp_ns != 0 : id.initialization_stamp_ns <= 0)) throw Error("CHECKPOINT_IDENTITY_MISMATCH");
   std::set<std::pair<std::string, std::string>> seen;
   for (const auto& key : checkpoint.fingerprint_order)
     if (!checkpoint.fingerprints.count(key) || !seen.insert(key).second)
@@ -261,13 +272,13 @@ std::uint64_t ObservationStore::restore(const Checkpoint& checkpoint, std::uint6
   // Read, expand, and validate on a temporary grid. A bad leaf must not replace live state.
   auto candidate = OccupancyGrid::fromCheckpointBytes(checkpoint.tree_bytes, domain_->resolution());
   candidate.validateLeaves(*domain_);
-  BlockRegistry published;
+  std::size_t known = 0;
+  BlockRegistry published = id.initialization_id.empty() ? BlockRegistry{} : initial_empty_blocks(*domain_, known);
   OccupancyDiagnostic rebuild(ProfileMode::Off);
   BlockUpdateBatch batch(BlockLayout(domain_->shape()), published, rebuild);
-  std::size_t known = 0;
   candidate.forEachLeaf([&](CellIndex index, float log_odds) {
     batch.write(index, CellValue{log_odds, log_odds >= 0.f});
-    ++known;
+    if (id.initialization_id.empty()) ++known;
   });
   batch.commit(published);
   grid_ = std::move(candidate);
@@ -276,6 +287,9 @@ std::uint64_t ObservationStore::restore(const Checkpoint& checkpoint, std::uint6
   ++epoch_; map_revision_ = id.map_revision; observed_revision_ = id.observed_revision;
   published_epoch_.store(epoch_, std::memory_order_release);
   last_integrated_stamp_ns_ = id.last_integrated_stamp_ns;
+  initialization_id_ = id.initialization_id; declared_by_ = id.declared_by;
+  initialization_stamp_ns_ = id.initialization_stamp_ns;
+  initialization_used_ = initialization_used_ || !initialization_id_.empty();
   sensor_stamps_ = checkpoint.sensor_stamps;
   // Payload fingerprints contain their original epoch. Restored timestamps still
   // reject stale observations; tokens and old-epoch duplicates are never revived.

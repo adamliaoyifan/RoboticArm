@@ -57,6 +57,10 @@ class ObservationStore {
   // Test probe. Invoked while integrate holds the store mutex. Production leaves it empty.
   void set_lock_probe_for_test(std::function<void()> probe);
   std::uint64_t reset(std::uint64_t expected_epoch);
+  // Explicit initial condition, once per owner lifetime; never a sensor frame.
+  SnapshotIdentity initialize_empty(std::uint64_t expected_epoch,
+      const std::string& declaration_id, const std::string& declared_by,
+      std::int64_t declaration_stamp_ns);
   std::shared_ptr<const UldDomain> domain() const { return domain_; }
   Checkpoint checkpoint() const;
   std::uint64_t restore(const Checkpoint& checkpoint, std::uint64_t expected_epoch);
@@ -78,6 +82,9 @@ class ObservationStore {
   std::map<std::pair<std::string, std::string>, std::string> fingerprints_;
   std::deque<std::pair<std::string, std::string>> fingerprint_order_;
   std::size_t known_cells_{};
+  std::string initialization_id_, declared_by_;
+  std::int64_t initialization_stamp_ns_{};
+  bool initialization_used_{false};
   std::uint64_t received_{}, integrated_{}, rejected_{}, duplicates_{};
   mutable std::uint64_t full_serializations_{};
 };

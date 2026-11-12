@@ -38,7 +38,10 @@
    "sources": [
     "src/luggage_perception/scripts/sensor_preprocessor_node.py",
     "src/luggage_perception/scripts/d555_transport_adapter_node.py",
-    "src/luggage_perception/scripts/semantic_point_filter_node.py"
+    "src/luggage_perception/scripts/semantic_point_filter_node.py",
+    "src/luggage_perception/scripts/observer_lidar_node.py",
+    "src/luggage_perception/luggage_perception/observer_lidar.py",
+    "src/uld_occ_observer/src/observer_node.cpp"
    ],
    "checks": [
     "missing_stamp",

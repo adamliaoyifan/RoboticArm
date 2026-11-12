@@ -1,0 +1,14 @@
+........................................................................ [ 36%]
+........................................................................ [ 72%]
+.......................................................                              [100%]
+=============================== warnings summary ===============================
+src/luggage_mapping/test/test_regions.py::test_full_one_cm_grid_requires_67_pages
+  src/luggage_mapping/test/test_regions.py:145: PytestWarning: record_property is incompatible with junit_family 'xunit2' (use 'legacy' or 'xunit1')
+    def test_full_one_cm_grid_requires_67_pages(record_property):
+
+src/luggage_gazebo/test/test_operation_launch.py::test_every_default_can_actually_resolve_from_declared_launch_arguments
+  /opt/ros/humble/local/lib/python3.10/dist-packages/xacro/__init__.py:115: DeprecationWarning: private variables, such as '_ConstructUnits__ConstructUnitsValue', will be normal attributes in 3.11
+    __ConstructUnitsValue = collections.namedtuple('__ConstructUnitsValue', ['tag', 'conversion_constant'])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+199 passed, 2 warnings, 60 subtests passed in 25.35s

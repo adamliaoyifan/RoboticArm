@@ -67,6 +67,9 @@ def build_surface_v2_record(v1_map, geometry, identity, scene_revision,
             else:
                 z_row.append(floor + float(v1_map["height"][ix][iy]))
                 s_row.append(cell_state)
+                if identity.get('initialization_id') and cell_state == 'free':
+                    c_row.append('initial_empty')
+                    continue
                 c_row.append("verified_geometry"
                              if v1_map["confidence"][ix][iy] == "geometry"
                              else "sensor")
@@ -178,6 +181,9 @@ def build_surface_map(columns, geometry, identity):
         "observed_revision": int(identity.get("observed_revision", 0)),
         "last_integrated_stamp_ns": int(identity.get("last_integrated_stamp_ns", 0)),
         "clock_domain": identity.get("clock_domain", ""),
+        "initialization_id": identity.get("initialization_id", ""),
+        "declared_by": identity.get("declared_by", ""),
+        "initialization_stamp_ns": identity.get("initialization_stamp_ns", 0),
     }
 
 

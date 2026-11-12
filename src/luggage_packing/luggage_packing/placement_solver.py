@@ -1253,6 +1253,7 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
     over every candidate evaluated, which is what a capacity claim must be
     based on.
     """
+    declared_initial_free = any('initial_empty' in row for row in surface_map.get('confidence', []))
     cfg = _default_params()
     if params:
         cfg.update(params)
@@ -1330,7 +1331,7 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
 
                 feasible = True
                 reason = "ok"
-                support_source = "sensor"
+                support_source = "initial_empty" if declared_initial_free and abs(peak-floor_z) <= cfg["support_tol"] else "sensor"
                 # Footprint-coverage scan (adjudication 2026-11-08):
                 # the continuous footprint is checked against the grid
                 # cells it actually overlaps — the ceil-sized window can
@@ -1483,7 +1484,7 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                         candidate["feasible"] = False
                         candidate["reason"] = REASON_OUTSIDE_HULL
                     if (feasible and candidate["feasible"]
-                            and (support_source == "sensor"
+                            and (support_source in ("sensor", "initial_empty")
                                  or cfg.get("verify_floor_prior_volume", False))
                             and volume_verifier is not None):
                         # Reviews 2026-11-08_1751: the authorization gate.

@@ -1,0 +1,677 @@
+{
+  "inventory_version": 1,
+  "contract_version": 2,
+  "status": "staged_contract_not_live_migration",
+  "interfaces": [
+    {
+      "id": "F01",
+      "producer": "scene configuration / stamped TF",
+      "consumer": "perception, packing, planning",
+      "transport": "scene helpers / TF",
+      "scope": "production",
+      "current": "full-RPY point helpers plus scattered yaw-only conversions",
+      "target": "shared full pose transforms; scene identity; explicit horizontal-container gate",
+      "sources": [
+        "src/luggage_description/luggage_description/scene_tf_config_utils.py",
+        "src/luggage_description/scripts/container_tf_publisher",
+        "src/luggage_description/luggage_description/scene_tf_publisher.py",
+        "src/luggage_planning/luggage_planning/scene_box_v2.py"
+      ],
+      "checks": [
+        "translate_rotate90",
+        "translate_rotate53",
+        "base_to_world",
+        "existing_base_helper",
+        "container_tilt_rejected"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-graph/runtime_F01.json"
+    },
+    {
+      "id": "F02",
+      "producer": "RGBD / Livox sensor ingress",
+      "consumer": "preprocessor / point filter",
+      "transport": "sensor topics",
+      "scope": "production",
+      "current": "optical and sensor frames with acquisition timestamps",
+      "target": "retain truthful sensor frames; stamped conversion; no latest-TF fallback for observations",
+      "sources": [
+        "src/luggage_perception/scripts/sensor_preprocessor_node.py",
+        "src/luggage_perception/scripts/d555_transport_adapter_node.py",
+        "src/luggage_perception/scripts/semantic_point_filter_node.py"
+      ],
+      "checks": [
+        "missing_stamp",
+        "dynamic_tf_stale",
+        "normal_not_translated"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST03-20260929/runtime_F02.json"
+    },
+    {
+      "id": "F03",
+      "producer": "luggage detector",
+      "consumer": "pick waypoint generation / hardware driver",
+      "transport": "DetectedLuggage / DetectionFrame / DetectLuggage",
+      "scope": "production",
+      "current": "world geometry with acquisition header; consumer assumptions remain",
+      "target": "detection profile: world box center, dimensions in body axes, truthful acquisition identity",
+      "sources": [
+        "src/luggage_perception/scripts/luggage_detector_node.py",
+        "src/luggage_msgs/msg/DetectedLuggage.msg",
+        "src/luggage_msgs/msg/DetectionFrame.msg",
+        "src/luggage_planning/luggage_planning/ros_message_adapters.py",
+        "src/luggage_perception/luggage_perception/frame_boundary_records.py"
+      ],
+      "checks": [
+        "detection_world",
+        "missing_frame",
+        "wrong_time_basis",
+        "nonsquare_width_axis"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST03-20260929/runtime_F03.json"
+    },
+    {
+      "id": "F04",
+      "producer": "suction patch evaluator / detector",
+      "consumer": "candidate pick / retry",
+      "transport": "SuctionCandidate",
+      "scope": "production",
+      "current": "world contact pose and observation identity",
+      "target": "contact profile; surface normal separate from tool-down orientation",
+      "sources": [
+        "src/luggage_msgs/msg/SuctionCandidate.msg",
+        "src/luggage_perception/luggage_perception/suction_patch_evaluator.py",
+        "src/luggage_planning/luggage_planning/suction_candidate_selection.py",
+        "src/luggage_planning/luggage_planning/suction_candidate_waypoints.py",
+        "src/luggage_perception/luggage_perception/frame_boundary_records.py"
+      ],
+      "checks": [
+        "contact_world",
+        "normal_not_translated",
+        "wrong_reference",
+        "stale_scene"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST03-20260929/runtime_F04.json"
+    },
+    {
+      "id": "F05",
+      "producer": "container opening estimator",
+      "consumer": "exploration / opening target generation",
+      "transport": "ContainerOpeningEstimate / local aperture",
+      "scope": "production",
+      "current": "opening pose in header frame; aperture vertices in opening frame",
+      "target": "keep nested frame relationship explicit; do not relabel aperture as world points",
+      "sources": [
+        "src/luggage_msgs/msg/ContainerOpeningEstimate.msg",
+        "src/luggage_perception/luggage_perception/container_opening_estimator.py",
+        "src/luggage_perception/luggage_perception/frame_boundary_records.py"
+      ],
+      "checks": [
+        "translate_rotate90",
+        "normal_not_translated",
+        "stale_scene"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST03-20260929/runtime_F05.json"
+    },
+    {
+      "id": "F06",
+      "producer": "cargo map node",
+      "consumer": "placement solver / occupancy snapshot",
+      "transport": "surface_2d JSON",
+      "scope": "production",
+      "current": "height above floor; center_base means container frame in Humble",
+      "target": "container-origin surface_z, explicit floor and unknown null, map/geometry identity",
+      "sources": [
+        "src/luggage_perception/scripts/cargo_volume_mapper_node.py",
+        "src/luggage_perception/luggage_perception/cargo_volume_mapper.py",
+        "src/luggage_planning/luggage_planning/occupancy_place_paths.py"
+      ],
+      "checks": [
+        "surface_stacked_unknown",
+        "surface_relative_datum",
+        "surface_phantom_floor",
+        "surface_dual_conflict",
+        "surface_ragged"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F06.json"
+    },
+    {
+      "id": "F07",
+      "producer": "placement solver",
+      "consumer": "planner / reachability hook",
+      "transport": "candidate dictionaries",
+      "scope": "production",
+      "current": "center_local is volume-centered; center_base is map parent; yaw ambiguously labelled",
+      "target": "slot profile; single container center and explicit box-axis yaw",
+      "sources": [
+        "src/luggage_packing/luggage_packing/placement_solver.py",
+        "src/luggage_packing/luggage_packing/placement_reachability.py",
+        "src/luggage_packing/scripts/placement_planner_node.py"
+      ],
+      "checks": [
+        "slot_valid",
+        "center_grasp",
+        "surface_stacked_unknown",
+        "wrong_reference"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F07.json"
+    },
+    {
+      "id": "F08",
+      "producer": "ComputePlacement",
+      "consumer": "BuildMotionSequence / SelectPlacePath",
+      "transport": "SlotSpec",
+      "scope": "production",
+      "current": "base_link output, parameter-selected waypoint interpretation, container selector interpretation",
+      "target": "slot profile; no empty-frame default or in-place relabelling",
+      "sources": [
+        "src/luggage_msgs/msg/SlotSpec.msg",
+        "src/luggage_msgs/srv/ComputePlacement.srv",
+        "src/luggage_msgs/srv/BuildMotionSequence.srv",
+        "src/luggage_planning/scripts/waypoint_generator_node.py",
+        "src/luggage_planning/scripts/trajectory_selector_node.py",
+        "src/luggage_msgs/srv/BuildMotionSequenceV2.srv",
+        "src/luggage_msgs/srv/SelectPlacePathV2.srv",
+        "src/luggage_planning/luggage_planning/place_tcp.py",
+        "src/luggage_planning/luggage_planning/place_service.py"
+      ],
+      "checks": [
+        "missing_frame",
+        "wrong_frame",
+        "old_version",
+        "wrong_reference",
+        "translate_rotate180"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F08.json"
+    },
+    {
+      "id": "F09",
+      "producer": "pick waypoint builders",
+      "consumer": "motion planner / hardware pick session",
+      "transport": "MotionSegment pick legs",
+      "scope": "production",
+      "current": "world targets carried as bare poses",
+      "target": "motion profile with explicit suction target link, observation identity and grasp offset",
+      "sources": [
+        "src/luggage_planning/luggage_planning/waypoint_generator.py",
+        "src/luggage_planning/scripts/hardware_pick_driver.py",
+        "src/luggage_planning/luggage_planning/suction_pick_session.py",
+        "src/luggage_planning/luggage_planning/pick_frame_contracts.py"
+      ],
+      "checks": [
+        "motion_world",
+        "offcenter_grasp",
+        "wrong_orientation",
+        "wrong_reference"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F09.json"
+    },
+    {
+      "id": "F10",
+      "producer": "pick failure / recorded approach",
+      "consumer": "retry_reverse / abort recovery",
+      "transport": "recorded poses and retry session",
+      "scope": "production",
+      "current": "reuses approach target; frame identity not carried by MotionSegment",
+      "target": "preserve original pose/link and transform snapshot; reject stale calibration",
+      "sources": [
+        "src/luggage_planning/luggage_planning/suction_retry_contracts.py",
+        "src/luggage_planning/luggage_planning/suction_candidate_waypoints.py",
+        "src/luggage_planning/luggage_planning/pick_frame_contracts.py"
+      ],
+      "checks": [
+        "stale_scene",
+        "dynamic_tf_stale",
+        "motion_world"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST03-20260929/runtime_F10.json"
+    },
+    {
+      "id": "F11",
+      "producer": "slot + selected grasp",
+      "consumer": "place staging / carry / insertion / retreat",
+      "transport": "waypoint builder",
+      "scope": "production",
+      "current": "world slot conversion; center-to-top assumes centered horizontal grasp",
+      "target": "box-to-tool transform, complete container-to-world pose conversion; distinct clearance lengths",
+      "sources": [
+        "src/luggage_planning/luggage_planning/waypoint_generator.py",
+        "src/luggage_planning/scripts/waypoint_generator_node.py",
+        "src/luggage_msgs/srv/BuildMotionSequenceV2.srv",
+        "src/luggage_planning/luggage_planning/place_tcp.py",
+        "src/luggage_planning/luggage_planning/place_service.py"
+      ],
+      "checks": [
+        "offcenter_grasp",
+        "center_grasp",
+        "translate_rotate53",
+        "normal_not_translated"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F11.json"
+    },
+    {
+      "id": "F12",
+      "producer": "portal, slots and map",
+      "consumer": "sweep / path generation / grid search",
+      "transport": "in-process dictionaries and arrays",
+      "scope": "production",
+      "current": "map-frame suction points; implicit yaw semantics",
+      "target": "container TCP paths and box footprints with verified map identity",
+      "sources": [
+        "src/luggage_planning/luggage_planning/routing/producer.py",
+        "src/luggage_planning/luggage_planning/routing/grid_search.py",
+        "src/luggage_planning/luggage_planning/atlas/graph.py",
+        "src/luggage_planning/luggage_planning/occupancy_place_paths.py",
+        "src/luggage_planning/luggage_planning/place_tcp.py"
+      ],
+      "checks": [
+        "nonsquare_width_axis",
+        "wrong_reference",
+        "surface_phantom_floor",
+        "atlas_pi_fold_rejected"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-20260930-dev/runtime_F12.json"
+    },
+    {
+      "id": "F13",
+      "producer": "SelectPlacePath client",
+      "consumer": "selector service and carry segment executor",
+      "transport": "SelectPlacePath service",
+      "scope": "production",
+      "current": "bare start_pose/slots; xyz-only output conversion; center/TCP boundary unclear",
+      "target": "container start TCP, container box slots, grasp-aware target, full world response poses",
+      "sources": [
+        "src/luggage_msgs/srv/SelectPlacePath.srv",
+        "src/luggage_planning/scripts/trajectory_selector_node.py",
+        "scripts/select_place_path_probe.py",
+        "src/luggage_msgs/srv/BuildMotionSequenceV2.srv",
+        "src/luggage_msgs/srv/SelectPlacePathV2.srv",
+        "src/luggage_planning/luggage_planning/place_service.py",
+        "src/luggage_planning/luggage_planning/place_tcp.py"
+      ],
+      "checks": [
+        "wrong_reference",
+        "offcenter_grasp",
+        "translate_rotate90",
+        "tool_pi_distinct"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F13.json"
+    },
+    {
+      "id": "F14",
+      "producer": "atlas builder / IK task grid builder",
+      "consumer": "runtime atlas / placement / grid search",
+      "transport": "NPZ + YAML artifact",
+      "scope": "production",
+      "current": "container position grid with base-frame tool yaw sampling",
+      "target": "explicit position and orientation frames, concrete-tool 2pi branches, full artifact identity",
+      "sources": [
+        "src/luggage_planning/scripts/reachability_atlas_builder.py",
+        "scripts/build_reachability_atlas_humble.py",
+        "src/luggage_planning/scripts/build_ikfast_task_grid.py",
+        "src/luggage_planning/luggage_planning/atlas/task_grid.py",
+        "src/luggage_planning/luggage_planning/atlas/model.py",
+        "src/luggage_planning/luggage_planning/atlas/runtime.py",
+        "src/luggage_planning/luggage_planning/atlas/frame_contracts.py",
+        "scripts/certify_atlas_seeds.py",
+        "src/luggage_planning/data/reachability_atlas_deploy_update/s20_container_collision_aware.npz",
+        "src/luggage_planning/data/reachability_atlas_deploy_update/s20_container_collision_aware.yaml"
+      ],
+      "checks": [
+        "atlas_valid",
+        "atlas_wrong_orientation_frame",
+        "atlas_pi_fold_rejected",
+        "atlas_stale_payload",
+        "tool_pi_distinct"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F14.json"
+    },
+    {
+      "id": "F15",
+      "producer": "motion producers / message adapters",
+      "consumer": "PlanMotion / probe / executor",
+      "transport": "MotionSegment and action/service serialization",
+      "scope": "production",
+      "current": "bare target/waypoint Pose; executor default world; joint knots separate",
+      "target": "motion profile and explicit target link; joint_path has named joint order and no fictitious Cartesian frame",
+      "sources": [
+        "src/luggage_msgs/msg/MotionSegment.msg",
+        "src/luggage_msgs/action/PlanMotion.action",
+        "src/luggage_msgs/srv/ProbeMotionSegment.srv",
+        "src/luggage_planning/luggage_planning/pose.py",
+        "src/luggage_planning/luggage_planning/ros_message_adapters.py",
+        "src/luggage_planning/luggage_planning/motion_executor.py",
+        "src/luggage_msgs/msg/MotionSegmentV2.msg",
+        "src/luggage_msgs/action/PlanMotionV2.action",
+        "src/luggage_msgs/srv/ProbeMotionSegmentV2.srv",
+        "src/luggage_msgs/srv/SelectPlacePathV2.srv",
+        "src/luggage_msgs/srv/BuildMotionSequenceV2.srv",
+        "src/luggage_planning/luggage_planning/motion_frame_contracts.py",
+        "src/luggage_planning/luggage_planning/motion_frame_adapters.py",
+        "src/luggage_planning/luggage_planning/motion_v2_service.py",
+        "src/luggage_planning/scripts/motion_planner_node.py",
+        "src/luggage_planning/luggage_planning/place_service.py"
+      ],
+      "checks": [
+        "motion_world",
+        "missing_frame",
+        "wrong_reference",
+        "wrong_unit",
+        "zero_quaternion"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F15.json"
+    },
+    {
+      "id": "F16",
+      "producer": "motion node / IK target",
+      "consumer": "MoveIt / offline IK / compensation",
+      "transport": "planning request and model root transform",
+      "scope": "production",
+      "current": "world targets; mixed query offsets and target-z lifts",
+      "target": "declared model root and tool constraints; compensation as framed vector",
+      "sources": [
+        "src/luggage_planning/scripts/motion_planner_node.py",
+        "src/luggage_planning/luggage_planning/offline_ik.py",
+        "src/luggage_planning/luggage_planning/motion_frame_contracts.py",
+        "src/luggage_planning/luggage_planning/motion_frame_adapters.py",
+        "src/luggage_planning/luggage_planning/motion_executor.py"
+      ],
+      "checks": [
+        "base_to_world",
+        "normal_not_translated",
+        "tool_sign_equivalent",
+        "tool_pi_distinct"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F16.json"
+    },
+    {
+      "id": "F17",
+      "producer": "detection / map / static geometry",
+      "consumer": "PlanningScene collision world",
+      "transport": "collision object APIs",
+      "scope": "production",
+      "current": "world default for collision objects",
+      "target": "verified full world pose and body-axis size; no assumed bare pose",
+      "sources": [
+        "src/luggage_planning/scripts/scene_manager_node.py",
+        "src/luggage_planning/luggage_planning/planning_scene_client.py",
+        "src/luggage_planning/luggage_planning/pickup_collision.py",
+        "src/luggage_msgs/srv/AddSceneBoxV2.srv",
+        "src/luggage_msgs/srv/RemoveSceneBoxV2.srv",
+        "src/luggage_planning/luggage_planning/scene_box_v2.py"
+      ],
+      "checks": [
+        "translate_rotate90",
+        "nonsquare_width_axis",
+        "wrong_frame"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F17.json"
+    },
+    {
+      "id": "F18",
+      "producer": "measured box and tool at attach",
+      "consumer": "attached collision / physical attachment / detach / qualified stationary complete-operation attachment",
+      "transport": "link-relative payload transform",
+      "scope": "production",
+      "current": "world box inputs and link attachment; separate physical backend",
+      "target": "record actual T_box_tool; maintain same payload on both backends; valve state has no frame",
+      "sources": [
+        "src/luggage_planning/luggage_planning/vacuum_backend.py",
+        "src/luggage_planning/luggage_planning/vacuum_attach_utils.py",
+        "src/luggage_planning/luggage_planning/planning_scene_client.py",
+        "src/luggage_msgs/srv/VacuumCommandV2.srv",
+        "src/luggage_planning/luggage_planning/attachment_frame_contracts.py",
+        "src/luggage_planning/luggage_planning/attachment_frame_adapters.py",
+        "src/luggage_planning/scripts/vacuum_controller_node.py",
+        "src/luggage_planning/luggage_planning/joint_operation/attachment.py",
+        "src/luggage_planning/luggage_planning/attachment_provider.py",
+        "st09_contracts/stationary_attachment.py"
+      ],
+      "checks": [
+        "offcenter_grasp",
+        "center_grasp",
+        "tool_sign_equivalent"
+      ],
+      "migration_state": "pending",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F18.json"
+    },
+    {
+      "id": "F19",
+      "producer": "verified placed observation / remove request",
+      "consumer": "cargo map ledger / scene manager / next placement",
+      "transport": "AddPlacedBox / RemovePlacedBox / VerifyPlacedBox",
+      "scope": "production",
+      "current": "world SlotSpec at commit; mapper already subtracts container yaw explicitly",
+      "target": "explicit frame and measured source; same normalization for add/remove/readback; map revision checks",
+      "sources": [
+        "src/luggage_msgs/srv/AddPlacedBox.srv",
+        "src/luggage_msgs/srv/RemovePlacedBox.srv",
+        "src/luggage_msgs/srv/VerifyPlacedBox.srv",
+        "src/luggage_perception/scripts/cargo_volume_mapper_node.py"
+      ],
+      "checks": [
+        "wrong_frame",
+        "translate_rotate180",
+        "surface_unverified_commit",
+        "surface_dual_conflict"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F19.json"
+    },
+    {
+      "id": "F20",
+      "producer": "settled observation",
+      "consumer": "IntegrateCargoView",
+      "transport": "service plus stamped point cloud",
+      "scope": "production",
+      "current": "schema/hash/revision and stamped cloud checks exist",
+      "target": "preserve existing checks; bind calibration and v2 map datum without promoting unknown to free",
+      "sources": [
+        "src/luggage_msgs/srv/IntegrateCargoView.srv",
+        "src/luggage_perception/luggage_perception/cargo_view_integration.py",
+        "src/luggage_perception/luggage_perception/cargo_volume_mapper.py"
+      ],
+      "checks": [
+        "dynamic_tf_stale",
+        "surface_stacked_unknown",
+        "surface_phantom_floor"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST04-20260929/runtime_F20.json"
+    },
+    {
+      "id": "F21",
+      "producer": "launch / hardware driver / orchestration",
+      "consumer": "runtime interface graph",
+      "transport": "parameters / services / actions",
+      "scope": "production",
+      "current": "frame defaults and package overlay can disagree",
+      "target": "capability and resolved package identity report; no mixed-v2 enablement",
+      "sources": [
+        "src/luggage_planning/launch/hardware_pick.launch.py",
+        "src/luggage_gazebo/launch/sim_world.launch.py",
+        "src/luggage_planning/scripts/hardware_pick_driver.py",
+        "src/luggage_description/luggage_description/runtime_manifest.py",
+        "src/luggage_description/luggage_description/runtime_profile.py",
+        "src/luggage_description/luggage_description/runtime_readiness.py",
+        "src/luggage_description/luggage_description/ros_frame_bindings/runtime.py",
+        "src/luggage_msgs/msg/RuntimeIdentityV2.msg",
+        "src/luggage_msgs/msg/RuntimeEndpointV2.msg",
+        "src/luggage_msgs/msg/RuntimeArtifactV2.msg",
+        "src/luggage_msgs/msg/RuntimePackageV2.msg"
+      ],
+      "checks": [
+        "old_version",
+        "missing_version",
+        "stale_scene"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-graph/runtime_F21.json"
+    },
+    {
+      "id": "F22",
+      "producer": "sim fixture / eval drivers",
+      "consumer": "pick/place APIs and result comparison",
+      "transport": "synthetic messages / eval callbacks",
+      "scope": "offline",
+      "current": "multiple hand-written base/world/local conversions",
+      "target": "same public contracts; ground truth remains separate oracle; exercise real service path",
+      "sources": [
+        "src/luggage_planning/luggage_planning/typed_driver_adapter.py",
+        "src/luggage_gazebo/luggage_gazebo/typed_driver_adapter.py",
+        "src/luggage_gazebo/scripts/place_only_eval_driver.py",
+        "src/luggage_gazebo/scripts/motion_occ_eval_driver.py",
+        "src/luggage_gazebo/scripts/pack_eval_driver.py",
+        "src/luggage_gazebo/scripts/place_smoke_driver.py",
+        "src/luggage_gazebo/scripts/pick_retreat_eval_driver.py",
+        "src/luggage_gazebo/scripts/cargo_map_integrate_eval_driver.py"
+      ],
+      "checks": [
+        "base_to_world",
+        "translate_rotate53",
+        "offcenter_grasp",
+        "wrong_reference"
+      ],
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-graph/runtime_F22.json"
+    },
+    {
+      "id": "F23",
+      "producer": "GT dump / replay / visualization",
+      "consumer": "offline map and pose readers",
+      "transport": "JSON / marker / replay files",
+      "scope": "offline",
+      "current": "GT center_base differs from live; historical map height conventions",
+      "target": "versioned dump with explicit nested frames and datum; named legacy adapters",
+      "sources": [
+        "src/luggage_gazebo/luggage_gazebo/place_gt_dump.py",
+        "src/luggage_gazebo/scripts/scene_viz_node.py",
+        "src/luggage_packing/luggage_packing/free_space_model.py",
+        "src/luggage_description/luggage_description/frame_dump.py",
+        "src/luggage_gazebo/luggage_gazebo/frame_dump.py"
+      ],
+      "checks": [
+        "surface_relative_datum",
+        "old_version",
+        "base_to_world",
+        "surface_dual_conflict"
+      ],
+      "migration_state": "pending",
+      "runtime_evidence": null
+    },
+    {
+      "id": "F24",
+      "producer": "retired ROS1 bringup / remaining ROS1 packing reference",
+      "consumer": "future restored integration",
+      "transport": "legacy services and scripts",
+      "scope": "legacy",
+      "current": "former bringup source absent after deployment cleanup; historical isolation receipt stale; remaining packing reference is not a Humble runtime",
+      "target": "explicit isolation proof or full migration before enabling; never counted as tested live",
+      "sources": [
+        "src/luggage_packing/scripts/ros1_reference/placement_planner_node.py",
+        "src/luggage_packing/CMakeLists.txt",
+        "src/luggage_planning/CMakeLists.txt"
+      ],
+      "checks": [
+        "old_version",
+        "missing_version",
+        "wrong_frame"
+      ],
+      "migration_state": "pending"
+    },
+    {
+      "id": "F25",
+      "producer": "complete-operation preparation owner",
+      "consumer": "complete-operation execution admission",
+      "transport": "PrepareJointOperationV2 / CheckPreparedOperationV2 / ExecuteJointOperationV2",
+      "scope": "production",
+      "current": "O preparation and stationary actual-seal source qualified; actual execution adoption in native rehearsal, pending",
+      "target": "full directed plan binding against independently retained owner identity and digest; no client self-issued certificate",
+      "sources": [
+        "src/luggage_msgs/msg/JointOperationPlanV2.msg",
+        "src/luggage_msgs/srv/PrepareJointOperationV2.srv",
+        "src/luggage_msgs/srv/CheckPreparedOperationV2.srv",
+        "src/luggage_planning/luggage_planning/joint_operation/contracts.py",
+        "src/luggage_planning/luggage_planning/joint_operation/adapters.py",
+        "src/luggage_planning/luggage_planning/joint_operation/prepare_node.py",
+        "src/luggage_planning/luggage_planning/joint_operation/issuance.py",
+        "src/luggage_msgs/msg/FrozenSuctionObservationV2.msg",
+        "src/luggage_planning/luggage_planning/joint_operation/actual_contact.py",
+        "src/luggage_msgs/msg/OperationMapSourceV2.msg",
+        "src/luggage_planning/luggage_planning/joint_operation/map_source.py",
+        "src/luggage_planning/luggage_planning/joint_operation/observer.py",
+        "src/luggage_planning/luggage_planning/joint_operation/attachment.py",
+        "src/luggage_msgs/action/ExecuteJointOperationV2.action",
+        "src/luggage_planning/luggage_planning/joint_operation/runtime.py",
+        "src/luggage_planning/luggage_planning/joint_operation/runtime_ports.py"
+      ],
+      "checks": [
+        "old_version",
+        "missing_version",
+        "wrong_frame"
+      ],
+      "migration_state": "pending"
+    },
+    {
+      "id": "F26",
+      "producer": "perception frozen observed suction owner",
+      "consumer": "complete-operation actual contact admission",
+      "transport": "RetainSuctionObservationV2 / CheckFrozenSuctionContactV2",
+      "scope": "production",
+      "current": "detector and production preparation use explicit frozen evidence; execution adoption pending",
+      "target": "same-box acquisition-bound samples and actual full measured contact pose; necessary observed support and quality only",
+      "sources": [
+        "src/luggage_msgs/msg/FrozenSuctionObservationV2.msg",
+        "src/luggage_msgs/srv/RetainSuctionObservationV2.srv",
+        "src/luggage_msgs/srv/CheckFrozenSuctionContactV2.srv",
+        "src/luggage_perception/luggage_perception/frozen_suction_observation.py",
+        "src/luggage_perception/luggage_perception/frozen_suction_service.py",
+        "src/luggage_planning/luggage_planning/joint_operation/actual_contact.py",
+        "src/luggage_msgs/srv/EvaluateFrozenSuctionV2.srv",
+        "src/luggage_planning/luggage_planning/joint_operation/prepare_node.py"
+      ],
+      "checks": [
+        "wrong_frame"
+      ],
+      "migration_state": "pending"
+    },
+    {
+      "id": "F27",
+      "producer": "exact-acquisition cargo observation service",
+      "consumer": "released cargo association and O source provenance (pending adoption)",
+      "transport": "CargoObservationPartitionV2 / GetCargoObservationV2",
+      "scope": "production",
+      "current": "read-only exact RGBD/mask/calibration/TF partitions; no physical box identity or O replacement",
+      "target": "truthful optical acquisition, complete immutable point/pixel/label source binding; conditional unique association and exclusive provenance required downstream",
+      "sources": [
+        "src/luggage_msgs/msg/CargoObservationPartitionV2.msg",
+        "src/luggage_msgs/srv/GetCargoObservationV2.srv",
+        "src/luggage_perception/luggage_perception/cargo_observation_partition.py",
+        "src/luggage_perception/luggage_perception/cargo_observation_service.py",
+        "src/luggage_perception/scripts/cargo_observation_node.py"
+      ],
+      "checks": [
+        "missing_stamp",
+        "wrong_frame",
+        "dynamic_tf_stale"
+      ],
+      "migration_state": "pending"
+    }
+  ]
+}

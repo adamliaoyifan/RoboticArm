@@ -1,0 +1,121 @@
+........................................................................ [ 43%]
+........................................................................ [ 86%]
+................F.....                                                   [100%]
+=================================== FAILURES ===================================
+______ test_explicit_start_declares_empty_without_mandatory_portal_motion ______
+
+name = 'execute'
+f = <function OperationSimDriver.run.<locals>.<lambda> at 0x747d58925b40>
+
+>   stage=lambda name,f:f(),plan=lambda:('plan','detection','domain'),
+    action=lambda *a:SimpleNamespace(result=SimpleNamespace(success=True)),
+    flush=lambda **kwargs:None,domain=None,images={})
+
+src/luggage_gazebo/test/test_operation_sim_driver.py:95: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_gazebo/scripts/joint_operation_sim_driver.py:277: in <lambda>
+    ExecuteJointOperationV2.Goal(plan=plan,detection=detection,top_domain=domain,budget_s=300.),
+install-production/luggage_msgs/local/lib/python3.10/dist-packages/luggage_msgs/action/_execute_joint_operation_v2.py:97: in __init__
+    self.plan = kwargs.get('plan', JointOperationPlanV2())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <[AttributeError("'ExecuteJointOperationV2_Goal' object has no attribute '_plan'") raised in repr()] ExecuteJointOperationV2_Goal object at 0x747d5871cac0>
+value = 'plan'
+
+    @plan.setter
+    def plan(self, value):
+        if __debug__:
+            from luggage_msgs.msg import JointOperationPlanV2
+>           assert \
+                isinstance(value, JointOperationPlanV2), \
+                "The 'plan' field must be a sub message of type 'JointOperationPlanV2'"
+E           AssertionError: The 'plan' field must be a sub message of type 'JointOperationPlanV2'
+
+install-production/luggage_msgs/local/lib/python3.10/dist-packages/luggage_msgs/action/_execute_joint_operation_v2.py:157: AssertionError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/tmp/pytest-of-adamliao/pytest-1668/test_explicit_start_declares_e0')
+
+    def test_explicit_start_declares_empty_without_mandatory_portal_motion(tmp_path):
+        module=driver_module()
+        from uld_occ_observer.srv import InitializeEmpty
+        from test_joint_operation_observer import configuration
+        config,geometry,config_file=configuration(tmp_path)
+        calls=[];poses=[]
+        def call(client,request,name,*args):
+            calls.append((client,request))
+            if client=='validity':return SimpleNamespace(epoch=1)
+            if client=='initialize':
+                assert request.declared_by=='explicit_operator_start'
+                assert request.geometry_hash==config.descriptor()['geometry_hash']
+                return SimpleNamespace(status='OK')
+            if client=='spawn':return SimpleNamespace(success=True)
+            raise AssertionError(client)
+        probe=SimpleNamespace(args=SimpleNamespace(start=True,views=None),extra_views={},folder=tmp_path,
+            launch={'resolved':{'observe_pose_name':'pickup'},'map_owner':{
+                'geometry_file':str(geometry),'config_file':str(config_file)}},
+            validity='validity',initialize='initialize',spawn='spawn',execute='execute',call=call,
+            readiness=lambda:None,observe_pose=lambda p:poses.append(p),
+            stage=lambda name,f:f(),plan=lambda:('plan','detection','domain'),
+            action=lambda *a:SimpleNamespace(result=SimpleNamespace(success=True)),
+            flush=lambda **kwargs:None,domain=None,images={})
+>       assert module.OperationSimDriver.run(probe)==0
+
+src/luggage_gazebo/test/test_operation_sim_driver.py:98: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = namespace(args=namespace(start=True, views=None), extra_views={}, folder=PosixPath('/tmp/pytest-of-adamliao/pytest-166...icit_start_declares_empty_without_mandatory_portal_motion.<locals>.<lambda> at 0x747d58925a20>, domain=None, images={})
+
+    def run(self):
+        try:
+            self.stage('readiness',self.readiness)
+            if not self.args.start:
+                self.flush(outcome='READY_ONLY',capture_complete=True,replay_possible=True)
+                return 0
+            # --start is an explicit operator authorization for this diagnostic.
+            def initialize():
+                from luggage_mapping.observer import ObserverConfiguration
+                owner=self.launch['map_owner']
+                config=ObserverConfiguration.load(owner['geometry_file'],owner['config_file'])
+                current=self.call(self.validity,GetValidity.Request(),'initial_validity')
+                request=InitializeEmpty.Request(expected_epoch=current.epoch,
+                    geometry_hash=config.descriptor()['geometry_hash'],config_digest=config.config_digest,
+                    declaration_id='initial-empty-'+self.folder.name,declared_by='explicit_operator_start')
+                result=self.call(self.initialize,request,'initialize_empty')
+                if result.status!='OK':raise RuntimeError('INITIALIZE_EMPTY:'+result.status)
+            self.stage('initialize_empty',initialize)
+            views=self.args.views.split(',') if self.args.views else list(self.extra_views)
+            for pose in views:
+                self.stage('observe_'+pose,lambda p=pose:self.observe_pose(p))
+            self.stage('return_pick_observe',lambda:self.observe_pose(self.launch['resolved']['observe_pose_name']))
+            spawned = self.stage('physics_spawn',lambda:self.call(self.spawn,SpawnNextBox.Request(),'physics_spawn',30.))
+            if not spawned.success:raise RuntimeError('SPAWN_FAILED')
+            # Ignore response.box; only the simulator actuator owns that truth.
+            plan,detection,domain = self.stage('prepare',self.plan)
+            result = self.stage('execute',lambda:self.action(self.execute,
+                ExecuteJointOperationV2.Goal(plan=plan,detection=detection,top_domain=domain,budget_s=300.),
+                'execute',310.))
+            if not result.result.success:raise RuntimeError('EXECUTE:'+result.result.outcome+':'+result.result.reason)
+            self.flush(outcome='FULL_CYCLE_PASS',capture_complete=True,replay_possible=True)
+            return 0
+        except Exception as error:
+            if self.domain is not None:self.record('failure_top_domain',self.domain)
+            for name,msg in self.images.items():self.record('failure_'+name,msg)
+>           if self.joint is not None:self.record('failure_joints',self.joint)
+E           AttributeError: 'types.SimpleNamespace' object has no attribute 'joint'
+
+src/luggage_gazebo/scripts/joint_operation_sim_driver.py:285: AttributeError
+=============================== warnings summary ===============================
+src/luggage_mapping/test/test_regions.py::test_full_one_cm_grid_requires_67_pages
+  src/luggage_mapping/test/test_regions.py:145: PytestWarning: record_property is incompatible with junit_family 'xunit2' (use 'legacy' or 'xunit1')
+    def test_full_one_cm_grid_requires_67_pages(record_property):
+
+src/luggage_gazebo/test/test_operation_launch.py::test_every_default_can_actually_resolve_from_declared_launch_arguments
+  /opt/ros/humble/local/lib/python3.10/dist-packages/xacro/__init__.py:115: DeprecationWarning: private variables, such as '_ConstructUnits__ConstructUnitsValue', will be normal attributes in 3.11
+    __ConstructUnitsValue = collections.namedtuple('__ConstructUnitsValue', ['tag', 'conversion_constant'])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED src/luggage_gazebo/test/test_operation_sim_driver.py::test_explicit_start_declares_empty_without_mandatory_portal_motion
+1 failed, 165 passed, 2 warnings in 23.18s

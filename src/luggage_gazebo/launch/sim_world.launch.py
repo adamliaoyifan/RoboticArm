@@ -72,6 +72,8 @@ _FALLBACK_OBSERVE = [3.5702, -1.3263, -1.0965, 3.9564, 1.6234, 0.4522]
 def _default_launch_values():
     return {
         "planning_pipeline": "legacy_segments",
+        "operation_lidar_topic": "/livox/lidar",
+        "operation_lidar_frame": "livox_frame",
         "operation_run_dir": "",
         "operation_prepare_budget_s": "300.0",
         "scene_tf_config": os.path.join(
@@ -1342,6 +1344,8 @@ def generate_launch_description():
                 description="Optional grouped YAML profile. CLI launch args override profile values.",
             ),
             profile_arg('planning_pipeline', 'legacy_segments or joint_operation; select the complete observed operation explicitly.'),
+            profile_arg('operation_lidar_topic', 'Physical-frame PointCloud2 topic for the single O owner.'),
+            profile_arg('operation_lidar_frame', 'Expected physical LiDAR acquisition frame.'),
             profile_arg('operation_run_dir', 'Absolute fresh evidence/journal directory for joint_operation.'),
             profile_arg('operation_prepare_budget_s', 'Diagnostic complete-preparation watchdog, not a production latency target.'),
             profile_arg('volume_evidence_source', 'Legacy placement volume reader; complete-operation composition owns O explicitly.'),

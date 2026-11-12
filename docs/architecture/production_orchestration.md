@@ -12,8 +12,21 @@ service readiness, sensor readiness, timers, and ordinary `run` / `step`
 commands must not authorize robot motion, vacuum changes, or detection.
 
 The only initial authorization event is an explicit operator `start` command.
-After it is accepted, the orchestrator resets the cargo map and performs the
-initial container exploration before prompting for a placed box.
+After it is accepted, the orchestrator establishes the cargo-map session before
+prompting for a placed box. User ruling2026-11-12 permits a declared initially
+empty ULD to skip initial container exploration, under the source/provenance
+contract in real_scenario.md. An undeclared or retained-content ULD still needs
+sufficient observation. A reset alone is never an empty-container declaration.
+The explicit-start diagnostic driver initializes this declared empty session
+through the O owner and has no mandatory portal motion. Optional diagnostic
+views remain explicit; normal pickup observation is retained.
+
+For subsequent boxes, prefer qualifying RGB-D or LiDAR observations from normal
+post-release exit/return stops; add a collision-checked observation pose only
+when relevant coverage is insufficient. A fixed portal pose is not a production
+requirement. LiDAR integration requires its actual range/frame/time semantics,
+not relabelling Cartesian laser points as optical-Z depth. Sensors share one map
+owner and source resolution. Startup and execution authorization stay unchanged.
 
 ## Full-operation simulation adapter
 

@@ -12,6 +12,9 @@ bool done
 # 2 occupied, 3 out_of_domain. log_odds has meaning only for states 1 and 2.
 uint8[] states
 float32[] log_odds
+# 0 unknown/inactive, 1 sensor, 2 declared initially free.
+# Initial free has no sensor probability; its log_odds=0 is a placeholder.
+uint8[] evidence_sources
 float64 repository_wait_ms
 float64 store_wait_ms
 float64 surface_build_ms

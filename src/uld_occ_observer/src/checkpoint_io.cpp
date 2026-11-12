@@ -16,6 +16,8 @@ void write_checkpoint(const Checkpoint& c, const std::string& path) {
   payload["geometry_hash"] = id.geometry_hash;
   payload["config_digest"] = id.config_digest;
   payload["clock_domain"] = id.clock_domain;
+  payload["initialization_id"] = id.initialization_id; payload["declared_by"] = id.declared_by;
+  payload["initialization_stamp_ns"] = id.initialization_stamp_ns;
   payload["tree"] = YAML::Binary(reinterpret_cast<const unsigned char*>(c.tree_bytes.data()), c.tree_bytes.size());
   payload["sensors"] = YAML::Node(YAML::NodeType::Sequence);
   for (const auto& entry : c.sensor_stamps) {
@@ -51,6 +53,9 @@ Checkpoint read_checkpoint(const std::string& path) {
         payload["observed_revision"].as<std::uint64_t>(), payload["stamp_ns"].as<std::int64_t>(),
         payload["geometry_hash"].as<std::string>(), payload["config_digest"].as<std::string>(),
         payload["clock_domain"].as<std::string>()};
+    c.identity.initialization_id = payload["initialization_id"].as<std::string>("");
+    c.identity.declared_by = payload["declared_by"].as<std::string>("");
+    c.identity.initialization_stamp_ns = payload["initialization_stamp_ns"].as<std::int64_t>(0);
     const auto tree = payload["tree"].as<YAML::Binary>();
     c.tree_bytes.assign(reinterpret_cast<const char*>(tree.data()), tree.size());
     if (!payload["sensors"].IsSequence() || !payload["dedup"].IsSequence())

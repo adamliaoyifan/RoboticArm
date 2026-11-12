@@ -59,21 +59,40 @@ class ObserverConfiguration:
 
 
 IDENTITY_FIELDS = ('epoch', 'map_revision', 'observed_revision', 'last_integrated_stamp_ns',
-                   'geometry_hash', 'config_digest', 'clock_domain')
+                   'geometry_hash', 'config_digest', 'clock_domain',
+                   'initialization_id', 'declared_by', 'initialization_stamp_ns')
 # A lease page must match IDENTITY_FIELDS exactly. A later lease may contain
 # repeated observations of unchanged content: O advances map_revision for every
 # changed CellValue, including known/unknown, occupancy and log-odds changes.
-CONTENT_VERSION_FIELDS = ('epoch', 'map_revision', 'geometry_hash', 'config_digest', 'clock_domain')
+CONTENT_VERSION_FIELDS = ('epoch', 'map_revision', 'geometry_hash', 'config_digest', 'clock_domain',
+                   'initialization_id', 'declared_by', 'initialization_stamp_ns')
 # ReadCells/ReadSurface owner transport maximum, not a spatial coverage limit.
 OBSERVER_PAGE_CELLS = 65536
 
 
 def identity_record(identity):
-    return {name: getattr(identity, name) for name in IDENTITY_FIELDS}
+    optional = dict(initialization_id='', declared_by='', initialization_stamp_ns=0)
+    return {name: getattr(identity, name, optional[name]) if name in optional else getattr(identity, name)
+            for name in IDENTITY_FIELDS}
+
+
+def normalize_identity(identity):
+    return dict(dict(initialization_id='', declared_by='', initialization_stamp_ns=0), **identity)
+
+
+def declaration_only(identity):
+    return (bool(identity.get('initialization_id')) and bool(identity.get('declared_by'))
+            and identity.get('initialization_stamp_ns', 0) > 0
+            and identity['observed_revision'] == 0 and identity['last_integrated_stamp_ns'] == 0)
+
+
+def lease_age_admitted(lease, max_age_ms):
+    return (not lease.stale and lease.age_ns >= 0 and
+            (declaration_only(identity_record(lease.identity)) or lease.age_ns <= max_age_ms*1_000_000))
 
 
 def admit_response(response, identity, generation):
-    if (response.status != 'OK' or identity_record(response.identity) != identity
+    if (response.status != 'OK' or identity_record(response.identity) != normalize_identity(identity)
             or response.validity.state != 'VALID' or response.validity.epoch != identity['epoch']
             or response.validity.generation != generation):
         raise ValueError('OBSERVER_RESPONSE_IDENTITY_OR_VALIDITY_MISMATCH')
@@ -144,15 +163,19 @@ def assemble_snapshot(config, identity, generation, columns, states, *, scene_re
     legacy = bridge.build_surface_map(columns, geometry, identity)
     if 'error' in legacy:
         raise ValueError(legacy['error'])
+    if identity.get('initialization_id'):
+        for x in range(nx):
+            for y in range(ny):
+                if legacy['state'][x][y] == 'free': legacy['confidence'][x][y] = 'initial_empty'
     record = bridge.build_surface_v2_record(legacy, geometry, identity, scene_revision, request_id)
     # Record the actual acquisition, never a query/confirmation wall time.
-    record['stamp_ns'] = identity['last_integrated_stamp_ns']
-    record['time_basis'] = 'acquisition'
+    record['stamp_ns'] = identity['last_integrated_stamp_ns'] or identity.get('initialization_stamp_ns', 0)
+    record['time_basis'] = 'scene' if declaration_only(identity) else 'acquisition'
     content = hashlib.sha256(freeze(dict(identity=identity, surface=record))+bytes(states)).hexdigest()
     source = OperationMapSource(scene_revision=scene_revision, content_sha256=content, **identity)
     record['content_digest'] = content
     context = BoundaryContext('JOINT_O_OCC', 'uld_occ_observer', 'joint_operation', request_id,
-        scene_revision, 'container_link', '', 'acquisition', source.geometry_hash, source.map_revision)
+        scene_revision, 'container_link', '', record['time_basis'], source.geometry_hash, source.map_revision)
     cdr = serialize_message(surface_to_message(record, context))
     metadata = dict(legacy, source='observer', acquisition_stamp_ns=source.last_integrated_stamp_ns,
                     observer_source=asdict(source))
@@ -241,7 +264,7 @@ class ObserverSnapshotPort:
         try:
             identity = identity_record(lease.identity)
             admit_response(lease,identity,lease.validity.generation)
-            if (not handle or lease.stale or not 0 <= lease.age_ns <= self.max_age_ms*1_000_000
+            if (not handle or not lease_age_admitted(lease, self.max_age_ms)
                     or identity['epoch'] != expected_epoch
                     or (exact and identity['map_revision'] != expected_revision)
                     or identity['config_digest'] != self.config.config_digest
@@ -329,10 +352,10 @@ class ObserverSnapshotPort:
         lease = self._get(request,deadline)
         try:
             return (lease.status == 'OK' and bool(lease.handle) and not lease.stale
-                and 0 <= lease.age_ns <= self.max_age_ms*1_000_000
+                and lease_age_admitted(lease, self.max_age_ms)
                 and lease.validity.state == 'VALID' and lease.validity.epoch == source.epoch
                 and lease.validity.generation == source.validity_generation
-                and all(getattr(lease.identity,name) == getattr(source,name) for name in CONTENT_VERSION_FIELDS)
+                and all(identity_record(lease.identity)[name] == getattr(source,name) for name in CONTENT_VERSION_FIELDS)
                 and lease.identity.observed_revision >= source.observed_revision
                 and lease.identity.last_integrated_stamp_ns >= source.last_integrated_stamp_ns)
         finally:

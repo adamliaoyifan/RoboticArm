@@ -19,13 +19,27 @@ class OperationMapSource:
     clock_domain: str
     validity_generation: int
     content_sha256: str
+    initialization_id: str = ""
+    declared_by: str = ""
+    initialization_stamp_ns: int = 0
 
     def __post_init__(self):
+        initialized = (bool(self.initialization_id) and bool(self.declared_by)
+                       and type(self.initialization_stamp_ns) is int
+                       and 0 < self.initialization_stamp_ns < 2**63)
+        if (bool(self.initialization_id or self.declared_by or self.initialization_stamp_ns) != initialized):
+            raise ValueError('INVALID_OPERATION_INITIAL_CONDITION')
+        if (type(self.observed_revision) is not int or self.observed_revision < 0
+                or self.observed_revision >= 2**64
+                or (self.observed_revision == 0 and not initialized)):
+            raise ValueError('INVALID_OPERATION_OBSERVER_PROVENANCE')
         if (not self.scene_revision or not self.geometry_hash or self.clock_domain != 'ros'
                 or any(type(v) is not int or not 0 < v < 2**64 for v in
-                       (self.epoch, self.map_revision, self.observed_revision, self.validity_generation))
+                       (self.epoch, self.map_revision, self.validity_generation))
                 or type(self.last_integrated_stamp_ns) is not int
-                or not 0 < self.last_integrated_stamp_ns < 2**63
+                or not (0 <= self.last_integrated_stamp_ns < 2**63)
+                or (self.last_integrated_stamp_ns == 0 and not initialized)
+                or ((self.observed_revision == 0) != (self.last_integrated_stamp_ns == 0))
                 or any(not re.fullmatch('[0-9a-f]{64}', v)
                        for v in (self.config_digest, self.content_sha256))):
             raise ValueError('INVALID_OPERATION_OBSERVER_PROVENANCE')
@@ -48,7 +62,7 @@ class OperationMapRefresh:
             return False
         a, b = self.original, self.current
         fixed = ('scene_revision', 'geometry_hash', 'epoch', 'config_digest',
-                 'clock_domain', 'validity_generation')
+                 'clock_domain', 'validity_generation', 'initialization_id', 'declared_by', 'initialization_stamp_ns')
         return (all(getattr(a, k) == getattr(b, k) for k in fixed)
             and (a.scene_revision, a.geometry_hash, a.map_revision) ==
                 (identity.scene_revision, identity.geometry_hash, identity.map_revision)

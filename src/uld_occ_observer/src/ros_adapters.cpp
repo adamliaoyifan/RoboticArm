@@ -60,7 +60,9 @@ msg::SnapshotIdentity ros_identity(const SnapshotIdentity& id) {
   result.observed_revision = id.observed_revision;
   result.last_integrated_stamp_ns = id.last_integrated_stamp_ns;
   result.geometry_hash = id.geometry_hash; result.config_digest = id.config_digest;
-  result.clock_domain = id.clock_domain; return result;
+  result.clock_domain = id.clock_domain;
+  result.initialization_id = id.initialization_id; result.declared_by = id.declared_by;
+  result.initialization_stamp_ns = id.initialization_stamp_ns; return result;
 }
 msg::UpdateReceipt ros_receipt(const CompletedObservation& completed) {
   const auto& r = completed.receipt;

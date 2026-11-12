@@ -1326,7 +1326,7 @@ class PlacementPlannerNode(Node):
         floor = float(record["floor_z_container"])
         resolution = float(record["resolution_m"])
         heights, states, confidence = [], [], []
-        inverse = {"sensor": "sensor", "verified_geometry": "geometry"}
+        inverse = {"sensor": "sensor", "verified_geometry": "geometry", "initial_empty": "initial_empty"}
         for row_z, row_s, row_c in zip(record["surface_z_container"],
                                        record["state"],
                                        record["confidence"]):

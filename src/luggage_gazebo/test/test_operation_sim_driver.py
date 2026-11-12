@@ -70,3 +70,31 @@ def test_prepare_binds_repository_identity_and_releases_lease_on_refusal(monkeyp
         with pytest.raises(RuntimeError,match='PREPARE:diagnostic'):
             module.OperationSimDriver.plan(probe)
     assert requests[-1][0]=='release' and requests[-1][1].handle=='2:7'
+
+
+def test_explicit_start_declares_empty_without_mandatory_portal_motion(tmp_path):
+    module=driver_module()
+    from luggage_msgs.msg import JointOperationPlanV2
+    from test_joint_operation_observer import configuration
+    config,geometry,config_file=configuration(tmp_path)
+    calls=[];poses=[]
+    def call(client,request,name,*args):
+        calls.append((client,request))
+        if client=='validity':return SimpleNamespace(epoch=1)
+        if client=='initialize':
+            assert request.declared_by=='explicit_operator_start'
+            assert request.geometry_hash==config.descriptor()['geometry_hash']
+            return SimpleNamespace(status='OK')
+        if client=='spawn':return SimpleNamespace(success=True)
+        raise AssertionError(client)
+    probe=SimpleNamespace(args=SimpleNamespace(start=True,views=None),extra_views={},folder=tmp_path,
+        launch={'resolved':{'observe_pose_name':'pickup'},'map_owner':{
+            'geometry_file':str(geometry),'config_file':str(config_file)}},
+        validity='validity',initialize='initialize',spawn='spawn',execute='execute',call=call,
+        readiness=lambda:None,observe_pose=lambda p:poses.append(p),
+        stage=lambda name,f:f(),plan=lambda:(JointOperationPlanV2(),DetectedLuggage(),SuctionTopDomainV2()),
+        action=lambda *a:SimpleNamespace(result=SimpleNamespace(success=True)),
+        flush=lambda **kwargs:None,domain=None,images={})
+    assert module.OperationSimDriver.run(probe)==0
+    assert poses==['pickup']
+    assert [c for c,_ in calls]==['validity','initialize','spawn']

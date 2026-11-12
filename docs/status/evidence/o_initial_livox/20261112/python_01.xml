@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="7" skipped="0" tests="160" time="23.769" timestamp="2026-11-12T22:42:12.683177+08:00" hostname="adamliao-X870-EAGLE-WIFI7"><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_config_uses_exact_native_bytes_and_dimensions" time="0.003" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_x_fastest_unknown_occupied_and_inactive_are_preserved" time="0.016" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_partial_known_column_is_not_promoted_to_free_volume" time="0.002" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_real_candidate_consumer_reads_immutable_observer_volume" time="0.014" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[missing_cell]" time="0.002" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[invalid_state]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[missing_column]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[duplicate_column]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[active_count]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[known_count]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[has_occupied]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[top_z]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_every_page_carries_the_entire_lease_identity[epoch-2]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_every_page_carries_the_entire_lease_identity[map_revision-8]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_every_page_carries_the_entire_lease_identity[observed_revision-10]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_every_page_carries_the_entire_lease_identity[last_integrated_stamp_ns-13]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_every_page_carries_the_entire_lease_identity[geometry_hash-different]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_every_page_carries_the_entire_lease_identity[config_digest-different]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_every_page_carries_the_entire_lease_identity[clock_domain-other]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_current_checks_content_version_without_renewing_original_evidence[change0-True]" time="0.002"><failure message="AttributeError: 'types.SimpleNamespace' object has no attribute 'initialization_id'">tmp_path = PosixPath('/tmp/pytest-of-adamliao/pytest-1663/test_current_checks_content_ve0')
+change = {}, expected = True
+
+    @pytest.mark.parametrize('change,expected',[
+        ({}, True),
+        ({'observed_revision': 10, 'last_integrated_stamp_ns': 13_000_000_000}, True),
+        ({'map_revision': 8}, False),
+        ({'epoch': 2}, False),
+        ({'geometry_hash': 'different'}, False),
+        ({'config_digest': 'different'}, False),
+        ({'clock_domain': 'other'}, False),
+        ({'observed_revision': 8}, False),
+        ({'last_integrated_stamp_ns': 11_000_000_000}, False),
+        ({'generation': 3}, False),
+        ({'state': 'INVALID'}, False),
+        ({'stale': True}, False),
+        ({'age_ns': 1_000_000_001}, False),
+        ({'age_ns': -1}, False),
+    ])
+    def test_current_checks_content_version_without_renewing_original_evidence(tmp_path,change,expected):
+        from uld_occ_observer.srv import GetSnapshot
+        config,_,_=configuration(tmp_path)
+        source=snapshot(config,[1]*64).source
+        original=asdict(source)
+        latest=identity(config)
+        latest.update({key:value for key,value in change.items() if key in latest})
+        lease=SimpleNamespace(status='OK',handle='latest',stale=change.get('stale',False),
+            age_ns=change.get('age_ns',0),identity=SimpleNamespace(**latest),
+            validity=SimpleNamespace(state=change.get('state','VALID'),epoch=latest['epoch'],
+                generation=change.get('generation',source.validity_generation)))
+        port=object.__new__(ObserverSnapshotPort)
+        port._capture_fault=None;port.max_age_ms=1000
+        port.services={'get_snapshot':GetSnapshot}
+        requests=[];released=[]
+        port._get=lambda request,deadline:(requests.append(request) or lease)
+        port._release=lambda response:released.append(response.handle)
+&gt;       assert port.current(source,deadline=time.monotonic()+1.) is expected
+
+src/luggage_planning/test/test_joint_operation_observer.py:160: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:353: in current
+    and all(getattr(lease.identity,name) == getattr(source,name) for name in CONTENT_VERSION_FIELDS)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = &lt;tuple_iterator object at 0x7b515d444610&gt;
+
+&gt;   and all(getattr(lease.identity,name) == getattr(source,name) for name in CONTENT_VERSION_FIELDS)
+    and lease.identity.observed_revision &gt;= source.observed_revision
+    and lease.identity.last_integrated_stamp_ns &gt;= source.last_integrated_stamp_ns)
+E   AttributeError: 'types.SimpleNamespace' object has no attribute 'initialization_id'
+
+src/luggage_mapping/luggage_mapping/observer.py:353: AttributeError</failure></testcase><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_current_checks_content_version_without_renewing_original_evidence[change1-True]" time="0.003"><failure message="AttributeError: 'types.SimpleNamespace' object has no attribute 'initialization_id'">tmp_path = PosixPath('/tmp/pytest-of-adamliao/pytest-1663/test_current_checks_content_ve1')
+change = {'last_integrated_stamp_ns': 13000000000, 'observed_revision': 10}
+expected = True
+
+    @pytest.mark.parametrize('change,expected',[
+        ({}, True),
+        ({'observed_revision': 10, 'last_integrated_stamp_ns': 13_000_000_000}, True),
+        ({'map_revision': 8}, False),
+        ({'epoch': 2}, False),
+        ({'geometry_hash': 'different'}, False),
+        ({'config_digest': 'different'}, False),
+        ({'clock_domain': 'other'}, False),
+        ({'observed_revision': 8}, False),
+        ({'last_integrated_stamp_ns': 11_000_000_000}, False),
+        ({'generation': 3}, False),
+        ({'state': 'INVALID'}, False),
+        ({'stale': True}, False),
+        ({'age_ns': 1_000_000_001}, False),
+        ({'age_ns': -1}, False),
+    ])
+    def test_current_checks_content_version_without_renewing_original_evidence(tmp_path,change,expected):
+        from uld_occ_observer.srv import GetSnapshot
+        config,_,_=configuration(tmp_path)
+        source=snapshot(config,[1]*64).source
+        original=asdict(source)
+        latest=identity(config)
+        latest.update({key:value for key,value in change.items() if key in latest})
+        lease=SimpleNamespace(status='OK',handle='latest',stale=change.get('stale',False),
+            age_ns=change.get('age_ns',0),identity=SimpleNamespace(**latest),
+            validity=SimpleNamespace(state=change.get('state','VALID'),epoch=latest['epoch'],
+                generation=change.get('generation',source.validity_generation)))
+        port=object.__new__(ObserverSnapshotPort)
+        port._capture_fault=None;port.max_age_ms=1000
+        port.services={'get_snapshot':GetSnapshot}
+        requests=[];released=[]
+        port._get=lambda request,deadline:(requests.append(request) or lease)
+        port._release=lambda response:released.append(response.handle)
+&gt;       assert port.current(source,deadline=time.monotonic()+1.) is expected
+
+src/luggage_planning/test/test_joint_operation_observer.py:160: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:353: in current
+    and all(getattr(lease.identity,name) == getattr(source,name) for name in CONTENT_VERSION_FIELDS)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = &lt;tuple_iterator object at 0x7b515c495810&gt;
+
+&gt;   and all(getattr(lease.identity,name) == getattr(source,name) for name in CONTENT_VERSION_FIELDS)
+    and lease.identity.observed_revision &gt;= source.observed_revision
+    and lease.identity.last_integrated_stamp_ns &gt;= source.last_integrated_stamp_ns)
+E   AttributeError: 'types.SimpleNamespace' object has no attribute 'initialization_id'
+
+src/luggage_mapping/luggage_mapping/observer.py:353: AttributeError</failure></testcase><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_current_checks_content_version_without_renewing_original_evidence[change2-False]" time="0.002" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_current_checks_content_version_without_renewing_original_evidence[change3-False]" time="0.002" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_current_checks_content_version_without_renewing_original_evidence[change4-False]" time="0.002" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_current_checks_content_version_without_renewing_original_evidence[change5-False]" time="0.002" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_current_checks_content_version_without_renewing_original_evidence[change6-False]" time="0.002" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_current_checks_content_version_without_renewing_original_evidence[change7-False]" time="0.002"><failure message="AttributeError: 'types.SimpleNamespace' object has no attribute 'initialization_id'">tmp_path = PosixPath('/tmp/pytest-of-adamliao/pytest-1663/test_current_checks_content_ve7')
+change = {'observed_revision': 8}, expected = False
+
+    @pytest.mark.parametrize('change,expected',[
+        ({}, True),
+        ({'observed_revision': 10, 'last_integrated_stamp_ns': 13_000_000_000}, True),
+        ({'map_revision': 8}, False),
+        ({'epoch': 2}, False),
+        ({'geometry_hash': 'different'}, False),
+        ({'config_digest': 'different'}, False),
+        ({'clock_domain': 'other'}, False),
+        ({'observed_revision': 8}, False),
+        ({'last_integrated_stamp_ns': 11_000_000_000}, False),
+        ({'generation': 3}, False),
+        ({'state': 'INVALID'}, False),
+        ({'stale': True}, False),
+        ({'age_ns': 1_000_000_001}, False),
+        ({'age_ns': -1}, False),
+    ])
+    def test_current_checks_content_version_without_renewing_original_evidence(tmp_path,change,expected):
+        from uld_occ_observer.srv import GetSnapshot
+        config,_,_=configuration(tmp_path)
+        source=snapshot(config,[1]*64).source
+        original=asdict(source)
+        latest=identity(config)
+        latest.update({key:value for key,value in change.items() if key in latest})
+        lease=SimpleNamespace(status='OK',handle='latest',stale=change.get('stale',False),
+            age_ns=change.get('age_ns',0),identity=SimpleNamespace(**latest),
+            validity=SimpleNamespace(state=change.get('state','VALID'),epoch=latest['epoch'],
+                generation=change.get('generation',source.validity_generation)))
+        port=object.__new__(ObserverSnapshotPort)
+        port._capture_fault=None;port.max_age_ms=1000
+        port.services={'get_snapshot':GetSnapshot}
+        requests=[];released=[]
+        port._get=lambda request,deadline:(requests.append(request) or lease)
+        port._release=lambda response:released.append(response.handle)
+&gt;       assert port.current(source,deadline=time.monotonic()+1.) is expected
+
+src/luggage_planning/test/test_joint_operation_observer.py:160: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:353: in current
+    and all(getattr(lease.identity,name) == getattr(source,name) for name in CONTENT_VERSION_FIELDS)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = &lt;tuple_iterator object at 0x7b515c497370&gt;
+
+&gt;   and all(getattr(lease.identity,name) == getattr(source,name) for name in CONTENT_VERSION_FIELDS)
+    and lease.identity.observed_revision &gt;= source.observed_revision
+    and lease.identity.last_integrated_stamp_ns &gt;= source.last_integrated_stamp_ns)
+E   AttributeError: 'types.SimpleNamespace' object has no attribute 'initialization_id'
+
+src/luggage_mapping/luggage_mapping/observer.py:353: AttributeError</failure></testcase><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_current_checks_content_version_without_renewing_original_evidence[change8-False]" time="0.003"><failure message="AttributeError: 'types.SimpleNamespace' object has no attribute 'initialization_id'">tmp_path = PosixPath('/tmp/pytest-of-adamliao/pytest-1663/test_current_checks_content_ve8')
+change = {'last_integrated_stamp_ns': 11000000000}, expected = False
+
+    @pytest.mark.parametrize('change,expected',[
+        ({}, True),
+        ({'observed_revision': 10, 'last_integrated_stamp_ns': 13_000_000_000}, True),
+        ({'map_revision': 8}, False),
+        ({'epoch': 2}, False),
+        ({'geometry_hash': 'different'}, False),
+        ({'config_digest': 'different'}, False),
+        ({'clock_domain': 'other'}, False),
+        ({'observed_revision': 8}, False),
+        ({'last_integrated_stamp_ns': 11_000_000_000}, False),
+        ({'generation': 3}, False),
+        ({'state': 'INVALID'}, False),
+        ({'stale': True}, False),
+        ({'age_ns': 1_000_000_001}, False),
+        ({'age_ns': -1}, False),
+    ])
+    def test_current_checks_content_version_without_renewing_original_evidence(tmp_path,change,expected):
+        from uld_occ_observer.srv import GetSnapshot
+        config,_,_=configuration(tmp_path)
+        source=snapshot(config,[1]*64).source
+        original=asdict(source)
+        latest=identity(config)
+        latest.update({key:value for key,value in change.items() if key in latest})
+        lease=SimpleNamespace(status='OK',handle='latest',stale=change.get('stale',False),
+            age_ns=change.get('age_ns',0),identity=SimpleNamespace(**latest),
+            validity=SimpleNamespace(state=change.get('state','VALID'),epoch=latest['epoch'],
+                generation=change.get('generation',source.validity_generation)))
+        port=object.__new__(ObserverSnapshotPort)
+        port._capture_fault=None;port.max_age_ms=1000
+        port.services={'get_snapshot':GetSnapshot}
+        requests=[];released=[]
+        port._get=lambda request,deadline:(requests.append(request) or lease)
+        port._release=lambda response:released.append(response.handle)
+&gt;       assert port.current(source,deadline=time.monotonic()+1.) is expected
+
+src/luggage_planning/test/test_joint_operation_observer.py:160: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:353: in current
+    and all(getattr(lease.identity,name) == getattr(source,name) for name in CONTENT_VERSION_FIELDS)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = &lt;tuple_iterator object at 0x7b515c4979a0&gt;
+
+&gt;   and all(getattr(lease.identity,name) == getattr(source,name) for name in CONTENT_VERSION_FIELDS)
+    and lease.identity.observed_revision &gt;= source.observed_revision
+    and lease.identity.last_integrated_stamp_ns &gt;= source.last_integrated_stamp_ns)
+E   AttributeError: 'types.SimpleNamespace' object has no attribute 'initialization_id'
+
+src/luggage_mapping/luggage_mapping/observer.py:353: AttributeError</failure></testcase><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_current_checks_content_version_without_renewing_original_evidence[change9-False]" time="0.002" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_current_checks_content_version_without_renewing_original_evidence[change10-False]" time="0.002" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_current_checks_content_version_without_renewing_original_evidence[change11-False]" time="0.002" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_current_checks_content_version_without_renewing_original_evidence[change12-False]" time="0.002" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_current_checks_content_version_without_renewing_original_evidence[change13-False]" time="0.002" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_release_acknowledgement_is_awaited_within_original_deadline" time="0.000" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_unacknowledged_release_cannot_allocate_another_lease[False]" time="0.000" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_unacknowledged_release_cannot_allocate_another_lease[True]" time="0.000" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_issuance_retains_map_source_and_refuses_rebinding" time="0.005" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_page_completion_is_checked_behaviorally[cursor]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_page_completion_is_checked_behaviorally[empty]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_page_completion_is_checked_behaviorally[short_done]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_page_completion_is_checked_behaviorally[not_done]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_page_completion_is_checked_behaviorally[array_shape]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_page_completion_is_checked_behaviorally[validity]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_page_completion_is_checked_behaviorally[generation]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_timed_out_acquire_stays_single_flight_and_releases_late_handle_once" time="0.082" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_completed_response_cannot_reopen_acquire_before_late_cleanup_consumption" time="0.011" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_release_still_runs_when_its_capture_fails_and_blocks_new_capture" time="0.000" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_latest_certification_changes_only_map_identity_and_receipt" time="0.769" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_unchanged_source_uses_existing_gate_without_capture_or_certification" time="0.610" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_baseline_change_requires_new_certificate_even_when_o_has_not_changed" time="0.700" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_misbound_complete_capture_is_inactive[model]" time="0.611" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_misbound_complete_capture_is_inactive[transform]" time="0.615" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_misbound_complete_capture_is_inactive[surface_hash]" time="0.625" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_misbound_complete_capture_is_inactive[volume_source]" time="0.629" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_misbound_complete_capture_is_inactive[record_revision]" time="0.684" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_new_target_volume_obstruction_refuses_even_if_native_double_would_pass[0-UNKNOWN]" time="0.622" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_new_target_volume_obstruction_refuses_even_if_native_double_would_pass[2-OCCUPIED]" time="0.625" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_native_receipt_cannot_be_reused_or_misbound[refused]" time="0.652" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_native_receipt_cannot_be_reused_or_misbound[identity]" time="0.636" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_native_receipt_cannot_be_reused_or_misbound[candidate]" time="0.638" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_native_receipt_cannot_be_reused_or_misbound[draft]" time="0.675" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_native_receipt_cannot_be_reused_or_misbound[phases]" time="0.637" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_native_receipt_cannot_be_reused_or_misbound[empty]" time="0.643" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_native_receipt_cannot_be_reused_or_misbound[old_receipt]" time="0.632" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_reset_configuration_or_backwards_source_refuses[epoch-4]" time="0.000" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_reset_configuration_or_backwards_source_refuses[config_digest-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb]" time="0.000" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_reset_configuration_or_backwards_source_refuses[geometry_hash-new]" time="0.000" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_reset_configuration_or_backwards_source_refuses[validity_generation-5]" time="0.000" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_reset_configuration_or_backwards_source_refuses[scene_revision-new]" time="0.000" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_reset_configuration_or_backwards_source_refuses[map_revision-6]" time="0.000" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_reset_configuration_or_backwards_source_refuses[observed_revision-6]" time="0.000" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_reset_configuration_or_backwards_source_refuses[last_integrated_stamp_ns-6000000000]" time="0.000" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_reset_configuration_or_backwards_source_refuses[content_sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb]" time="0.000" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_changed_support_refuses_before_native_certification" time="0.633" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_new_integration_without_changed_keys_can_retain_map_revision" time="0.000" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_source_changes_during_native_certification_retry_exact_original_legs[never_stable]" time="0.723" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_source_changes_during_native_certification_retry_exact_original_legs[advances_once]" time="0.735" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_source_changes_during_native_certification_retry_exact_original_legs[baseline_changes]" time="0.731" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_faults_return_inactive_without_fallback_to_old_certificate[deadline]" time="0.624" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_faults_return_inactive_without_fallback_to_old_certificate[observation]" time="0.601" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_faults_return_inactive_without_fallback_to_old_certificate[capture_failure]" time="0.604" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_faults_return_inactive_without_fallback_to_old_certificate[cert_timeout]" time="0.635" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_faults_return_inactive_without_fallback_to_old_certificate[late_observation]" time="0.670" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_faults_return_inactive_without_fallback_to_old_certificate[late_deadline]" time="0.697" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_retry_budget_is_explicit_and_bounded[0]" time="0.604" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_retry_budget_is_explicit_and_bounded[9]" time="0.607" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_retry_budget_is_explicit_and_bounded[1.5]" time="0.606" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_retry_budget_is_explicit_and_bounded[True]" time="0.607" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_latest_capture_preserves_epoch_but_does_not_request_old_revision" time="0.000" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_real_root_finalization_binds_latest_issuance_and_releases_lock[pass]" time="0.790" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_real_root_finalization_binds_latest_issuance_and_releases_lock[native_refuses]" time="0.657" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_real_root_finalization_binds_latest_issuance_and_releases_lock[observation_revoked]" time="0.652" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_real_root_finalization_binds_latest_issuance_and_releases_lock[capture_failure]" time="0.621" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_real_core_uses_selected_candidate_and_serializes_finalized_identity[True]" time="0.017" /><testcase classname="src.luggage_planning.test.test_preparation_refresh" name="test_real_core_uses_selected_candidate_and_serializes_finalized_identity[False]" time="0.014" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_o_g_blocks_match_scalar_native_grid[origin0-0.01]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_o_g_blocks_match_scalar_native_grid[origin0-0.02]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_o_g_blocks_match_scalar_native_grid[origin1-0.01]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_o_g_blocks_match_scalar_native_grid[origin1-0.02]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_bounds_refuse[begin0-end0]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_bounds_refuse[begin1-end1]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_bounds_refuse[begin2-end2]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_bounds_refuse[begin3-end3]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_bounds_refuse[begin4-end4]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[outside]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[zero_resolution]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[nan_origin]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[huge]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[missing_identity]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[short_states]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[bad_state]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[bad_active]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[inactive_free]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_offset_region_pages_reset_local_cursor_and_preserve_deadline" time="0.004"><failure message="ValueError: OBSERVER_RESPONSE_IDENTITY_OR_VALIDITY_MISMATCH">def test_offset_region_pages_reset_local_cursor_and_preserve_deadline():
+        port, identity, requests = make_port((120, 100, 20))
+        region = CellRegion((10, 5, 3), (110, 95, 13))  # 90,000 cells
+&gt;       block = port.read_region('lease', identity, 2, region, deadline=123.5)
+
+src/luggage_mapping/test/test_regions.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:296: in read_region
+    raw = self._pages('read_cells', handle, region.count, identity, generation,
+src/luggage_mapping/luggage_mapping/observer.py:317: in _pages
+    admit_response(page,identity,generation)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = uld_occ_observer.srv.ReadCells_Response(status='OK', identity=uld_occ_observer.msg.SnapshotIdentity(epoch=1, map_revis...0.0, server_total_ms=0.0, validity=uld_occ_observer.msg.ValidityStamp(state='VALID', generation=2, epoch=1, reason=''))
+identity = {'clock_domain': 'ros', 'config_digest': 'digest', 'epoch': 1, 'geometry_hash': 'geometry', ...}
+generation = 2
+
+    def admit_response(response, identity, generation):
+        if (response.status != 'OK' or identity_record(response.identity) != identity
+                or response.validity.state != 'VALID' or response.validity.epoch != identity['epoch']
+                or response.validity.generation != generation):
+&gt;           raise ValueError('OBSERVER_RESPONSE_IDENTITY_OR_VALIDITY_MISMATCH')
+E           ValueError: OBSERVER_RESPONSE_IDENTITY_OR_VALIDITY_MISMATCH
+
+src/luggage_mapping/luggage_mapping/observer.py:93: ValueError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[identity]" time="0.004" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[generation]" time="0.004" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[validity]" time="0.004" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[status]" time="0.004" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[cursor]" time="0.004" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[empty]" time="0.004" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[short]" time="0.006" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[long]" time="0.006" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[done]" time="0.004" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[state]" time="0.006" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[timeout]" time="0.004" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_region_count_and_bounds_rejected_before_rpc" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_full_one_cm_grid_requires_67_pages" time="0.004"><failure message="ValueError: OBSERVER_RESPONSE_IDENTITY_OR_VALIDITY_MISMATCH">record_property = &lt;function record_property.&lt;locals&gt;.append_property at 0x7b515b7b48b0&gt;
+
+    def test_full_one_cm_grid_requires_67_pages(record_property):
+        port, identity, requests = make_port((149, 197, 148))
+        started = time.monotonic()
+&gt;       block = port.read_region('lease', identity, 2, CellRegion((0, 0, 0), (149, 197, 148)), deadline=1000.)
+
+src/luggage_mapping/test/test_regions.py:148: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:296: in read_region
+    raw = self._pages('read_cells', handle, region.count, identity, generation,
+src/luggage_mapping/luggage_mapping/observer.py:317: in _pages
+    admit_response(page,identity,generation)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = uld_occ_observer.srv.ReadCells_Response(status='OK', identity=uld_occ_observer.msg.SnapshotIdentity(epoch=1, map_revis...0.0, server_total_ms=0.0, validity=uld_occ_observer.msg.ValidityStamp(state='VALID', generation=2, epoch=1, reason=''))
+identity = {'clock_domain': 'ros', 'config_digest': 'digest', 'epoch': 1, 'geometry_hash': 'geometry', ...}
+generation = 2
+
+    def admit_response(response, identity, generation):
+        if (response.status != 'OK' or identity_record(response.identity) != identity
+                or response.validity.state != 'VALID' or response.validity.epoch != identity['epoch']
+                or response.validity.generation != generation):
+&gt;           raise ValueError('OBSERVER_RESPONSE_IDENTITY_OR_VALIDITY_MISMATCH')
+E           ValueError: OBSERVER_RESPONSE_IDENTITY_OR_VALIDITY_MISMATCH
+
+src/luggage_mapping/luggage_mapping/observer.py:93: ValueError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_complete_capture_uses_region_and_releases_lease[False]" time="0.002" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_complete_capture_uses_region_and_releases_lease[True]" time="0.001" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_real_o_g_volume_dtos_share_region_result" time="0.002" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_second_page_failure_does_not_return_first_page" time="0.004"><failure message="AssertionError: assert 1 == 2&#10; +  where 1 = len([(uld_occ_observer.srv.ReadCells_Request(handle='lease', begin=array([10,  5,  3], dtype=int32), end=array([110,  95,  13], dtype=int32), cursor=0, limit=65536), 123.0, 'observer_read_cells')])">def test_second_page_failure_does_not_return_first_page():
+        port, identity, requests = make_port((120, 100, 20))
+        transport = port.call
+        def changed_second_page(*args):
+            page = transport(*args)
+            if len(requests) == 2:page.identity.map_revision += 1
+            return page
+        port.call = changed_second_page
+        with pytest.raises(ValueError, match='OBSERVER_'):
+            port.read_region('lease', identity, 2, CellRegion((10, 5, 3), (110, 95, 13)), deadline=123.)
+&gt;       assert len(requests) == 2
+E       AssertionError: assert 1 == 2
+E        +  where 1 = len([(uld_occ_observer.srv.ReadCells_Request(handle='lease', begin=array([10,  5,  3], dtype=int32), end=array([110,  95,  13], dtype=int32), cursor=0, limit=65536), 123.0, 'observer_read_cells')])
+
+src/luggage_mapping/test/test_regions.py:237: AssertionError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_source_adapter_does_not_truncate_or_accept_bool_dimensions[dimensions0]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_source_adapter_does_not_truncate_or_accept_bool_dimensions[dimensions1]" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_every_default_can_actually_resolve_from_declared_launch_arguments" time="0.012" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_new_selection_accepts_single_explicit_owner" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_bad_or_mixed_selection_refuses_before_startup[planning_pipeline-v4]" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_bad_or_mixed_selection_refuses_before_startup[use_cargo_map-true]" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_bad_or_mixed_selection_refuses_before_startup[use_packing-true]" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_bad_or_mixed_selection_refuses_before_startup[start_placement_prior-true]" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_bad_or_mixed_selection_refuses_before_startup[frame_runtime-true]" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_bad_or_mixed_selection_refuses_before_startup[use_moveit-false]" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_bad_or_mixed_selection_refuses_before_startup[use_semantic-false]" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_bad_or_mixed_selection_refuses_before_startup[use_vacuum-false]" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_bad_or_mixed_selection_refuses_before_startup[top_surface_mode-legacy]" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_bad_or_mixed_selection_refuses_before_startup[operation_run_dir-]" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_bad_or_mixed_selection_refuses_before_startup[operation_run_dir-relative]" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_existing_evidence_never_overwritten" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_explicit_old_pipeline_retains_compatibility" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_composition_binds_one_owner_and_identical_native_model" time="0.015" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_full_gazebo_uses_reviewed_config_and_explicit_override_wins" time="0.000" /><testcase classname="src.luggage_gazebo.test.test_operation_launch" name="test_installed_gazebo_atlas_exact_model_is_admitted" time="0.017" /><testcase classname="src.luggage_gazebo.test.test_operation_sim_driver" name="test_explicit_observation_views_are_model_bound_goals[None]" time="0.039" /><testcase classname="src.luggage_gazebo.test.test_operation_sim_driver" name="test_explicit_observation_views_are_model_bound_goals[model]" time="0.001" /><testcase classname="src.luggage_gazebo.test.test_operation_sim_driver" name="test_explicit_observation_views_are_model_bound_goals[scene]" time="0.001" /><testcase classname="src.luggage_gazebo.test.test_operation_sim_driver" name="test_explicit_observation_views_are_model_bound_goals[empty]" time="0.001" /><testcase classname="src.luggage_gazebo.test.test_operation_sim_driver" name="test_explicit_observation_views_are_model_bound_goals[shape]" time="0.001" /><testcase classname="src.luggage_gazebo.test.test_operation_sim_driver" name="test_explicit_observation_views_are_model_bound_goals[nan]" time="0.001" /><testcase classname="src.luggage_gazebo.test.test_operation_sim_driver" name="test_explicit_observation_views_are_model_bound_goals[invalid]" time="0.001" /><testcase classname="src.luggage_gazebo.test.test_operation_sim_driver" name="test_prepare_binds_repository_identity_and_releases_lease_on_refusal[True]" time="0.001" /><testcase classname="src.luggage_gazebo.test.test_operation_sim_driver" name="test_prepare_binds_repository_identity_and_releases_lease_on_refusal[False]" time="0.001" /></testsuite></testsuites>

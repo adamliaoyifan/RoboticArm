@@ -1,4 +1,5 @@
 #include "uld_occ_observer/snapshot_repository.hpp"
+#include "uld_occ_observer/initial_empty.hpp"
 #include "uld_occ_observer/observation_ingress.hpp"
 #include "uld_occ_observer/snapshot_wait_board.hpp"
 #include "uld_occ_observer/ownership_trace.hpp"
@@ -95,9 +96,9 @@ SnapshotLease SnapshotRepository::acquire(std::int64_t now_ns, std::int64_t max_
     if (!selected) throw Error("REVISION_UNAVAILABLE");
   }
   const auto& identity = selected->identity();
-  if (now_ns < identity.last_integrated_stamp_ns || max_age_ns < 0) throw Error("INVALID_QUERY_TIME");
-  const auto age = now_ns - identity.last_integrated_stamp_ns;
-  if (age > max_age_ns && !allow_stale) throw Error("STALE");
+  if (now_ns < evidence_stamp(identity) || max_age_ns < 0) throw Error("INVALID_QUERY_TIME");
+  const auto age = now_ns - evidence_stamp(identity);
+  if (age > max_age_ns && !allow_stale && !declaration_only(identity)) throw Error("STALE");
   std::set<std::uint64_t> revisions;
   revisions.insert(identity.map_revision);
   for (const auto& entry : entries_) revisions.insert(entry.second.snapshot->identity().map_revision);
@@ -111,7 +112,7 @@ SnapshotLease SnapshotRepository::acquire(std::int64_t now_ns, std::int64_t max_
   AllocationTotals::instance().add("handle_directory_nodes", handle_node_bytes());
   note_handle_directory_unlocked(+1);
   track_unlocked(selected);
-  return {handle, identity, age, age > max_age_ns};
+  return {handle, identity, age, age > max_age_ns && !declaration_only(identity)};
 }
 std::optional<SnapshotLease> SnapshotRepository::try_acquire(
     std::int64_t now_ns, std::int64_t max_age_ns, bool allow_stale,
@@ -135,9 +136,9 @@ std::optional<SnapshotLease> SnapshotRepository::try_acquire(
     if (!selected) throw Error("REVISION_UNAVAILABLE");
   }
   const auto& identity = selected->identity();
-  if (now_ns < identity.last_integrated_stamp_ns || max_age_ns < 0) throw Error("INVALID_QUERY_TIME");
-  const auto age = now_ns - identity.last_integrated_stamp_ns;
-  if (age > max_age_ns && !allow_stale) throw Error("STALE");
+  if (now_ns < evidence_stamp(identity) || max_age_ns < 0) throw Error("INVALID_QUERY_TIME");
+  const auto age = now_ns - evidence_stamp(identity);
+  if (age > max_age_ns && !allow_stale && !declaration_only(identity)) throw Error("STALE");
   std::set<std::uint64_t> revisions;
   revisions.insert(identity.map_revision);
   for (const auto& entry : entries_) revisions.insert(entry.second.snapshot->identity().map_revision);
@@ -147,7 +148,7 @@ std::optional<SnapshotLease> SnapshotRepository::try_acquire(
   AllocationTotals::instance().add("handle_directory_nodes", handle_node_bytes());
   note_handle_directory_unlocked(+1);
   track_unlocked(selected);
-  return SnapshotLease{handle, identity, age, age > max_age_ns};
+  return SnapshotLease{handle, identity, age, age > max_age_ns && !declaration_only(identity)};
 }
 std::shared_ptr<const Snapshot> SnapshotRepository::get(const std::string& handle) {
   std::lock_guard<std::mutex> lock(mutex_);

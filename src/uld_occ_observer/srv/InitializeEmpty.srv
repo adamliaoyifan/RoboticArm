@@ -1,0 +1,9 @@
+uint64 expected_epoch
+string geometry_hash
+string config_digest
+string declaration_id
+string declared_by
+---
+string status
+uld_occ_observer/SnapshotIdentity identity
+uld_occ_observer/ValidityStamp validity

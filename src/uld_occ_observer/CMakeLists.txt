@@ -10,7 +10,7 @@ find_package(Threads REQUIRED)
 find_package(yaml-cpp REQUIRED)
 add_library(uld_occ_observer_core src/validity.cpp
   src/preprocessing.cpp src/geometry.cpp src/block_storage.cpp src/snapshot.cpp
-  src/occupancy_grid.cpp src/observer.cpp
+  src/occupancy_grid.cpp src/observer.cpp src/initial_empty.cpp
   src/snapshot_repository.cpp src/observation_worker.cpp
   src/observation_ledger.cpp src/observation_ingress.cpp src/snapshot_wait_board.cpp
   src/observation_terminal.cpp src/interface_trace.cpp
@@ -26,6 +26,9 @@ add_library(uld_occ_observer_io src/configuration.cpp src/checkpoint_io.cpp src/
 target_link_libraries(uld_occ_observer_io PUBLIC uld_occ_observer_core yaml-cpp)
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(observer_initial_input_checks test/test_initial_input.cpp)
+  target_link_libraries(observer_initial_input_checks PRIVATE uld_occ_observer_io)
+  add_test(NAME observer_initial_input_checks COMMAND observer_initial_input_checks)
   add_executable(observer_profile_checks test/test_profiling.cpp test/fusion_profile_checks.cpp
                  test/block_storage_checks.cpp test/apply_batch_checks.cpp test/query_content_digest.cpp)
   target_link_libraries(observer_profile_checks PRIVATE uld_occ_observer_io)
@@ -96,7 +99,7 @@ if(OBSERVER_WITH_ROS)
     "msg/SnapshotIdentity.msg" "msg/UpdateReceipt.msg" "msg/ValidityStamp.msg"
     "srv/IntegrateObservation.srv" "srv/GetSnapshot.srv" "srv/ReadCells.srv"
     "srv/ReadSurface.srv" "srv/ReleaseSnapshot.srv" "srv/ResetObservation.srv"
-    "srv/CheckpointObservation.srv"
+    "srv/CheckpointObservation.srv" "srv/InitializeEmpty.srv"
     "srv/GetObservationStatus.srv" "srv/WaitSnapshot.srv" "srv/GetResourceUsage.srv"
     "srv/SetBehaviorHook.srv" "srv/QueryFreespace.srv" "srv/GetValidity.srv"
     DEPENDENCIES sensor_msgs geometry_msgs)

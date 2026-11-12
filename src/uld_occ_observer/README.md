@@ -81,8 +81,10 @@ source install_observer/setup.bash
 ROS_DOMAIN_ID=77 ros2 launch uld_occ_observer standalone.launch.py geometry_file:=/tmp/observer-geometry.yaml input_mode:=service
 ```
 
-The launch starts only the observer. Subscription mode additionally requires
+The launch starts only the observer. Camera subscription requires
 `input_mode:=subscription optical_frame:=<actual-optical-frame> cloud_topic:=<raw-optical-pointcloud>`.
+LiDAR-only subscription needs no optical frame: set `input_mode:=subscription
+lidar_cloud_topic:=<stationary-XYZ-topic> lidar_frame:=<physical-laser-frame>`.
 For Gazebo use `use_sim_time:=true`; do not use a wall-time stamp for a simulation
 frame. TF lookup uses the acquisition timestamp, with a 100ms bound and no latest
 fallback. Raw depth image deprojection belongs upstream. The cloud adapter handles
@@ -323,3 +325,36 @@ before reuse. Allocation-failure recovery is not claimed by this optimization.
 Incomplete scans and invalid endpoints are separately rejected before apply.
 The former per-key Detailed `tree_update` span is no longer collected; use the
 frame-level `apply_breakdown`, whose write loop includes queries and mutations.
+
+## Declared initial empty ULD and separate LiDAR input
+
+Call `/uld_occ_observer/initialize_empty` (`InitializeEmpty`) explicitly with the
+current epoch, exact geometry/config digests, a declaration ID and declaring
+authority. It atomically creates a new epoch and known-free active hull blocks,
+without fabricating a sensor frame: observed_revision and acquisition time remain
+zero. Same declaration replay is idempotent. A second initialization in the same
+owner lifetime, including after reset, refuses. Ordinary startup/reset remains
+unknown. Checkpoints preserve declaration provenance and sensor overrides.
+
+SnapshotIdentity carries initialization_id/declared_by/initialization_stamp_ns;
+ReadCells.evidence_sources is0 unknown/inactive,1 sensor,2 initially declared free.
+Declared free log_odds=0 is a placeholder, not an inferred sensor probability.
+Declaration-only leases use initial-condition validity; their age is still
+reported, never refreshed. Once observations integrate, normal sensor-age
+admission applies. Static ULD/pedestal collision geometry remains mandatory in
+the complete-operation planner. Planned places never refresh this declaration.
+
+Subscription mode also accepts `lidar_cloud_topic:=<stationary-XYZ-topic>` and
+`lidar_frame:=<physical-frame>` with separate sensor ID `livox`. Both streams use
+the exact same store, ray fusion, snapshots and resolution. XYZ laser returns
+bypass optical-Z filtering and use stamped physical-origin TF to container_link.
+The installed observer_lidar_node.py admits `/livox/lidar` stationary scans and
+forwards unchanged fields/header to `/luggage/observation/lidar_points`. The
+operation launch wires both streams; operation_lidar_topic/operation_lidar_frame
+are configurable. PointCloud2 XYZ32/XYZ64 are supported. Driver-specific custom
+messages require upstream conversion. Moving-scan deskew and new self-point
+segmentation are not supplied by this adapter.
+
+The joint_operation diagnostic client still requires --start. Its default
+initial condition is the user's declared empty ULD; it no longer requests
+portal_observe_sim unless explicitly supplied through diagnostic view arguments.

@@ -1,0 +1,61 @@
+[  2%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/validity.cpp.o
+[  4%] Building CXX object CMakeFiles/observer_ray_probe.dir/test/independent_oracle.cpp.o
+[  6%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/block_storage.cpp.o
+[ 12%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/geometry.cpp.o
+[ 12%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/preprocessing.cpp.o
+[ 12%] Building CXX object CMakeFiles/observer_ray_probe.dir/test/native_ray_probe.cpp.o
+[ 16%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/occupancy_grid.cpp.o
+[ 16%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/snapshot.cpp.o
+[ 18%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/observer.cpp.o
+[ 20%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/initial_empty.cpp.o
+[ 22%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/snapshot_repository.cpp.o
+[ 24%] Linking CXX executable observer_ray_probe
+[ 26%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/observation_worker.cpp.o
+[ 28%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/observation_ledger.cpp.o
+[ 28%] Built target observer_ray_probe
+[ 30%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/observation_ingress.cpp.o
+[ 32%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/snapshot_wait_board.cpp.o
+[ 34%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/observation_terminal.cpp.o
+[ 36%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/interface_trace.cpp.o
+[ 38%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/freespace_query.cpp.o
+[ 40%] Linking CXX static library libuld_occ_observer_core.a
+[ 40%] Built target uld_occ_observer_core
+[ 42%] Building CXX object CMakeFiles/uld_occ_observer_io.dir/src/configuration.cpp.o
+[ 44%] Building CXX object CMakeFiles/uld_occ_observer_io.dir/src/checkpoint_io.cpp.o
+[ 46%] Building CXX object CMakeFiles/uld_occ_observer_io.dir/src/serialization.cpp.o
+[ 48%] Building CXX object CMakeFiles/observer_validity_checks.dir/test/test_validity.cpp.o
+[ 51%] Linking CXX executable observer_validity_checks
+[ 51%] Built target observer_validity_checks
+[ 53%] Linking CXX static library libuld_occ_observer_io.a
+[ 53%] Built target uld_occ_observer_io
+[ 57%] Building CXX object CMakeFiles/observer_keyset_checks.dir/test/test_occupancy_keyset.cpp.o
+[ 57%] Building CXX object CMakeFiles/observer_profile_checks.dir/test/test_profiling.cpp.o
+[ 59%] Building CXX object CMakeFiles/observer_freespace_behavior.dir/test/test_freespace_behavior.cpp.o
+[ 61%] Building CXX object CMakeFiles/observer_profile_cli.dir/src/profile_cli.cpp.o
+[ 63%] Building CXX object CMakeFiles/observer_repair_s1_behavior.dir/test/test_repair_s1_behavior.cpp.o
+[ 65%] Building CXX object CMakeFiles/observer_initial_input_checks.dir/test/test_initial_input.cpp.o
+[ 67%] Linking CXX executable observer_initial_input_checks
+[ 67%] Built target observer_initial_input_checks
+[ 69%] Building CXX object CMakeFiles/observer_cli.dir/src/observer_cli.cpp.o
+[ 71%] Building CXX object CMakeFiles/observer_profile_checks.dir/test/fusion_profile_checks.cpp.o
+[ 73%] Linking CXX executable observer_freespace_behavior
+[ 73%] Built target observer_freespace_behavior
+[ 75%] Building CXX object CMakeFiles/observer_eval_native.dir/test/eval_native.cpp.o
+[ 77%] Linking CXX executable observer_repair_s1_behavior
+[ 77%] Built target observer_repair_s1_behavior
+[ 79%] Building CXX object CMakeFiles/observer_eval_native.dir/test/independent_oracle.cpp.o
+[ 81%] Building CXX object CMakeFiles/observer_profile_cli.dir/test/query_content_digest.cpp.o
+[ 83%] Linking CXX executable observer_keyset_checks
+[ 83%] Built target observer_keyset_checks
+[ 85%] Building CXX object CMakeFiles/observer_eval_native.dir/test/load_model.cpp.o
+[ 87%] Building CXX object CMakeFiles/observer_profile_checks.dir/test/block_storage_checks.cpp.o
+[ 89%] Building CXX object CMakeFiles/observer_profile_checks.dir/test/apply_batch_checks.cpp.o
+[ 91%] Building CXX object CMakeFiles/observer_profile_checks.dir/test/query_content_digest.cpp.o
+[ 93%] Linking CXX executable observer_profile_cli
+[ 93%] Built target observer_profile_cli
+[ 95%] Linking CXX executable observer_cli
+[ 95%] Built target observer_cli
+[ 97%] Linking CXX executable observer_eval_native
+[ 97%] Built target observer_eval_native
+[100%] Linking CXX executable observer_profile_checks
+[100%] Built target observer_profile_checks

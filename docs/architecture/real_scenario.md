@@ -16,6 +16,19 @@ no-GT rule).
 
 ## Allowed priors
 
+- User ruling2026-11-12: an explicitly declared initially empty ULD may begin
+  without a dedicated ULD observation motion. This is a loading-session initial
+  condition, not a sensor observation, and is distinct from the floor-only prior
+  below. It requires source-owned, geometry/epoch-bound provenance shared by
+  placement and complete-operation planning; it must not be implemented as a
+  consumer-side unknown-as-free fallback or fabricated optical observation.
+  Repeating a reset, restarting a node, or beginning the next box does not renew
+  that declaration. Static ULD mesh collisions remain mandatory. After release,
+  affected space cannot remain authorized solely by the empty declaration;
+  actual cargo observation/verified measured adoption is required. Known
+  disturbance invalidates the static-cargo premise. The O owner exposes
+  initialize_empty and records this provenance independently of sensor evidence;
+  full-cycle post-release validation remains a separate integration gate.
 - Container usable hull / STL from `scene_tf` and
   `luggage_description.container_geometry`.
 - Empty-floor **existence** when no accepted cargo map exists (`floor_prior`,

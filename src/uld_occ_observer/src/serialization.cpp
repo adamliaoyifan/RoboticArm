@@ -115,7 +115,9 @@ YAML::Node identity_to_yaml(const SnapshotIdentity& id) {
   out["observed_revision"] = id.observed_revision;
   out["last_integrated_stamp_ns"] = id.last_integrated_stamp_ns;
   out["geometry_hash"] = id.geometry_hash; out["config_digest"] = id.config_digest;
-  out["clock_domain"] = id.clock_domain; return out;
+  out["clock_domain"] = id.clock_domain;
+  out["initialization_id"] = id.initialization_id; out["declared_by"] = id.declared_by;
+  out["initialization_stamp_ns"] = id.initialization_stamp_ns; return out;
 }
 YAML::Node receipt_to_yaml(const UpdateReceipt& r) {
   auto out = identity_to_yaml(r.identity);
@@ -136,6 +138,7 @@ YAML::Node cells_to_yaml(const CellPage& page) {
   for (const auto& cell : page.cells) {
     YAML::Node row;
     row["index"] = std::vector<int>{cell.index.x,cell.index.y,cell.index.z};
+    row["evidence_source"] = !cell.known ? "unknown" : cell.value.declared_free ? "initial_empty" : "sensor";
     row["state"] = !cell.active ? "out_of_domain" : !cell.known ? "unknown" :
                     cell.value.occupied ? "occupied" : "free";
     if (cell.known) row["log_odds"] = cell.value.log_odds;

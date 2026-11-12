@@ -1,0 +1,37 @@
+Consolidate compiler generated dependencies of target observer_ray_probe
+Consolidate compiler generated dependencies of target uld_occ_observer_core
+[  6%] Built target observer_ray_probe
+[  8%] Building CXX object CMakeFiles/uld_occ_observer_core.dir/src/snapshot.cpp.o
+[ 10%] Linking CXX static library libuld_occ_observer_core.a
+[ 40%] Built target uld_occ_observer_core
+Consolidate compiler generated dependencies of target observer_validity_checks
+Consolidate compiler generated dependencies of target uld_occ_observer_io
+[ 42%] Linking CXX executable observer_validity_checks
+[ 44%] Building CXX object CMakeFiles/uld_occ_observer_io.dir/src/serialization.cpp.o
+[ 46%] Built target observer_validity_checks
+[ 48%] Linking CXX static library libuld_occ_observer_io.a
+[ 53%] Built target uld_occ_observer_io
+Consolidate compiler generated dependencies of target observer_initial_input_checks
+Consolidate compiler generated dependencies of target observer_keyset_checks
+Consolidate compiler generated dependencies of target observer_repair_s1_behavior
+Consolidate compiler generated dependencies of target observer_profile_cli
+Consolidate compiler generated dependencies of target observer_profile_checks
+Consolidate compiler generated dependencies of target observer_freespace_behavior
+[ 57%] Linking CXX executable observer_initial_input_checks
+[ 57%] Linking CXX executable observer_keyset_checks
+[ 61%] Linking CXX executable observer_profile_cli
+[ 61%] Linking CXX executable observer_repair_s1_behavior
+[ 63%] Linking CXX executable observer_profile_checks
+[ 65%] Linking CXX executable observer_freespace_behavior
+[ 67%] Built target observer_freespace_behavior
+[ 77%] Built target observer_profile_checks
+Consolidate compiler generated dependencies of target observer_cli
+[ 79%] Built target observer_keyset_checks
+Consolidate compiler generated dependencies of target observer_eval_native
+[ 81%] Linking CXX executable observer_eval_native
+[ 83%] Linking CXX executable observer_cli
+[ 85%] Built target observer_initial_input_checks
+[ 87%] Built target observer_repair_s1_behavior
+[ 91%] Built target observer_profile_cli
+[ 97%] Built target observer_eval_native
+[100%] Built target observer_cli

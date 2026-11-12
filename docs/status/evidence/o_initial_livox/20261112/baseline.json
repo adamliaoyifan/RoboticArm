@@ -1,0 +1,11 @@
+{
+  "revision": "5febcde58ef4c8c54a826e6de23f23c94071a659",
+  "dirty": "",
+  "paths": [
+    "src/uld_occ_observer",
+    "src/luggage_mapping",
+    "src/luggage_gazebo/luggage_gazebo/operation_launch.py",
+    "src/luggage_gazebo/scripts/joint_operation_sim_driver.py",
+    "src/luggage_perception/CMakeLists.txt"
+  ]
+}

@@ -102,6 +102,9 @@ class ValidityBoard {
       const std::string& geometry_hash, const std::string& config_digest,
       const std::string& clock_domain);
 
+  std::shared_ptr<const ValiditySnapshot> publish_initialized(
+      const struct SnapshotIdentity& identity);
+
   // Lease admission helper: an acquire/read may proceed only in VALID(e) for
   // the epoch it is about to lease.
   bool admits(std::uint64_t epoch) const;

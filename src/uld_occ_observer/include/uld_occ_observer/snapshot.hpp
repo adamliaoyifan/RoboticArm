@@ -14,8 +14,10 @@ struct SnapshotIdentity {
   std::uint64_t epoch{}, map_revision{}, observed_revision{};
   std::int64_t last_integrated_stamp_ns{};
   std::string geometry_hash, config_digest, clock_domain;
+  std::string initialization_id, declared_by;
+  std::int64_t initialization_stamp_ns{};
 };
-struct CellValue { float log_odds{}; bool occupied{}; };
+struct CellValue { float log_odds{}; bool occupied{}; bool declared_free{}; };
 // One edge length for block coordinates, the directory, and this storage.
 inline constexpr int kBlockEdge = 8;
 inline constexpr int kBlockCells = kBlockEdge * kBlockEdge * kBlockEdge;

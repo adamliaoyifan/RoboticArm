@@ -39,7 +39,7 @@ def require_source_progress(original, current):
     if type(original) is not OperationMapSource or type(current) is not OperationMapSource:
         raise ValueError('REFRESH_BOUND_OBSERVER_SOURCE_REQUIRED')
     fixed = ('scene_revision', 'geometry_hash', 'epoch', 'config_digest',
-             'clock_domain', 'validity_generation')
+             'clock_domain', 'validity_generation', 'initialization_id', 'declared_by', 'initialization_stamp_ns')
     if any(getattr(original, key) != getattr(current, key) for key in fixed):
         raise ValueError('REFRESH_SOURCE_RESET_OR_CONFIGURATION_CHANGED')
     if any(getattr(current, key) < getattr(original, key) for key in

@@ -1,4 +1,5 @@
 #include "uld_occ_observer/validity.hpp"
+#include "uld_occ_observer/initial_empty.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -146,6 +147,33 @@ std::shared_ptr<const ValiditySnapshot> ValidityBoard::publish_restored(
   candidate->clock_domain = clock_domain;
   events_.push_back(ValidityEvent{candidate->generation,
                                   ValidityState::kValid, epoch, "restored",
+                                  candidate->reset_id,
+                                  candidate->transition_mono_ns});
+  while (events_.size() > kMaxEvents) events_.pop_front();
+  current_ = candidate;
+  return candidate;
+}
+
+std::shared_ptr<const ValiditySnapshot> ValidityBoard::publish_initialized(const SnapshotIdentity& id) {
+  if (!declaration_only(id) || id.map_revision == 0) throw Error("INVALID_EMPTY_DECLARATION");
+  const auto epoch = id.epoch;
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (current_->epoch != epoch ||
+      current_->state == ValidityState::kValid)
+    return current_;
+  auto candidate = std::make_shared<ValiditySnapshot>(*current_);
+  candidate->state = ValidityState::kValid;
+  candidate->generation = current_->generation + 1;
+  candidate->reason = "declared_initial_empty";
+  candidate->transition_mono_ns = steady_now_ns();
+  candidate->map_revision = id.map_revision;
+  candidate->observed_revision = id.observed_revision;
+  candidate->last_integrated_stamp_ns = id.last_integrated_stamp_ns;
+  candidate->geometry_hash = id.geometry_hash;
+  candidate->config_digest = id.config_digest;
+  candidate->clock_domain = id.clock_domain;
+  events_.push_back(ValidityEvent{candidate->generation,
+                                  ValidityState::kValid, epoch, "declared_initial_empty",
                                   candidate->reset_id,
                                   candidate->transition_mono_ns});
   while (events_.size() > kMaxEvents) events_.pop_front();

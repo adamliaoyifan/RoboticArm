@@ -40,6 +40,8 @@ struct OpticalObservation {
   ObservationIdentity identity;
   std::vector<Vec3> points_m;
   RigidTransform uld_from_optical;
+  // Legacy DTO name retained; XYZ returns bypass camera optical-Z filtering.
+  bool lidar_xyz{false};
 };
 
 struct DepthZConfig {

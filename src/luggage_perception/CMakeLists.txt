@@ -42,6 +42,7 @@ endif()
 
 install(PROGRAMS
   scripts/observer_depth_node.py
+  scripts/observer_lidar_node.py
   scripts/cargo_observation_node.py
   scripts/luggage_detector_node.py
   scripts/sensor_preprocessor_node.py

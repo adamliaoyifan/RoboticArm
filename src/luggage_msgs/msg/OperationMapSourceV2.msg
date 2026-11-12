@@ -12,3 +12,6 @@ string config_digest
 string clock_domain
 uint64 validity_generation
 string content_sha256
+string initialization_id
+string declared_by
+int64 initialization_stamp_ns

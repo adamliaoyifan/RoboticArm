@@ -25,9 +25,9 @@ The integrated hardware placement launch selects one owner using
 O receives immutable effective geometry/config bytes from
 `luggage_mapping.configuration`; ComputePlacement and complete-operation prepare
 use the shared `luggage_mapping.observer` reader and that owner's grid. A legacy
-consumer resolution is only a consistency assertion, never a regrid. O input
-readiness requires real optical-ray integration; launch alone does not certify
-free space. G's separate snapshot adapter remains behind the same placement
+consumer resolution is only a consistency assertion, never a regrid. O readiness
+requires accepted sensor rays or an explicit initial-empty transaction as defined
+in real_scenario.md; launch alone does not certify free space. G's separate snapshot adapter remains behind the same placement
 surface/volume evidence boundary. This selection does not by itself qualify the
 legacy selector or a complete-operation execution client for both backends.
 
@@ -155,3 +155,24 @@ RSS and retained-size estimates must still be measured in acceptance workloads.
 The existing legacy known_ratio row exports have a mutable-row alias. New query
 generations detach and tuple-freeze those rows in their metadata record; they do
 not inherit that legacy alias or change existing public read values/types.
+
+## Initial condition and LiDAR input
+
+`initialize_empty` is an explicit, once-per-owner-lifetime transaction. It starts
+a new epoch, records declaration ID/authority/time and leaves sensor counter/time
+zero. Active hull cells are declared free in immutable source blocks, separately
+from the sensor probability tree. Real first hits override the declaration
+without artificial miss accumulation. Reset removes it; it does not reinitialize
+free space. ReadCells evidence_sources distinguishes unknown, sensor, and initial
+free. Snapshot and operation-source identities retain the declaration provenance.
+A declaration-only lease is an initial condition rather than an acquisition-age
+claim; after sensor integration, the normal acquisition-age rule applies.
+
+The same O writer may subscribe separately to optical and LiDAR XYZ clouds.
+LiDAR keeps its physical acquisition frame, uses acquisition-stamped TF, rejects
+nonfinite/zero returns, and bypasses optical-Z filtering; unreturned/missing rays
+do not establish free space. The operation adapter admits only scans covered by
+the existing stationary joint gate. It does not implement moving-scan deskew or
+new robot self segmentation. Actual returns from self/scene are not silently
+erased. Both modalities share the owner grid/config and retain distinct sensor
+IDs and receipts. This source/interface support is not a full-cycle validation.

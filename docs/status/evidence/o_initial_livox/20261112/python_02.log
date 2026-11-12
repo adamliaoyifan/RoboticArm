@@ -1,0 +1,70 @@
+........................................................................ [ 43%]
+........................................................................ [ 86%]
+................FF....                                                   [100%]
+=================================== FAILURES ===================================
+______ test_explicit_start_declares_empty_without_mandatory_portal_motion ______
+
+tmp_path = PosixPath('/tmp/pytest-of-adamliao/pytest-1667/test_explicit_start_declares_e0')
+
+    def test_explicit_start_declares_empty_without_mandatory_portal_motion(tmp_path):
+        from uld_occ_observer.srv import InitializeEmpty
+        from test_joint_operation_observer import configuration
+        config,geometry,config_file=configuration(tmp_path)
+        calls=[];poses=[]
+        def call(client,request,name,*args):
+            calls.append((client,request))
+            if client=='validity':return SimpleNamespace(epoch=1)
+            if client=='initialize':
+                assert request.declared_by=='explicit_operator_start'
+                assert request.geometry_hash==config.descriptor()['geometry_hash']
+                return SimpleNamespace(status='OK')
+            if client=='spawn':return SimpleNamespace(success=True)
+            raise AssertionError(client)
+        probe=SimpleNamespace(args=SimpleNamespace(start=True,views=None),extra_views={},folder=tmp_path,
+            launch={'resolved':{'observe_pose_name':'pickup'},'map_owner':{
+                'geometry_file':str(geometry),'config_file':str(config_file)}},
+            validity='validity',initialize='initialize',spawn='spawn',execute='execute',call=call,
+            readiness=lambda:None,observe_pose=lambda p:poses.append(p),
+            stage=lambda name,f:f(),plan=lambda:('plan','detection','domain'),
+            action=lambda *a:SimpleNamespace(result=SimpleNamespace(success=True)),
+            flush=lambda **kwargs:None,domain=None,images={})
+>       assert module.OperationSimDriver.run(probe)==0
+E       NameError: name 'module' is not defined
+
+src/luggage_gazebo/test/test_operation_sim_driver.py:97: NameError
+_____ test_initial_condition_has_distinct_source_and_not_sensor_freshness ______
+
+tmp_path = PosixPath('/tmp/pytest-of-adamliao/pytest-1667/test_initial_condition_has_dis0')
+
+    def test_initial_condition_has_distinct_source_and_not_sensor_freshness(tmp_path):
+        config,_,_=configuration(tmp_path)
+        source=identity(config)
+        source.update(observed_revision=0,last_integrated_stamp_ns=0,initialization_id='empty-session',
+                      declared_by='operator',initialization_stamp_ns=10)
+        snapshot=assemble_snapshot(config,source,2,columns_for(config,[1]*64),[1]*64,scene_revision='scene',request_id='init')
+        record=snapshot.surface.record()
+        assert record['time_basis']=='scene' and record['stamp_ns']==10
+        assert set(v for row in record['confidence'] for v in row)=={'initial_empty'}
+        assert map_source_from_message(map_source_to_message(snapshot.source))==snapshot.source
+        lease=SimpleNamespace(identity=SimpleNamespace(**source),age_ns=10**12,stale=False)
+        assert lease_age_admitted(lease,1000)
+        source.update(observed_revision=1,last_integrated_stamp_ns=20)
+>       assert not lease_age_admitted(lease,1000)
+E       AssertionError: assert not True
+E        +  where True = lease_age_admitted(namespace(identity=namespace(epoch=1, map_revision=7, observed_revision=0, last_integrated_stamp_ns=0, geometry_hash='...tialization_id='empty-session', declared_by='operator', initialization_stamp_ns=10), age_ns=1000000000000, stale=False), 1000)
+
+src/luggage_planning/test/test_observer_initial_source.py:23: AssertionError
+=============================== warnings summary ===============================
+src/luggage_mapping/test/test_regions.py::test_full_one_cm_grid_requires_67_pages
+  src/luggage_mapping/test/test_regions.py:145: PytestWarning: record_property is incompatible with junit_family 'xunit2' (use 'legacy' or 'xunit1')
+    def test_full_one_cm_grid_requires_67_pages(record_property):
+
+src/luggage_gazebo/test/test_operation_launch.py::test_every_default_can_actually_resolve_from_declared_launch_arguments
+  /opt/ros/humble/local/lib/python3.10/dist-packages/xacro/__init__.py:115: DeprecationWarning: private variables, such as '_ConstructUnits__ConstructUnitsValue', will be normal attributes in 3.11
+    __ConstructUnitsValue = collections.namedtuple('__ConstructUnitsValue', ['tag', 'conversion_constant'])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED src/luggage_gazebo/test/test_operation_sim_driver.py::test_explicit_start_declares_empty_without_mandatory_portal_motion
+FAILED src/luggage_planning/test/test_observer_initial_source.py::test_initial_condition_has_distinct_source_and_not_sensor_freshness
+2 failed, 164 passed, 2 warnings in 23.15s
