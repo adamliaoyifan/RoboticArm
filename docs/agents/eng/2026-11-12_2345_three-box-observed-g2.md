@@ -691,3 +691,47 @@ satisfy these product gates.
 - Focused tests123 pass before final follow-lock/composition assertion updates.
   Build52 compiles typed interface; build53 covers first wiring; final build54
   required before live verification. No physical settle/retreat/adoption claim.
+
+## Diagnostic36 and measured post-place explore -- 2026-11-13T05:35+08:00
+
+- Build55/install192 pass. Actual prepare56.76s; all SIX controller legs pass,
+  including descent, dynamic physical release, retreat. Descending succeeds on
+  source refresh attempt4; release barrier and retreat pass. This exercises the
+  previously unverified source retry/issued lifetime fixes rather than claiming
+  them from offline replay. Physical handover READY1.47s, same mesh/SDF geometry;
+  captured physical released centre settles at z=.65400652 and remains stable.
+- Observation remains incomplete:475 queried top columns,4 matched,471 missing
+  (456 free/19 occupied; occupied height errors[-.06709,-.00709]m). Passive view
+  receives new source data for~100s without adoption. We explicitly cancel only
+  this owned, stationary observation wait after preserving>=60s false evidence;
+  cancel ack is not itself a terminal-motion claim. Driver then captures final
+  full O/scene and exits incomplete; owned teardown0. No full-cycle pass yet.
+- This is the measured missing capability authorized by the user: bounded
+  post-place explore. Add only that capability, reusing existing exact IK,
+  snapshot OMPL connection, polyline timing, native full-model route checker,
+  current O admission and the existing shared controller transport/ownership.
+  Extra observation paths are separately certified/archived, never substituted
+  into the original six-leg certificate. No live scene or O write is added.
+- Camera proposals reuse9 existing geometry-derived interior positions and aim
+  optical+Z at the CURRENT missing footprint centre. Rank projected calibrated
+  FOV cell coverage, then camera travel; actual observed O remains sole adoption
+  authority. Max3 actual extra views, each at most3 fresh snapshot integrations;
+  all work shares the existing600s action budget. Unknown/occupied/map/reset and
+  support gates are unchanged; released/unloaded state is mandatory.
+- Why aim: first archived straight-down review has only2 positive-FOV proposals;
+  one lacks IK, one covers320/471. Aimed review admits8 native paths,7 of those
+  project all471 missing columns. This is a ranking proxy without occlusion
+  guarantee, not measured coverage or functional success. Runtime must measure
+  actual gain. No camera pose, nominal placement or simulator dimensions fill O.
+- Coverage instrumentation now evaluates the entire footprint rather than
+  returning at its first failed cell. Same all-columns/one-source-voxel height
+  predicate; no relaxation. Container-absolute coordinates stay explicit.
+- Checks47 geometry/runtime cases pass;94 focused cases including launch/driver
+  and fresh-vs-pre-settle observation boundary pass. Actual native/controller
+  tests50 pass (46 original+4 exact unloaded view admission cases). Archived
+  full-model view replay36c uses actual final O, no controller; all3 native
+  backends tear down0. First replay36 had a diagnostic configuration type error;
+  preserved as failed evidence, then corrected in36b/c. It is not a live failure.
+- Evidence: diagnostic36/{cycle,run/execution,reference,observation_wait_cancel,
+  release_coverage_review.json,release_coverage_arrays.npz};
+  offline_explore36{,b,c}/; native_motion56/ and native_motion57/.

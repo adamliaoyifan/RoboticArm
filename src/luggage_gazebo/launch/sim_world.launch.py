@@ -81,6 +81,7 @@ def _default_launch_values():
         "operation_max_branch_attempts": "3",
         "operation_max_branch_attempts_per_candidate": "2",
         "operation_source_refresh_attempts": "2",
+        "operation_post_place_views": "0",
         "scene_tf_config": os.path.join(
             get_package_share_directory("luggage_description"),
             "config",
@@ -1363,6 +1364,7 @@ def generate_launch_description():
             profile_arg('operation_max_branch_attempts', 'Complete-operation branch attempts within the shared deadline.'),
             profile_arg('operation_max_branch_attempts_per_candidate', 'Branch attempts per coupled grasp and placement candidate.'),
             profile_arg('operation_source_refresh_attempts', 'Bounded full suffix recertifications after an unsubmitted source-change refusal (1..8).'),
+            profile_arg('operation_post_place_views', 'Maximum additional measured post-place camera views (0 disables, 1..3).'),
             profile_arg('volume_evidence_source', 'Legacy placement volume reader; complete-operation composition owns O explicitly.'),
             profile_arg('cargo_map_max_raycast_points', 'Legacy G integration ray budget.'),
             profile_arg(

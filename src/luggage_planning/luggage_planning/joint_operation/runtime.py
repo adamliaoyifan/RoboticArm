@@ -93,6 +93,14 @@ class JointOperationRuntime:
             start_tolerance_rad=self.ports.start_tolerance,
             end_tolerance_rad=float(param('operation_endpoint_joint_tolerance_rad',.01)),
             max_joint_age_ns=int(param('operation_joint_max_age_ns',1_000_000_000)),recorder=self.record)
+        max_views=int(param('operation_post_place_views',0))
+        if not 0<=max_views<=3:raise ValueError('BOUNDED_POST_PLACE_VIEW_COUNT_REQUIRED')
+        self.explorer=None
+        if max_views:
+            from luggage_planning.joint_operation.post_place_explore import PostPlaceExplorer
+            self.explorer=PostPlaceExplorer(node,self.ports,self.motion,max_views=max_views,
+                refresh_attempts=self.refresh_attempts,settled=self.settled,
+                checkpoint=self.checkpoint,record=self.record)
         self.machine=JointOperationExecution(start_tolerance_rad=self.ports.start_tolerance)
         self.session=self.handle=None
         self._active=threading.Lock()
@@ -262,7 +270,8 @@ class JointOperationRuntime:
             if self.machine.state=='COMPLETE':
                 view_stamp=self.settled()
                 self.ports.finalize_world()
-                observed=self.ports.adopt_observed_release(view_stamp)
+                observed=self.ports.adopt_observed_release(view_stamp,
+                    explore=self.explorer.observe if self.explorer is not None else None)
                 result.final_map_source=map_source_to_message(observed.source)
                 result.success=True
                 result.outcome='COMPLETE'

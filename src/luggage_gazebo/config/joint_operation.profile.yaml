@@ -21,6 +21,7 @@ runtime:
   # after three checks are exhausted, then remains unchanged for18s. Reuse
   # the existing bounded retry range; every attempt still fully revalidates.
   operation_source_refresh_attempts: 8
+  operation_post_place_views: 3
   cargo_map_resolution_m: 0.02
 features:
   use_perception: true

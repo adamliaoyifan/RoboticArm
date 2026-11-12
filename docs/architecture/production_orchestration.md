@@ -350,3 +350,24 @@ settling and post-place sensor observations remain required; the online planner
 and O receive no simulator geometry or pose. Legacy simulation routes keep their
 existing release owner (`physical_release_on_detach=false`) to avoid duplicate
 physical replacement. Hardware does not call this simulation actuator service.
+
+### Bounded post-release exploration
+
+The explicit joint-operation simulation profile enables at most three extra
+post-place camera motions (`operation_post_place_views`; zero disables). They
+run after the original six legs and confirmed physical release, under the same
+motion session and action deadline. Reuse geometry-derived camera positions,
+aim at the current missing footprint centre, and rank calibrated FOV coverage
+then camera travel. Projected coverage is only a ranking proxy; occlusion and
+sensor success are decided by actual subsequent O observations.
+
+Each unloaded observation path uses the existing exact snapshot IK, snapshot
+MoveIt connection, original-polyline timing and full native route validation.
+Its exact timed knots and native request/response are checked before the shared
+controller transport; changed valid sources require a new full check, and
+unresolved motion retains ownership. These paths have separate evidence and do
+not alter or reuse the six-leg certificate as their authorization. No O writes
+or artificial free cells are added. After each settled view, at most three O
+snapshots check actual acquisitions newer than both release and settling. The
+existing complete-top-footprint/one-voxel height gate remains unchanged; bounded
+exhaustion is an incomplete operation, never a successful placement observation.

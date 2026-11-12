@@ -181,39 +181,97 @@ class StrictOperationMotionPort:
             self._joints(read_joints, leg.knots[0].positions, self.start_tolerance_rad)
             if cancelled() or time.monotonic() >= deadline:
                 raise ValueError('CANCELLED_OR_DEADLINE')
-            session = _Submission(leg, read_joints, self.node.get_clock().now().nanoseconds)
-            with self._lock:
-                self._active = session
-                # Even a synchronous send failure can mean transmission happened.
-                submitted = True
-                try:
-                    self.client.send_goal_async(goal).add_done_callback(
-                        lambda future: self._accepted(session, future))
-                except Exception as exc:
-                    session.uncertainty = 'GOAL_TRANSPORT_UNCERTAIN:' + type(exc).__name__
-            while True:
-                outcome = self.poll_terminal()
-                if outcome is not None:
-                    return outcome
-                try:
-                    stop = 'CANCELLED' if cancelled() else ('DEADLINE' if time.monotonic() >= deadline else '')
-                except Exception:
-                    stop = 'CANCELLATION_CHECK_FAILED'
-                with self._lock:
-                    if stop:
-                        self._stop(session, stop)
-                    elif session.uncertainty:
-                        self._stop(session, 'TRANSPORT_UNCERTAIN')
-                    if stop or session.uncertainty:
-                        return MotionOutcome(False, False, True,
-                            session.uncertainty or session.stop_reason)
-                session.changed.wait(min(.01, max(0., deadline-time.monotonic())))
-                session.changed.clear()
+            submitted = True
+            return self._send_checked_goal(goal,leg,read_joints,deadline,cancelled)
         except Exception as exc:
             return MotionOutcome(False, not submitted, submitted, str(exc) or type(exc).__name__)
         finally:
             if not submitted:
                 self.motion_lock.release()
+
+    def execute_observation(self,leg,*,model_sha256,validate_current,source_current,
+                            read_joints,deadline,cancelled):
+        """Additional post-release view, separately certified, under same owner.
+
+        Never represent this as a replacement operation leg or six-leg receipt.
+        Exact native request/response, original timed knots, empty attachment and
+        current source are required before the shared controller transport.
+        """
+        from rclpy.serialization import serialize_message
+        from luggage_description.frame_sequence_contracts import validate_joint_trajectory
+        from luggage_planning.joint_operation.certification import _wire_leg,_valid_response
+        import hashlib
+        with self._lock:
+            if self._active is not None:
+                return MotionOutcome(False,False,False,'MOTION_SUBMISSION_UNRESOLVED')
+        if not self.motion_lock.acquire(blocking=False):
+            return MotionOutcome(False,True,False,'SHARED_MOTION_BUSY')
+        submitted=False
+        try:
+            if leg.name!='post_place_explore' or leg.phase!='retreat' or leg.joint_names!=OPERATION_JOINTS:
+                raise ValueError('UNLOADED_POST_RELEASE_VIEW_REQUIRED')
+            validate_joint_trajectory(leg.trajectory_record(),leg.trajectory_scene_revision)
+            if not math.isfinite(deadline) or cancelled() or time.monotonic()>=deadline:
+                raise ValueError('CANCELLED_OR_DEADLINE')
+            if source_current() is not True:raise ValueError('CURRENT_SOURCE_REFUSED')
+            request,response=validate_current(leg)
+            wire=_wire_leg(leg);wire.load_state_index=0;wire.carrying=False
+            if (len(request.legs)!=1 or request.legs[0]!=wire
+                    or len(request.load_state_scenes)!=1
+                    or request.load_state_scenes[0].robot_state.attached_collision_objects
+                    or request.scene_revision!=leg.trajectory_scene_revision):
+                raise ValueError('EXACT_UNLOADED_VIEW_CERTIFICATION_REQUIRED')
+            reason=_valid_response(response,request,model_sha256)
+            if reason:raise ValueError(reason)
+            goal=self.action.Goal();goal.trajectory.joint_trajectory=wire.knots
+            self._record('observation_motion_goal',serialize_message(goal))
+            self._record('observation_motion_admission.json',json.dumps(dict(
+                route_digest=request.route_digest,scene_digest=request.scene_digest,
+                native_validation_id=hashlib.sha256(serialize_message(response)).hexdigest())).encode())
+            if source_current() is not True:raise ValueError('CURRENT_SOURCE_CHANGED')
+            self._joints(read_joints,leg.knots[0].positions,self.start_tolerance_rad)
+            if cancelled() or time.monotonic()>=deadline:raise ValueError('CANCELLED_OR_DEADLINE')
+            if not self.client.server_is_ready():raise ValueError('CONTROLLER_NOT_READY')
+            submitted=True
+            return self._send_checked_goal(goal,leg,read_joints,deadline,cancelled)
+        except Exception as error:
+            return MotionOutcome(False,not submitted,submitted,str(error) or type(error).__name__)
+        finally:
+            if not submitted:self.motion_lock.release()
+
+    def _send_checked_goal(self,goal,leg,read_joints,deadline,cancelled):
+        """Transport shared by certified operation and post-release view paths.
+
+        Caller owns the motion lock and has checked the exact timed goal. This
+        method retains that lock until an actual terminal receipt is consumed.
+        """
+        session = _Submission(leg, read_joints, self.node.get_clock().now().nanoseconds)
+        with self._lock:
+            self._active = session
+            # Even a synchronous send failure can mean transmission happened.
+            try:
+                self.client.send_goal_async(goal).add_done_callback(
+                    lambda future: self._accepted(session, future))
+            except Exception as exc:
+                session.uncertainty = 'GOAL_TRANSPORT_UNCERTAIN:' + type(exc).__name__
+        while True:
+            outcome = self.poll_terminal()
+            if outcome is not None:
+                return outcome
+            try:
+                stop = 'CANCELLED' if cancelled() else ('DEADLINE' if time.monotonic() >= deadline else '')
+            except Exception:
+                stop = 'CANCELLATION_CHECK_FAILED'
+            with self._lock:
+                if stop:
+                    self._stop(session, stop)
+                elif session.uncertainty:
+                    self._stop(session, 'TRANSPORT_UNCERTAIN')
+                if stop or session.uncertainty:
+                    return MotionOutcome(False, False, True,
+                        session.uncertainty or session.stop_reason)
+            session.changed.wait(min(.01, max(0., deadline-time.monotonic())))
+            session.changed.clear()
 
     def _stop(self, session, reason):
         # Called under _lock, including by a late-acceptance callback.

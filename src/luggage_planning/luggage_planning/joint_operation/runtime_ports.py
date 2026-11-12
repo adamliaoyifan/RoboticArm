@@ -416,30 +416,13 @@ class OperationRuntimePorts:
         occupied. Height tolerance is exactly one measured voxel (quantization).
         No centres => not evaluated, never a successful placement observation.
         """
-        record=captured.surface.record()
+        from luggage_planning.joint_operation.release_coverage import release_coverage
         target=self.container.inverse().compose(self.plan.world_from_settled_box)
-        from luggage_description.frame_transforms import rotate_vector
-        normal=rotate_vector(target.quaternion_xyzw,(0.,0.,1.))
-        if max(abs(a-b) for a,b in zip(normal,(0.,0.,1.)))>1e-9:
-            raise ValueError('OBSERVED_RELEASE_TARGET_MUST_BE_UPRIGHT_IN_CONTAINER')
-        width,depth,height=self.geometry.measured_dimensions_wdh
-        top=target.translation[2]+height/2
-        inverse=target.inverse()
-        resolution=record['resolution_m']
-        count=0
-        for ix,row in enumerate(record['state']):
-            for iy,state in enumerate(row):
-                point=(record['origin_xy_container'][0]+(ix+.5)*resolution,
-                       record['origin_xy_container'][1]+(iy+.5)*resolution,top)
-                local=inverse.compose(Transform(point,(0.,0.,0.,1.))).translation
-                if abs(local[0])<=width/2 and abs(local[1])<=depth/2:
-                    count+=1
-                    observed=record['surface_z_container'][ix][iy]
-                    if state!='occupied' or observed is None or abs(observed-top)>resolution+1e-9:
-                        return False,count
-        return count>0,count
+        coverage=release_coverage(captured.surface.record(),target,self.geometry.measured_dimensions_wdh)
+        self.last_release_coverage=coverage
+        return coverage['accepted'],coverage['expected_columns']
 
-    def adopt_observed_release(self,settled_view_stamp_ns):
+    def adopt_observed_release(self,settled_view_stamp_ns,*,explore=None):
         if not self.released:raise ValueError('POST_RELEASE_OBSERVATION_WITHOUT_RELEASE')
         last_count=0
         while time.monotonic()<self.deadline and not self.cancelled():
@@ -448,11 +431,12 @@ class OperationRuntimePorts:
                     and captured.source.last_integrated_stamp_ns>self.release_stamp_ns):
                 accepted,last_count=self.observed_target(captured)
                 self.record('observed_release.json',json.dumps(dict(accepted=accepted,
-                    sample_columns=last_count,settled_view_stamp_ns=settled_view_stamp_ns,
+                    sample_columns=last_count,matched_columns=self.last_release_coverage['matched_columns'],settled_view_stamp_ns=settled_view_stamp_ns,
                     release_stamp_ns=self.release_stamp_ns,
                     actual_acquisition_stamp_ns=captured.source.last_integrated_stamp_ns,
                     source=captured.source.__dict__),sort_keys=True).encode())
                 if accepted:return captured
+                if explore is not None:return explore(captured,settled_view_stamp_ns)
             time.sleep(.01)
         reason='POST_RELEASE_OBSERVATION_NOT_EVALUATED' if last_count==0 else 'POST_RELEASE_TARGET_NOT_OBSERVED'
         raise ValueError(reason)

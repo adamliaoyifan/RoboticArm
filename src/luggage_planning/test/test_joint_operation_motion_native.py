@@ -333,3 +333,36 @@ def test_transport_uncertainty_holds_ownership_without_clear_shortcut(invocation
         if stage in ('result','nonterminal_result'):assert len(cancels)==1
     finally:
         transport.client.destroy()
+
+@pytest.mark.parametrize('damage',(None,'path','attached','source'))
+def test_post_release_view_requires_exact_native_unloaded_path_and_current_source(native_gate,issued,controller,damage):
+    from rclpy.serialization import deserialize_message
+    from moveit_msgs.msg import PlanningScene,AttachedCollisionObject
+    from luggage_msgs.srv import ValidateRouteV2
+    from luggage_planning.joint_operation.certification import _wire_leg
+    c=controller;c.state.mode='success';c.state.accept_gate.set();c.state.execution_gate.set()
+    leg=replace(issued[0].legs[0],name='post_place_explore',phase='retreat')
+    c.update(leg.knots[0].positions);before=len(c.state.goals)
+    scene=deserialize_message(issued[1].scenes.pick.scene_cdr,PlanningScene)
+    wire=_wire_leg(leg);wire.load_state_index=0;wire.carrying=False
+    request=ValidateRouteV2.Request(request_id=leg.trajectory_request_id,
+        scene_revision=leg.trajectory_scene_revision,route_digest='view-path',scene_digest='view-scene',
+        load_state_scenes=[scene],legs=[wire],max_sample_dt_ns=50_000_000.,max_sample_step_m=.01,
+        joint_velocity_limits=[.314]*6,joint_acceleration_limits=[.314]*6,
+        distance_stride=2**30,budget_s=3.)
+    def validate(_):
+        future=native_gate.port.client.call_async(request);end=time.monotonic()+4
+        while not future.done() and time.monotonic()<end:time.sleep(.001)
+        assert future.done();response=future.result()
+        assert response.all_valid
+        # Corrupt only after the real native response: an echo/verdict cannot
+        # authorize a different path or attached state at controller dispatch.
+        if damage=='path':request.legs[0].knots.points[-1].positions[0]+=.1
+        if damage=='attached':request.load_state_scenes[0].robot_state.attached_collision_objects=[AttachedCollisionObject()]
+        return request,response
+    result=c.port.execute_observation(leg,model_sha256=native_gate.model.model_sha256,
+        validate_current=validate,source_current=lambda:damage!='source',read_joints=c.sample,
+        deadline=time.monotonic()+5.,cancelled=lambda:False)
+    assert result.success==(damage is None),result
+    assert result.terminal and not c.arbiter.locked()
+    assert len(c.state.goals)==before+(damage is None)
