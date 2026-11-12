@@ -71,6 +71,9 @@ _FALLBACK_OBSERVE = [3.5702, -1.3263, -1.0965, 3.9564, 1.6234, 0.4522]
 
 def _default_launch_values():
     return {
+        "planning_pipeline": "legacy_segments",
+        "operation_run_dir": "",
+        "operation_prepare_budget_s": "300.0",
         "scene_tf_config": os.path.join(
             get_package_share_directory("luggage_description"),
             "config",
@@ -783,10 +786,22 @@ def _launch_setup(context):
     _check_renderer()
     cfg = _resolved_launch_config(context)
     scene_tf_config = cfg["scene_tf_config"]
+    from luggage_gazebo.operation_launch import validate_operation_selection, operation_composition
+    complete_operation = validate_operation_selection(cfg)
     gui = _as_bool(cfg["gui"])
     initial_joint_args = _initial_joint_xacro_args(cfg)
     frame_params = _frame_runtime_params(cfg, scene_tf_config,
                                          initial_joint_args)
+    operation_nodes, operation_runtime = [], {}
+    if complete_operation:
+        model_path = os.path.join(get_package_share_directory('luggage_description'),
+                                  'urdf', 'elfin_s20_with_camera.urdf.xacro')
+        robot_xml, _ = expand_and_patch(model_path, config_path=scene_tf_config,
+            xacro_args=['use_gz_sim:=true', 'hardware_plugin:=gz_ros2_control/GazeboSimSystem']
+                       + list(initial_joint_args))
+        operation_nodes, operation_runtime = operation_composition(cfg, robot_xml,
+            _gazebo_semantic_description()['robot_description_semantic'])
+        frame_params = {'frame_scene_revision': operation_runtime['frame_scene_revision']}
 
     world_path = os.path.join(
         get_package_share_directory("luggage_gazebo"), "worlds", "airport_loading.sdf"
@@ -958,6 +973,7 @@ def _launch_setup(context):
             "scene_tf_config": scene_tf_config,
             "use_semantic": use_semantic,
             "top_surface_mode": cfg["top_surface_mode"],
+            "publish_suction_top_domain": complete_operation,
             "use_sim_time": True,
             "depth_topic": "/luggage/preprocessed/camera/depth/image",
             # The semantic chain (preprocessor 4-6 Hz + YOLO + point filter)
@@ -1125,7 +1141,7 @@ def _launch_setup(context):
                 "velocity_scaling": float(cfg["velocity_scaling"]),
                 "acceleration_scaling": float(cfg["acceleration_scaling"]),
                 **frame_params,
-            }, atlas_params],
+            }, atlas_params, operation_runtime],
             condition=IfCondition(_bool_text(cfg["use_motion"])),
         ),
         # SelectPlacePath provider (production path). The motion_occ driver
@@ -1151,7 +1167,7 @@ def _launch_setup(context):
                     cfg["diagnostic_route_budget_s"]),
                 **frame_params,
             }, atlas_params],
-            condition=IfCondition(_bool_text(cfg["use_motion"])),
+            condition=IfCondition(_bool_text(_as_bool(cfg["use_motion"]) and not complete_operation)),
         ),
     ]
 
@@ -1159,6 +1175,7 @@ def _launch_setup(context):
         package="luggage_gazebo",
         executable="observe_pose_hold.py",
         name="observe_pose_hold",
+        condition=IfCondition(_bool_text(not complete_operation)),
         output="screen",
         parameters=[{
             "spawn_at_observe": (
@@ -1170,11 +1187,14 @@ def _launch_setup(context):
     )
 
     robot_description = _robot_description_param(scene_tf_config, initial_joint_args)
+    if complete_operation:
+        robot_description = {'robot_description': ParameterValue(robot_xml, value_type=str)}
     move_group = _move_group_node(robot_description, cfg["use_moveit"],
                                   _as_bool(cfg["diagnostic_capture"]))
     # Same URDF/SRDF move_group plans with. Pick certification calls
     # /validate_route_v2; without this node the first authorized detect
     # dies as BUILD_FAILED / CERT_SERVICE_UNAVAILABLE.
+    motion_chain.extend(operation_nodes)
     motion_chain.append(Node(
         package="luggage_planning",
         executable="validate_route_node",
@@ -1334,6 +1354,9 @@ def generate_launch_description():
             profile_arg("gui", "Start Gazebo GUI."),
             profile_arg(
                 "start_placement_prior",
+            profile_arg('planning_pipeline', 'legacy_segments or joint_operation; select the complete observed operation explicitly.'),
+            profile_arg('operation_run_dir', 'Absolute fresh evidence/journal directory for joint_operation.'),
+            profile_arg('operation_prepare_budget_s', 'Diagnostic complete-preparation watchdog, not a production latency target.'),
                 "Read-only placement-prior sidecar (explicit opt-in; "
                 "default false = zero prior processes)."),
             profile_arg(

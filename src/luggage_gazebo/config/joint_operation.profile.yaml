@@ -1,0 +1,28 @@
+# Observe -> prepare all six legs -> execute the retained plan and barriers.
+# Explicit client --start is required; launch alone does not run a cycle.
+runtime:
+  planning_pipeline: joint_operation
+  gui: false
+  use_rviz: false
+  use_moveit: true
+  frame_runtime: false
+features:
+  use_perception: true
+  use_semantic: true
+  use_motion: true
+  use_vacuum: true
+  use_cargo_map: false
+  use_packing: false
+  start_placement_prior: false
+perception:
+  top_surface_mode: dynamic
+  semantic_require_backend: bbox_fill
+scene:
+  observe_pose_name: pickup_observe_sim
+  spawn_at_observe: true
+spawner:
+  visual_kind: mesh
+  size_mode: catalog
+  sequence_ids: [carryon]
+  yaw_range: [0.0, 0.0]
+  xy_jitter_range: [0.0, 0.0]

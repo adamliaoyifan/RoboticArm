@@ -15,6 +15,19 @@ The only initial authorization event is an explicit operator `start` command.
 After it is accepted, the orchestrator resets the cargo map and performs the
 initial container exploration before prompting for a placed box.
 
+## Full-operation simulation adapter
+
+`luggage_gazebo` selects `planning_pipeline=joint_operation` explicitly through
+its grouped profile. The legacy `frame_runtime` peer graph is a separate
+compatibility mechanism, not the complete-operation identity or activation flag.
+The new mode composes one O owner, measured optical rays, common placement,
+prepare/native services and the bound execution consumer. All model readers use
+the same expanded full URDF/SRDF. No automatic startup FJT hold is issued in this
+mode. A diagnostic client requires explicit `--start` before map reset, observation
+motion, detection or cycle execution. Gazebo spawn output is physics-only; only
+measured detector and O outputs populate online planning requests. Legacy G and
+segmented selector owners must not coexist with this O composition.
+
 ## Operator Request Correlation
 
 The orchestrator publishes each operator prompt with a generated request ID,

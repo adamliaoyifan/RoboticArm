@@ -11,6 +11,7 @@ install(DIRECTORY launch worlds models config rviz
 )
 
 install(PROGRAMS
+  scripts/joint_operation_sim_driver.py
   scripts/pickup_box_spawner_node.py
   scripts/depth_image_republisher.py
   scripts/camera_info_alias.py

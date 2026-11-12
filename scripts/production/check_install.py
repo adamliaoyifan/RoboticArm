@@ -22,6 +22,8 @@ MODULES = (
     'luggage_packing.placement_volume_query',
     'luggage_packing.placement_recheck',
     'luggage_perception.suction_patch_evaluator',
+    'luggage_perception.observer_depth',
+    'luggage_gazebo.operation_launch',
     'st09_contracts',
     'luggage_msgs.srv._prepare_joint_operation_v2',
     'luggage_msgs.action._execute_joint_operation_v2',
@@ -32,7 +34,8 @@ EXECUTABLES = {
                          'grasp_local_check_node', 'snapshot_joint_path_node',
                          'validate_route_node', 'trajectory_selector_node.py'),
     'luggage_packing': ('placement_planner_node.py',),
-    'luggage_perception': ('cargo_volume_mapper_node.py',),
+    'luggage_perception': ('cargo_volume_mapper_node.py','observer_depth_node.py'),
+    'luggage_gazebo': ('joint_operation_sim_driver.py',),
     'uld_occ_observer': ('observer_node',),
 }
 

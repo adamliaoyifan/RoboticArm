@@ -39,6 +39,9 @@
   <exec_depend>luggage_perception</exec_depend>
   <exec_depend>luggage_description</exec_depend>
   <exec_depend>luggage_planning</exec_depend>
+  <exec_depend>luggage_mapping</exec_depend>
+  <exec_depend>luggage_packing</exec_depend>
+  <exec_depend>uld_occ_observer</exec_depend>
   <exec_depend>luggage_msgs</exec_depend>
   <exec_depend>visualization_msgs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
