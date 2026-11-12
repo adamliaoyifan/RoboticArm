@@ -25,7 +25,8 @@ from moveit_msgs.msg import Constraints, JointConstraint
 from luggage_msgs.action import ExecuteJointOperationV2
 from luggage_msgs.msg import SuctionTopDomainV2
 from luggage_msgs.srv import DetectLuggage, PrepareJointOperationV2, SpawnNextBox
-from uld_occ_observer.srv import GetValidity, ResetObservation
+from uld_occ_observer.srv import GetValidity, ResetObservation, GetSnapshot, ReleaseSnapshot
+from luggage_mapping.observer import admit_response, identity_record
 from controller_manager_msgs.srv import ListControllers
 import yaml
 from luggage_gazebo.operation_readiness import wait_active_controllers, wait_observed_detection
@@ -57,6 +58,8 @@ class OperationSimDriver(Node):
         self.detect = self.create_client(DetectLuggage,'/luggage_detector/detect_luggage')
         self.validity = self.create_client(GetValidity,'/uld_occ_observer/get_validity')
         self.reset = self.create_client(ResetObservation,'/uld_occ_observer/reset_observation')
+        self.snapshot = self.create_client(GetSnapshot,'/uld_occ_observer/get_snapshot')
+        self.release_snapshot = self.create_client(ReleaseSnapshot,'/uld_occ_observer/release_snapshot')
         self.spawn = self.create_client(SpawnNextBox,'/pickup_box_spawner/spawn_next_box')
         self.execute = ActionClient(self,ExecuteJointOperationV2,'/joint_operation/execute')
         self.move = ActionClient(self,MoveGroup,'/move_action')
@@ -170,12 +173,25 @@ class OperationSimDriver(Node):
             lambda:self.domain,deadline=time.monotonic()+30.)
         self.record('top_domain',domain)
         validity = self.call(self.validity,GetValidity.Request(),'prepare_validity')
+        # GetValidity records the validity transition; its map_revision is not
+        # the latest repository identity. Pin the actual current snapshot until
+        # prepare has acquired its independent lease of those exact map bytes.
+        lease = self.call(self.snapshot,GetSnapshot.Request(expected_epoch=validity.epoch,
+            exact_revision=False,max_age_ms=1000,allow_stale=False),'prepare_snapshot')
+        if not lease.handle:raise RuntimeError('MAP_SNAPSHOT:'+lease.status)
+        try:
+            admit_response(lease,identity_record(lease.identity),lease.validity.generation)
+            return self.prepare_from_observation(detection,domain,lease.identity)
+        finally:
+            self.call(self.release_snapshot,ReleaseSnapshot.Request(handle=lease.handle),'release_prepare_snapshot')
+
+    def prepare_from_observation(self,detection,domain,identity):
         joint = self.joint;self.record('prepare_joints',joint)
         positions = dict(zip(joint.name,joint.position))
         request = PrepareJointOperationV2.Request(request_id='gazebo-'+str(time.time_ns()),
             observation_id=domain.domain_sha256,detection=detection,generation=domain.generation,
-            geometry_hash=validity.geometry_hash,expected_map_revision=validity.map_revision,
-            expected_map_epoch=validity.epoch,expected_model_sha256=self.launch['model_sha256'],
+            geometry_hash=identity.geometry_hash,expected_map_revision=identity.map_revision,
+            expected_map_epoch=identity.epoch,expected_model_sha256=self.launch['model_sha256'],
             robot_state_stamp_valid=True,
             robot_state_stamp_ns=joint.header.stamp.sec*10**9+joint.header.stamp.nanosec,
             start_joints=[positions[name] for name in JOINTS],candidate_limit=8,

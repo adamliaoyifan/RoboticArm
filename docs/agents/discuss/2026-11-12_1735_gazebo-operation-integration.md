@@ -54,3 +54,15 @@ measured geometry and an exact header/domain join; no admission relaxation.
 11 behavioural readiness cases pass. Latest-only prepare/context association race
 remains a source concern to measure at its actual boundary. User confirms online
 IK diagnosis first, but final success baseline requires requalified full-model atlas.
+
+## Post -- eng/codex -- 2026-11-12 18:25 -- codex/gpt-6
+
+cycle_02 passed domain admission and frozen retention, then GetSnapshot refused
+REVISION_UNAVAILABLE. Client erroneously used GetValidity's transition-time
+revision1 while actual O receipts were revision5. Fix binds a real current
+snapshot lease (same1000ms/allow_stale=false), retains it through preparation and
+releases in finally. 13 client/readiness behavioural cases pass. No movement of
+product box, no collision-policy change. Evidence: cycle_02/failure_summary.json.
+Separately, observed O INTEGRATED receipts with zero free/hit keys advance the
+global stamp; they cannot establish regional ULD freshness. Keep this limitation
+visible for the map-age design review instead of claiming fresh ULD coverage.
