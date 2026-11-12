@@ -41,3 +41,16 @@ def test_existing_attachment_envelope_ranks_interior_before_wall_without_veto():
     rows=rank_payload_clearance([wall,interior],[.2,.1,.1],volume,.02,
         hull=hull,geometry=geometry,release_gap_m=.05,vertical_margin=0.)
     assert rows==[interior,wall]
+
+
+def test_clear_release_does_not_hide_an_obstacle_on_the_local_descent():
+    states=np.ones((8,5,10),dtype=np.uint8);states[4,2,2]=2
+    volume=SimpleNamespace(dimensions_xyz=[10,5,8],states=states.ravel(),
+        active=np.ones(states.size,dtype=bool),origin_container=[0.,0.,0.],resolution_m=.1)
+    blocked=dict(center_container=[.25,.25,.15],heading_theta=0.,candidate_id='release-clear')
+    clear=dict(blocked,center_container=[.65,.25,.15],candidate_id='descent-clear')
+    rows=[blocked,clear]
+    assert rank_payload_clearance(rows,[.1,.1,.1],volume,0.,release_gap_m=.05)==rows
+    assert rank_payload_clearance(rows,[.1,.1,.1],volume,0.,release_gap_m=.05,
+        approach_clearance_m=.3)==[clear,blocked]
+    assert rows==[blocked,clear] and states[4,2,2]==2

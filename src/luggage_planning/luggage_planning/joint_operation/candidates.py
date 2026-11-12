@@ -48,6 +48,20 @@ def _contact_matrix(domain, uv, yaw):
     return matrix
 
 
+def centered_ranking_geometry(domain, limits):
+    """Ranking proposal with the observed normal; never suction permission.
+
+    The eventual offset and full footprint still come from perception's directed
+    contact evaluation. Tiny measured tilt must not be replaced by a perfect
+    vertical relation when proposing the existing conservative envelope.
+    """
+    box = Transform(domain.box_xyz_world, domain.box_quaternion_xyzw)
+    uv = np.asarray((domain.u_axis_world, domain.v_axis_world)) @ np.asarray(domain.box_xyz_world)
+    contact = Transform.from_matrix(_contact_matrix(domain, uv, 0.))
+    tool_box = box.inverse().compose(contact).inverse()
+    return freeze_geometry(domain.box_wdh,tool_box.translation,tool_box.quaternion_xyzw,limits)
+
+
 def propose_contact(domain, model, *, query_id, world_from_place_box,
                     desired_world_from_tool, max_center_checks):
     """Back-project a target-side tool hint into an actual observed pick face.

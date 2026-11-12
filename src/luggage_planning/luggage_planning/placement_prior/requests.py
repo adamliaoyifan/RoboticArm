@@ -76,7 +76,8 @@ def admit_placement_targets(confirmed, box_wdh, targets, *, volume):
 
 
 def enumerate_placements(confirmed, box_wdh, max_slots, *, volume=None, margin=.05,
-                         ranking_geometry=None, release_gap_m=0., vertical_margin=None):
+                         ranking_geometry=None, release_gap_m=0., vertical_margin=None,
+                         approach_clearance_m=0.):
     from luggage_packing.placement_query import placement_query
     from luggage_packing.placement_solver import retain_directed_candidates
     from luggage_packing.placement_volume_query import KnownFreeVolume, evidence_from_volume
@@ -89,7 +90,8 @@ def enumerate_placements(confirmed, box_wdh, max_slots, *, volume=None, margin=.
         from luggage_description.container_geometry import normalize_descriptor
         candidates = rank_payload_clearance(candidates, box_wdh, volume, margin,
             hull=normalize_descriptor(descriptor) if ranking_geometry is not None else None,
-            geometry=ranking_geometry,release_gap_m=release_gap_m,vertical_margin=vertical_margin)
+            geometry=ranking_geometry,release_gap_m=release_gap_m,vertical_margin=vertical_margin,
+            approach_clearance_m=approach_clearance_m)
     candidates = retain_directed_candidates(candidates, max_slots)
     result = []
     for candidate in candidates:

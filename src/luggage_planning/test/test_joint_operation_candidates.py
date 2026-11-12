@@ -243,3 +243,21 @@ def test_pickup_association_never_deletes_same_id_unrelated_geometry(capture,dam
         with pytest.raises(ValueError,match='ASSOCIATION_CONFLICT'):
             admit_pickup_association(source,domain,'pickup_box')
     assert source.scene_cdr == raw
+
+
+def test_ranking_envelope_keeps_measured_normal_and_measured_dimensions():
+    from luggage_planning.joint_operation.candidates import centered_ranking_geometry
+    from scipy.spatial.transform import Rotation
+    _,context=request_and_context();domain=context.domain
+    rotation=Rotation.from_rotvec([.003,0.,0.])
+    normal=rotation.apply((0.,0.,1.))
+    top=np.asarray(domain.box_xyz_world)+np.array([0.,0.,domain.box_wdh[2]/2])
+    tilted=replace(domain,u_axis_world=tuple(rotation.apply((1.,0.,0.))),
+        v_axis_world=tuple(rotation.apply((0.,1.,0.))),normal_world=tuple(normal),
+        plane_offset_world_m=float(normal@top))
+    limits=EnvelopeLimits(5.,(.1,.1,.1),(.01,.02),.005)
+    geometry=centered_ranking_geometry(tilted,limits)
+    world_tool=Transform(tilted.box_xyz_world,tilted.box_quaternion_xyzw).compose(
+        Transform(geometry.t_tool_box_translation,geometry.t_tool_box_quaternion_xyzw).inverse())
+    assert Rotation.from_quat(world_tool.quaternion_xyzw).apply((0.,0.,1.))==pytest.approx(-normal)
+    assert geometry.measured_dimensions_wdh==domain.box_wdh

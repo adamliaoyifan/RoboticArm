@@ -448,3 +448,11 @@ bounded action may retain the immutable observation under the confirmed
 stationary-before-seal/fixed-after-seal premise. No stage refreshes acquisition
 time; perception-owner binding, current map content and full native suffix
 checks still apply. Root and executor use the same preparation watchdog.
+
+Whole-operation ranking uses the frozen measured top normal for its centered
+attachment proposal and includes the existing local pre-place descent sweep.
+It must not replace a measured tilted normal with an ideal vertical relation or
+score release clearance as though it guaranteed descent clearance. This remains
+a cheap ordering hint: exact offset/full-footprint contact qualification and
+full-model native local/whole-path checks are the authorities; blocked ranking
+proposals are retained as fallback.

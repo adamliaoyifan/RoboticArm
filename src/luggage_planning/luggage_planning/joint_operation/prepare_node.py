@@ -58,7 +58,7 @@ from luggage_planning.trajectory_timing import cartesian_joint_limits
 from luggage_planning.joint_operation.preparation_profile import (
     DEFAULT_MAX_PREPARATION_BUDGET_S, PreparationBudget, StageTimings,
 )
-from luggage_planning.waypoint_generator import PLACE_RELEASE_GAP_M
+from luggage_planning.waypoint_generator import PLACE_RELEASE_GAP_M, DEFAULT_PLACE_CLEARANCE_Z
 
 
 class JointOperationPrepareNode(Node):
@@ -347,7 +347,7 @@ class JointOperationPrepareNode(Node):
             PlanningSceneComponents.ALLOWED_COLLISION_MATRIX|PlanningSceneComponents.LINK_PADDING_AND_SCALING)
         return self.static_world.admit(self._call(self.scene_client,request,deadline,'scene').scene)
 
-    def _placements(self,request,confirmed,volume):
+    def _placements(self,request,confirmed,volume,*,ranking_geometry=None):
         from st09_contracts.attachment_geometry import freeze_geometry
         dimensions=(request.detection.width,request.detection.depth,request.detection.height)
         if request.slots:
@@ -365,10 +365,11 @@ class JointOperationPrepareNode(Node):
             return tuple(result)
         # A centred contact is a cheap ranking proposal. Actual directed
         # contact/attachment and native checks remain the motion authority.
-        ranking_geometry=freeze_geometry(dimensions,(0.,0.,dimensions[2]/2),(1.,0.,0.,0.),self.limits)
+        if ranking_geometry is None:
+            ranking_geometry=freeze_geometry(dimensions,(0.,0.,dimensions[2]/2),(1.,0.,0.,0.),self.limits)
         pool = enumerate_placements(confirmed,dimensions,self.slot_limit,volume=volume,margin=self.margin,
             ranking_geometry=ranking_geometry,release_gap_m=PLACE_RELEASE_GAP_M,
-            vertical_margin=self.vertical_margin)
+            vertical_margin=self.vertical_margin,approach_clearance_m=DEFAULT_PLACE_CLEARANCE_Z)
         # Shared retention puts one deep target per directed heading first,
         # then the shallow alternatives. Never fabricate a half turn here.
         return pool
@@ -422,7 +423,10 @@ class JointOperationPrepareNode(Node):
                 confirmed,baseline,self.model.model_sha256,self.container,
                                               collision_margin_m=self.margin,volume=volume,
                                               vertical_collision_margin_m=self.vertical_margin)
-            placements = timing.call('placement_candidates',self._placements,request,confirmed,volume)
+            from luggage_planning.joint_operation.candidates import centered_ranking_geometry
+            ranking_geometry = centered_ranking_geometry(domain,self.limits)
+            placements = timing.call('placement_candidates',self._placements,request,confirmed,volume,
+                                     ranking_geometry=ranking_geometry)
             reference = Transform.from_matrix(self.model.urdf.tcp(list(request.start_joints),self.model.path))
             inputs = PreparationInputs(snapshot,domain,placements,reference,self.pickup_id,observed)
             def observation_current(limit):

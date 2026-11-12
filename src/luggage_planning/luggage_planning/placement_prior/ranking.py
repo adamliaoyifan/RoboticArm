@@ -4,13 +4,16 @@ import numpy as np
 
 
 def rank_payload_clearance(candidates, box_wdh, volume, margin, *, hull=None,
-                           geometry=None, release_gap_m=0., vertical_margin=None):
+                           geometry=None, release_gap_m=0., vertical_margin=None,
+                           approach_clearance_m=0.):
     """Prioritize clear payload AABBs, retaining solver order within each group.
 
     Input volume has already passed snapshot admission. This does not authorize
     any grasp or reject a requested target; native tool checks still decide.
     Blocked candidates remain as fallback since an AABB can overestimate an
-    oriented box. Prefix sums bound each candidate query to eight array reads.
+    oriented box. Include the existing vertical approach sweep when supplied;
+    a clear release pose alone does not imply a clear descent. Prefix sums bound
+    each candidate query to eight array reads. No obstacle or candidate is removed.
     """
     nx, ny, nz = map(int, volume.dimensions_xyz)
     states = (np.frombuffer(volume.states,dtype=np.uint8) if isinstance(volume.states,bytes)
@@ -33,16 +36,17 @@ def rank_payload_clearance(candidates, box_wdh, volume, margin, *, hull=None,
             center,_=geometry.conservative_pose_at_box(center,quat)
             center=np.asarray(center)
             dimensions=geometry.conservative.dimensions_wdh
-        center=center+np.array([0.,0.,release_gap_m])
+        center=center+np.array([0.,0.,release_gap_m+approach_clearance_m/2])
         width, depth, height = dimensions
         mz=margin if vertical_margin is None else vertical_margin
         half = np.array([(c*width+s*depth)/2+margin,
-                         (s*width+c*depth)/2+margin, height/2+mz])
+                         (s*width+c*depth)/2+margin, height/2+mz+approach_clearance_m/2])
         outside_hull=False
         if hull is not None:
             from luggage_description.container_geometry import contains_oriented_box
-            outside_hull=not contains_oriented_box(hull,center,dimensions,yaw,
-                                                   margin=margin,floor_margin=0.)
+            outside_hull=any(not contains_oriented_box(hull,
+                center+np.array([0.,0.,offset]),dimensions,yaw,margin=margin,floor_margin=0.)
+                for offset in (-approach_clearance_m/2,approach_clearance_m/2))
         lower = np.maximum(0, np.minimum(maximum, np.floor((center-half-origin)/resolution).astype(int)))
         upper = np.maximum(0, np.minimum(maximum, np.ceil((center+half-origin)/resolution).astype(int)))
         x0, y0, z0 = lower; x1, y1, z1 = upper
