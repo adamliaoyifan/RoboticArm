@@ -4,12 +4,12 @@
 - agent: codex
 - model: gpt-6
 - cli: codex
-- status: open
+- status: done
 - parent: PLANNING-ROUTE-LAYOUT-20261112
 - subtask: PACKAGE-LAYOUT
 - base_revision: dfbcc39fa8c5e58defc46d7fdb33f3f30bb38e35
 - started_at: 2026-11-12T20:37:45+08:00
-- completed_at: n/a
+- completed_at: 2026-11-12T21:00:26+08:00
 
 ## Summary
 
@@ -65,7 +65,7 @@ algorithms or untracked runtime implementation into the refactor commit.
 
 ## Result
 
-Verification passes; commit pending. Working-tree validation includes pre-existing
+Pass at `e9e7cb9e6c7f48040bd79a25140d67f89c526edb`. Working-tree validation includes pre-existing
 dirty changes and untracked runtime files, frozen in evidence; it does not certify
 an isolated clean checkout or whole Gazebo/hardware baseline. Stage transformed
 HEAD only for previously tracked files; leave concurrent content dirty at the new

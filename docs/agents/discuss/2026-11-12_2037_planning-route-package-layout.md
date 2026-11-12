@@ -1,6 +1,6 @@
 # 2026-11-12 -- Planning route package layout
 
-- status: open
+- status: done
 - to_role: eng
 - to_agent: codex
 - to_model: gpt-6
@@ -31,3 +31,12 @@ Mechanically group72 route modules, update active callers and install paths, pre
 - claimed_generation: 1
 - claimed_plan_revision: bd46a9f03f6aaba0e5cc746134856ee8611e175b
 - claimed_dependencies: none
+
+## Result -- eng/codex -- 2026-11-12 21:00 -- codex/gpt-6
+
+- outcome: pass
+- completed_at: 2026-11-12T21:00:26+08:00
+- revision: e9e7cb9e6c7f48040bd79a25140d67f89c526edb
+- tests: Baseline536pass/11skip unchanged;extended544pass/11skip;56native MoveIt pass;188installed checks pass;13packages stable-source build;frame16pass/60subtests;no Gazebo/hardware success claimed.
+- summary: Grouped72 planning modules into four packages, migrated active callers and frame inventory, added route index and stale-install pruning; preserved concurrent dirty/untracked implementation separately.
+- evidence: docs/status/evidence/planning_route_layout/20261112/summary.json
