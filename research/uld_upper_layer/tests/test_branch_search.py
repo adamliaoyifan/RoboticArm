@@ -25,7 +25,7 @@ class BranchSearch(unittest.TestCase):
         outcomes=[dict(valid=False,reason='NO_CONNECTED_HANDOFF_BRANCH',
                        diagnostic=dict(reason='SELF_COLLISION',pair=['arm','camera'])),
                   dict(valid=True,stages=['pick','carry','release','push','retreat'])]
-        with patch('action_screen.screen_push',return_value=dict(valid=True)),patch(
+        with patch('action_screen.screen_handoff',return_value=dict(valid=True,q_solutions=[])),patch('action_screen.screen_push',return_value=dict(valid=True)),patch(
                 'stage_planner._plan_from_pick_branch',side_effect=outcomes) as attempt:
             result=plan_action(self.scene,self.state,self.action,[0.]*6,[],UpperConfig.load(),self.events.append)
         self.assertTrue(result['valid'])
@@ -35,7 +35,7 @@ class BranchSearch(unittest.TestCase):
         self.assertEqual([event['valid'] for event in self.events if event['event']=='pick_branch_output'],[False,True])
 
     def test_all_sampled_pick_branches_fail_without_executable_result(self):
-        with patch('action_screen.screen_push',return_value=dict(valid=True)),patch(
+        with patch('action_screen.screen_handoff',return_value=dict(valid=True,q_solutions=[])),patch('action_screen.screen_push',return_value=dict(valid=True)),patch(
                 'stage_planner._plan_from_pick_branch',return_value=dict(valid=False,reason='BLOCKED')):
             result=plan_action(self.scene,self.state,self.action,[0.]*6,[],UpperConfig.load(),self.events.append)
         self.assertFalse(result['valid'])

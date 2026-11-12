@@ -518,9 +518,12 @@ inputs, candidates, per-action stage traces and certificates, plans and selectio
 Plans are immutable after scoring: changing trajectories invalidates their digest.
 The caller consumes the selected trajectory; `PhysicalExecutor` supports either
 the full12-stage chain or the already-attached9-stage suffix and requires live
-attachment for the latter. The standalone `physical_probe.py` starts a new scene,
-so it rejects attached-start requests; a live attached caller must use its current
-runtime. It does not manufacture attachment when resuming.
+attachment for the latter. The standalone `physical_probe.py` starts a new scene and rejects an unattached
+state for an attached plan. Its explicit `--initialize-pick` experiment option
+starts at a source-IK seal pose on the pickup platform, performs actual vacuum
+attachment and a certified controller lift, and captures the resulting state.
+It does not validate the home-to-pick route or command a cargo pose. A live
+production caller supplies its already-attached runtime directly.
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -536,3 +539,18 @@ consumer rechecks its hash and passes the same configuration to scene launch.
 Request lifetime ends when its snapshot, grasp, current joints or policy changes;
 request a new plan rather than editing a scored result. Failure output retains
 all rejected boundaries; no result is admitted on a worker timeout.
+
+Measured attachments retain their complete transform, including small lateral
+and angular deviations. Sampling orientations only organize candidate search;
+all handoff/pick tool poses and whole-tool collision checks use the confirmed
+transform exactly. The measured seal footprint must fit the box with the source
+edge allowance minus the existing contact-pose tolerance. Long-edge alignment
+with insertion is enforced by the target family.
+
+`action_screen.screen_handoff` screens full attached endpoints before expensive
+pick routing. `free_transfer.outside_reorientation` derives an exterior turn
+location from the actual aperture and full-tool bounding radius. Its retreat,
+rotation and approach legs are IK/collision checked and included in the same
+timed trajectory and interval certificate; no additional cargo contact is added.
+The final executor checks current joints/box against the scored start and
+requires actual support/contact plus stable separation at completion.

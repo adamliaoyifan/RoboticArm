@@ -48,7 +48,7 @@ def tool_collision(assets, snapshot, tcp, clearance):
     return None
 
 
-def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values, lateral, depth_values, grasp_values, reasons, witnesses, deadline=None, emit=None, final_pose=None):
+def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values, lateral, depth_values, grasp_values, reasons, witnesses, deadline=None, emit=None, final_pose=None, fixed_grasp=None):
     """Return immutable geometric candidates and bounded diagnostic records.
 
     Grasp is selected on the original top face. The final box is inverted by
@@ -115,7 +115,8 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
                         reasons[metrics.reason]+=1;continue
                     for b in grasp_values:
                         if deadline is not None and time.monotonic()>=deadline:return
-                        tcp = pose([front-b,y,top],rt)
+                        tcp = (pose([front-b,y,top],rt) if fixed_grasp is None
+                               else handoff@matrix(fixed_grasp))
                         failure = tool_collision(assets,snapshot,tcp,config.collision_margin_m)
                         # Verify the actual withdrawal legs including downward
                         # separation. Upward-carried box remains on lower cargo.
@@ -135,7 +136,8 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
                             reasons[failure['reason']]+=1
                             if len(witnesses)<32:witnesses.append(failure)
                             continue
-                        box_to_tool=np.linalg.inv(handoff)@tcp
+                        box_to_tool=(np.linalg.inv(handoff)@tcp if fixed_grasp is None
+                                     else matrix(fixed_grasp).copy())
                         pick=state_pose@box_to_tool
                         for final_x in final_xs:
                             if deadline is not None and time.monotonic()>=deadline:return

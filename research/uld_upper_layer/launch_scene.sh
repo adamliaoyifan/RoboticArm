@@ -39,6 +39,7 @@ UPPER_PIDFILE=/tmp/elfin_uld_upper_scene.pid
 setsid ros2 launch "$UPPER_REPO/src/luggage_gazebo/launch/sim_world.launch.py" \
   world_sdf:="$UPPER_SCENE/overlay.sdf" \
   scene_tf_config:="${ULD_UPPER_SCENE_CONFIG:-$UPPER_REPO/src/luggage_description/config/scene_tf.yaml}" \
+  robot_poses_config:="${ULD_UPPER_ROBOT_POSES_CONFIG:-$UPPER_REPO/src/luggage_description/config/robot_poses.yaml.example}" \
   gui:="$UPPER_GUI" use_rviz:=false use_moveit:=true \
   use_perception:=false use_semantic:=false use_motion:=false \
   use_packing:=false use_cargo_map:=false use_vacuum:=false &

@@ -49,14 +49,27 @@ class RequestContracts(unittest.TestCase):
                         np.array(request.box.container_T_box).reshape(4,4)@np.array(action.box_T_tool).reshape(4,4))
 
     def test_fixed_attachment_filters_without_regrasp(self):
-        actions,_=self.generate(self.request());grasp=actions[0].box_T_tool
+        config=replace(self.config,support_area_ratio_min=.61)
+        actions,_=self.generate(self.request(),config);grasp=actions[0].box_T_tool
         request=self.request(start_attached=True,confirmed_box_T_tool=grasp)
-        actions,report=self.generate(request)
+        actions,report=self.generate(request,config)
         self.assertTrue(actions,report)
         for a in actions:np.testing.assert_allclose(a.box_T_tool,grasp,atol=1e-7)
-        displaced=np.array(grasp).reshape(4,4).copy();displaced[1,3]+=.05
+        displaced=np.array(grasp).reshape(4,4).copy();displaced[1,3]+=.5
         actions,_=self.generate(replace(request,confirmed_box_T_tool=tuple(displaced.ravel())))
         self.assertEqual(actions,[])
+
+    def test_measured_attachment_is_preserved_without_orientation_quantization(self):
+        actions,_=self.generate(self.request());grasp=np.array(actions[0].box_T_tool).reshape(4,4)
+        grasp[:3,:3]=grasp[:3,:3]@Rotation.from_euler('z',2e-5).as_matrix()
+        grasp[1,3]+=.0001
+        request=self.request(start_attached=True,confirmed_box_T_tool=tuple(grasp.ravel()))
+        actions,report=self.generate(request)
+        self.assertTrue(actions,report)
+        for action in actions:
+            self.assertEqual(action.box_T_tool,request.confirmed_box_T_tool)
+            np.testing.assert_allclose(np.array(action.handoff_tool_pose).reshape(4,4),
+                np.array(action.handoff_box_pose).reshape(4,4)@grasp,atol=1e-12)
 
     def test_invalid_boundaries_fail_before_planning(self):
         for values in (dict(frame_id='elfin_base_link'),dict(support_source_ids=('missing',)),

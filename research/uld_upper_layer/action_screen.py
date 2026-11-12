@@ -49,3 +49,27 @@ def screen_push(scene,state,action,seeds,config):
         return dict(valid=True,endpoints=result,scope='NECESSARY_ENDPOINTS_NOT_CONNECTED_PATH')
     finally:
         scene.set_payload(state.dimensions,'world',world@matrix(state.container_T_box),allow_support=True)
+
+
+def screen_handoff(scene,state,action,seeds,config):
+    """Reject sampled impossible grasp/target couplings before planning pickup.
+
+    This does not prove global infeasibility: expanded seed/search budgets may
+    discover other branches. Full payload/tool/world collisions are retained.
+    """
+    try:
+        scene.set_payload(state.dimensions,'attached',
+            scene.world_container@matrix(state.container_T_box),matrix(action.box_T_tool),True)
+        goals,diagnostic=scene.endpoint_solutions(matrix(action.support_contact_tool_pose),seeds,
+            config.collision_margin_m,config.path_attempt_budget_s)
+        accepted=[];rejected=[]
+        for q in goals:
+            failure=scene.check_state(q,config.collision_margin_m,True)
+            if failure:rejected.append(dict(q=q,diagnostic=failure))
+            else:accepted.append(q)
+        return dict(valid=bool(accepted),reason='HANDOFF_ENDPOINTS_SCREENED' if accepted else
+            'NO_SAMPLED_HANDOFF_ENDPOINT_SOLUTION',q_solutions=accepted,
+            diagnostic=diagnostic,rejected=rejected,exhaustive=False)
+    finally:
+        scene.set_payload(state.dimensions,'world',
+            scene.world_container@matrix(state.container_T_box),allow_support=True)

@@ -43,12 +43,18 @@ def main():
     parser.add_argument('--evidence',type=Path,required=True)
     parser.add_argument('--planning-run',type=Path)
     parser.add_argument('--policy',type=Path)
+    parser.add_argument('--scene-config',type=Path)
+    parser.add_argument('--config',type=Path)
+    parser.add_argument('--initialize-pick',type=Path)
+    parser.add_argument('--capture-after-pick',action='store_true')
     parser.add_argument('--capture-rehearsal',action='store_true',
         help='Deliberate diagnostic failure after controller hold; never a physical action verdict')
     args=parser.parse_args();out=args.evidence.resolve()
+    if args.capture_after_pick and (not args.initialize_pick or args.planning_run):
+        parser.error('--capture-after-pick needs --initialize-pick and no --planning-run')
     if args.capture_rehearsal and args.planning_run:parser.error('capture rehearsal does not execute a plan')
     if not out.is_relative_to(EVIDENCE):raise ValueError('PRIMARY_EVIDENCE_REQUIRED')
-    policy=ExecutionPolicy.load(args.policy);config=UpperConfig.load();plan=None;selection=None;scene_path=None
+    policy=ExecutionPolicy.load(args.policy);config=UpperConfig.load(args.config);plan=None;selection=None;scene_path=args.scene_config
     if args.planning_run:
         planning_manifest=json.loads((args.planning_run/'manifest.json').read_text())
         config=UpperConfig.load(args.planning_run/'source/upper_config.yaml')
@@ -100,6 +106,14 @@ def main():
     runtime=RuntimeIO(ROOT,out,args.scene_dir,capture_policy=policy,scene_path=scene_path);monitor=None;observe=None;trace=None;failed=False
     try:
         assets=load(ROOT,scene_path);runtime.start();row=runtime.snapshot();save(out/'initial_observation.json',row)
+        if args.initialize_pick:
+            from pick_initialization import initialize_pick
+            row=initialize_pick(runtime,assets,args.scene_dir,args.initialize_pick,config,policy,out/'pick_initialization')
+        if args.capture_after_pick:
+            save(out/'observation.json',row)
+            save(out/'summary.json',dict(status='post_pick_capture_pass',upper_placement='not_evaluated'))
+            manifest['capture_complete']=True;manifest['replay_possible']=True
+            return
         snapshot,state=capture_fixture(args.scene_dir,assets,config)
         snapshot,state=from_observation(snapshot,state,row,assets)
         save(out/'fresh_snapshot.json',dict(scene=asdict(snapshot),box=asdict(state)))

@@ -30,7 +30,7 @@ class AttachedStart(unittest.TestCase):
             urdf=SimpleNamespace(tcp=lambda *a:np.eye(4),path_to=lambda *a:None),
             set_payload=lambda *a,**k:payload_calls.append((a,k)),check_state=lambda *a:None)
         current=[.1]*6
-        with patch('action_screen.screen_push',return_value=dict(valid=True)),patch(
+        with patch('action_screen.screen_handoff',return_value=dict(valid=True,q_solutions=[])),patch('action_screen.screen_push',return_value=dict(valid=True)),patch(
             'stage_planner._plan_from_pick_branch',return_value=dict(valid=True)) as carry:
             result=plan_action(scene,state,action,current,[],UpperConfig.load(),lambda r:None,True)
             self.assertTrue(result['valid'])

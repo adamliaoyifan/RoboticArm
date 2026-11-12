@@ -33,6 +33,8 @@ class RuntimeIO:
         if scene_dir:
             self.env['ULD_UPPER_SCENE']=str(scene_dir)
             fixture=json.loads((Path(scene_dir)/'fixture.json').read_text())
+            if fixture.get('robot_poses_config'):
+                self.env['ULD_UPPER_ROBOT_POSES_CONFIG']=str(fixture['robot_poses_config'])
             self.vacuum_spec=fixture.get('ideal_vacuum')
             self.native_step_s=float(fixture['physics_step_s'])
             if not 0<self.native_step_s:raise ValueError('INVALID_NATIVE_PHYSICS_STEP')

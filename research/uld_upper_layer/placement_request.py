@@ -13,7 +13,7 @@ from shapely.geometry import box as polygon_box
 from shapely.ops import unary_union
 from candidates import matrix, samples, interior_samples, round_robin, _action_stream
 from geometry import pose
-from planning_types import digest
+from planning_types import digest,BoxState,SceneSnapshot
 from support_geometry import measure_support
 
 
@@ -30,8 +30,8 @@ def rigid_pose(value, name):
 @dataclass(frozen=True)
 class PlacementRequest:
     request_id: str
-    box: object  # immutable BoxState
-    snapshot: object  # immutable SceneSnapshot; same OCC contract as perception
+    box: BoxState
+    snapshot: SceneSnapshot  # same OCC contract as perception
     start_q: tuple
     final_box_poses: tuple
     support_source_ids: tuple
@@ -40,6 +40,15 @@ class PlacementRequest:
     frame_id: str = 'container_link'
 
     def __post_init__(self):
+        if not isinstance(self.box,BoxState) or not isinstance(self.snapshot,SceneSnapshot):
+            raise ValueError('TYPED_BOX_AND_SNAPSHOT_REQUIRED')
+        object.__setattr__(self,'start_q',tuple(self.start_q))
+        object.__setattr__(self,'support_source_ids',tuple(self.support_source_ids))
+        object.__setattr__(self,'final_box_poses',tuple(tuple(rigid_pose(v,'final_box_pose').ravel())
+                                                     for v in self.final_box_poses))
+        if self.confirmed_box_T_tool is not None:
+            object.__setattr__(self,'confirmed_box_T_tool',tuple(rigid_pose(
+                self.confirmed_box_T_tool,'confirmed_box_T_tool').ravel()))
         if self.frame_id!='container_link' or self.snapshot.frame_id!=self.frame_id:
             raise ValueError('REQUEST_FRAME_MISMATCH')
         if not self.request_id:raise ValueError('REQUEST_ID_REQUIRED')
@@ -71,6 +80,18 @@ def target_actions(assets,request,config,emit=None,deadline=None):
     """
     start=time.monotonic();deadline=min(start+config.search_budget_s,deadline or float('inf'))
     reasons=Counter();witnesses=[];streams=[]
+    if request.start_attached:
+        grasp=matrix(request.confirmed_box_T_tool)
+        footprint=np.array(assets['contact']['footprint_size_xy_m'])
+        local=np.array([[x,y,0.] for x in (-footprint[0]/2,footprint[0]/2)
+                        for y in (-footprint[1]/2,footprint[1]/2)])
+        corners=local@grasp[:3,:3].T+grasp[:3,3]
+        edge=max(0.,assets['contact']['boundary_margin_m']-config.contact_tolerance_m)
+        if (np.any(np.abs(corners[:,:2])>np.array(request.box.dimensions[:2])/2-edge+1e-10) or
+            np.max(np.abs(corners[:,2]-request.box.dimensions[2]/2))>config.contact_tolerance_m or
+            grasp[2,2]>-np.cos(np.deg2rad(config.contact_normal_alignment_deg))):
+            return [],dict(reasons={'CONFIRMED_SEAL_OUTSIDE_BOX':1},witnesses=[],count=0,
+                termination='SEARCH_EXHAUSTED',elapsed_s=time.monotonic()-start)
     selected=tuple(p for p in request.snapshot.surfaces if p.source_id in request.support_source_ids)
     for final_value in request.final_box_poses:
         final=matrix(final_value);bottom=final[2,3]-request.box.dimensions[2]/2
@@ -88,6 +109,8 @@ def target_actions(assets,request,config,emit=None,deadline=None):
         if not support.accepted:reasons['FINAL_'+support.reason]+=1;continue
         rz=Rotation.from_euler('z',yaw,degrees=True).as_matrix()
         length,width=np.abs(rz[:2,:2])@request.box.dimensions[:2]
+        if length<max(request.box.dimensions[:2])-1e-9:
+            reasons['LONG_EDGE_NOT_PARALLEL_INSERTION']+=1;continue
         # Tilted yaw needs a face-normal push family; reject rather than use its AABB.
         if abs(np.sin(np.deg2rad(2*yaw)))>1e-7:
             reasons['TARGET_ORIENTATION_OUTSIDE_ACTION_FAMILY']+=1;continue
@@ -111,16 +134,24 @@ def target_actions(assets,request,config,emit=None,deadline=None):
                 grasp_values=tuple(reversed(samples(depth+forward+config.collision_margin_m,bmax,config.grasp_step_m)))
                 if request.start_attached:
                     tcp=final@matrix(request.confirmed_box_T_tool)
-                    if not np.allclose(tcp[:3,:3],rt,rtol=0,atol=1e-7):continue
+                    angle=Rotation.from_matrix(tcp[:3,:3].T@rt).magnitude()
+                    if angle>np.deg2rad(config.contact_normal_alignment_deg):continue
                     # Offset from the front face is invariant during straight push.
                     b=final[0,3]+length/2-tcp[0,3]
-                    grasp_values=(b,) if depth+forward+config.collision_margin_m<=b<=bmax else ()
+                    # Matrix composition can differ from bmax by a few ULPs.
+                    # Snap arithmetic noise only; never widen a physical margin.
+                    lower=depth+forward+config.collision_margin_m
+                    if abs(b-bmax)<=1e-12:b=bmax
+                    if abs(b-lower)<=1e-12:b=lower
+                    # Sampling windows are nominal. The bound measured transform
+                    # is never snapped: complete tool/payload checks use it exactly.
+                    grasp_values=(b,) if lower-config.contact_tolerance_m<=b<=bmax+config.contact_tolerance_m else ()
                 if grasp_values:
                     streams.append(_action_stream(assets,view,request.box,config,(yaw,),(tool_yaw,),
-                        final[1,3],(depth,),grasp_values,reasons,witnesses,deadline,emit,final_value))
+                        final[1,3],(depth,),grasp_values,reasons,witnesses,deadline,emit,final_value,request.confirmed_box_T_tool))
     actions=[]
     for action in round_robin(streams):
-        if request.start_attached and not np.allclose(action.box_T_tool,request.confirmed_box_T_tool,rtol=0,atol=1e-7):
+        if request.start_attached and action.box_T_tool!=request.confirmed_box_T_tool:
             reasons['FIXED_GRASP_OUTSIDE_ACTION_FAMILY']+=1;continue
         actions.append(action)
         if emit:emit(dict(event='target_geometry_candidate',action_id=action.action_id,target=action.placement.final_box_pose))

@@ -18,7 +18,7 @@ def shifted(transform, delta):
 
 def plan_action(scene,state,action,start_q,seeds,config,emit,start_attached=False):
     """Backtrack pick joint branches as well as coupled handoff branches."""
-    from action_screen import screen_push
+    from action_screen import screen_push,screen_handoff
     started=time.monotonic()
     if start_attached:
         actual=scene.container_world@scene.urdf.tcp(start_q,scene.urdf.path_to('suction_contact_frame'))
@@ -33,6 +33,11 @@ def plan_action(scene,state,action,start_q,seeds,config,emit,start_attached=Fals
     screened=screen_push(scene,state,action,seeds,config)
     emit(dict(event='necessary_push_endpoint_screen',result=screened))
     if not screened['valid']:return dict(valid=False,reason=screened['reason'],diagnostic=screened,stages=[])
+    handoff_screen=screen_handoff(scene,state,action,[start_q]+seeds,config)
+    emit(dict(event='necessary_handoff_endpoint_screen',result=handoff_screen))
+    if not handoff_screen['valid']:
+        return dict(valid=False,reason=handoff_screen['reason'],diagnostic=handoff_screen,stages=[])
+    screened['handoff_q_solutions']=handoff_screen['q_solutions']
     if start_attached:
         return _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
                                       None,screened,started,start_attached=True)
@@ -94,7 +99,12 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
                 goals,ik=scene.endpoint_solutions(target,[q]+seeds,
                     config.collision_margin_m,config.path_attempt_budget_s)
             else:goals=[goal_q];ik=dict(source='backseeded_constrained_chain')
+            if name=='push_pre' and not contact:
+                from free_transfer import outside_reorientation
+                path,detail=outside_reorientation(scene,q,target,config)
+                diagnostics.append(detail)
             for goal in sorted(goals,key=lambda v:np.linalg.norm(np.array(v)-q)):
+                if path:break
                 path,detail=joint_path(scene,q,goal,config,contact)
                 diagnostics.append(detail)
                 if path:break
@@ -159,7 +169,8 @@ def _plan_from_pick_branch(scene,state,action,start_q,seeds,config,emit,
                                   0,config.placement_lift_m])
     from coupled_chain import handoff_branches
     prefix_count=len(stages);carry_q=list(q);connected=False;failure=None
-    for branch in handoff_branches(scene,action,approach,[q]+seeds,config,emit):
+    for branch in handoff_branches(scene,action,approach,[q]+seeds,config,emit,
+            goals=screened.get('handoff_q_solutions')):
         del stages[prefix_count:];q=list(carry_q)
         scene.payload['allow_support']=False
         failure=stage('invert_and_approach',approach,'joint',contact=True,goal_q=branch['approach_q'])
