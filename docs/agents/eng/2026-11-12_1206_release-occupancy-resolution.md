@@ -4,11 +4,12 @@
 - agent: codex
 - model: gpt-6
 - cli: codex
-- status: open
+- status: done
 - parent: MOVEIT-ATLAS-JOINT-PLAN-20261111
 - subtask: ST-4-O-RESOLUTION
 - base_revision: 415506aa
 - started_at: 2026-11-12T11:57:56+08:00
+- completed_at: 2026-11-12T12:09:32+08:00
 
 ## Summary
 
@@ -66,7 +67,7 @@ uses retained original Response model SHA and checks native equality.
 
 ## Result
 
-Bounded diagnostic gate passes; lifecycle closure pending exact commit. Full
+Bounded diagnostic gate passes and closes at59644e18. Full
 integration remains open.2cm is an appropriate finer control to investigate,
 but resolution alone is not sufficient in this preserved fixture. No runtime
 padding reduction or unknown erasure follows from this experiment.
