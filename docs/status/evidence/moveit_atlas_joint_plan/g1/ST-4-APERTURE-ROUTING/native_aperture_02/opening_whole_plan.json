@@ -1,0 +1,134 @@
+{
+  "status": "PLAN_READY",
+  "elapsed_s": 1.147593468427658,
+  "trace": [
+    [
+      "timing",
+      "native_planner",
+      "local_paths",
+      0.007939659990370274,
+      "completed",
+      "joint-native"
+    ],
+    [
+      "timing",
+      "native_planner",
+      "align_connection",
+      0.011249375529587269,
+      "completed",
+      "joint-native"
+    ],
+    [
+      "aperture_region",
+      0,
+      "PAYLOAD_AND_FIXED_TOOL_PROJECTION",
+      [
+        -0.25955346088362996,
+        -0.24999999999900002
+      ],
+      [
+        0.25955346088362996,
+        0.31999999999999984
+      ],
+      3
+    ],
+    [
+      "aperture_selected",
+      "native-operation:joint-native:pick:hint:pick-prior:place:hint:place-prior:carry:aperture:0:0:current-carry",
+      [
+        {
+          "position_world": [
+            0.675,
+            -0.099408827554967,
+            0.8850000000005
+          ],
+          "quaternion_xyzw": [
+            0.9921976672293291,
+            0.12467473338522769,
+            -4.6603313954678956e-17,
+            6.769900232666771e-17
+          ],
+          "joints": [
+            -3.421579853528971,
+            2.4796114062003665,
+            1.4581489148842726,
+            0.6867018009572516,
+            -0.9229185662736271,
+            -0.4594383551036908
+          ]
+        },
+        {
+          "position_world": [
+            0.675,
+            0.0,
+            0.8850000000005
+          ],
+          "quaternion_xyzw": [
+            0.9921976672293291,
+            0.12467473338522769,
+            -4.6603313954678956e-17,
+            6.769900232666771e-17
+          ],
+          "joints": [
+            -3.230317857677811,
+            2.443694695059134,
+            1.534854441648677,
+            -2.6986228837103203,
+            0.8870888794795883,
+            -3.4327504660362247
+          ]
+        },
+        {
+          "position_world": [
+            0.675,
+            0.099408827554967,
+            0.8850000000005
+          ],
+          "quaternion_xyzw": [
+            0.9921976672293291,
+            0.12467473338522769,
+            -4.6603313954678956e-17,
+            6.769900232666771e-17
+          ],
+          "joints": [
+            -3.0324070090178696,
+            2.445654961908818,
+            1.530652936616707,
+            -2.952603566371308,
+            0.8436460912098275,
+            -3.268060678278026
+          ]
+        }
+      ],
+      0.07238975912332535
+    ],
+    [
+      "timing",
+      "native_planner",
+      "carry_connection",
+      0.07289667148143053,
+      "completed",
+      "joint-native"
+    ],
+    [
+      "timing",
+      "native_planner",
+      "time_parameterization",
+      0.6529808649793267,
+      "completed",
+      "joint-native"
+    ],
+    [
+      "timing",
+      "native_planner",
+      "whole_chain_certification",
+      0.311032397672534,
+      "completed",
+      "joint-native"
+    ],
+    [
+      "joint-native:pick:hint:pick-prior:place:hint:place-prior",
+      "PLAN_READY"
+    ]
+  ]
+}

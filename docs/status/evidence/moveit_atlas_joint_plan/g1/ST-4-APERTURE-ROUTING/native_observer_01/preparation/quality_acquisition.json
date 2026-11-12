@@ -1,0 +1,50 @@
+{
+  "box_id": "box",
+  "instance_id": "instance",
+  "generation": 3,
+  "stamp_ns": 12000000000,
+  "frame_id": "world",
+  "contact_model_version": 1,
+  "contact_model_hash": "bcd95e539aec1f4c7674650d2e91c41e7b8739c058ea602befa30863114c66e9",
+  "box_xyz_world": [
+    0.5582116141076979,
+    0.0,
+    0.7999999999999998
+  ],
+  "box_quaternion_xyzw": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+  ],
+  "box_wdh": [
+    0.2,
+    0.15,
+    0.1
+  ],
+  "u_axis_world": [
+    1.0,
+    0.0,
+    0.0
+  ],
+  "v_axis_world": [
+    0.0,
+    1.0,
+    0.0
+  ],
+  "normal_world": [
+    0.0,
+    0.0,
+    1.0
+  ],
+  "plane_offset_world_m": -0.8499999999999999,
+  "origin_uv_top_m": [
+    0.45821161410769795,
+    -0.075
+  ],
+  "cell_size_m": 0.005,
+  "shape": [
+    40,
+    30
+  ]
+}

@@ -113,7 +113,7 @@ def _valid_response(response, request, model_sha256):
 class NativeOperationCertificationPort:
     """Optional recorder receives (kind, captured CDR bytes), once per message."""
     def __init__(self, node, endpoint_model, *, velocity_limits, acceleration_limits,
-                 release_drop_m, recorder=None, max_samples=50000):
+                 release_drop_m, recorder=None, max_samples=50000, aperture_router=None):
         from luggage_msgs.srv import ValidateRouteV2
         self.service = ValidateRouteV2
         self.client = node.create_client(ValidateRouteV2, '/validate_route_v2')
@@ -128,6 +128,7 @@ class NativeOperationCertificationPort:
         self.release_drop_m = float(release_drop_m)
         self.velocity_limits, self.acceleration_limits = tuple(velocity_limits), tuple(acceleration_limits)
         self.max_samples, self.recorder, self.inflight = max_samples, recorder, None
+        self.aperture_router = aperture_router
 
     def certify(self, draft, candidate, *, deadline, cancelled):
         from moveit_msgs.msg import PlanningScene
@@ -170,6 +171,8 @@ class NativeOperationCertificationPort:
         if any(not self.model.matches(leg.knots[-1].positions, target)
                for leg, target in zip(draft.legs, target_poses)):
             return receipt('ENDPOINT_FK_MISMATCH')
+        if self.aperture_router is not None and not self.aperture_router.has_plane_witness(draft, candidate):
+            return receipt('APERTURE_WAYPOINT_FK_MISSING')
         request = self.service.Request()
         request.request_id, request.scene_revision = draft.identity.request_id, draft.identity.scene_revision
         request.route_digest = operation_digest(draft)

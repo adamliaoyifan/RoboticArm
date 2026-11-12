@@ -9,6 +9,8 @@ string scene_sha256
 uint8[] scene_cdr
 float64[6] start_joints
 float64[6] goal_joints
+# Optional standard MoveIt constraints, enforced throughout this connection.
+moveit_msgs/Constraints path_constraints
 float64 budget_s
 ---
 string request_id

@@ -1,0 +1,488 @@
+{
+  "model_sha256": "afc81b25ece3990bcb89094bab22c2f3ce782a7f7eb26bf2e889d0f9d83abbdc",
+  "scope": "isolated full-pose KDL+OMPL+native certification; not deployment qualification",
+  "commands": [
+    [
+      "local",
+      "/home/adamliao/work/elfin_humble_ws/install-production/luggage_planning/lib/luggage_planning/grasp_local_check_node"
+    ],
+    [
+      "connection",
+      "/home/adamliao/work/elfin_humble_ws/install-production/luggage_planning/lib/luggage_planning/snapshot_joint_path_node"
+    ],
+    [
+      "certification",
+      "/home/adamliao/work/elfin_humble_ws/install-production/luggage_planning/lib/luggage_planning/validate_route_node"
+    ]
+  ],
+  "records": [
+    {
+      "port": "observer",
+      "kind": "integrate_observation_request",
+      "file": "00_observer_integrate_observation_request.cdr",
+      "sha256": "60663b34241f1a21c95a5def9757abff5d303a15d5d40cac63d1c79e5a77b707"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_response",
+      "file": "01_observer_integrate_observation_response.cdr",
+      "sha256": "73f8ebef5cbd2a676621a4e823a4e5588029100a262eec6f1678a8ff56bc412a"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_request",
+      "file": "02_observer_get_snapshot_request.cdr",
+      "sha256": "4a88802bd834e074f832582f59409a45ef5522edc5902aae45481b151423bf3b"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_response",
+      "file": "03_observer_get_snapshot_response.cdr",
+      "sha256": "c4c104dd6b1aab26a86bf5262134aaafd869ddf1d7d39d10ae455119d85a6c10"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_request",
+      "file": "04_observer_release_snapshot_request.cdr",
+      "sha256": "7cc6c24332b153abcfccfdbbcd58a482c78052152699c2176c9794be1833dd7f"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_response",
+      "file": "05_observer_release_snapshot_response.cdr",
+      "sha256": "67f7f7055a3d19c8bae62136f7d624243e7d5556deea4423e3cfb05eb93e57ed"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_request",
+      "file": "06_observer_integrate_observation_request.cdr",
+      "sha256": "3e184e19ae4f402298074c52fc0af729ab410fec5d31b32c0b089340ff7c8579"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_response",
+      "file": "07_observer_integrate_observation_response.cdr",
+      "sha256": "4488ab1366aa1c5a3b664fdba0919c54fa57510f4dcba7a162a98ffbd693708f"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_request",
+      "file": "08_observer_get_snapshot_request.cdr",
+      "sha256": "f4d12b7b06c0a37289c11ca0c1b0e1f819c96ce5a0ba929ecbd8feaf228a812d"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_response",
+      "file": "09_observer_get_snapshot_response.cdr",
+      "sha256": "79b92ae4cb76dd9c97fbbcd4189aafc55e6a138f4154f6539843cb7185b9745b"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_request",
+      "file": "10_observer_release_snapshot_request.cdr",
+      "sha256": "7ad0a9b9eb58649f05a83a9cb992627787912bb0852d00dd6ae8f556c438abf1"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_response",
+      "file": "11_observer_release_snapshot_response.cdr",
+      "sha256": "67f7f7055a3d19c8bae62136f7d624243e7d5556deea4423e3cfb05eb93e57ed"
+    },
+    {
+      "port": "observer",
+      "kind": "get_validity_request",
+      "file": "12_observer_get_validity_request.cdr",
+      "sha256": "e4414ef8bb03365bb90cef95c55d322e3075a1a7800ea1777873f831f83a8aa5"
+    },
+    {
+      "port": "observer",
+      "kind": "get_validity_response",
+      "file": "13_observer_get_validity_response.cdr",
+      "sha256": "993cfa2f506feb115b8758d622ae70149f2c6126b2e8e3a7266a2c601736fe96"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_request",
+      "file": "14_observer_integrate_observation_request.cdr",
+      "sha256": "947492d3e12ea5cddd723a48e5cd6e5e5317ef1c6a2b6c69cc0d8a4ad91a128c"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_response",
+      "file": "15_observer_integrate_observation_response.cdr",
+      "sha256": "20bd6f13c96a4601e5f7459f49e874e43ae9725238305cf16dcb6bada9d94aa0"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_request",
+      "file": "16_observer_get_snapshot_request.cdr",
+      "sha256": "0c696c65d4f68e32dab4e8f2f26863857bf04bf19da0728cefcb5c745931d759"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_response",
+      "file": "17_observer_get_snapshot_response.cdr",
+      "sha256": "facc207da346eead3ce08f7d7f74fae8a80e689880331149f8888f123c7b4c75"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_request",
+      "file": "18_observer_release_snapshot_request.cdr",
+      "sha256": "dc135f804076a58edd3d2fd98098052d555e8b8310f8558ff341f1be3e6ad4b9"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_response",
+      "file": "19_observer_release_snapshot_response.cdr",
+      "sha256": "67f7f7055a3d19c8bae62136f7d624243e7d5556deea4423e3cfb05eb93e57ed"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_request",
+      "file": "20_observer_integrate_observation_request.cdr",
+      "sha256": "c20edebdf9a20b3af5f46bac352d952b1480c5b39ded4b5c4f338bb8215b90b1"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_response",
+      "file": "21_observer_integrate_observation_response.cdr",
+      "sha256": "6bbadcfb3cfa0113fa09ee0d241dfd0e34adc3b8c05ffc1aa787ea6f84ff74ab"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_request",
+      "file": "22_observer_get_snapshot_request.cdr",
+      "sha256": "f4d12b7b06c0a37289c11ca0c1b0e1f819c96ce5a0ba929ecbd8feaf228a812d"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_response",
+      "file": "23_observer_get_snapshot_response.cdr",
+      "sha256": "b5a7ff1d580a97f932920b4f69576efc4bbf47168c8b0742a99e6dd5df182019"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_request",
+      "file": "24_observer_release_snapshot_request.cdr",
+      "sha256": "db3a52caf1edd156661c37786f51b6c92e0c7c9380cd40fcea292604bb04ca16"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_response",
+      "file": "25_observer_release_snapshot_response.cdr",
+      "sha256": "67f7f7055a3d19c8bae62136f7d624243e7d5556deea4423e3cfb05eb93e57ed"
+    },
+    {
+      "port": "observer",
+      "kind": "reset_observation_request",
+      "file": "26_observer_reset_observation_request.cdr",
+      "sha256": "eadea335b0383d8deada4311e152992d16c7a752f97d9a5266ac10eaaaa381cb"
+    },
+    {
+      "port": "observer",
+      "kind": "reset_observation_response",
+      "file": "27_observer_reset_observation_response.cdr",
+      "sha256": "cfd3676301fe50641af9821c1afce21f51b5ca91ad1d183461496c9a4affc72f"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_request",
+      "file": "28_observer_integrate_observation_request.cdr",
+      "sha256": "1b29b89ef0ab1635e17dc30f9581c0e8dbc55a1e95844ac30f2fd252aedeb47c"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_response",
+      "file": "29_observer_integrate_observation_response.cdr",
+      "sha256": "91c3e35624482a5fc346f088401770128db954cbf5b7738c9ae08eb6bb888377"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_request",
+      "file": "30_observer_get_snapshot_request.cdr",
+      "sha256": "1a3b51af40551a19157f2a7bb7b04bf09225f01a3691a3e79f084bd67a144d0a"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_response",
+      "file": "31_observer_get_snapshot_response.cdr",
+      "sha256": "1e38a25cd6b4cbe713c85dd44e9c6083e13147628ae6b2658d2bc32ec346c219"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_request",
+      "file": "32_observer_release_snapshot_request.cdr",
+      "sha256": "89a6450a14493f6c178fb36f51321c9d059cf58ff357c2758c85ffc81129109d"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_response",
+      "file": "33_observer_release_snapshot_response.cdr",
+      "sha256": "67f7f7055a3d19c8bae62136f7d624243e7d5556deea4423e3cfb05eb93e57ed"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_request",
+      "file": "34_observer_integrate_observation_request.cdr",
+      "sha256": "e0f28c5f760ecb990f065480065458df2a2124d56024e3809ef9b3c3bbdde0a4"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_response",
+      "file": "35_observer_integrate_observation_response.cdr",
+      "sha256": "bf399fd242fd7f73c2125b2992c1b13be53837ba790142cbdc14b8ce461e9800"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_request",
+      "file": "36_observer_get_snapshot_request.cdr",
+      "sha256": "1a3b51af40551a19157f2a7bb7b04bf09225f01a3691a3e79f084bd67a144d0a"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_response",
+      "file": "37_observer_get_snapshot_response.cdr",
+      "sha256": "c27719df071bd54a0418c16de10c94ada1b4808e9ca25827c48cb373bebc2379"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_request",
+      "file": "38_observer_release_snapshot_request.cdr",
+      "sha256": "8da16978f850375875aebc2c4bda90318074064dbf540c1074709a13f30af5e1"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_response",
+      "file": "39_observer_release_snapshot_response.cdr",
+      "sha256": "67f7f7055a3d19c8bae62136f7d624243e7d5556deea4423e3cfb05eb93e57ed"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_request",
+      "file": "40_observer_integrate_observation_request.cdr",
+      "sha256": "ee7fdf4385b305fef3812a2388a8227ae0147c5ccd4de8c32403d1a9ba7fb933"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_response",
+      "file": "41_observer_integrate_observation_response.cdr",
+      "sha256": "c780ddb030d2d10a8bcbf4cb777646de4c6787617cc6412ecf51d60d9140520a"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_request",
+      "file": "42_observer_get_snapshot_request.cdr",
+      "sha256": "1a3b51af40551a19157f2a7bb7b04bf09225f01a3691a3e79f084bd67a144d0a"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_response",
+      "file": "43_observer_get_snapshot_response.cdr",
+      "sha256": "0b608688d458943326a6eed1d5e733f94530185823c894f89751abe934dd1ed7"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_request",
+      "file": "44_observer_release_snapshot_request.cdr",
+      "sha256": "07acf9ddf559cbbd2e45e620bf5ad1b2fd3ce79dae218376800e9957ec86e445"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_response",
+      "file": "45_observer_release_snapshot_response.cdr",
+      "sha256": "67f7f7055a3d19c8bae62136f7d624243e7d5556deea4423e3cfb05eb93e57ed"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_request",
+      "file": "46_observer_integrate_observation_request.cdr",
+      "sha256": "376521070ed53b06b29dfa19bbc5a866d701ca5405ab055fa84ef0f78c5f2992"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_response",
+      "file": "47_observer_integrate_observation_response.cdr",
+      "sha256": "33e908332eec206b75fefcfe89ee25fcb2bb64a7258c326709ff63272cc99019"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_request",
+      "file": "48_observer_get_snapshot_request.cdr",
+      "sha256": "1a3b51af40551a19157f2a7bb7b04bf09225f01a3691a3e79f084bd67a144d0a"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_response",
+      "file": "49_observer_get_snapshot_response.cdr",
+      "sha256": "36bffe1d525410beeadc3e25fec41ce6485726b95a2ee0b67d254105bb9ec57c"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_request",
+      "file": "50_observer_release_snapshot_request.cdr",
+      "sha256": "4fd01dfa91e895eeae5e90458b5ab7fab4941d296a5f89c5617e9156700f13d7"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_response",
+      "file": "51_observer_release_snapshot_response.cdr",
+      "sha256": "67f7f7055a3d19c8bae62136f7d624243e7d5556deea4423e3cfb05eb93e57ed"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_request",
+      "file": "52_observer_integrate_observation_request.cdr",
+      "sha256": "d069b8e53185d121bebf4f56ce2c5b8a14ffcf79b58ee42c87950cbab04a47fd"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_response",
+      "file": "53_observer_integrate_observation_response.cdr",
+      "sha256": "3770e74b1df14e6e1da55822a6a2938233ba526a5f2b674a3631f7c301363d7f"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_request",
+      "file": "54_observer_get_snapshot_request.cdr",
+      "sha256": "1a3b51af40551a19157f2a7bb7b04bf09225f01a3691a3e79f084bd67a144d0a"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_response",
+      "file": "55_observer_get_snapshot_response.cdr",
+      "sha256": "5fd6a13aabc16cee42c6de740841906572290aea78e3dcd1c669ec8c68e0aad1"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_request",
+      "file": "56_observer_release_snapshot_request.cdr",
+      "sha256": "b619e76fb9ffc187d38b16fbaa6d4ee1558a8860a968216461990b7c73d5aca6"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_response",
+      "file": "57_observer_release_snapshot_response.cdr",
+      "sha256": "67f7f7055a3d19c8bae62136f7d624243e7d5556deea4423e3cfb05eb93e57ed"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_request",
+      "file": "58_observer_integrate_observation_request.cdr",
+      "sha256": "cfbdd222b0e0267e458c03569ac9705e5dc84be7374dc47699a80f5d3df8fbfc"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_response",
+      "file": "59_observer_integrate_observation_response.cdr",
+      "sha256": "faf15ed8306036c586528867da4606a90cb8b88490b2a0502bc459f69569a5ac"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_request",
+      "file": "60_observer_get_snapshot_request.cdr",
+      "sha256": "1a3b51af40551a19157f2a7bb7b04bf09225f01a3691a3e79f084bd67a144d0a"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_response",
+      "file": "61_observer_get_snapshot_response.cdr",
+      "sha256": "a254d06f0238c026bfb0f94f5cd9ef4d7f0a16f0df48b69584089cbb2763d259"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_request",
+      "file": "62_observer_release_snapshot_request.cdr",
+      "sha256": "baa110088597fc9e735518a78bbff2420df81f7868e25dac53093929b6ed8672"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_response",
+      "file": "63_observer_release_snapshot_response.cdr",
+      "sha256": "67f7f7055a3d19c8bae62136f7d624243e7d5556deea4423e3cfb05eb93e57ed"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_request",
+      "file": "64_observer_integrate_observation_request.cdr",
+      "sha256": "acd04a91711045d9a503c73178433eae89d02b1f1aa6557564bd43eeeb28c1fe"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_response",
+      "file": "65_observer_integrate_observation_response.cdr",
+      "sha256": "68232f3c5aa4d43203ae89207eaedda7108c0ab1985637fa8fc8f18c0c43e914"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_request",
+      "file": "66_observer_get_snapshot_request.cdr",
+      "sha256": "1a3b51af40551a19157f2a7bb7b04bf09225f01a3691a3e79f084bd67a144d0a"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_response",
+      "file": "67_observer_get_snapshot_response.cdr",
+      "sha256": "07f5750e0cdfbe325d807e07821a6db95081427172bea833db83a5346d62c4af"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_request",
+      "file": "68_observer_release_snapshot_request.cdr",
+      "sha256": "8e372c6f9d0dd30de861eda183da7e766512cec5add5e3ef6b432f00de70a127"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_response",
+      "file": "69_observer_release_snapshot_response.cdr",
+      "sha256": "67f7f7055a3d19c8bae62136f7d624243e7d5556deea4423e3cfb05eb93e57ed"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_request",
+      "file": "70_observer_integrate_observation_request.cdr",
+      "sha256": "7ee968f1f114dd98a779cab765d978120b0e32854b652e9d64ee42e35f845219"
+    },
+    {
+      "port": "observer",
+      "kind": "integrate_observation_response",
+      "file": "71_observer_integrate_observation_response.cdr",
+      "sha256": "781af4aca7fef676706d9866c03df3d4c3665f15d91bdcb74a7ca7ff7442d184"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_request",
+      "file": "72_observer_get_snapshot_request.cdr",
+      "sha256": "1a3b51af40551a19157f2a7bb7b04bf09225f01a3691a3e79f084bd67a144d0a"
+    },
+    {
+      "port": "observer",
+      "kind": "get_snapshot_response",
+      "file": "73_observer_get_snapshot_response.cdr",
+      "sha256": "f85309f1670011a01e8f62159dab694f50b726738708177d3a47547c167aba35"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_request",
+      "file": "74_observer_release_snapshot_request.cdr",
+      "sha256": "7bc72cab791ae5c34df9065d5452c3ae7c0555bca8bc30664520916e17cd5530"
+    },
+    {
+      "port": "observer",
+      "kind": "release_snapshot_response",
+      "file": "75_observer_release_snapshot_response.cdr",
+      "sha256": "67f7f7055a3d19c8bae62136f7d624243e7d5556deea4423e3cfb05eb93e57ed"
+    }
+  ],
+  "executable_sha256": {
+    "local": "643a0bf7fdb782945ebf849d565f00b225ad966e522d708112091f45cb8492a3",
+    "connection": "da032a7e5b4c9b9514bd603deea163296376ab7ebe01849692e6924613986db9",
+    "certification": "aaa8b127b9f0a477436595aff9533654fd0d4a7ce0fe8dce489bd3f8b733bc8d"
+  },
+  "worker_joined": true,
+  "teardown_exit_codes": [
+    0,
+    0,
+    0
+  ],
+  "capture_complete": true
+}

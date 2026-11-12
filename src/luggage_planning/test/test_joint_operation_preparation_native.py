@@ -120,7 +120,11 @@ def prepare_stack(native_stack,request):
             owner.create_service(GetParameters,'/cargo_volume_mapper/get_parameters',
                 lambda req,res:GetParameters.Response(values=[ParameterValue(type=1,bool_value=True)]))])
     xml,srdf=robot_fixture()
+    from test_joint_operation_scene_admission import fixture_scene_file
+    fixture_scene,fixture_mesh,fixture_object=fixture_scene_file(directory)
+    state.scene.world.collision_objects.append(fixture_object)
     params=dict(frame_scene_revision='scene',robot_description=xml,robot_description_semantic=srdf,
+        scene_tf_config=str(fixture_scene),container_collision_mesh=str(fixture_mesh),
         container_translation=[0.,0.,0.],container_quaternion_xyzw=[0.,0.,0.,1.],
         suction_contact_model_config=str(contact_file),attachment_geometry_config=str(
             Path('src/luggage_planning/config/attachment_geometry.yaml').resolve()),
@@ -205,6 +209,17 @@ def test_generated_prepare_rpc_returns_whole_certified_plan(prepare_stack):
     assert result.elapsed_s<=prepare_stack.request.budget_s
     (prepare_stack.directory/'result.json').write_text(json.dumps(dict(reason=result.reason,
         elapsed_s=result.elapsed_s,trace=json.loads(result.trace_json)),indent=2))
+
+
+def test_prepare_refuses_empty_static_world_before_native_motion_search(prepare_stack):
+    saved=copy.deepcopy(prepare_stack.state.scene)
+    try:
+        prepare_stack.state.scene.world.collision_objects=[]
+        result=prepare_stack.call(copy.deepcopy(prepare_stack.request))
+        assert not result.success and not result.plan.legs
+        assert 'STATIC_CONTAINER_MISSING_OR_DUPLICATE' in result.reason
+    finally:
+        prepare_stack.state.scene=saved
 
 
 @pytest.mark.parametrize('damage',['model','generation','map','size','start','budget','no_quality'])

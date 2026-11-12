@@ -1,0 +1,19 @@
+[INFO] [1794484945.453884959] [moveit_rdf_loader.rdf_loader]: Loaded robot model in 0.0114328 seconds
+[INFO] [1794484945.453938680] [moveit_robot_model.robot_model]: Loading robot model 'connection_fixture'...
+[INFO] [1794484945.453943259] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
+[INFO] [1794484945.458369773] [moveit.ros_planning.planning_pipeline]: Using planning interface 'OMPL'
+[WARN] [1794484945.773357298] [moveit.ompl_planning.model_based_planning_context]: It looks like the planning volume was not specified.
+[INFO] [1794484945.773637279] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnectkConfigDefault]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[WARN] [1794484945.786764472] [moveit.ompl_planning.model_based_planning_context]: It looks like the planning volume was not specified.
+[INFO] [1794484945.786850975] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnectkConfigDefault]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[WARN] [1794484945.800150104] [moveit.ompl_planning.model_based_planning_context]: It looks like the planning volume was not specified.
+[INFO] [1794484945.800245414] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnectkConfigDefault]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[WARN] [1794484945.814702897] [moveit.ompl_planning.model_based_planning_context]: It looks like the planning volume was not specified.
+[INFO] [1794484945.814739065] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnectkConfigDefault]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[WARN] [1794484945.830377144] [moveit.ompl_planning.model_based_planning_context]: It looks like the planning volume was not specified.
+[INFO] [1794484945.830497111] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnectkConfigDefault]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[WARN] [1794484945.842781167] [moveit.ompl_planning.model_based_planning_context]: It looks like the planning volume was not specified.
+[INFO] [1794484945.842871328] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnectkConfigDefault]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[WARN] [1794484945.855245084] [moveit.ompl_planning.model_based_planning_context]: It looks like the planning volume was not specified.
+[INFO] [1794484945.855327410] [moveit.ompl_planning.model_based_planning_context]: Planner configuration 'elfin_arm[RRTConnectkConfigDefault]' will use planner 'geometric::RRTConnect'. Additional configuration parameters will be set when the planner is constructed.
+[INFO] [1794484945.878762756] [rclcpp]: signal_handler(SIGINT/SIGTERM)

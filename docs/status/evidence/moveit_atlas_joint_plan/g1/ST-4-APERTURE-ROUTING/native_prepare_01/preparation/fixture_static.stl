@@ -1,0 +1,9 @@
+solid fixture
+facet normal 0 0 1
+outer loop
+vertex 100 100 100
+vertex 101 100 100
+vertex 100 101 100
+endloop
+endfacet
+endsolid fixture

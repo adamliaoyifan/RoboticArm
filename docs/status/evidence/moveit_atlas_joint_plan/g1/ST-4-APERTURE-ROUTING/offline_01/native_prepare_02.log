@@ -1,0 +1,284 @@
+...............EEEEEEEEEE                                                [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of test_actual_o_default_returns_complete_plan_without_g[observer] _
+
+    @pytest.fixture(scope='module')
+    def native_stack():
+        import rclpy
+        import yaml
+        from luggage_planning.joint_operation_endpoints import NativeOperationEndpointPort
+        from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
+        from luggage_planning.joint_operation_certification import EndpointModel,NativeOperationCertificationPort
+        directory = Path(os.environ['JOINT_ENDPOINT_EVIDENCE_DIR'])
+>       directory.mkdir(parents=True,exist_ok=False)
+
+src/luggage_planning/test/test_joint_operation_endpoints_native.py:54: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02')
+mode = 511, parents = True, exist_ok = False
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           self._accessor.mkdir(self, mode)
+E           FileExistsError: [Errno 17] File exists: '/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02'
+
+/usr/lib/python3.10/pathlib.py:1175: FileExistsError
+_ ERROR at setup of test_actual_o_wrong_identity_never_issues[epoch-observer] __
+
+    @pytest.fixture(scope='module')
+    def native_stack():
+        import rclpy
+        import yaml
+        from luggage_planning.joint_operation_endpoints import NativeOperationEndpointPort
+        from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
+        from luggage_planning.joint_operation_certification import EndpointModel,NativeOperationCertificationPort
+        directory = Path(os.environ['JOINT_ENDPOINT_EVIDENCE_DIR'])
+>       directory.mkdir(parents=True,exist_ok=False)
+
+src/luggage_planning/test/test_joint_operation_endpoints_native.py:54: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02')
+mode = 511, parents = True, exist_ok = False
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           self._accessor.mkdir(self, mode)
+E           FileExistsError: [Errno 17] File exists: '/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02'
+
+/usr/lib/python3.10/pathlib.py:1175: FileExistsError
+_ ERROR at setup of test_actual_o_wrong_identity_never_issues[revision-observer] _
+
+    @pytest.fixture(scope='module')
+    def native_stack():
+        import rclpy
+        import yaml
+        from luggage_planning.joint_operation_endpoints import NativeOperationEndpointPort
+        from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
+        from luggage_planning.joint_operation_certification import EndpointModel,NativeOperationCertificationPort
+        directory = Path(os.environ['JOINT_ENDPOINT_EVIDENCE_DIR'])
+>       directory.mkdir(parents=True,exist_ok=False)
+
+src/luggage_planning/test/test_joint_operation_endpoints_native.py:54: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02')
+mode = 511, parents = True, exist_ok = False
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           self._accessor.mkdir(self, mode)
+E           FileExistsError: [Errno 17] File exists: '/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02'
+
+/usr/lib/python3.10/pathlib.py:1175: FileExistsError
+_ ERROR at setup of test_actual_o_wrong_identity_never_issues[geometry-observer] _
+
+    @pytest.fixture(scope='module')
+    def native_stack():
+        import rclpy
+        import yaml
+        from luggage_planning.joint_operation_endpoints import NativeOperationEndpointPort
+        from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
+        from luggage_planning.joint_operation_certification import EndpointModel,NativeOperationCertificationPort
+        directory = Path(os.environ['JOINT_ENDPOINT_EVIDENCE_DIR'])
+>       directory.mkdir(parents=True,exist_ok=False)
+
+src/luggage_planning/test/test_joint_operation_endpoints_native.py:54: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02')
+mode = 511, parents = True, exist_ok = False
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           self._accessor.mkdir(self, mode)
+E           FileExistsError: [Errno 17] File exists: '/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02'
+
+/usr/lib/python3.10/pathlib.py:1175: FileExistsError
+_ ERROR at setup of test_current_guard_detects_changed_map_instead_of_transition_time_validity[observer] _
+
+    @pytest.fixture(scope='module')
+    def native_stack():
+        import rclpy
+        import yaml
+        from luggage_planning.joint_operation_endpoints import NativeOperationEndpointPort
+        from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
+        from luggage_planning.joint_operation_certification import EndpointModel,NativeOperationCertificationPort
+        directory = Path(os.environ['JOINT_ENDPOINT_EVIDENCE_DIR'])
+>       directory.mkdir(parents=True,exist_ok=False)
+
+src/luggage_planning/test/test_joint_operation_endpoints_native.py:54: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02')
+mode = 511, parents = True, exist_ok = False
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           self._accessor.mkdir(self, mode)
+E           FileExistsError: [Errno 17] File exists: '/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02'
+
+/usr/lib/python3.10/pathlib.py:1175: FileExistsError
+_ ERROR at setup of test_changed_o_after_native_certification_requires_recertification_before_issuance[observer] _
+
+    @pytest.fixture(scope='module')
+    def native_stack():
+        import rclpy
+        import yaml
+        from luggage_planning.joint_operation_endpoints import NativeOperationEndpointPort
+        from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
+        from luggage_planning.joint_operation_certification import EndpointModel,NativeOperationCertificationPort
+        directory = Path(os.environ['JOINT_ENDPOINT_EVIDENCE_DIR'])
+>       directory.mkdir(parents=True,exist_ok=False)
+
+src/luggage_planning/test/test_joint_operation_endpoints_native.py:54: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02')
+mode = 511, parents = True, exist_ok = False
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           self._accessor.mkdir(self, mode)
+E           FileExistsError: [Errno 17] File exists: '/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02'
+
+/usr/lib/python3.10/pathlib.py:1175: FileExistsError
+____ ERROR at setup of test_real_owner_config_mismatch_is_refused[observer] ____
+
+    @pytest.fixture(scope='module')
+    def native_stack():
+        import rclpy
+        import yaml
+        from luggage_planning.joint_operation_endpoints import NativeOperationEndpointPort
+        from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
+        from luggage_planning.joint_operation_certification import EndpointModel,NativeOperationCertificationPort
+        directory = Path(os.environ['JOINT_ENDPOINT_EVIDENCE_DIR'])
+>       directory.mkdir(parents=True,exist_ok=False)
+
+src/luggage_planning/test/test_joint_operation_endpoints_native.py:54: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02')
+mode = 511, parents = True, exist_ok = False
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           self._accessor.mkdir(self, mode)
+E           FileExistsError: [Errno 17] File exists: '/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02'
+
+/usr/lib/python3.10/pathlib.py:1175: FileExistsError
+_ ERROR at setup of test_actual_o_stale_acquisition_is_refused_without_relabelling[observer] _
+
+    @pytest.fixture(scope='module')
+    def native_stack():
+        import rclpy
+        import yaml
+        from luggage_planning.joint_operation_endpoints import NativeOperationEndpointPort
+        from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
+        from luggage_planning.joint_operation_certification import EndpointModel,NativeOperationCertificationPort
+        directory = Path(os.environ['JOINT_ENDPOINT_EVIDENCE_DIR'])
+>       directory.mkdir(parents=True,exist_ok=False)
+
+src/luggage_planning/test/test_joint_operation_endpoints_native.py:54: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02')
+mode = 511, parents = True, exist_ok = False
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           self._accessor.mkdir(self, mode)
+E           FileExistsError: [Errno 17] File exists: '/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02'
+
+/usr/lib/python3.10/pathlib.py:1175: FileExistsError
+_ ERROR at setup of test_reset_without_new_observation_cannot_prepare[observer] _
+
+    @pytest.fixture(scope='module')
+    def native_stack():
+        import rclpy
+        import yaml
+        from luggage_planning.joint_operation_endpoints import NativeOperationEndpointPort
+        from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
+        from luggage_planning.joint_operation_certification import EndpointModel,NativeOperationCertificationPort
+        directory = Path(os.environ['JOINT_ENDPOINT_EVIDENCE_DIR'])
+>       directory.mkdir(parents=True,exist_ok=False)
+
+src/luggage_planning/test/test_joint_operation_endpoints_native.py:54: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02')
+mode = 511, parents = True, exist_ok = False
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           self._accessor.mkdir(self, mode)
+E           FileExistsError: [Errno 17] File exists: '/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02'
+
+/usr/lib/python3.10/pathlib.py:1175: FileExistsError
+_ ERROR at setup of test_real_owner_repeated_unchanged_observation_keeps_original_evidence_current[observer] _
+
+    @pytest.fixture(scope='module')
+    def native_stack():
+        import rclpy
+        import yaml
+        from luggage_planning.joint_operation_endpoints import NativeOperationEndpointPort
+        from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
+        from luggage_planning.joint_operation_certification import EndpointModel,NativeOperationCertificationPort
+        directory = Path(os.environ['JOINT_ENDPOINT_EVIDENCE_DIR'])
+>       directory.mkdir(parents=True,exist_ok=False)
+
+src/luggage_planning/test/test_joint_operation_endpoints_native.py:54: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02')
+mode = 511, parents = True, exist_ok = False
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           self._accessor.mkdir(self, mode)
+E           FileExistsError: [Errno 17] File exists: '/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-APERTURE-ROUTING/native_prepare_02'
+
+/usr/lib/python3.10/pathlib.py:1175: FileExistsError
+=========================== short test summary info ============================
+ERROR src/luggage_planning/test/test_joint_operation_observer_native.py::test_actual_o_default_returns_complete_plan_without_g[observer]
+ERROR src/luggage_planning/test/test_joint_operation_observer_native.py::test_actual_o_wrong_identity_never_issues[epoch-observer]
+ERROR src/luggage_planning/test/test_joint_operation_observer_native.py::test_actual_o_wrong_identity_never_issues[revision-observer]
+ERROR src/luggage_planning/test/test_joint_operation_observer_native.py::test_actual_o_wrong_identity_never_issues[geometry-observer]
+ERROR src/luggage_planning/test/test_joint_operation_observer_native.py::test_current_guard_detects_changed_map_instead_of_transition_time_validity[observer]
+ERROR src/luggage_planning/test/test_joint_operation_observer_native.py::test_changed_o_after_native_certification_requires_recertification_before_issuance[observer]
+ERROR src/luggage_planning/test/test_joint_operation_observer_native.py::test_real_owner_config_mismatch_is_refused[observer]
+ERROR src/luggage_planning/test/test_joint_operation_observer_native.py::test_actual_o_stale_acquisition_is_refused_without_relabelling[observer]
+ERROR src/luggage_planning/test/test_joint_operation_observer_native.py::test_reset_without_new_observation_cannot_prepare[observer]
+ERROR src/luggage_planning/test/test_joint_operation_observer_native.py::test_real_owner_repeated_unchanged_observation_keeps_original_evidence_current[observer]
+15 passed, 10 errors in 4.23s

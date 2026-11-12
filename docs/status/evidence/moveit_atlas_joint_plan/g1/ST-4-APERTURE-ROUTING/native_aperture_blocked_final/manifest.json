@@ -1,0 +1,368 @@
+{
+  "model_sha256": "afc81b25ece3990bcb89094bab22c2f3ce782a7f7eb26bf2e889d0f9d83abbdc",
+  "scope": "isolated full-pose KDL+OMPL+native certification; not deployment qualification",
+  "commands": [
+    [
+      "local",
+      "/home/adamliao/work/elfin_humble_ws/install-production/luggage_planning/lib/luggage_planning/grasp_local_check_node"
+    ],
+    [
+      "connection",
+      "/home/adamliao/work/elfin_humble_ws/install-production/luggage_planning/lib/luggage_planning/snapshot_joint_path_node"
+    ],
+    [
+      "certification",
+      "/home/adamliao/work/elfin_humble_ws/install-production/luggage_planning/lib/luggage_planning/validate_route_node"
+    ]
+  ],
+  "records": [
+    {
+      "port": "opening_ik",
+      "kind": "request",
+      "file": "00_opening_ik_request.cdr",
+      "sha256": "fbbfab1f47d75645f1c09eaee416c0dc56bac08dad15798261d2a4d3813627d9"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "response",
+      "file": "01_opening_ik_response.cdr",
+      "sha256": "63b53e6c3af010a71a6f0026e0dbb3aefa43fefc774d37c69833e33e74a3a1d8"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "request",
+      "file": "02_opening_ik_request.cdr",
+      "sha256": "02159099d5b0f3904fedfcfd879755ee06a4ba1b09ab261a7c6b5597be681f7e"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "response",
+      "file": "03_opening_ik_response.cdr",
+      "sha256": "f76d5064a8e3d14bfc9ca34230769fc7b1fad8600d58db07f2285a8dd8566471"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "request",
+      "file": "04_opening_ik_request.cdr",
+      "sha256": "67a0650511cc20baba8801d2160260b0024520c64a77c23f18960941db610ceb"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "response",
+      "file": "05_opening_ik_response.cdr",
+      "sha256": "a3b1f02adaebfe0ca8b724f7f15281dca797185517ebd5f6d0cd8b2aecc3854a"
+    },
+    {
+      "port": "connection",
+      "kind": "request",
+      "file": "06_connection_request.cdr",
+      "sha256": "8ad603b80800a3e7d14752bc48e5d90e63db6ba8969c77e22b8712817ea5dba0"
+    },
+    {
+      "port": "connection",
+      "kind": "response",
+      "file": "07_connection_response.cdr",
+      "sha256": "1fd08846acf288fecf05815426d1873eb3bde6435e8177c0461187c8f178ba56"
+    },
+    {
+      "port": "connection",
+      "kind": "request",
+      "file": "08_connection_request.cdr",
+      "sha256": "230cace33c6cd9c50e16da1e2c12eb6ea254bb155151e64700c646a7cb20290c"
+    },
+    {
+      "port": "connection",
+      "kind": "response",
+      "file": "09_connection_response.cdr",
+      "sha256": "9ad70299d5e17daac31c06d81e1e45815cf71db1c296985d25d9eafc77e8666c"
+    },
+    {
+      "port": "connection",
+      "kind": "request",
+      "file": "10_connection_request.cdr",
+      "sha256": "eeb53120899188808008c1cd7af9d8d06f60abce651cb10cb16a3195d3be9e6e"
+    },
+    {
+      "port": "connection",
+      "kind": "response",
+      "file": "11_connection_response.cdr",
+      "sha256": "33bc577f5e6d8d928f65f1aa1ef57ca96f8faca71867bc1a66f7233d737c43b1"
+    },
+    {
+      "port": "connection",
+      "kind": "request",
+      "file": "12_connection_request.cdr",
+      "sha256": "bee4445107240b88f95aa1bf8bd23375495b6d5e3905a56b184f28c2b510132c"
+    },
+    {
+      "port": "connection",
+      "kind": "response",
+      "file": "13_connection_response.cdr",
+      "sha256": "b379ecb202f7802ab01ac4932fa33ab5bdd7d4f041aa9ecf6d63e077284c5702"
+    },
+    {
+      "port": "local",
+      "kind": "request",
+      "file": "14_local_request.cdr",
+      "sha256": "cda49e76404739818f2a01a01e8f4959218ab9f4970266f776564bbe50a01fc1"
+    },
+    {
+      "port": "local",
+      "kind": "response",
+      "file": "15_local_response.cdr",
+      "sha256": "4f41ca47de092a9fde18cfeb0a22abb3b0d7933fa10f65c9883a0305bcfa7799"
+    },
+    {
+      "port": "connection",
+      "kind": "request",
+      "file": "16_connection_request.cdr",
+      "sha256": "a281b425419e14255a29084b4bd4bd78cfd257210a4c8fa93833b43221a5572f"
+    },
+    {
+      "port": "connection",
+      "kind": "response",
+      "file": "17_connection_response.cdr",
+      "sha256": "0e0327f080f91202e3c14a2f6e4c71b5b0b602dcf3b7249ce27b71498bd45b67"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "request",
+      "file": "18_opening_ik_request.cdr",
+      "sha256": "2f6be0f9869127fadfaba0f842f0b2e920e43c34bd86beabfe4b7a0047008e35"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "response",
+      "file": "19_opening_ik_response.cdr",
+      "sha256": "05c31cb4568066b841d44617b3906c004e3dfe81bceb3a48b5fd018c49f6b5ab"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "request",
+      "file": "20_opening_ik_request.cdr",
+      "sha256": "12ca1b6e370f84d44522e47da176a9c0c739e3f1290e722ab3c509014401d9e9"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "response",
+      "file": "21_opening_ik_response.cdr",
+      "sha256": "44975fa7a42794139f902f56c994e882c2d45caeaebf68e5ee5b894b8d0ee95b"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "request",
+      "file": "22_opening_ik_request.cdr",
+      "sha256": "12faff24574cf7034c99730ec8f4038f77ec53b1f576304c1343e38118babcf1"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "response",
+      "file": "23_opening_ik_response.cdr",
+      "sha256": "0e8deecd1f533d54cb374b9fcc24683745bc62f978273a626637c5fc46851778"
+    },
+    {
+      "port": "connection",
+      "kind": "request",
+      "file": "24_connection_request.cdr",
+      "sha256": "9c2e51227653c1c9f8c43702d48d8bdb1f4abec43e318cea6d5949b1296dc8aa"
+    },
+    {
+      "port": "connection",
+      "kind": "response",
+      "file": "25_connection_response.cdr",
+      "sha256": "216c2e8e09cfeb7717722dbc4335a4243fb6f7f87801c607de74d55ccd16b12e"
+    },
+    {
+      "port": "connection",
+      "kind": "request",
+      "file": "26_connection_request.cdr",
+      "sha256": "54e0d31f185512dbfb6af336056090ec4a707c57ecc320900c43f1c5444e11a2"
+    },
+    {
+      "port": "connection",
+      "kind": "response",
+      "file": "27_connection_response.cdr",
+      "sha256": "13fb61d4acd8167abd754392ee695b67470faea3ca7c7487635ac9d28661a461"
+    },
+    {
+      "port": "connection",
+      "kind": "request",
+      "file": "28_connection_request.cdr",
+      "sha256": "ef3361d2337d7e27109ed4ccb615bfd010e6c82bf93f866de6278b73a00d2208"
+    },
+    {
+      "port": "connection",
+      "kind": "response",
+      "file": "29_connection_response.cdr",
+      "sha256": "9b238c9b2e2beb845bc3af16fe6ae7cd4030cd478f2d51cc8340a3dcd1da90ab"
+    },
+    {
+      "port": "connection",
+      "kind": "request",
+      "file": "30_connection_request.cdr",
+      "sha256": "d0954f17e947e72e92ae1de36aa1f042dc9249c8c9b1753e59f9a3e26bb6df32"
+    },
+    {
+      "port": "connection",
+      "kind": "response",
+      "file": "31_connection_response.cdr",
+      "sha256": "b48e95d8cf45eb8032a81075cee6f217889440e85220c03381825def80f9f667"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "request",
+      "file": "32_opening_ik_request.cdr",
+      "sha256": "ded4c9465d3c761cb1d623b37196ec4557791320fae2a980984c5c48dabae2d1"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "response",
+      "file": "33_opening_ik_response.cdr",
+      "sha256": "d1b0a9a417c601f7fa3588f6fea9f0ea8a430496ef9f73b1f099855371a8c19a"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "request",
+      "file": "34_opening_ik_request.cdr",
+      "sha256": "da698b168d7f4c58d0a8718177d1df16319aa14bd1e382aaca1923b1004ee932"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "response",
+      "file": "35_opening_ik_response.cdr",
+      "sha256": "a2ac8210433241136425f04995569784008ad09c57f8b178f17c5047118f4b70"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "request",
+      "file": "36_opening_ik_request.cdr",
+      "sha256": "bb6e8c8d0d0d7602e346b8b038fff137f0305d31db30fa4b3df59bcf8c6c6b3f"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "response",
+      "file": "37_opening_ik_response.cdr",
+      "sha256": "cc01eb9d327f2dc044698acceb602b4e64cb4bafedb86dc7ce7ab7b070ea4eef"
+    },
+    {
+      "port": "connection",
+      "kind": "request",
+      "file": "38_connection_request.cdr",
+      "sha256": "f071a13e9f39651cf15b3f9b2abab94289984ed30227d73c7dbef50eca385667"
+    },
+    {
+      "port": "connection",
+      "kind": "response",
+      "file": "39_connection_response.cdr",
+      "sha256": "583095b5c9c1ec7c8abd8728580f5d455aaa93c539e2c6cd8a4fb9e03315b17d"
+    },
+    {
+      "port": "connection",
+      "kind": "request",
+      "file": "40_connection_request.cdr",
+      "sha256": "d081358aaf90e28cd8bffcd5a68856d3ebc3ca7055d186b9971af8879db32967"
+    },
+    {
+      "port": "connection",
+      "kind": "response",
+      "file": "41_connection_response.cdr",
+      "sha256": "1ed5d1a1b6e63b1b185be3ea8494b76a1783cf380a828f8b642986dfd1b3ca29"
+    },
+    {
+      "port": "connection",
+      "kind": "request",
+      "file": "42_connection_request.cdr",
+      "sha256": "4398195fcb82bf843bce998278d810066931cba69d724097cd50faeb65aa1505"
+    },
+    {
+      "port": "connection",
+      "kind": "response",
+      "file": "43_connection_response.cdr",
+      "sha256": "34f2c5cea04522c857646dd0a2bc3fa495f3752ada4c55238e33228e1aa696cc"
+    },
+    {
+      "port": "connection",
+      "kind": "request",
+      "file": "44_connection_request.cdr",
+      "sha256": "f0c3aacf141f65d925b3a164649f8baf40ace21cd8ca196db32c76defa073161"
+    },
+    {
+      "port": "connection",
+      "kind": "response",
+      "file": "45_connection_response.cdr",
+      "sha256": "bcca7e320d9a9822273e1462df27699d38911e113efd3df9c7c9377eed105e40"
+    },
+    {
+      "port": "certification",
+      "kind": "request",
+      "file": "46_certification_request.cdr",
+      "sha256": "7bc315108d55439bb203258aab04a9cc22ae5b744930eda4dd134d44e83d5759"
+    },
+    {
+      "port": "certification",
+      "kind": "response",
+      "file": "47_certification_response.cdr",
+      "sha256": "a2b9c4f509e3be0a8135bae5b742facf634df27e95d3a43b7810ae56771356a7"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "request",
+      "file": "48_opening_ik_request.cdr",
+      "sha256": "fd9e78bff1df26966e26efabbab8141933a514feb0703b8bc074e5bd9368c7fe"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "response",
+      "file": "49_opening_ik_response.cdr",
+      "sha256": "cfc12d10368f4cbd9d7050e7e56a9341afdaa054a0308b8683326907ba796168"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "request",
+      "file": "50_opening_ik_request.cdr",
+      "sha256": "5737f31ff455b478c8f992f68f587e0f17fbb26d8ee3d2adfac11ac1dbe7de4f"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "response",
+      "file": "51_opening_ik_response.cdr",
+      "sha256": "0ef8d97a291d703bbebe841071e38d27567c11b1abd71b6353bf494ab442f6dc"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "request",
+      "file": "52_opening_ik_request.cdr",
+      "sha256": "c8ac44f1f589738bf8c680c8244944a1f2ad0f2028cce254d3cc01eff3f196dc"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "response",
+      "file": "53_opening_ik_response.cdr",
+      "sha256": "1c98b12bd56fd97b35910d18deca5d9df81b1c3fab6751c4a11126ef4408fbda"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "request",
+      "file": "54_opening_ik_request.cdr",
+      "sha256": "95a3c167ee40e77abc9a38192d30a7325777fa02a764dcd6660e2aa55271a958"
+    },
+    {
+      "port": "opening_ik",
+      "kind": "response",
+      "file": "55_opening_ik_response.cdr",
+      "sha256": "e8f30fa3077c18cc7d2cd0c869ae9587573b4f51efacbae7fcd5b52939a9057b"
+    }
+  ],
+  "executable_sha256": {
+    "local": "643a0bf7fdb782945ebf849d565f00b225ad966e522d708112091f45cb8492a3",
+    "connection": "da032a7e5b4c9b9514bd603deea163296376ab7ebe01849692e6924613986db9",
+    "certification": "aaa8b127b9f0a477436595aff9533654fd0d4a7ce0fe8dce489bd3f8b733bc8d"
+  },
+  "worker_joined": true,
+  "teardown_exit_codes": [
+    0,
+    0,
+    0
+  ],
+  "capture_complete": true
+}

@@ -158,6 +158,55 @@ def test_free_scene_uses_native_planner_and_checks_preserved_endpoints(backend):
                for p in response.geometric_path.points)
 
 
+@pytest.mark.parametrize('allowed',[True,False])
+def test_native_position_path_constraint_is_enforced_during_connection(backend,allowed):
+    from geometry_msgs.msg import Pose
+    from moveit_msgs.msg import PositionConstraint
+    from shape_msgs.msg import SolidPrimitive
+    req=backend.request()
+    constraint=PositionConstraint()
+    constraint.header.frame_id='world'
+    constraint.link_name='suction_contact_frame'
+    constraint.weight=1.
+    pose=Pose();pose.orientation.w=1.
+    pose.position.x=1.1 if allowed else -5.
+    constraint.constraint_region.primitives=[SolidPrimitive(type=SolidPrimitive.BOX,
+        dimensions=[1.,1.5,.2])]
+    constraint.constraint_region.primitive_poses=[pose]
+    req.path_constraints.position_constraints=[constraint]
+    response=backend.call(req)
+    if allowed:
+        assert response.success and response.complete,response.reason
+    else:
+        assert not response.success and response.reason=='PATH_CONSTRAINT'
+
+
+def test_disconnected_constraint_regions_do_not_return_a_path_between_valid_endpoints(backend):
+    import numpy as np
+    from geometry_msgs.msg import Pose
+    from moveit_msgs.msg import PositionConstraint
+    from shape_msgs.msg import SolidPrimitive
+    from luggage_planning.offline_ik import Urdf
+    req=backend.request()
+    model=Urdf(robot_fixture()[0]);path=model.path_to('suction_contact_frame')
+    constraint=PositionConstraint()
+    constraint.header.frame_id='world';constraint.link_name='suction_contact_frame';constraint.weight=1.
+    for q in (req.start_joints,req.goal_joints):
+        xyz=model.tcp(q,path)[:3,3]
+        pose=Pose();pose.orientation.w=1.
+        pose.position.x,pose.position.y,pose.position.z=map(float,xyz)
+        constraint.constraint_region.primitives.append(SolidPrimitive(type=SolidPrimitive.BOX,
+            dimensions=[.05,.05,.05]))
+        constraint.constraint_region.primitive_poses.append(pose)
+    req.path_constraints.position_constraints=[constraint]
+    response=backend.call(req)
+    assert not response.success and not response.geometric_path.points
+    # Both endpoints were accepted; bounded planning exhausted the disconnected
+    # region. This is not an unreachability proof for arbitrary task constraints.
+    assert response.reason in ('NO_CONNECTION','DEADLINE')
+    assert response.checked_states==2
+
+
 def test_start_collision_refuses_then_fresh_private_scene_still_plans(backend):
     from geometry_msgs.msg import Pose
     from moveit_msgs.msg import CollisionObject, PlanningScene

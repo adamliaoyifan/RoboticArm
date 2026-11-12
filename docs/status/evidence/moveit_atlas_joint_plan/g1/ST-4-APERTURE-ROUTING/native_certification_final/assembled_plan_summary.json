@@ -1,0 +1,57 @@
+{
+  "status": "PLAN_READY",
+  "trace": [
+    [
+      "timing",
+      "native_planner",
+      "local_paths",
+      7.60890543460846e-07,
+      "completed",
+      "native-candidate"
+    ],
+    [
+      "timing",
+      "native_planner",
+      "align_connection",
+      0.01263649482280016,
+      "completed",
+      "native-candidate"
+    ],
+    [
+      "timing",
+      "native_planner",
+      "carry_connection",
+      0.011371682398021221,
+      "completed",
+      "native-candidate"
+    ],
+    [
+      "timing",
+      "native_planner",
+      "time_parameterization",
+      0.002494662068784237,
+      "completed",
+      "native-candidate"
+    ],
+    [
+      "timing",
+      "native_planner",
+      "whole_chain_certification",
+      0.005368221551179886,
+      "completed",
+      "native-candidate"
+    ],
+    [
+      "native-candidate:pick:place",
+      "PLAN_READY"
+    ]
+  ],
+  "elapsed_s": 0.034083226695656776,
+  "plan_digest": "bc7b81ce1261ab5d9fc48a06f85d81d5324ef296c3707ab42781ca17d34a9c95",
+  "certificate_id": "068b7fdf3e2a4e2e36da40c9bf59411064769e3a14393271880ed7d928c6971c",
+  "phase_scene_digests": [
+    "24a2c8c64b3af5c1df46012cad746b80757bb78fc010bafd7d159084ff6b53bf",
+    "560fbb95a6d81babcaf4036575decb11485ecf020bf2281beac34aa8b09c40b7",
+    "841f549f26dbdca5f1dd22a1cfb6058b89281f644b55ac1eb2c3889364f3e4cc"
+  ]
+}

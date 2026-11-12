@@ -1,7 +1,9 @@
 """Plan-only service with private native backends; external measured inputs required.
 
 The parameter file must bind the same world-rooted URDF/SRDF and solver config
-for every node, plus the root's scene revision/container transform/contact model.
+for every node, plus the root's scene_tf_config, scene revision/container transform/contact model.
+The root generates ordered opening waypoints; callers provide measured box/map
+inputs and placement candidates, never a separately hand-authored waypoint list.
 No controller, vacuum, perception trigger or scene/map writer is started.
 """
 from launch import LaunchDescription

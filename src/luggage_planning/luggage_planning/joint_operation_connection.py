@@ -71,7 +71,7 @@ class NativeSnapshotConnectionPort:
         self.max_edge_s = float(max_edge_s)
         self.inflight = None
 
-    def connect(self, snapshot, start, goal, *, request_id, deadline, cancelled):
+    def connect(self, snapshot, start, goal, *, request_id, deadline, cancelled, path_constraints=None):
         start = vector(start, 6, "connection_start")
         goal = vector(goal, 6, "connection_goal")
         if not isinstance(request_id, str) or not request_id.strip():
@@ -89,6 +89,8 @@ class NativeSnapshotConnectionPort:
         request.scene_sha256 = hashlib.sha256(snapshot.scene_cdr).hexdigest()
         request.scene_cdr = list(snapshot.scene_cdr)
         request.start_joints, request.goal_joints = list(start), list(goal)
+        if path_constraints is not None:
+            request.path_constraints = path_constraints
         request.budget_s = min(self.max_edge_s, deadline-time.monotonic())
         if request.budget_s <= 0:
             return GeometricConnection(False, False, "CANCELLED_OR_DEADLINE")

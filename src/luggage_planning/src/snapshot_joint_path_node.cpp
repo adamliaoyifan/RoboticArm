@@ -2,6 +2,7 @@
 // a private full scene. No ApplyPlanningScene, controller or vacuum interfaces.
 #include "luggage_msgs/srv/plan_snapshot_joint_path_v2.hpp"
 #include <moveit/kinematic_constraints/utils.h>
+#include <moveit/kinematic_constraints/kinematic_constraint.h>
 #include <moveit/planning_pipeline/planning_pipeline.h>
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit/robot_model_loader/robot_model_loader.h>
@@ -105,6 +106,9 @@ public:
       auto scene = std::make_shared<planning_scene::PlanningScene>(model_);
       if (!scene->setPlanningSceneMsg(snapshot))
         throw std::invalid_argument("invalid full planning scene");
+      kinematic_constraints::KinematicConstraintSet constraints(model_);
+      if (!constraints.add(req.path_constraints, scene->getTransforms()))
+        throw std::invalid_argument("invalid path constraints");
       const std::vector<double> start(req.start_joints.begin(), req.start_joints.end());
       const std::vector<double> goal(req.goal_joints.begin(), req.goal_joints.end());
       for (const auto &values : {start, goal})
@@ -122,6 +126,8 @@ public:
         state.update();
         if (!state.satisfiesBounds(group_))
           throw std::runtime_error("JOINT_BOUNDS");
+        if (!constraints.decide(state).satisfied)
+          throw std::runtime_error("PATH_CONSTRAINT");
         collision_detection::CollisionRequest query;
         query.contacts = true;
         query.max_contacts = 1;
@@ -144,6 +150,7 @@ public:
       scene->setCurrentState(start_state);
       planning_interface::MotionPlanRequest query;
       query.group_name = group_->getName();
+      query.path_constraints = req.path_constraints;
       query.planner_id = "RRTConnectkConfigDefault";
       query.num_planning_attempts = 1;
       query.allowed_planning_time = req.budget_s - elapsed();

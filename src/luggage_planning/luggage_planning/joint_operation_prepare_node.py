@@ -39,6 +39,10 @@ from luggage_planning.joint_operation_map_source import map_source_to_message
 from luggage_planning.joint_operation_observer import ObserverConfiguration, ObserverSnapshotPort
 from luggage_planning.joint_operation_endpoints import NativeOperationEndpointPort
 from luggage_planning.joint_operation_ik import NativeSnapshotIKPort
+from luggage_planning.aperture_geometry import ApertureGeometry
+from luggage_planning.aperture_tool_geometry import fixed_tool_vertices
+from luggage_planning.joint_operation_aperture import ApertureRouter
+from luggage_planning.joint_operation_scene_admission import StaticWorldAdmission
 from luggage_planning.joint_operation_atlas import AtlasOperationHints, load_operation_atlas
 from luggage_planning.joint_operation_planner import JointOperationPlanner
 from luggage_planning.joint_operation_preparation import JointOperationPreparation, PreparationInputs
@@ -73,6 +77,13 @@ class JointOperationPrepareNode(Node):
                                    param('container_quaternion_xyzw',[float('nan')]*4))
         self.model = EndpointModel(xml,semantic,position_tolerance_m=param('endpoint_position_tolerance_m',.002),
                                   orientation_tolerance_rad=param('endpoint_orientation_tolerance_rad',.02))
+        scene_path = param('scene_tf_config','')
+        if not scene_path:
+            raise ValueError('EXPLICIT_APERTURE_SCENE_CONFIG_REQUIRED')
+        scene_config = load_scene_tf_config(scene_path)
+        self.static_world = StaticWorldAdmission(scene_config,self.container,
+            mesh_path=param('container_collision_mesh',''))
+        aperture = ApertureGeometry.from_scene(scene_config)
         contact_path = param('suction_contact_model_config','')
         if not contact_path:
             from ament_index_python.packages import get_package_share_directory
@@ -103,13 +114,21 @@ class JointOperationPrepareNode(Node):
         self.observed_contacts = FrozenActualContactPort(self,recorder=recorder('observation'))
         endpoints = NativeOperationEndpointPort(self,recorder=recorder('local'))
         connections = NativeSnapshotConnectionPort(self,recorder=recorder('connection'))
+        aperture_router = ApertureRouter(aperture,self.model,
+            NativeSnapshotIKPort(self,self.model,recorder=recorder('aperture_ik')),connections,
+            rigid_vertices=fixed_tool_vertices(self.model),
+            hull=descriptor_from_scene_config(scene_config),
+            max_points=param('aperture_max_points_per_heading',6),
+            max_seeds=param('aperture_max_ik_seeds',3))
         velocity,acceleration = float(param('velocity_scale',.2)),float(param('acceleration_scale',.1))
         vmax,amax = cartesian_joint_limits(velocity,acceleration)
         certifier = NativeOperationCertificationPort(self,self.model,velocity_limits=(vmax,)*6,
-            acceleration_limits=(amax,)*6,release_drop_m=PLACE_RELEASE_GAP_M,recorder=recorder('certification'))
+            acceleration_limits=(amax,)*6,release_drop_m=PLACE_RELEASE_GAP_M,recorder=recorder('certification'),
+            aperture_router=aperture_router)
         planner = JointOperationPlanner(endpoints,connections,certifier,velocity_scale=velocity,
             acceleration_scale=acceleration,certification_reserve_s=float(param('certification_reserve_s',5.)),
-            max_candidates=8,max_branch_attempts=3,max_branch_attempts_per_candidate=2)
+            max_candidates=8,max_branch_attempts=3,max_branch_attempts_per_candidate=2,
+            aperture_router=aperture_router)
         atlas,atlas_reason = None,'ATLAS_UNAVAILABLE_ONLINE_IK'
         atlas_paths = [str(param(name,'')) for name in
             ('atlas_npz','atlas_yaml','atlas_qualification_file','atlas_scene_tf_config')]
@@ -119,6 +138,7 @@ class JointOperationPrepareNode(Node):
                 reader = load_operation_atlas(*atlas_paths,robot_description=xml,
                     model_sha256=self.model.model_sha256,scene_revision=self.revision,
                     world_from_container=self.container)
+                aperture_router.atlas = reader
                 atlas = AtlasOperationHints(reader,NativeSnapshotIKPort(self,self.model,
                     recorder=recorder('atlas_ik')),connections,scene_revision=self.revision,
                     model_sha256=self.model.model_sha256,
@@ -309,7 +329,7 @@ class JointOperationPrepareNode(Node):
             PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS|PlanningSceneComponents.WORLD_OBJECT_NAMES|
             PlanningSceneComponents.WORLD_OBJECT_GEOMETRY|PlanningSceneComponents.OCTOMAP|PlanningSceneComponents.TRANSFORMS|
             PlanningSceneComponents.ALLOWED_COLLISION_MATRIX|PlanningSceneComponents.LINK_PADDING_AND_SCALING)
-        return self._call(self.scene_client,request,deadline,'scene').scene
+        return self.static_world.admit(self._call(self.scene_client,request,deadline,'scene').scene)
 
     def _placements(self,request,confirmed,volume):
         pool = enumerate_placements(confirmed,(request.detection.width,request.detection.depth,request.detection.height),

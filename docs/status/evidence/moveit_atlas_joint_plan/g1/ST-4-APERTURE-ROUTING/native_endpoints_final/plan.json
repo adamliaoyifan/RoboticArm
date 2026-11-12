@@ -1,0 +1,67 @@
+{
+  "plan_digest": "3423ff660f7148f59f583dd526cad0bc19ad13dc7097cab5a792a92c654174a5",
+  "certificate_id": "287a12155036397a5e0c646701f854e052219aaeac1d8c5cd73fff38a3f79cdf",
+  "trace": [
+    [
+      "timing",
+      "native_planner",
+      "local_paths",
+      0.0059102922677993774,
+      "completed",
+      "joint-native"
+    ],
+    [
+      "timing",
+      "native_planner",
+      "align_connection",
+      0.012398864142596722,
+      "completed",
+      "joint-native"
+    ],
+    [
+      "timing",
+      "native_planner",
+      "carry_connection",
+      0.011940622702240944,
+      "completed",
+      "joint-native"
+    ],
+    [
+      "timing",
+      "native_planner",
+      "time_parameterization",
+      0.03222088608890772,
+      "completed",
+      "joint-native"
+    ],
+    [
+      "timing",
+      "native_planner",
+      "whole_chain_certification",
+      0.013801840133965015,
+      "completed",
+      "joint-native"
+    ],
+    [
+      "joint-native:pick:hint:pick-prior:place:hint:place-prior",
+      "PLAN_READY"
+    ]
+  ],
+  "elapsed_s": 0.10427828133106232,
+  "start_joints": [
+    -0.03,
+    -0.6,
+    1.2,
+    0.0,
+    -0.6,
+    3.141592653589793
+  ],
+  "knots_per_leg": [
+    9,
+    9,
+    14,
+    18,
+    17,
+    17
+  ]
+}

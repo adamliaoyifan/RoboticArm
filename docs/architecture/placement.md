@@ -113,6 +113,29 @@ static geometry and validate full-model, attachment-bound paths. This paragraph
 states the required behavior; current joint-operation implementation has not
 yet demonstrated this gate end to end.
 
+The `joint_operation` preparation root owns opening-waypoint generation; external
+callers do not supply entrance points. `aperture_geometry` derives proposal regions
+from scene corners and the already-conservative grasp-bound payload.
+`aperture_tool_geometry` derives the fixed tool component from the same full URDF;
+its projected bounds rank/propose passage geometry, while native collision checks
+remain authoritative. `joint_operation_aperture` refines qualified atlas/current
+joint seeds to ordered exterior/plane/interior poses and connects them before the
+existing local place-entry pose. It tries alternative points and directed headings
+within explicit parameter bounds (`aperture_max_points_per_heading`, default6;
+`aperture_max_ik_seeds`, default3). Exhaustion means incomplete search.
+
+The crossing connections carry standard MoveIt position path constraints in
+`PlanSnapshotJointPathV2`; endpoint checks, OMPL and sampled output enforce them.
+Their shared exact joint knots remain inside the public carry leg, preserving
+the existing six-leg/barrier contract. `trace_json` records selected world poses,
+joint solutions, provenance and stage times. Full-chain certification independently
+requires an opening-plane FK witness when the payload starts outside. A payload
+already inside the complete normalized hull does not require exit/re-entry.
+The production root requires an explicit `scene_tf_config` and verifies configured
+static container mesh/pose and pedestal geometry before search and on later scene
+reads. This implementation does not redesign the separate local down/up release
+and retreat policy, nor establish an observed full-model simulation baseline.
+
 ### Hull gate and rectangle order (G3 HULL-GATES, 2026-10-25)
 
 Final-placement hull legality is full closed-hull containment of the

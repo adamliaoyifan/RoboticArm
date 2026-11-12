@@ -167,6 +167,7 @@ scene; world and base do not coincide in this cell. `0.53` is container-frame ON
 | oracle `verify_candidate` hull | container, ABSOLUTE | reads `hull.ceiling_z_container` | [0.53, 2.01] |
 | oracle `placed_clearance_leg` | container, floor-relative | scene-derived floor/height | [0, 1.48] |
 | K01 oracle payload hull (`_k01_hull`, schema v4) | BOTH, named | `inner_size[2]`=HEIGHT 1.48 + `ceiling_z_container`=2.01 | both |
+| planning aperture proposals/router | container ABSOLUTE input; opening-local internal | corner Z absolute; UV offsets from aperture centroid | configured aperture |
 
 **NAMING RULE (user ruling 2026-11-10)**: a coordinate/bound field
 carries a frame qualifier (`floor_z_container`, `ceiling_z_container` —

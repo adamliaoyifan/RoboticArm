@@ -1,0 +1,29 @@
+{
+  "scope": "Full S20 model/static scene offline replay; no native motion, sensors or controller run",
+  "model_sha256": "51df00b411c9bbf57390a2a256828d195b637becd2b3ab31a5f77a49005624a5",
+  "rigid_proposal_vertices": 72,
+  "static_world": "exact qualified ULD mesh/pose and pedestal accepted",
+  "aperture_origin": [
+    -0.745,
+    -0.265,
+    1.303
+  ],
+  "inputs": {
+    "urdf": {
+      "path": "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-GAZEBO-OPERATION/cycle_04/runtime/robot.urdf",
+      "sha256": "28e2f7e9fdd83ac16be04646427ddb574d025f4f165c4ff9a3011519706df27b"
+    },
+    "srdf": {
+      "path": "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-GAZEBO-OPERATION/cycle_04/runtime/robot.srdf",
+      "sha256": "99653626dedff09ca5fb4ecc9858154677fe832692a4550a073e5f4251ce4be3"
+    },
+    "scene": {
+      "path": "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-GAZEBO-OPERATION/atlas_requalification_01/static_scene.cdr",
+      "sha256": "8edd090e049f999e41fc4f3ff79df9a68361d0e968e480db5db28345b7b623d6"
+    },
+    "config": {
+      "path": "src/luggage_description/config/scene_tf_deploy_update.yaml",
+      "sha256": "989225a14e7de881247865ca5813cbbc703e425cd5bb91433402c6e306449b5f"
+    }
+  }
+}

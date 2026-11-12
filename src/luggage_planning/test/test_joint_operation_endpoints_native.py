@@ -124,7 +124,7 @@ def native_stack():
         assert all(p.returncode==0 for p in processes), 'native endpoint backend teardown failed'
 
 
-def candidate_for(model):
+def candidate_for(model, *, pick_q=None, place_q=None):
     import math
     from scipy.spatial.transform import Rotation
     from moveit_msgs.msg import PlanningScene
@@ -135,8 +135,8 @@ def candidate_for(model):
     from luggage_planning.placement_prior_contracts import Snapshot,Transform
     from st09_contracts.attachment_geometry import freeze_geometry
     from st09_contracts.payload_envelope import EnvelopeLimits
-    pick_q=(0.,-.6,1.2,0.,-.6,math.pi)
-    place_q=(0.,-.4,1.0,0.,-.6,math.pi)
+    pick_q=pick_q or (0.,-.6,1.2,0.,-.6,math.pi)
+    place_q=place_q or (0.,-.4,1.0,0.,-.6,math.pi)
     def pose(q):
         matrix=model.urdf.tcp(q,model.path)
         return Transform(tuple(matrix[:3,3]),tuple(Rotation.from_matrix(matrix[:3,:3]).as_quat()))
@@ -149,7 +149,7 @@ def candidate_for(model):
     pick_box,release_box=pick_tool.compose(grasp),release_tool.compose(grasp)
     settled_box=raised(release_box,-.05)
     scene=PlanningScene();scene.robot_model_name='endpoint_fixture'
-    start_q=(-.03,)+pick_q[1:]
+    start_q=(pick_q[0]-.03,)+pick_q[1:]
     scene.robot_state.joint_state.name=list(OPERATION_JOINTS)
     scene.robot_state.joint_state.position=list(start_q)
     snapshot=Snapshot('scene',7,'hull',model.model_sha256,Transform((0.,0.,0.),(0.,0.,0.,1.)),
