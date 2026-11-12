@@ -164,7 +164,11 @@ class SceneManagerNode(Node):
         return response
 
     def _sync_static(self):
-        with self._sync_lock:
+        # Reentrant timer/service calls must not occupy every executor worker
+        # while the current sync waits for a reply on that same executor.
+        if not self._sync_lock.acquire(blocking=False):
+            return False, 'SYNC_STATIC_BUSY'
+        try:
             try:
                 config = self._config()
             except Exception as exc:  # noqa: BLE001
@@ -211,6 +215,8 @@ class SceneManagerNode(Node):
                     return False, "pedestal structure acm: %s" % message
             return True, "static scene synced (%s, %d triangles)" % (
                 obj_id, len(mesh_msg.triangles))
+        finally:
+            self._sync_lock.release()
 
     def _handle_add_scene_v2(self, request, response):
         from luggage_description.scene_tf_config_utils import (
