@@ -41,3 +41,16 @@ Reliable domain incompatibility. No product controller goal issued. Next bounded
 startup attempt uses measured controller readiness and actual DDS delivery test,
 with same full-model/O policy. Baseline remains open. Source/archive/CDR/log
 pointers: ST-4-GAZEBO-OPERATION/rehearsal_01..03 and offline_01/qos_transport.log.
+
+## Post -- eng/codex -- 2026-11-12 18:18 -- codex/gpt-6
+
+Startup rehearsal_04 passed, 3,525 sensor/state messages, both controllers active,
+all required endpoints present, clean owned teardown. cycle_01 executed both
+MoveGroup observation motions and generated sensor O, then stopped before prepare:
+detection at50.556s lacked measured height, exact domain invalid; first subsequent
+valid domain51.216s. Evidence and source archive preserved, zero residual processes.
+Diagnostic client now waits within the existing30s observation budget for complete
+measured geometry and an exact header/domain join; no admission relaxation.
+11 behavioural readiness cases pass. Latest-only prepare/context association race
+remains a source concern to measure at its actual boundary. User confirms online
+IK diagnosis first, but final success baseline requires requalified full-model atlas.

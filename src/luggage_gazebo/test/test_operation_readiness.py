@@ -22,3 +22,37 @@ def test_neither_half_ready_nor_missing_controllers_authorize_cycle(sample):
         wait_active_controllers(lambda:sample,deadline=.5,clock=lambda:now[0],
             pause=lambda seconds:now.__setitem__(0,now[0]+seconds))
     assert now[0]==.5
+
+
+def observation(stamp=1, valid=True, height=True, source=1):
+    header=SimpleNamespace(stamp=stamp,frame_id='world')
+    domain=SimpleNamespace(valid=valid,box_id='measured',header=header)
+    detection=SimpleNamespace(id='measured',header=header,height_valid=height,
+        top_surface_valid=True,height_source=source,HEIGHT_SOURCE_MEASURED_SUPPORT=1)
+    return SimpleNamespace(success=True,luggage=[detection]),domain
+
+
+def test_incomplete_height_does_not_borrow_later_valid_domain():
+    from luggage_gazebo.operation_readiness import wait_observed_detection
+    early,domain=observation(height=False);complete,_=observation()
+    responses=iter([early,complete]);now=[0.]
+    detection,returned=wait_observed_detection(lambda _:next(responses),lambda:domain,
+        deadline=1.,clock=lambda:now[0],pause=lambda dt:now.__setitem__(0,now[0]+dt))
+    assert detection.height_valid and returned is domain and now[0]==.1
+
+
+@pytest.mark.parametrize('kind',['stamp','frame','height','source','invalid','missing'])
+def test_observation_join_refuses_incomplete_or_different_acquisition(kind):
+    from luggage_gazebo.operation_readiness import wait_observed_detection
+    response,domain=observation();now=[0.]
+    response.luggage[0].header=SimpleNamespace(stamp=1,frame_id='world')
+    if kind=='stamp':domain.header.stamp=2
+    if kind=='frame':domain.header.frame_id='camera'
+    if kind=='height':response.luggage[0].height_valid=False
+    if kind=='source':response.luggage[0].height_source=0
+    if kind=='invalid':domain.valid=False
+    if kind=='missing':domain=None
+    with pytest.raises(TimeoutError,match='COMPLETE_MATCHING_OBSERVATION_UNAVAILABLE'):
+        wait_observed_detection(lambda _:response,lambda:domain,deadline=.5,
+            clock=lambda:now[0],pause=lambda dt:now.__setitem__(0,now[0]+dt))
+    assert now[0]==.5

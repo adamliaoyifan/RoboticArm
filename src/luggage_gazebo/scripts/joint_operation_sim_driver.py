@@ -28,7 +28,7 @@ from luggage_msgs.srv import DetectLuggage, PrepareJointOperationV2, SpawnNextBo
 from uld_occ_observer.srv import GetValidity, ResetObservation
 from controller_manager_msgs.srv import ListControllers
 import yaml
-from luggage_gazebo.operation_readiness import wait_active_controllers
+from luggage_gazebo.operation_readiness import wait_active_controllers, wait_observed_detection
 
 
 JOINTS = ['elfin_joint%d'%i for i in range(1,7)]
@@ -165,12 +165,9 @@ class OperationSimDriver(Node):
         if validity.last_integrated_stamp_ns<=0:raise RuntimeError('NO_INTEGRATED_SENSOR_VIEW')
 
     def plan(self):
-        response = self.call(self.detect,DetectLuggage.Request(),'detect',timeout=30.)
-        if not response.success or not response.luggage:raise RuntimeError('DETECTION:'+response.message)
-        detection = response.luggage[0]
-        self.wait(lambda:self.domain is not None and self.domain.valid and self.domain.box_id==detection.id
-                  and self.domain.header.stamp==detection.header.stamp,5.,'MATCHING_SUCTION_DOMAIN_UNAVAILABLE')
-        domain = self.domain
+        detection,domain = wait_observed_detection(
+            lambda remaining:self.call(self.detect,DetectLuggage.Request(),'detect',timeout=remaining),
+            lambda:self.domain,deadline=time.monotonic()+30.)
         self.record('top_domain',domain)
         validity = self.call(self.validity,GetValidity.Request(),'prepare_validity')
         joint = self.joint;self.record('prepare_joints',joint)
@@ -215,6 +212,7 @@ class OperationSimDriver(Node):
             self.flush(outcome='FULL_CYCLE_PASS',capture_complete=True,replay_possible=True)
             return 0
         except Exception as error:
+            if self.domain is not None:self.record('failure_top_domain',self.domain)
             for name,msg in self.images.items():self.record('failure_'+name,msg)
             if self.joint is not None:self.record('failure_joints',self.joint)
             self.flush(outcome='INCOMPLETE',reason=type(error).__name__+':'+str(error),
