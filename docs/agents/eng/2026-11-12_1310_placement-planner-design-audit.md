@@ -4,12 +4,12 @@
 - agent: codex
 - model: gpt-6
 - cli: codex
-- status: open
+- status: done
 - parent: MOVEIT-ATLAS-JOINT-PLAN-20261111
 - subtask: ST-4-DESIGN-AUDIT
 - base_revision: bcebf44d5c0aa353c66e1de34d09cb2ab1dd6df9
 - started_at: 2026-11-12T12:51:35+08:00
-- completed_at: n/a
+- completed_at: 2026-11-12T13:08:02+08:00
 
 ## Summary
 
@@ -55,7 +55,7 @@ callback is absent there. The real defect is entry-point policy divergence.
 
 ## Result
 
-Audit provenance gate passes; implementation/report commit recorded at closure.
+Audit provenance gate passes at a38413320a6775d8d98d6d6c08222e36876a4c4d.
 Whole ST-0/ST-3/ST-4 product gates remain open. Prioritize yaw/policy/O config,
 paging and deployment wiring before sampling expansion or arbitrary timeout
 increases. Review uncertainty/clearance/release with user before fixes.

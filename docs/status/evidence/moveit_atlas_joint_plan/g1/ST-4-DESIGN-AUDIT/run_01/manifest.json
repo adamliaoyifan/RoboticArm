@@ -786,5 +786,6 @@
   "limits": "Offline source/data audit only; no live parameter overrides, controller calls or physical validation.",
   "review_verification_ns": 1794460019520663434,
   "audit_gate": "pass",
-  "report_path": "docs/reviews/PLACEMENT_PLANNER_DESIGN_AUDIT_20261112.md"
+  "report_path": "docs/reviews/PLACEMENT_PLANNER_DESIGN_AUDIT_20261112.md",
+  "verified_audit_commit": "a38413320a6775d8d98d6d6c08222e36876a4c4d"
 }
