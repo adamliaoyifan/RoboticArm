@@ -576,3 +576,12 @@ worker state are private to one call. `plan()` returns `plans` and `selection`
 as well as bounded summary metadata. Public configuration is runtime YAML; a
 request captures a single revision so a mid-request edit cannot silently change
 its certificate. A new observation, grasp or start state requires a new request.
+
+Units at this boundary are metres for box sizes, COM offsets and transform
+translations, and radians for `start_q`. A transform maps the named local frame
+into its parent: `container_T_box` maps the geometric-centre box frame into
+`container_link`; `box_T_tool` maps `suction_contact_frame` into the box frame.
+Neither a final box goal nor a support patch is a TCP goal. TCP poses are derived
+from the box transform and grasp relation inside candidate planning. Surface
+patch `bounds_xy` is `(xmin,ymin,xmax,ymax)` and `surface_z_container` is absolute;
+selected support IDs do not remove unselected OCC obstacles from collision checks.
