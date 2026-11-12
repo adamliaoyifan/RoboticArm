@@ -198,6 +198,8 @@ class JointOperationPlanner:
             deadline = min(deadline,absolute_deadline)
         planning_deadline = deadline-self.reserve_s
         trace, attempts = [], 0
+        from luggage_planning.preparation_profile import StageTimings
+        timing = StageTimings('native_planner', trace, clock=self.clock)
 
         def stopped(limit):
             return cancelled() or self.clock() >= limit
@@ -206,6 +208,7 @@ class JointOperationPlanner:
             return PreparationResult(status, plan, tuple(trace), self.clock()-began)
 
         for candidate_index, candidate in enumerate(candidates):
+            timing.unit = getattr(candidate, 'candidate_id', '<invalid>')
             if stopped(planning_deadline):
                 return finish("CANCELLED" if cancelled() else "SEARCH_INCOMPLETE")
             if candidate_index >= self.max_candidates:
@@ -214,7 +217,7 @@ class JointOperationPlanner:
             if not self._candidate_matches(candidate, identity):
                 trace.append((getattr(candidate, 'candidate_id', '<invalid>'), "CANDIDATE_IDENTITY_MISMATCH"))
                 continue
-            evidence = self.endpoints.solve(candidate, request_id=identity.request_id,
+            evidence = timing.call('local_paths',self.endpoints.solve,candidate, request_id=identity.request_id,
                 deadline=planning_deadline, cancelled=cancelled)
             if stopped(planning_deadline):
                 return finish("CANCELLED" if cancelled() else "SEARCH_INCOMPLETE")
@@ -238,7 +241,8 @@ class JointOperationPlanner:
                     candidate_attempts += 1
                     branch_id = candidate.candidate_id+":"+pick.branch_id+":"+place.branch_id
                     if pick.branch_id not in alignment:
-                        response = self.connections.connect(candidate.scenes.pick, start, pick.incoming[0],
+                        response = timing.call('align_connection',self.connections.connect,
+                            candidate.scenes.pick, start, pick.incoming[0],
                             request_id=identity.request_id+":"+branch_id+":align",
                             deadline=planning_deadline, cancelled=cancelled)
                         alignment[pick.branch_id] = _connection_rows(response, start, pick.incoming[0])
@@ -250,7 +254,7 @@ class JointOperationPlanner:
                         # Place alternatives cannot repair this pick approach.
                         # Preserve the remaining budget for another pick branch.
                         break
-                    response = self.connections.connect(candidate.scenes.carry,
+                    response = timing.call('carry_connection',self.connections.connect,candidate.scenes.carry,
                         pick.outgoing[-1], place.incoming[0],
                         request_id=identity.request_id+":"+branch_id+":carry",
                         deadline=planning_deadline, cancelled=cancelled)
@@ -264,8 +268,9 @@ class JointOperationPlanner:
                              ("pick_lift", "carry", pick.outgoing), ("carry", "carry", carrying),
                              ("place_release", "carry", place.incoming),
                              ("place_retreat", "retreat", place.outgoing))
-                    legs = tuple(timed_operation_leg(name, phase, rows, identity,
-                        self.velocity_scale, self.acceleration_scale) for name, phase, rows in paths)
+                    legs = timing.call('time_parameterization',lambda:tuple(
+                        timed_operation_leg(name, phase, rows, identity,
+                            self.velocity_scale, self.acceleration_scale) for name, phase, rows in paths))
                     draft = JointOperationPlan(identity, candidate.candidate_id, "pending-native-certification",
                         candidate.world_from_pick_box, candidate.world_from_pick_tool,
                         candidate.world_from_release_box, candidate.world_from_release_tool,
@@ -276,7 +281,7 @@ class JointOperationPlanner:
                     draft = seal_operation_plan(draft)
                     if stopped(deadline):
                         return finish("CANCELLED" if cancelled() else "SEARCH_INCOMPLETE")
-                    receipt = self.certification.certify(draft, candidate,
+                    receipt = timing.call('whole_chain_certification',self.certification.certify,draft, candidate,
                         deadline=deadline, cancelled=cancelled)
                     if stopped(deadline):
                         return finish("CANCELLED" if cancelled() else "SEARCH_INCOMPLETE")

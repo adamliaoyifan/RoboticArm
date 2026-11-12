@@ -11,6 +11,7 @@ MODULES = (
     'luggage_mapping.configuration',
     'luggage_mapping.regions',
     'luggage_planning.joint_operation_prepare_node',
+    'luggage_planning.preparation_profile',
     'luggage_planning.joint_operation_runtime',
     'luggage_planning.joint_operation_runtime_ports',
     'luggage_planning.joint_operation_observer',

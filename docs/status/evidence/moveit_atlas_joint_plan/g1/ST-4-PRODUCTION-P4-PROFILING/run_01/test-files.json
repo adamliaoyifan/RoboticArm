@@ -1,0 +1,10 @@
+[
+  "src/luggage_planning/test/test_preparation_profile.py",
+  "src/luggage_planning/test/test_joint_operation_planner.py",
+  "src/luggage_planning/test/test_joint_operation_contracts.py",
+  "src/luggage_planning/test/test_joint_operation_contacts.py",
+  "src/luggage_planning/test/test_joint_operation_candidates.py",
+  "src/luggage_planning/test/test_joint_operation_observer.py",
+  "src/luggage_planning/test/test_joint_operation_bindings.py",
+  "src/luggage_packing/test/test_placement_query_consumers.py"
+]

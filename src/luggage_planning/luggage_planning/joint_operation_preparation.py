@@ -11,6 +11,7 @@ from luggage_planning.joint_operation_candidates import candidate_for_contact, p
 from luggage_planning.joint_operation_contracts import OperationIdentity
 from luggage_perception.observed_suction_domain import ObservedSuctionDomain
 from luggage_planning.placement_prior_contracts import PlacementCandidate, Snapshot, Transform
+from luggage_planning.preparation_profile import PreparationBudget, StageTimings
 
 
 @dataclass(frozen=True)
@@ -36,7 +37,7 @@ class PreparationInputs:
 class JointOperationPreparation:
     def __init__(self, contacts, planner, contact_model, envelope_limits, *,
                  max_center_checks, atlas=None, atlas_unavailable_reason='ATLAS_UNAVAILABLE_ONLINE_IK',
-                 clock=time.monotonic):
+                 budget=None, clock=time.monotonic):
         if type(max_center_checks) is not int or not 1 <= max_center_checks <= 4096:
             raise ValueError('bounded geometric centre checks required')
         self.contacts,self.planner = contacts,planner
@@ -44,6 +45,9 @@ class JointOperationPreparation:
         self.max_center_checks,self.clock = max_center_checks,clock
         self.atlas = atlas
         self.atlas_unavailable_reason = atlas_unavailable_reason
+        self.budget = budget if budget is not None else PreparationBudget()
+        if type(self.budget) is not PreparationBudget:
+            raise ValueError('TYPED_PREPARATION_BUDGET_REQUIRED')
 
     def prepare(self, request, response, inputs, *, deadline, revalidate, cancelled=lambda:False):
         from luggage_msgs.msg import JointOperationPlanV2
@@ -51,6 +55,7 @@ class JointOperationPreparation:
         response.success,response.reason = False,'SEARCH_INCOMPLETE'
         response.plan = JointOperationPlanV2()
         trace = [('atlas','QUALIFIED_PROPOSALS' if self.atlas else self.atlas_unavailable_reason)]
+        timing = StageTimings('candidate_preparation', trace, clock=self.clock)
         def stopped(): return cancelled() or self.clock() >= deadline
         def finish(reason):
             response.reason = reason
@@ -61,7 +66,7 @@ class JointOperationPreparation:
             snapshot,domain = inputs.snapshot,inputs.domain
             if (not request.request_id or not request.observation_id or not request.robot_state_stamp_valid
                     or not 1 <= request.candidate_limit <= 8 or not math.isfinite(request.budget_s)
-                    or not 0 < request.budget_s <= 10 or not math.isfinite(deadline)
+                    or not self.budget.admits(request.budget_s) or not math.isfinite(deadline)
                     or (request.geometry_hash,request.expected_map_revision,request.expected_model_sha256) !=
                        (snapshot.geometry_hash,snapshot.map_revision,snapshot.model_hash)):
                 return finish('PREPARATION_INPUT_IDENTITY_MISMATCH')
@@ -75,6 +80,7 @@ class JointOperationPreparation:
             def candidates():
                 groups = 0
                 for placement in inputs.placements:
+                    timing.unit = placement.slot_id
                     if stopped() or self.clock() >= planning_deadline or groups >= request.candidate_limit:
                         return
                     target_box = snapshot.world_from_container.compose(placement.container_from_box)
@@ -85,23 +91,26 @@ class JointOperationPreparation:
                         hint = inputs.world_from_reference_tool
                         if opposite:
                             hint = hint.compose(Transform((0.,0.,0.),(0.,0.,1.,0.)))
-                        proposal = propose_contact(domain,self.model,query_id=placement.slot_id+':'+str(groups),
+                        proposal = timing.call('contact_proposal',propose_contact,domain,self.model,
+                            query_id=placement.slot_id+':'+str(groups),
                             world_from_place_box=target_box,desired_world_from_tool=hint,
                             max_center_checks=self.max_center_checks)
                         trace.append((proposal.query_id,proposal.reason,proposal.checked_centres))
                         if proposal.reason == 'OBSERVED_FOOTPRINT_PROPOSAL': proposed.append(proposal)
                     if not proposed: continue
-                    evidence = self.contacts.evaluate(domain,request.detection,
+                    evidence = timing.call('contact_quality',self.contacts.evaluate,domain,request.detection,
                         [p.to_message() for p in proposed],self.model,deadline=planning_deadline,cancelled=cancelled,
                         retained_observation=inputs.retained_observation)
                     trace.append((placement.slot_id,evidence.reason,evidence.verdicts))
                     if not evidence.complete: continue
                     for rank,contact in enumerate(evidence.contacts):
                         if stopped() or self.clock() >= planning_deadline: return
-                        candidate = candidate_for_contact(snapshot,domain,contact,placement,self.limits,
+                        candidate = timing.call('bound_candidate',candidate_for_contact,
+                            snapshot,domain,contact,placement,self.limits,
                             pickup_object_id=inputs.pickup_object_id,observation_id=request.observation_id,rank=rank)
                         if self.atlas is not None:
-                            candidate,atlas_trace = self.atlas.augment(candidate,request_id=request.request_id,
+                            candidate,atlas_trace = timing.call('atlas_augmentation',self.atlas.augment,
+                                candidate,request_id=request.request_id,
                                 deadline=planning_deadline,cancelled=cancelled,clock=self.clock)
                             trace.extend(atlas_trace)
                         yield candidate
@@ -112,7 +121,8 @@ class JointOperationPreparation:
             if stopped(): return finish('CANCELLED_OR_DEADLINE')
             if result.status != 'PLAN_READY' or result.plan is None:
                 return finish(result.status)
-            if not revalidate(inputs,deadline): return finish('PREPARATION_SNAPSHOT_CHANGED')
+            if not timing.call('snapshot_revalidation',revalidate,inputs,deadline):
+                return finish('PREPARATION_SNAPSHOT_CHANGED')
             if stopped(): return finish('CANCELLED_OR_DEADLINE')
             message = operation_plan_to_message(result.plan,identity,result.plan.plan_digest)
             if stopped(): return finish('CANCELLED_OR_DEADLINE')

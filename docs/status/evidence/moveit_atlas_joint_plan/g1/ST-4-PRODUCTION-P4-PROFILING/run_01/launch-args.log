@@ -1,0 +1,12 @@
+Arguments (pass arguments as '<name>:=<value>'):
+
+    'model_parameters':
+        Pinned native/root ROS parameter file
+
+    'start_native_backends':
+        no description given
+        (default: 'true')
+
+    'max_preparation_budget_s':
+        Diagnostic preparation watchdog; production latency target awaits full-model baseline
+        (default: '300.0')

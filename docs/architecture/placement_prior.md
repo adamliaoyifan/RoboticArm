@@ -575,12 +575,29 @@ remain separate integration work.
 The root profile keeps at most eight contact groups and three total branch
 attempts, with at most two attempts per candidate to leave a fallback opportunity.
 All acquisition reads, quality queries, planning, native certification and final
-source revalidation share the one request deadline (maximum ten seconds).
+source revalidation share the one request deadline. The finite positive request
+budget must fit the explicitly configured `max_preparation_budget_s`. Its default
+300 seconds is a diagnostic watchdog for establishing the complete-model baseline,
+not a production latency target. The root and callback core use the same policy;
+there is no second hidden ten-second preparation cap. Measure successful complete
+operations before choosing a production target. Native per-port time limits,
+search caps and the certification reserve remain independently effective.
 Existing five-second certification reserve is retained by default. After the final
 asynchronous scene read, recheck live map/domain/joints as well as world collision
 semantics. A changed input, deadline, incomplete search, busy backend or capture
 failure returns an inactive plan. Only the complete six-leg certified chain can
 return `PLAN_READY`; J6 is part of those original trajectories.
+
+Existing traces also carry `timing` rows: scope, stage, elapsed seconds and
+completed/error outcome, followed by the request/candidate/slot correlation ID.
+Completed means the call returned, including a returned
+refusal; its normal verdict remains authoritative. Root acquisition/candidate
+stages, quality/atlas/revalidation, and native local/connection/timing/certification
+stages are nested diagnostics and must not be added together as total time.
+The root's `elapsed_s` measures the request. The returned trace includes issuance;
+the internal response evidence is intentionally recorded before owner issuance
+so failed capture cannot activate a plan. External evaluation preserves the final
+RPC response separately. These timings neither authorize motion nor change limits.
 
 `joint_operation_prepare.launch.py` starts this entry and optionally the three
 private native backends. Its required `model_parameters` file must bind the same

@@ -1,0 +1,10 @@
+{
+  "src/luggage_planning/test/test_preparation_profile.py": "ba3cf4a6b925539d558d666e8016788406337a7e5d850f5cb5e0776e624bcb93",
+  "src/luggage_planning/luggage_planning/preparation_profile.py": "165377f1c8d57c1ed91dbd3b51e09fd1a703f300b6e5fc11f61383a7e7140a97",
+  "src/luggage_planning/luggage_planning/joint_operation_prepare_node.py": "b52320c0f9792f37ce95a5b50cb709474c568b04ea9d5ff5848a0a1842852d6e",
+  "src/luggage_planning/luggage_planning/joint_operation_preparation.py": "755889836063d6707282c428f302dd2631d11eaa502c6b17e9051c91cbdffd62",
+  "src/luggage_planning/luggage_planning/joint_operation_planner.py": "2866ba5e16893d15500f979bfd4fd978b43c60e50741628f10973ba77e4ce688",
+  "src/luggage_planning/launch/joint_operation_prepare.launch.py": "c6c8f083b4d6c558b7ffec91ebc505fae7be71d04e9da2adddbec80081806b2f",
+  "scripts/production/check_install.py": "2032e85aff51d484224af7c9ffc749045b3b7aea56ea316f1e0e5eb766e47319",
+  "docs/architecture/placement_prior.md": "d12ad6a112461a7ee8de2a362c6a16305bb2b58a6609151352ff1280b353e041"
+}

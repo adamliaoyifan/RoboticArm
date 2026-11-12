@@ -47,6 +47,9 @@ from luggage_planning.placement_prior_snapshot import build_private_snapshot, pr
 from luggage_planning.placement_prior_surface import ConfirmedSurfaceStore
 from luggage_planning.planning_scene_client import BOX_OBJECT_ID
 from luggage_planning.trajectory_timing import cartesian_joint_limits
+from luggage_planning.preparation_profile import (
+    DEFAULT_MAX_PREPARATION_BUDGET_S, PreparationBudget, StageTimings,
+)
 from luggage_planning.waypoint_generator import PLACE_RELEASE_GAP_M
 
 
@@ -54,6 +57,8 @@ class JointOperationPrepareNode(Node):
     def __init__(self, **kwargs):
         super().__init__('joint_operation_prepare',**kwargs)
         def param(name,default): return self.declare_parameter(name,default).value
+        self.budget = PreparationBudget(float(param('max_preparation_budget_s',
+                                                   DEFAULT_MAX_PREPARATION_BUDGET_S)))
         self.revision = param('frame_scene_revision','')
         xml,semantic = param('robot_description',''),param('robot_description_semantic','')
         if not self.revision or not xml or not semantic:
@@ -117,7 +122,7 @@ class JointOperationPrepareNode(Node):
                 atlas_reason = 'ATLAS_REFUSED_ONLINE_IK:'+type(error).__name__+':'+str(error)
         self.preparation = JointOperationPreparation(contacts,planner,contact_model,self.limits,
             max_center_checks=int(param('max_center_checks',256)),atlas=atlas,
-            atlas_unavailable_reason=atlas_reason)
+            atlas_unavailable_reason=atlas_reason,budget=self.budget)
         self.scene_client = self.create_client(GetPlanningScene,'/get_planning_scene')
         self.map_backend = str(param('map_backend','observer'))
         self.observer = None
@@ -325,32 +330,46 @@ class JointOperationPrepareNode(Node):
         response.trace_json,response.elapsed_s = '[]',0.
         if not self._active.acquire(blocking=False):
             response.reason = 'OPERATION_PREPARATION_BUSY';return response
-        try:
-            self._record('prepare_request',request)
-            if (not math.isfinite(request.budget_s) or not 0 < request.budget_s <= 10
+        budget_value = request.budget_s if math.isfinite(request.budget_s) else str(request.budget_s)
+        root_trace = [('preparation_budget',budget_value,self.budget.max_budget_s,
+                       'diagnostic_watchdog_not_latency_target')]
+        timing = StageTimings('root',root_trace,unit=request.request_id)
+        def admit_request():
+            if (not self.budget.admits(request.budget_s)
                     or not request.request_id or not request.observation_id or not 1 <= request.candidate_limit <= 8
                     or len(request.slots)>32
                     or request.expected_model_sha256 != self.model.model_sha256):
                 raise ValueError('PREPARATION_INPUT_IDENTITY_MISMATCH')
-            deadline = started+request.budget_s
             pickup_collision_aabb(request.detection)
-            domain = self._current(request)
-            retained = self.observed_contacts.retain(domain,request.detection,
+        def sync_trace():
+            # Keep the core trace separate so repeated synchronization after
+            # issuance does not duplicate root stages in the returned response.
+            response.trace_json = json.dumps(core_trace+root_trace,separators=(',',':'),allow_nan=False)
+            response.elapsed_s = time.monotonic()-started
+        core_trace = []
+        try:
+            self._record('prepare_request',request)
+            timing.call('input_admission',admit_request)
+            deadline = started+request.budget_s
+            domain = timing.call('domain_admission',self._current,request)
+            retained = timing.call('frozen_observation',self.observed_contacts.retain,domain,request.detection,
                 request_id=request.request_id,observation_id=request.observation_id,
                 deadline=deadline,cancelled=lambda:False)
             if not retained.retained:raise ValueError(retained.reason)
             observed = retained.observation
-            confirmed,volume,map_source = self._capture_map(request,deadline)
+            confirmed,volume,map_source = timing.call('map_capture',self._capture_map,request,deadline)
             record = confirmed.record()
             if (record['geometry_hash'],record['map_revision'],record['scene_revision']) != (
                     request.geometry_hash,request.expected_map_revision,self.revision):
                 raise ValueError('OCC_INPUT_IDENTITY_MISMATCH')
-            baseline = self._scene(deadline)
+            baseline = timing.call('base_scene',self._scene,deadline)
             expected_world = proposal_scene_hash(baseline)
-            if volume is None:volume = self._grid_g_volume(confirmed,deadline)
-            snapshot = build_private_snapshot(confirmed,baseline,self.model.model_sha256,self.container,
+            if volume is None:
+                volume = timing.call('g_volume_capture',self._grid_g_volume,confirmed,deadline)
+            snapshot = timing.call('private_scene',build_private_snapshot,
+                confirmed,baseline,self.model.model_sha256,self.container,
                                               collision_margin_m=self.margin,volume=volume)
-            placements = self._placements(request,confirmed,volume)
+            placements = timing.call('placement_candidates',self._placements,request,confirmed,volume)
             reference = Transform.from_matrix(self.model.urdf.tcp(list(request.start_joints),self.model.path))
             inputs = PreparationInputs(snapshot,domain,placements,reference,self.pickup_id,observed)
             def revalidate(current,limit):
@@ -367,7 +386,8 @@ class JointOperationPrepareNode(Node):
                     and checked.retained and checked.observation.binding==observed.binding
                     and self._current(request,frozen_domain=domain).digest()==current.domain.digest()
                     and proposal_scene_hash(scene)==expected_world)
-            self.preparation.prepare(request,response,inputs,deadline=deadline,revalidate=revalidate)
+            timing.call('whole_preparation',self.preparation.prepare,
+                        request,response,inputs,deadline=deadline,revalidate=revalidate)
             if response.success:
                 # Internal owner output, before publication; external check
                 # requests instead decode against the retained owner identity.
@@ -378,7 +398,8 @@ class JointOperationPrepareNode(Node):
             response.success = False;response.plan = JointOperationPlanV2()
             response.reason = 'PREPARATION_REFUSED:'+type(error).__name__+':'+str(error)
         finally:
-            response.elapsed_s = time.monotonic()-started
+            core_trace = json.loads(response.trace_json)
+            sync_trace()
             try: self._record('prepare_response',response)
             except Exception as error:
                 # Capture failure cannot leave a certified response active or
@@ -388,14 +409,19 @@ class JointOperationPrepareNode(Node):
                 self.get_logger().error(response.reason+':'+str(error))
             else:
                 if response.success:
-                    try: self.issued.issue(issued_plan,contact_binding=observed.binding,map_source=map_source)
+                    try:
+                        timing.call('plan_issuance',self.issued.issue,issued_plan,
+                                    contact_binding=observed.binding,map_source=map_source)
                     except Exception as error:
                         response.success = False;response.plan = JointOperationPlanV2()
                         response.reason = 'PREPARATION_ISSUANCE_FAILED:'+type(error).__name__
                         self.get_logger().error(response.reason+':'+str(error))
+                        sync_trace()
                         try: self._record('issuance_failure_response',response)
                         except Exception: pass
-            finally: self._active.release()
+            finally:
+                sync_trace()
+                self._active.release()
         return response
 
 

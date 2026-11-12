@@ -1,0 +1,10 @@
+{
+  "stage": "profiling regression fixture comparison",
+  "first_failure": "Compared plans from two separately generated scene fixtures; snapshot timestamps/hashes differ before timing instrumentation",
+  "capture_complete": true,
+  "replay_possible": true,
+  "inputs": "attempt-01/",
+  "log": "tests-01.log",
+  "junit": "tests-01.xml",
+  "repair": "Reuse exact same immutable candidate/snapshot for timed versus untimed comparison; isolate native-only skipped gate from offline selected matrix"
+}

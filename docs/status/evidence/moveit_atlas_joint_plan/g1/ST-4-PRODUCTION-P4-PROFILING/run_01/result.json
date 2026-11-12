@@ -1,0 +1,31 @@
+{
+  "outcome": "pass",
+  "distinct_selected_tests": 233,
+  "test_executions": 257,
+  "skips": 0,
+  "deselected_native_gate": "test_native_port_consumes_service_and_terminates_executor (separate opt-in)",
+  "evidence": [
+    "tests-closed.xml",
+    "added-coverage.xml",
+    "install.json",
+    "launch-args.log"
+  ],
+  "build_elapsed_s": 6.573825246654451,
+  "installed_checks": 39,
+  "changes": [
+    "shared explicit PreparationBudget default300 diagnostic watchdog",
+    "root/candidate/native stage timings with request or candidate correlation",
+    "same plan equality under deterministic timing instrumentation"
+  ],
+  "limitations": [
+    "complete full-model simulation baseline not yet achieved",
+    "default production client/launch migration still open",
+    "O age1000ms and unchanged-source final admission remain unchanged; source-policy discussion pending"
+  ],
+  "failure_retained": "failure-01.json",
+  "capture_complete": true,
+  "replay_possible": true,
+  "teardown": "not_needed",
+  "profile": "deterministic contract fixtures; no external nodes/controllers/Gazebo",
+  "completed_at": "2026-11-12T16:42:55.319499+08:00"
+}
