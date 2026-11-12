@@ -38,6 +38,15 @@ class OperationRevalidation:
     current_scene_sha256: str = ''
 
 
+def settled_box_from_release(model, plan, geometry, world_from_container, release_drop_m):
+    """Actual frozen G at the original release joint endpoint, then policy drop."""
+    tool = Transform.from_matrix(model.urdf.tcp(plan.legs[4].knots[-1].positions,model.path))
+    box = tool.compose(Transform(geometry.t_tool_box_translation,geometry.t_tool_box_quaternion_xyzw))
+    drop = rotate_vector(world_from_container.quaternion_xyzw,(0.,0.,release_drop_m))
+    settled = Transform(tuple(a-b for a,b in zip(box.translation,drop)),box.quaternion_xyzw)
+    return plan.world_from_settled_box if _same_pose(settled,plan.world_from_settled_box) else settled
+
+
 class NativeOperationRevalidationPort:
     def __init__(self, node, endpoint_model, *, velocity_limits,
                  acceleration_limits, release_drop_m, start_tolerance_rad,
@@ -145,13 +154,12 @@ class NativeOperationRevalidationPort:
                     or abs(sum(a*b for a,b in zip(intended.quaternion_xyzw,
                                                 plan.world_from_settled_box.quaternion_xyzw))) < 1.-1e-12):
                 return result('RELEASE_SETTLED_POLICY_MISMATCH')
-            settled_from_grasp = Transform(tuple(a-b for a,b in zip(release_box.translation,up_gap)),
-                                       release_box.quaternion_xyzw)
-            # Canonicalize only the existing contract's numerical equality
-            # (including quaternion sign), not the wider placement tolerance.
-            if _same_pose(settled_from_grasp,plan.world_from_settled_box):
-                settled_from_grasp = plan.world_from_settled_box
-            if admit_settled_box(snapshot, active_geometry, settled_from_grasp,
+            settled_from_grasp = settled_box_from_release(self.model,plan,active_geometry,
+                snapshot.world_from_container,self.release_drop_m)
+            # Layout admission belongs to the bound requested slot. FK accuracy
+            # was checked above; exact FK-derived geometry remains in every
+            # native collision phase below, including the released obstacle.
+            if admit_settled_box(snapshot, active_geometry, plan.world_from_settled_box,
                     deadline=deadline, cancelled=cancelled) is not True:
                 return result('SETTLED_BOX_ADMISSION_REFUSED')
             if stopped():

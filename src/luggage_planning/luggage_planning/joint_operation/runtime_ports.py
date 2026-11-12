@@ -294,15 +294,18 @@ class OperationRuntimePorts:
         from moveit_msgs.msg import PlanningScene
         from rclpy.serialization import serialize_message,deserialize_message
         from luggage_planning.joint_operation.scenes import owned_payload_diff
+        from luggage_planning.joint_operation.revalidation import settled_box_from_release
         live = self.scene()
         if any(item.object.id!=self.pickup_id for item in live.robot_state.attached_collision_objects):
             raise ValueError('UNEXPECTED_EXTERNAL_ATTACHMENT')
         baseline = copy.deepcopy(live)
         baseline.robot_state.attached_collision_objects=[]
         snapshot = replace(self.snapshot,scene_cdr=serialize_message(baseline))
+        settled = (settled_box_from_release(self.model,self.plan,geometry,self.container,PLACE_RELEASE_GAP_M)
+                   if phase=='retreat' else self.plan.world_from_settled_box)
         phases = build_operation_scenes(snapshot,pickup_object_id=self.pickup_id,geometry=geometry,
             world_from_pick_box=self.plan.world_from_pick_box,
-            world_from_settled_box=self.plan.world_from_settled_box)
+            world_from_settled_box=settled)
         desired = deserialize_message(phases.for_phase(phase).scene_cdr,PlanningScene)
         diff = owned_payload_diff(live,desired,self.pickup_id)
         result = self.rpc.call(self.apply_client,self.apply_type.Request(scene=diff),self.deadline,'owned_payload_scene')
@@ -355,7 +358,10 @@ class OperationRuntimePorts:
         if live.robot_state.attached_collision_objects:
             raise ValueError('CANNOT_FINALIZE_ATTACHED_PAYLOAD')
         owned = [obj for obj in live.world.collision_objects if obj.id==self.pickup_id]
-        if owned!=self.last_owned_world:raise ValueError('OWNED_WORLD_OBJECT_CHANGED')
+        from luggage_planning.joint_operation.scenes import same_payload_object
+        if (len(owned)!=1 or len(self.last_owned_world)!=1
+                or not same_payload_object(owned[0],self.last_owned_world[0])):
+            raise ValueError('OWNED_WORLD_OBJECT_CHANGED')
         diff = PlanningScene(is_diff=True)
         diff.robot_state.is_diff=True
         diff.world.collision_objects=[CollisionObject(id=self.pickup_id,operation=CollisionObject.REMOVE)]

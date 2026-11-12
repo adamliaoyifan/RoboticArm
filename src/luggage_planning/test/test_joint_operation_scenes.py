@@ -8,11 +8,31 @@ from moveit_msgs.msg import AllowedCollisionEntry, AttachedCollisionObject, Coll
 from rclpy.serialization import deserialize_message, serialize_message
 from shape_msgs.msg import SolidPrimitive
 
-from luggage_planning.joint_operation.scenes import build_operation_scenes, owned_payload_diff
+from luggage_planning.joint_operation.scenes import (
+    build_operation_scenes, owned_payload_diff, same_payload_object,
+)
 from luggage_planning.placement_prior.contracts import Snapshot, Transform
 from st09_contracts.attachment_geometry import freeze_geometry
 from st09_contracts.payload_envelope import EnvelopeLimits
 from test_joint_operation_contracts import example_plan
+
+
+@pytest.mark.parametrize('change',['none','size','position','frame','extra_shape'])
+def test_payload_geometry_survives_moveit_object_pose_round_trip_but_detects_changes(change):
+    import copy
+    expected=deserialize_message(compose(baseline()).pick.scene_cdr,PlanningScene).world.collision_objects
+    expected=next(o for o in expected if o.id=='pickup_box')
+    actual=copy.deepcopy(expected)
+    actual.pose=copy.deepcopy(actual.primitive_poses[0])
+    actual.primitive_poses=[Pose()]
+    actual.primitive_poses[0].orientation.w=1.
+    for name in ('x','y','z','w'):
+        setattr(actual.pose.orientation,name,-getattr(actual.pose.orientation,name))
+    if change=='size':actual.primitives[0].dimensions[0]+=.001
+    elif change=='position':actual.pose.position.x+=.001
+    elif change=='frame':actual.header.frame_id='container_link'
+    elif change=='extra_shape':actual.primitives.append(copy.deepcopy(actual.primitives[0]))
+    assert same_payload_object(actual,expected)==(change=='none')
 
 
 @pytest.mark.parametrize('before,after',[

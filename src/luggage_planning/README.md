@@ -58,6 +58,11 @@ at most 2 per coupled candidate, within the existing 300s preparation watchdog.
 These are search budgets, not reachability decisions or a production latency SLA.
 Runtime phase diffs replace the owned world payload directly and send remove or
 detach operations only for objects actually present in the captured live scene.
+Owned box comparison composes object and primitive poses, so MoveIt's equivalent
+pose storage and quaternion sign cannot appear as an external geometry change.
+Layout re-admission checks the original bound slot; the existing FK accuracy
+check and exact FK-derived release obstacle still govern native suffix collision
+certification. Runtime uses that same release geometry for the retreat scene.
 Prepare evidence stores lossless gzip CDR files; `boundaries.jsonl` records raw
 and stored sizes/hashes. Decompress before deserialization; the budget counts
 stored bytes and still refuses when full.

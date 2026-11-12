@@ -126,6 +126,35 @@ def test_compatible_actual_envelope_change_reuses_original_suffix(native_gate,is
     assert result.receipt.attachment_geometry_digest==actual.digest()
 
 
+def test_layout_rechecks_bound_slot_while_native_keeps_fk_derived_release_geometry(native_gate,issued):
+    from luggage_msgs.srv import ValidateRouteV2
+    from rclpy.serialization import deserialize_message
+    from luggage_planning.joint_operation.scenes import same_payload_object, _box
+    from luggage_planning.joint_operation.revalidation import settled_box_from_release
+    plan,_=issued
+    original=plan.predicted_attachment
+    xyz=list(original.t_tool_box_translation);xyz[0]+=1e-5
+    actual=freeze_geometry(original.measured_dimensions_wdh,xyz,
+        original.t_tool_box_quaternion_xyzw,EnvelopeLimits(0.,(0.,0.,0.),(0.,0.),0.))
+    admitted=[]
+    def admit(snapshot,geometry,target,**kwargs):
+        admitted.append(target)
+        return target==plan.world_from_settled_box
+    before=len(native_gate.records)
+    result=run(native_gate,issued,geometry=actual,admit_settled_box=admit)
+    assert result.receipt.accepted,result.receipt.reason
+    assert admitted==[plan.world_from_settled_box]
+    query=deserialize_message((native_gate.directory/native_gate.records[before]['file']).read_bytes(),
+                              ValidateRouteV2.Request)
+    settled=settled_box_from_release(native_gate.model,plan,actual,
+        context(native_gate,issued)['snapshot'].world_from_container,.05)
+    assert settled!=plan.world_from_settled_box
+    xyz,quat=actual.conservative_pose_at_box(settled.translation,settled.quaternion_xyzw)
+    expected=_box('pickup_box',actual.conservative.dimensions_wdh,Transform(xyz,quat),'world')
+    observed=next(o for o in query.load_state_scenes[2].world.collision_objects if o.id=='pickup_box')
+    assert same_payload_object(observed,expected)
+
+
 def test_changed_actual_grasp_cannot_silently_move_bound_box_target(native_gate,issued):
     original=issued[0].predicted_attachment
     actual=freeze_geometry(original.measured_dimensions_wdh,(.02,0.,-.05),

@@ -121,6 +121,41 @@ def owned_payload_diff(live, desired, pickup_object_id):
     return diff
 
 
+def same_payload_object(left, right):
+    """Compare box geometry through MoveIt's object/shape pose round trip.
+
+    MoveIt may move the first primitive pose into CollisionObject.pose and
+    normalize quaternion sign. These are equivalent encodings, not changes to
+    owned geometry. Preserve dimensions, frame and all shape-count restrictions.
+    """
+    from luggage_planning.joint_operation.contracts import _same_pose
+    from shape_msgs.msg import SolidPrimitive
+
+    def geometry(obj):
+        if (len(obj.primitives) != 1 or len(obj.primitive_poses) != 1
+                or obj.primitives[0].type != SolidPrimitive.BOX
+                or obj.meshes or obj.mesh_poses or obj.planes or obj.plane_poses
+                or obj.subframe_names or obj.subframe_poses):
+            raise ValueError('ONE_PAYLOAD_BOX_REQUIRED')
+        def transform(pose, *, legacy_object_pose=False):
+            xyz = (pose.position.x, pose.position.y, pose.position.z)
+            quat = (pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w)
+            # Legacy CollisionObject writers leave its new object-pose field
+            # entirely default and store the full transform on the primitive.
+            if legacy_object_pose and xyz == (0., 0., 0.) and quat == (0., 0., 0., 0.):
+                quat = (0., 0., 0., 1.)
+            return Transform(xyz, quat)
+        pose = transform(obj.pose,legacy_object_pose=True).compose(transform(obj.primitive_poses[0]))
+        return tuple(obj.primitives[0].dimensions), pose
+    try:
+        left_size, left_pose = geometry(left)
+        right_size, right_pose = geometry(right)
+        return (left.id == right.id and left.header.frame_id == right.header.frame_id
+                and left_size == right_size and _same_pose(left_pose,right_pose))
+    except (TypeError, ValueError):
+        return False
+
+
 def validate_phase_payloads(decoded_scenes, *, pickup_object_id, geometry,
                             world_from_pick_box, world_from_settled_box):
     """Check the actual native inputs contain precisely the frozen envelope.
@@ -148,15 +183,15 @@ def validate_phase_payloads(decoded_scenes, *, pickup_object_id, geometry,
             expected = _box(pickup_object_id, envelope.dimensions_wdh,
                 Transform(envelope.t_tcp_box_translation, envelope.t_tcp_box_quaternion_xyzw),
                 'suction_contact_frame')
-            if (objects or len(attached) != 1 or attached[0].object != expected
+            if (objects or len(attached) != 1 or not same_payload_object(attached[0].object,expected)
                     or attached[0].link_name != 'suction_contact_frame'
-                    or tuple(attached[0].touch_links) != SUCTION_TOUCH_LINKS):
+                    or set(attached[0].touch_links) != set(SUCTION_TOUCH_LINKS)):
                 raise ValueError('carrying phase lacks the exact predicted attachment')
         else:
             nominal = world_from_pick_box if phase == 'pick' else world_from_settled_box
             xyz, quat = geometry.conservative_pose_at_box(nominal.translation, nominal.quaternion_xyzw)
             expected = _box(pickup_object_id, envelope.dimensions_wdh, Transform(xyz, quat), 'world')
-            if attached or len(objects) != 1 or objects[0] != expected:
+            if attached or len(objects) != 1 or not same_payload_object(objects[0],expected):
                 raise ValueError('world phase lacks the exact predicted box obstacle')
 
 
