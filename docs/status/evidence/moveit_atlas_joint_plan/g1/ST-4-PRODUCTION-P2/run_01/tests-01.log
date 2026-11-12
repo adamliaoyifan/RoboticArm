@@ -1,0 +1,154 @@
+........FFFFF................                                            [100%]
+=================================== FAILURES ===================================
+___________ test_floor_prior_never_authorizes_unseen_volume[missing] ___________
+
+defect = 'missing'
+
+    @pytest.mark.parametrize('defect', ['missing', 'short', 'unknown', 'occupied', 'inactive'])
+    def test_floor_prior_never_authorizes_unseen_volume(defect):
+        surface, evidence = observed_map()
+        surface['state'] = [['unknown'] * surface['ny'] for _ in range(surface['nx'])]
+        if defect == 'missing':
+            verifier = None
+        else:
+            if defect == 'short': evidence['states'] = evidence['states'][:-1]
+            if defect == 'unknown': evidence['states'] = [0] * len(evidence['states'])
+            if defect == 'occupied': evidence['states'] = [2] * len(evidence['states'])
+            if defect == 'inactive': evidence['active'] = [False] * len(evidence['states'])
+            verifier = KnownFreeVolume(evidence)
+        result = placement_query(surface, (.1, .1, .1), volume_verifier=verifier)
+        assert not result['success']
+>       assert not any(c['volume_verified'] for c in result['candidates'])
+
+src/luggage_packing/test/test_placement_query.py:69: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = <list_iterator object at 0x70435c021720>
+
+>   assert not any(c['volume_verified'] for c in result['candidates'])
+E   KeyError: 'volume_verified'
+
+src/luggage_packing/test/test_placement_query.py:69: KeyError
+____________ test_floor_prior_never_authorizes_unseen_volume[short] ____________
+
+defect = 'short'
+
+    @pytest.mark.parametrize('defect', ['missing', 'short', 'unknown', 'occupied', 'inactive'])
+    def test_floor_prior_never_authorizes_unseen_volume(defect):
+        surface, evidence = observed_map()
+        surface['state'] = [['unknown'] * surface['ny'] for _ in range(surface['nx'])]
+        if defect == 'missing':
+            verifier = None
+        else:
+            if defect == 'short': evidence['states'] = evidence['states'][:-1]
+            if defect == 'unknown': evidence['states'] = [0] * len(evidence['states'])
+            if defect == 'occupied': evidence['states'] = [2] * len(evidence['states'])
+            if defect == 'inactive': evidence['active'] = [False] * len(evidence['states'])
+            verifier = KnownFreeVolume(evidence)
+        result = placement_query(surface, (.1, .1, .1), volume_verifier=verifier)
+        assert not result['success']
+>       assert not any(c['volume_verified'] for c in result['candidates'])
+
+src/luggage_packing/test/test_placement_query.py:69: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = <list_iterator object at 0x70435c97c940>
+
+>   assert not any(c['volume_verified'] for c in result['candidates'])
+E   KeyError: 'volume_verified'
+
+src/luggage_packing/test/test_placement_query.py:69: KeyError
+___________ test_floor_prior_never_authorizes_unseen_volume[unknown] ___________
+
+defect = 'unknown'
+
+    @pytest.mark.parametrize('defect', ['missing', 'short', 'unknown', 'occupied', 'inactive'])
+    def test_floor_prior_never_authorizes_unseen_volume(defect):
+        surface, evidence = observed_map()
+        surface['state'] = [['unknown'] * surface['ny'] for _ in range(surface['nx'])]
+        if defect == 'missing':
+            verifier = None
+        else:
+            if defect == 'short': evidence['states'] = evidence['states'][:-1]
+            if defect == 'unknown': evidence['states'] = [0] * len(evidence['states'])
+            if defect == 'occupied': evidence['states'] = [2] * len(evidence['states'])
+            if defect == 'inactive': evidence['active'] = [False] * len(evidence['states'])
+            verifier = KnownFreeVolume(evidence)
+        result = placement_query(surface, (.1, .1, .1), volume_verifier=verifier)
+        assert not result['success']
+>       assert not any(c['volume_verified'] for c in result['candidates'])
+
+src/luggage_packing/test/test_placement_query.py:69: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = <list_iterator object at 0x70435c15fbb0>
+
+>   assert not any(c['volume_verified'] for c in result['candidates'])
+E   KeyError: 'volume_verified'
+
+src/luggage_packing/test/test_placement_query.py:69: KeyError
+__________ test_floor_prior_never_authorizes_unseen_volume[occupied] ___________
+
+defect = 'occupied'
+
+    @pytest.mark.parametrize('defect', ['missing', 'short', 'unknown', 'occupied', 'inactive'])
+    def test_floor_prior_never_authorizes_unseen_volume(defect):
+        surface, evidence = observed_map()
+        surface['state'] = [['unknown'] * surface['ny'] for _ in range(surface['nx'])]
+        if defect == 'missing':
+            verifier = None
+        else:
+            if defect == 'short': evidence['states'] = evidence['states'][:-1]
+            if defect == 'unknown': evidence['states'] = [0] * len(evidence['states'])
+            if defect == 'occupied': evidence['states'] = [2] * len(evidence['states'])
+            if defect == 'inactive': evidence['active'] = [False] * len(evidence['states'])
+            verifier = KnownFreeVolume(evidence)
+        result = placement_query(surface, (.1, .1, .1), volume_verifier=verifier)
+        assert not result['success']
+>       assert not any(c['volume_verified'] for c in result['candidates'])
+
+src/luggage_packing/test/test_placement_query.py:69: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = <list_iterator object at 0x70435befe170>
+
+>   assert not any(c['volume_verified'] for c in result['candidates'])
+E   KeyError: 'volume_verified'
+
+src/luggage_packing/test/test_placement_query.py:69: KeyError
+__________ test_floor_prior_never_authorizes_unseen_volume[inactive] ___________
+
+defect = 'inactive'
+
+    @pytest.mark.parametrize('defect', ['missing', 'short', 'unknown', 'occupied', 'inactive'])
+    def test_floor_prior_never_authorizes_unseen_volume(defect):
+        surface, evidence = observed_map()
+        surface['state'] = [['unknown'] * surface['ny'] for _ in range(surface['nx'])]
+        if defect == 'missing':
+            verifier = None
+        else:
+            if defect == 'short': evidence['states'] = evidence['states'][:-1]
+            if defect == 'unknown': evidence['states'] = [0] * len(evidence['states'])
+            if defect == 'occupied': evidence['states'] = [2] * len(evidence['states'])
+            if defect == 'inactive': evidence['active'] = [False] * len(evidence['states'])
+            verifier = KnownFreeVolume(evidence)
+        result = placement_query(surface, (.1, .1, .1), volume_verifier=verifier)
+        assert not result['success']
+>       assert not any(c['volume_verified'] for c in result['candidates'])
+
+src/luggage_packing/test/test_placement_query.py:69: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+.0 = <list_iterator object at 0x70435befe170>
+
+>   assert not any(c['volume_verified'] for c in result['candidates'])
+E   KeyError: 'volume_verified'
+
+src/luggage_packing/test/test_placement_query.py:69: KeyError
+=========================== short test summary info ============================
+FAILED src/luggage_packing/test/test_placement_query.py::test_floor_prior_never_authorizes_unseen_volume[missing]
+FAILED src/luggage_packing/test/test_placement_query.py::test_floor_prior_never_authorizes_unseen_volume[short]
+FAILED src/luggage_packing/test/test_placement_query.py::test_floor_prior_never_authorizes_unseen_volume[unknown]
+FAILED src/luggage_packing/test/test_placement_query.py::test_floor_prior_never_authorizes_unseen_volume[occupied]
+FAILED src/luggage_packing/test/test_placement_query.py::test_floor_prior_never_authorizes_unseen_volume[inactive]
+5 failed, 24 passed in 0.72s

@@ -1,0 +1,15 @@
+{
+  "seed": 20261112,
+  "samples": 1200,
+  "accepted": 714,
+  "prefix_build_s": 0.00023161806166172028,
+  "query_s": 0.0022211894392967224,
+  "scalar_reference_s": 0.007658899761736393,
+  "prefix_shape": [
+    21,
+    21,
+    21
+  ],
+  "prefix_bytes": 74088,
+  "admission_mismatches": 0
+}

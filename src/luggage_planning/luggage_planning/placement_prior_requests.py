@@ -25,7 +25,9 @@ def measured_detection_view(box):
 
 
 def enumerate_placements(confirmed, box_wdh, max_slots, *, volume=None, margin=.05):
-    from luggage_packing.placement_solver import generate_candidates
+    from luggage_packing.placement_query import placement_query
+    from luggage_packing.placement_solver import retain_directed_candidates
+    from luggage_packing.placement_volume_query import KnownFreeVolume, evidence_from_volume
     from luggage_planning.occupancy_place_paths import (
         OccupancySnapshot, _legacy_view_of_surface_contract,
     )
@@ -45,16 +47,13 @@ def enumerate_placements(confirmed, box_wdh, max_slots, *, volume=None, margin=.
     if any(abs(float(origin) + float(size) / 2) > 1e-9
            for origin, size in zip(record['origin_xy_container'], inner_size[:2])):
         raise ValueError('placement solver requires a centered container grid')
-    # Existing solver performs support/hull/clearance checks. No catalogue or
-    # perfect geometry enters the production ComputePlacement service.
-    # Bounded cheap pool, not extra native planning attempts. A deep first
-    # prefix can otherwise spend every check on one unobserved column.
-    candidates = generate_candidates(surface, box_wdh,
-                                     params={'top_n':2048 if volume is not None else max_slots})
-    candidates = [candidate for candidate in candidates if candidate['feasible']]
+    result = placement_query(surface, box_wdh,
+        volume_verifier=KnownFreeVolume(evidence_from_volume(volume)))
+    candidates = [candidate for candidate in result['candidates'] if candidate['feasible']]
     if volume is not None:
         from luggage_planning.placement_prior_ranking import rank_payload_clearance
         candidates = rank_payload_clearance(candidates, box_wdh, volume, margin)
+    candidates = retain_directed_candidates(candidates, max_slots)
     result = []
     for candidate in candidates:
         if not candidate['feasible']:

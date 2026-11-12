@@ -81,14 +81,12 @@ from luggage_packing.placement_solver import (
     REASON_OVERLAP,
     REASON_SAME_LAYER_CLEARANCE,
     REASON_VOLUME_UNVERIFIED,
-    SAME_LAYER_CLEARANCE_M,
-    make_volume_verifier,
     placement_constraint_verdict,
     candidate_prefix_note,
     ranked_feasible_candidates,
-    solve_placement,
     volume_evidence_from_pages,
 )
+from luggage_packing.placement_query import placement_query
 from luggage_description.container_geometry import (
     descriptor_from_scene_config,
     y_max_at_z,
@@ -156,7 +154,7 @@ class PlacementPlannerNode(Node):
                                                 -1.5707963])
         self.declare_parameter("clearance_margin", 0.03)
         self.declare_parameter(
-            "same_layer_clearance_m", SAME_LAYER_CLEARANCE_M)
+            "same_layer_clearance_m", 0.0)
         self.declare_parameter("min_support_ratio", 0.6)
         self.declare_parameter("top_n", 2000)
         self.declare_parameter("aperture_margin", 0.0)
@@ -791,9 +789,11 @@ class PlacementPlannerNode(Node):
         """Use the same owner-bound reader as complete-operation preparation."""
         import time as _time
         from luggage_mapping.observer import ObserverConfiguration, ObserverSnapshotPort
-        configuration = ObserverConfiguration.load(
-            str(self.get_parameter("volume_observer_geometry_file").value),
-            str(self.get_parameter("volume_observer_config_file").value))
+        geometry_file = str(self.get_parameter("volume_observer_geometry_file").value)
+        config_file = str(self.get_parameter("volume_observer_config_file").value)
+        if not geometry_file or not config_file:
+            raise RuntimeError("OBSERVER_SOURCE_CONFIGURATION_REQUIRED")
+        configuration = ObserverConfiguration.load(geometry_file, config_file)
         declared = float(self.get_parameter("volume_observer_resolution").value)
         if declared > 0 and abs(declared-configuration.resolution_m) > 1e-12:
             raise RuntimeError("OBSERVER_SOURCE_RESOLUTION_MISMATCH")
@@ -838,8 +838,10 @@ class PlacementPlannerNode(Node):
         nx, ny, nz = captured.volume.dimensions_xyz
         evidence = dict(resolution=configuration.resolution_m, nx=nx, ny=ny, nz=nz,
             origin_xy=list(captured.volume.origin_container[:2]),
-            floor_z=float(surface.get("floor_z", 0.0)), states=captured.volume.states)
-        return surface, make_volume_verifier(evidence)
+            floor_z=float(captured.volume.origin_container[2]),
+            states=captured.volume.states, active=captured.volume.active)
+        from luggage_packing.placement_volume_query import KnownFreeVolume
+        return surface, KnownFreeVolume(evidence)
 
     def _grid_g_snapshot_compute(self):
         """One /cargo_map snapshot token -> (surface, volume verifier).
@@ -1128,7 +1130,8 @@ class PlacementPlannerNode(Node):
             "grid_g snapshot epoch=%s rev=%d -> surface %dx%d, %d dense "
             "pages (%d bytes)" % (ident.epoch, int(ident.revision),
                                   nx, ny, pages, len(states)))
-        return view, make_volume_verifier(evidence)
+        from luggage_packing.placement_volume_query import KnownFreeVolume
+        return view, KnownFreeVolume(evidence)
 
     def _evidence_unavailable_code(self):
         """Named fail-closed code for the configured evidence source."""
@@ -1362,7 +1365,7 @@ class PlacementPlannerNode(Node):
     def _slot_record(self, candidate, request_id):
         """Slot-profile record (container box center) for one candidate."""
         center = candidate["center_container"]
-        yaw = float(candidate["box_yaw"])
+        yaw = float(candidate.get("heading_theta", candidate["box_yaw"]))
         return {
             "contract_version": 2,
             "frame_id": "container_link",
@@ -1600,8 +1603,8 @@ class PlacementPlannerNode(Node):
             # latched, the request-carried placed copy is VALIDATED against
             # it and the solver input comes from the ledger — never from
             # the driver's local bookkeeping. Before the first committed
-            # publication arrives, the request copy is the only source
-            # (startup fail-open, unchanged legacy behavior).
+            # publication arrives, the admitted voxel map is the source.
+            # Requested planned slots cannot establish measured occupancy.
             committed = getattr(self, "_committed", None)
             if committed is not None:
                 ok, detail = self._placed_matches_ledger(
@@ -1616,19 +1619,19 @@ class PlacementPlannerNode(Node):
                     return response
                 placed_aabbs = self._ledger_aabbs(committed)
             else:
-                placed_aabbs = self._placed_aabbs_v2(
-                    list(request.placed), list(request.placed_wdh_flat))
+                if request.placed or request.placed_wdh_flat:
+                    raise ValueError("PLACED_LEDGER_REQUIRED: request slots are not observed occupancy")
+                placed_aabbs = []
         except ValueError as error:
             response.success = False
             response.reason_code = "PLACED_SLOT_REJECTED"
             response.message = str(error)
             return response
-        result = solve_placement(
+        result = placement_query(
             surface, size,
             allowed_yaws=self._allowed_yaws,
             params=self._params,
-            candidate_validator=lambda candidate: self._constraint_verdict(
-                candidate, placed_aabbs, size),
+            placed_aabbs=placed_aabbs,
             atlas_annotate=self._atlas_hook(size),
             volume_verifier=volume_verifier)
         response.resulting_map_revision = int(
@@ -1834,6 +1837,7 @@ class PlacementPlannerNode(Node):
             same_layer_clearance_m=float(
                 self._params["same_layer_clearance_m"]),
             support_tol=float(self._params.get("support_tol", 0.05)),
+            corridor_as_ranking=True,
         )
 
     def _structural_result(self, surface, size, placed_aabbs):
@@ -2030,18 +2034,23 @@ class PlacementPlannerNode(Node):
                 },
             })
             return response
-        placed_aabbs = self._placed_aabbs(request.placed)
+        committed = getattr(self, "_committed", None)
+        if request.placed and committed is None:
+            response.success = False
+            response.reason_code = "PLACED_LEDGER_REQUIRED"
+            response.message = "request slots are not observed occupancy"
+            return response
+        placed_aabbs = self._ledger_aabbs(committed) if committed is not None else []
         atlas, atlas_diag = self._atlas_for(size)
         if bool(self.get_parameter("structural_search").value):
             result = self._structural_result(
                 surface, size, placed_aabbs)
         else:
-            result = solve_placement(
+            result = placement_query(
                 surface, size,
                 allowed_yaws=self._allowed_yaws,
                 params=self._params,
-                candidate_validator=lambda candidate: self._constraint_verdict(
-                    candidate, placed_aabbs, size),
+                placed_aabbs=placed_aabbs,
                 atlas_annotate=self._atlas_hook(size),
                 volume_verifier=volume_verifier,
             )

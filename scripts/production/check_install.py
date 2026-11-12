@@ -15,6 +15,8 @@ MODULES = (
     'luggage_planning.joint_operation_observer',
     'luggage_description.cargo_grid_parameters',
     'luggage_packing.placement_solver',
+    'luggage_packing.placement_query',
+    'luggage_packing.placement_volume_query',
     'luggage_perception.suction_patch_evaluator',
     'st09_contracts',
     'luggage_msgs.srv._prepare_joint_operation_v2',

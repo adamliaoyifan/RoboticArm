@@ -112,7 +112,7 @@ def open_gate(module, admission, *, epoch, generation,
 
 
 def install_fake_solver(module, during_compute):
-    """Patch solve_placement in the node's module namespace: the fake
+    """Patch placement_query in the node's module namespace: the fake
     runs the mid-computation injection (the validity callback firing on
     another executor thread) and returns a feasible candidate.
 
@@ -129,10 +129,10 @@ def install_fake_solver(module, during_compute):
                 "selected": candidate, "preferred_candidate": candidate,
                 "reason_code": "", "message": "fake-feasible",
                 "reject_histogram": {}, "capacity_feasible_count": 1}
-    module['solve_placement'] = fake_solve
+    module['placement_query'] = fake_solve
     real_globals = module['PlacementPlannerNode'].__dict__[
         '_handle_v2'].__globals__
-    real_globals['solve_placement'] = fake_solve
+    real_globals['placement_query'] = fake_solve
 
 
 def v2_request():

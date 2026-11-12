@@ -123,12 +123,16 @@ def test_bad_pages_refuse(damage):
         port._pages('read_cells', 'lease', 64, identity, 2, float('inf'))
 
 
-def test_compute_callback_consumes_shared_owner_capture(monkeypatch, tmp_path):
+@pytest.mark.parametrize('lower_state', [1, 0, 2])
+def test_compute_callback_consumes_shared_owner_capture(monkeypatch, tmp_path, lower_state):
     import importlib.util
     from test_joint_operation_observer import configuration, snapshot
     import luggage_mapping.observer as observer
     config, geometry, config_file = configuration(tmp_path)
-    captured = snapshot(config, [1]*math.prod(config.dimensions_xyz))
+    states = [1]*math.prod(config.dimensions_xyz)
+    nx, ny, _ = config.dimensions_xyz
+    states[:2*nx*ny] = [lower_state]*(2*nx*ny)
+    captured = snapshot(config, states)
     calls = []
     class Port:
         def __init__(self, node, *, configuration, **kwargs):
@@ -155,6 +159,13 @@ def test_compute_callback_consumes_shared_owner_capture(monkeypatch, tmp_path):
     assert planner._observer_snapshot_port.config == config
     assert calls[0]['expected_epoch'] == 1 and calls[0]['expected_revision'] is None
     assert admitted[0][1] == 'observer_lease' and callable(verifier)
+    # The solver emits container-absolute centers; the voxel origin is not
+    # the legacy projection's floor-relative zero.
+    candidate = dict(center_container=[0., 0., config.descriptor()['floor_z']+.1],
+                     footprint=[.1, .1], size=[.1, .1, .2])
+    assert (verifier(candidate) is None) == (lower_state == 1)
+    upper = dict(candidate, center_container=[0., 0., config.descriptor()['floor_z']+.3])
+    assert verifier(upper) is None
     params['volume_observer_resolution'] = .02
     with pytest.raises(RuntimeError, match='SOURCE_RESOLUTION_MISMATCH'):
         module.PlacementPlannerNode._observer_snapshot_compute(planner)

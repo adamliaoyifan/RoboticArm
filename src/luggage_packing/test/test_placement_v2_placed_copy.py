@@ -228,12 +228,9 @@ def run_v2(module, placed_messages, wdh_flat, committed):
 
     def fake_solve(surface, size, **kwargs):
         solve_calls.append(1)
-        # exercise the handler-built candidate_validator ONCE: the
-        # lambda routes into the spy above carrying placed_aabbs
-        validator = kwargs.get("candidate_validator")
-        if validator is not None:
-            validator({"center_container": [0.0, 0.0, 0.1],
-                       "size": list(size)})
+        # Capture the handler's measured ledger argument at the shared-query
+        # boundary. The real commit-time recheck still reaches the spy above.
+        seen_placed.append([tuple(a) for a in kwargs['placed_aabbs']])
         candidate = {"feasible": True, "score": 1.0, "reason": "",
                      "center_base_link": [0, 0, 0],
                      "center_world": [0, 0, 0]}
@@ -241,9 +238,9 @@ def run_v2(module, placed_messages, wdh_flat, committed):
                 "selected": candidate, "preferred_candidate": candidate,
                 "reason_code": "", "message": "fake-feasible",
                 "reject_histogram": {}, "capacity_feasible_count": 1}
-    module['solve_placement'] = fake_solve
+    module['placement_query'] = fake_solve
     module['PlacementPlannerNode'].__dict__[
-        '_handle_v2'].__globals__['solve_placement'] = fake_solve
+        '_handle_v2'].__globals__['placement_query'] = fake_solve
 
     open_gate(module, admission, epoch=1, generation=2,
               transition_ns=8_000_000_000, robot_stamp_ns=9_000_000_000)
@@ -260,15 +257,13 @@ def run_v2(module, placed_messages, wdh_flat, committed):
     return response, seen_placed, solve_calls
 
 
-def test_request_copy_is_the_source_before_first_commit():
-    """No latch: the converted REQUEST copy feeds the solver gates."""
+def test_request_copy_cannot_establish_occupancy_before_first_commit():
+    """No ledger: a caller's planned copy cannot replace observation."""
     module = load_node_module()
     response, seen_placed, solve_calls = run_v2(
         module, [slot_message(module, "plc-1", CENTER)], WDH, None)
-    assert response.success, (response.reason_code, response.message)
-    assert solve_calls, "solver never ran"
-    assert len(seen_placed) == 1, seen_placed
-    _close(seen_placed[0], [(0.1, 0.25, 0.0, 0.5, 0.55, 0.2)])
+    assert not response.success and 'PLACED_LEDGER_REQUIRED' in response.message
+    assert not solve_calls and not seen_placed
 
 
 def test_consistent_copy_defers_to_the_ledger_aabbs():

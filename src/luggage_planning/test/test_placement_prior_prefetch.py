@@ -12,7 +12,7 @@ from luggage_planning.placement_prior_prefetch import PrefetchTemplate, reusable
 from luggage_planning.placement_prior_worker import PriorWorker
 from luggage_planning.placement_prior_schedule import SnapshotQuietGate
 from test_placement_prior import request, SensorWall, await_result
-from test_placement_prior_requests import confirmed_grid
+from test_placement_prior_requests import confirmed_grid, confirmed_volume
 
 
 def test_template_request_is_explicitly_hypothetical():
@@ -115,8 +115,8 @@ def test_changed_size_preserves_only_regenerated_geometry_and_rechecks_collision
     original = request()
     # Representative measured dimensions from corrected_projection acquisition03.
     measured_size = (.5056767675344938, .3155214191690675, .21751788507479985)
-    fresh = enumerate_placements(confirmed, measured_size, 8)
-    template_slots = enumerate_placements(confirmed, (.53, .35, .22), 32)
+    fresh = enumerate_placements(confirmed, measured_size, 8, volume=confirmed_volume())
+    template_slots = enumerate_placements(confirmed, (.53, .35, .22), 32, volume=confirmed_volume())
     matching = next(slot for slot in reversed(fresh)
                     if slot.slot_id in {item.slot_id for item in template_slots})
     hypothetical = replace(original, measured=False, box_wdh=(.53,.35,.22),
@@ -167,8 +167,8 @@ def test_measured_decode_uses_fresh_size_before_prefetch_order(monkeypatch):
     message=query();message.measured=True;message.slots=[];message.max_slots=8
     snapshot=Snapshot('cal',3,'hull','model',request().snapshot.world_from_container,b'occ',b'world')
     confirmed=confirmed_grid();size=(.5056767675344938,.3155214191690675,.21751788507479985)
-    fresh=requests.enumerate_placements(confirmed,size,8)
-    old=requests.enumerate_placements(confirmed,(.53,.35,.22),32)
+    fresh=requests.enumerate_placements(confirmed,size,8,volume=confirmed_volume())
+    old=requests.enumerate_placements(confirmed,(.53,.35,.22),32,volume=confirmed_volume())
     desired=next(slot for slot in reversed(fresh) if slot.slot_id in {s.slot_id for s in old})
     hypothetical=replace(request(),snapshot=snapshot,measured=False,box_wdh=(.53,.35,.22),placements=old)
     cached=SimpleNamespace(choices=(SimpleNamespace(placement=next(s for s in old if s.slot_id==desired.slot_id)),))
@@ -176,7 +176,8 @@ def test_measured_decode_uses_fresh_size_before_prefetch_order(monkeypatch):
     # ordering boundary while retaining the production geometry generator.
     monkeypatch.setattr(requests,'measured_detection_view',lambda _message:SimpleNamespace(box_xyz=(0,0,0),box_quat=(0,0,0,1),box_size=size))
     monkeypatch.setattr(requests,'candidates_for_prior',lambda *args,**kwargs:request().grasps)
-    decoded=requests.decode_request(message,snapshot,confirmed,prefetched=(hypothetical,cached))
+    decoded=requests.decode_request(message,snapshot,confirmed,prefetched=(hypothetical,cached),
+                                    volume=confirmed_volume())
     assert decoded.measured and decoded.box_wdh==size
     assert decoded.placements[0]==desired
     assert set(decoded.placements)==set(fresh)

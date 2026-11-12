@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-P2/run_01/measure_full_grid.py", line 9, in <module>
+    hull=normalize_descriptor(descriptor_from_scene_config(load_scene_tf_config(str(scene))))
+  File "/home/adamliao/work/elfin_humble_ws/install-production/luggage_description/local/lib/python3.10/dist-packages/luggage_description/container_geometry.py", line 130, in normalize_descriptor
+    payload = _canonical_payload(descriptor)
+  File "/home/adamliao/work/elfin_humble_ws/install-production/luggage_description/local/lib/python3.10/dist-packages/luggage_description/container_geometry.py", line 100, in _canonical_payload
+    "schema_version": int(descriptor.get("schema_version", 1)),
+AttributeError: 'ContainerGeometry' object has no attribute 'get'

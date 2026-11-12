@@ -6,9 +6,10 @@ clipping, and the `ComputePlacement` failure taxonomy stay in
 map and the payload box is [real_scenario.md](real_scenario.md): live
 perception plus allowed priors, not catalog/GT/planned pose.
 
-The live ROS 2 Humble planner is `placement_planner_node` calling
-`placement_solver.generate_candidates` / `solve_placement` on
-`surface_map_2d`. A separate FreeSpaceModel + `placement_scoring` path exists
+The default ROS 2 Humble ComputePlacement entry and complete-operation
+preparation both call `luggage_packing.placement_query.placement_query` over an
+admitted surface and same-source 3D volume. It uses the existing
+`placement_solver` geometry enumerator. A separate FreeSpaceModel + `placement_scoring` path exists
 for offline replay and the unported ROS 1 planner. That path is not the live
 node until the node and this document switch together.
 
@@ -29,9 +30,10 @@ Hard rules:
   planned slot, catalog size, or `GetCurrentBox` is not occupancy. Current
   Humble planned-geometry commit is `RS-2` / `RS-3`, not the contract.
   Node-level depth integrate is closed (`RS-1`).
-- `request.placed` is a second occupancy source for overlap and the
-  insertion corridor. It must not be a duplicate of the same unverified plan
-  used to hide commit–reality disagreement (`RS-3`).
+- `request.placed` is not an observation. Compute validates it against an
+  available committed ledger; without one a nonempty request copy refuses.
+  The admitted O/G volume remains authoritative, including when no object
+  instance ledger exists. A planned slot must not populate that volume.
 - The floor prior is legal when no map has been published, as empty-floor
   **existence**. It must not claim the interior is empty of cargo (`RS-4`).
   A rejected map must fail closed, not answer from the floor prior.
@@ -47,7 +49,12 @@ Hard rules:
 `generate_candidates` slides an axis-aligned footprint over the
 container-local 2.5D height map:
 
-- Yaw is snapped to `{0, π/2}` footprints.
+- Production accepts directed quarter turns `{0, π/2, π, 3π/2}`. Footprint
+  calculations reuse two rectangle classes, but all requested physical
+  headings survive candidate generation, retention and slot serialization.
+  Bounded retention reserves one preferred and one shallow alternative per
+  heading before filling the remaining packing order. A smaller caller budget
+  can limit actual trajectory attempts; exhaustion is not proof of no space.
 - `peak` is the maximum `height` under the footprint.
 - The box rests on that surface: `z = peak + box_height / 2` in
   floor-relative coordinates.
@@ -58,6 +65,13 @@ container-local 2.5D height map:
 `floor_prior` is a synthetic all-unknown, height-zero grid used when the
 planner has no accepted `surface_2d`. The floor's **existence** is geometric
 (scene_tf), not a perception claim. It is not a sampling distribution.
+The production query requires known-free evidence for every intersecting voxel
+of the candidate's complete nominal box, including floor-supported candidates.
+Unknown/inactive/missing/short data refuse. Integral volumes accelerate these
+queries without reducing source resolution or eroding occupied voxels. The
+3D origin Z is container-absolute; the legacy 2D `floor_z=0` is floor-relative
+and must never be substituted for that origin. Side face contact has zero
+intersection volume; positive penetration is rejected.
 
 ## Stacking
 
@@ -73,19 +87,20 @@ A stack candidate is feasible when:
 - `support_ratio ≥ min_support_ratio` (default 0.6): fraction of footprint
   cells within `support_tol` of `peak`;
 - remaining top clearance is at least `clearance_margin` (default 0.03 m);
-- hull, overlap, aperture, and insertion-corridor gates pass.
+- hull, overlap, support and same-snapshot volume gates pass.
 
 There is no API to target a specific prior box. Stacking is an automatic
 candidate at XY cells whose `peak` is that box's top.
 
-Boxes on the same support surface keep a horizontal gap of
-`same_layer_clearance_m` (frozen at 0.05 m for this generation) between
-yawed footprints. Each footprint is grown by half that gap and the grown
-polygons must not intersect; a gap equal to the threshold passes.
-Wall and corridor margins stay on the hull and are not added again here.
-A box whose bottom rests on a placed box's top may cover that support
-parent; it still keeps the gap against every other box on its own layer,
-and positive-volume overlap is still rejected.
+The new shared production query defaults nominal `same_layer_clearance_m` to
+zero, per the user's 2026-11-12 decision permitting final side contact and
+forbidding penetration or pushing into place. A configured positive process gap
+still applies. This layout rule does not change measurement uncertainty, motion
+collision margins or release height. Legacy direct solver calls retain their
+historical 0.05m fallback only for explicitly selected offline compatibility.
+The straight insertion corridor is a ranking hint; it cannot rule out curved
+full-arm routes. Full-model, grasp-bound trajectory validation decides motion
+feasibility. Support and unknown-space rules remain hard gates.
 
 ### Hull gate and rectangle order (G3 HULL-GATES, 2026-10-25)
 
@@ -130,7 +145,9 @@ stacks, not stack now.
 `confidence_ratio` counts only `confidence=sensor` cells. Geometry-committed
 tops and `floor_prior` columns score 0 on that term.
 
-`solve_placement` selects `max(feasible, key=score)`. The Humble node keeps
+`solve_placement` selects the feasible minimum by its deterministic key: lower
+support layer, deeper center, route clearance, straight-corridor hint, score
+and stable ID. The Humble node keeps
 `top_n=2000` so corridor and aperture gates see deep slots, not only the
 highest scores.
 
@@ -140,11 +157,13 @@ occupied map).
 
 ## Reachability atlas on the live node
 
-`placement_planner_node` may annotate solver candidates from the
-reachability atlas. A high-confidence unreachable cell is a hard reject
-(`atlas_unreachable`). A reachable or marginal cell adds
-`w_reachability * prior` to the score. This gate is not the FreeSpaceModel
-replay scorer, and it does not generate slots.
+`placement_planner_node` may annotate solver candidates from the reachability
+atlas. In the shared query a box-center TCP query affects ranking and
+diagnostics only: an unreachable center grasp cannot rule out all legal offset
+grasps. Reachable/marginal scores remain available. Complete-operation planning
+queries the actual bound grasp's TCP, consumes contact/transit seeds, and must
+validate the carried payload and full robot trajectory. Atlas identity failures
+remain explicit; a ranking prior is not a motion certificate.
 
 The active scene file selects the atlas cell. A scene hash that matches
 `data/reachability_atlas` loads `config/atlas_runtime.yaml` (simulation,
@@ -174,8 +193,11 @@ that fails the same check.
 
 ### Atlas is a prior for route search
 
-The `atlas_unreachable` slot reject above is the only hard use of the
-atlas. `hash_policy: strict` only checks that the loaded artifact matches
+The shared production query does not use `atlas_unreachable` as a slot veto.
+The legacy `placement.hard_reject` option affects direct/offline annotation;
+the shared query records that rejection as a center-grasp hint and preserves
+the independently established geometry verdict. `hash_policy: strict` checks
+that the loaded artifact matches
 this robot and scene. A matching atlas still does not reject unknown or
 low-confidence unreachable cells before a route is built. Inside
 place-route search the atlas ranks and seeds; it does not decide

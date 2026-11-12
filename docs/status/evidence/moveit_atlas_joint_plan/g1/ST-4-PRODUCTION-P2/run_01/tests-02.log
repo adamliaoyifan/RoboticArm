@@ -1,0 +1,98 @@
+.......................................................F....F......F.F.. [ 72%]
+............................                                             [100%]
+=================================== FAILURES ===================================
+______ TestNodeComputeInputs.test_observer_without_services_fails_closed _______
+
+self = <test_placement_volume_evidence.TestNodeComputeInputs testMethod=test_observer_without_services_fails_closed>
+
+    def test_observer_without_services_fails_closed(self):
+        """No observer runs in this environment: the single-lease chain
+        cannot produce (surface, evidence), so nothing may authorize.
+        The live chain is proven by the end-to-end run."""
+        self._set("volume_evidence_source", "observer")
+        self._set("volume_service_timeout_s", 0.2)
+        with pytest.raises(RuntimeError):
+>           self.planner._compute_inputs()
+
+src/luggage_packing/test/test_placement_volume_evidence.py:373: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_packing/scripts/placement_planner_node.py:790: in _compute_inputs
+    return self._observer_snapshot_compute()
+src/luggage_packing/scripts/placement_planner_node.py:796: in _observer_snapshot_compute
+    configuration = ObserverConfiguration.load(
+src/luggage_mapping/luggage_mapping/observer.py:32: in load
+    geometry_bytes, config_bytes = Path(geometry_file).read_bytes(), Path(config_file).read_bytes()
+/usr/lib/python3.10/pathlib.py:1126: in read_bytes
+    with self.open(mode='rb') as f:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('.'), mode = 'rb', buffering = -1, encoding = None
+errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return self._accessor.open(self, mode, buffering, encoding, errors,
+                                   newline)
+E       IsADirectoryError: [Errno 21] Is a directory: '.'
+
+/usr/lib/python3.10/pathlib.py:1119: IsADirectoryError
+----------------------------- Captured stderr call -----------------------------
+[INFO] [1794470009.947090219] [placement_planner]: cargo grid floor_prior_resolution=0.010000m (startup-only)
+[INFO] [1794470009.960759350] [placement_planner]: atlas runtime gate on (dir=reachability_atlas_deploy_update, w=0.3, hard_reject=True)
+[INFO] [1794470009.961815094] [placement_planner]: placement_planner ready (aperture_y=(-0.928, 0.398), corridor=request_box, geometry_hash=cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856)
+_________________ test_generated_slots_use_typed_height_datum __________________
+
+    def test_generated_slots_use_typed_height_datum():
+        from luggage_planning.placement_prior_requests import enumerate_placements
+        slots = enumerate_placements(confirmed_grid(), (.2,.2,.2), 3)
+>       assert 0 < len(slots) <= 3
+E       assert 0 < 0
+E        +  where 0 = len(())
+
+src/luggage_planning/test/test_placement_prior_requests.py:79: AssertionError
+_ test_changed_size_preserves_only_regenerated_geometry_and_rechecks_collision _
+
+    def test_changed_size_preserves_only_regenerated_geometry_and_rechecks_collision():
+        from luggage_planning.placement_prior_requests import enumerate_placements
+        from luggage_planning.placement_prior_prefetch import rank_regenerated_placements
+        from luggage_planning.placement_prior import CollisionVerdict
+        confirmed = confirmed_grid()
+        original = request()
+        # Representative measured dimensions from corrected_projection acquisition03.
+        measured_size = (.5056767675344938, .3155214191690675, .21751788507479985)
+        fresh = enumerate_placements(confirmed, measured_size, 8)
+        template_slots = enumerate_placements(confirmed, (.53, .35, .22), 32)
+>       matching = next(slot for slot in reversed(fresh)
+                        if slot.slot_id in {item.slot_id for item in template_slots})
+E       StopIteration
+
+src/luggage_planning/test/test_placement_prior_prefetch.py:120: StopIteration
+__________ test_measured_decode_uses_fresh_size_before_prefetch_order __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7b2e33b27400>
+
+    def test_measured_decode_uses_fresh_size_before_prefetch_order(monkeypatch):
+        import luggage_planning.placement_prior_requests as requests
+        from luggage_planning.placement_prior_contracts import Snapshot
+        from test_placement_prior_requests import query
+        message=query();message.measured=True;message.slots=[];message.max_slots=8
+        snapshot=Snapshot('cal',3,'hull','model',request().snapshot.world_from_container,b'occ',b'world')
+        confirmed=confirmed_grid();size=(.5056767675344938,.3155214191690675,.21751788507479985)
+        fresh=requests.enumerate_placements(confirmed,size,8)
+        old=requests.enumerate_placements(confirmed,(.53,.35,.22),32)
+>       desired=next(slot for slot in reversed(fresh) if slot.slot_id in {s.slot_id for s in old})
+E       StopIteration
+
+src/luggage_planning/test/test_placement_prior_prefetch.py:172: StopIteration
+=========================== short test summary info ============================
+FAILED src/luggage_packing/test/test_placement_volume_evidence.py::TestNodeComputeInputs::test_observer_without_services_fails_closed
+FAILED src/luggage_planning/test/test_placement_prior_requests.py::test_generated_slots_use_typed_height_datum
+FAILED src/luggage_planning/test/test_placement_prior_prefetch.py::test_changed_size_preserves_only_regenerated_geometry_and_rechecks_collision
+FAILED src/luggage_planning/test/test_placement_prior_prefetch.py::test_measured_decode_uses_fresh_size_before_prefetch_order
+4 failed, 96 passed in 2.28s

@@ -75,18 +75,22 @@ def confirmed_grid(*, floor=.25, unknown=False):
 
 def test_generated_slots_use_typed_height_datum():
     from luggage_planning.placement_prior_requests import enumerate_placements
-    slots = enumerate_placements(confirmed_grid(), (.2,.2,.2), 3)
+    slots = enumerate_placements(confirmed_grid(), (.2,.2,.2), 3, volume=confirmed_volume())
     assert 0 < len(slots) <= 3
     for slot in slots:
         x,y,z = slot.container_from_box.translation
         assert -.5 < x < .5 and -.5 < y < .5
         assert z == pytest.approx(.35)
-    # The shared solver permits floor-prior candidates in unobserved cells.
-    # These are geometric proposals only: the private collision scene treats
-    # unknown columns as blocked before a prior choice can be admitted.
+    # The floor's existence cannot authorize unobserved interior volume.
     unknown_slots = enumerate_placements(confirmed_grid(unknown=True), (.2,.2,.2), 3)
-    assert all(slot.container_from_box.translation[2] == pytest.approx(.35)
-               for slot in unknown_slots)
+    assert unknown_slots == ()
+
+
+def confirmed_volume():
+    """Explicit measured-free volume fixture; never inferred from floor prior."""
+    from types import SimpleNamespace
+    return SimpleNamespace(dimensions_xyz=(10, 10, 10), origin_container=(-.5, -.5, .25),
+        resolution_m=.1, states=bytes([1])*1000, active=[True]*1000)
 
 
 def test_generated_slots_refuse_missing_hull_and_shifted_grid():

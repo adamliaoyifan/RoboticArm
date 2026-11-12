@@ -10,7 +10,11 @@ os.environ['PYTEST_DISABLE_PLUGIN_AUTOLOAD'] = '1'
 for package in ('luggage_description', 'luggage_mapping', 'luggage_perception',
                 'luggage_packing', 'luggage_planning'):
     sys.path.insert(0, str(ROOT/'src'/package))
-sys.path.insert(0, str(ROOT/'src/luggage_planning/test'))
+    # Focused cross-package fixtures are imported by several integration
+    # tests. Keep them available without changing installed ROS interfaces.
+    test_directory = ROOT/'src'/package/'test'
+    if test_directory.is_dir():
+        sys.path.insert(0, str(test_directory))
 
 import pytest
 

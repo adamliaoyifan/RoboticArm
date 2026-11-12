@@ -1,0 +1,46 @@
+{
+  "stage": "P2 shared query/callback contract coverage",
+  "revision": "fb4a0e4ff6f59a19a0bbfa57bece773df6695d38",
+  "time": "2026-11-12T16:11:06.674144",
+  "plan_revision": "fb4a0e4f",
+  "source_sha256": {
+    "src/luggage_packing/luggage_packing/placement_query.py": "ea70b9a10dbf8056ce0203adcc3b86ad7f2ef58a0fdc9e8a54b77771abfaa9fe",
+    "src/luggage_packing/luggage_packing/placement_volume_query.py": "855684bed4f61c7bc727b323b761b731ceec843500aecb3a7bf7cee02a2f3fb4",
+    "src/luggage_packing/luggage_packing/placement_solver.py": "9e6f729a4945b4a5ea8b1686842b9bb3bd49b2479f0f72a45491b4de1e5475f6",
+    "src/luggage_packing/scripts/placement_planner_node.py": "beeed0271057d8b515fa845700d3a7ef6298e6f2d2561b7bbfd8db43ab19175a",
+    "src/luggage_packing/test/test_placement_query.py": "f570ee7393dd8ac5f139d06dd598544c10bb2ef2ceb87a6e7f8227eaf9ce98b2",
+    "src/luggage_packing/test/test_placement_query_consumers.py": "32198d0425a59c602c1c4ca780fc41ac260197cb26f542bfe48ec93cddf252b7",
+    "src/luggage_planning/luggage_planning/placement_prior_requests.py": "59eb40d8bda2c76a777f41b3d23eab1347dfdd9a20c33d9b650e2aa29b5139c3",
+    "src/luggage_planning/luggage_planning/joint_operation_prepare_node.py": "7a185f95c9bc2025e9a2fe12a5791d61565e2bca03d4bb9e6cba4f52443750da"
+  },
+  "tests": [
+    {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "162",
+      "time": "12.047",
+      "timestamp": "2026-11-12T16:08:27.601785+08:00",
+      "hostname": "adamliao-X870-EAGLE-WIFI7"
+    }
+  ],
+  "capture_complete": true,
+  "replay_possible": true,
+  "window": "single fixture/callback; no motion-scored run",
+  "prior_failure": "../ST-4-PRODUCTION-P1/run_01/datum-regression.log",
+  "attempts": {
+    "tests-01": "5 assertions expected absent volume_verified field; explicit False added; authorization already refused",
+    "tests-02": "unconfigured O path raised IsADirectoryError instead of domain refusal; missing volume in three old positive fixtures now explicitly supplied",
+    "tests-03": "collection import path missing perception test fixtures; test-only source runner fixed",
+    "tests-04": "162 pass",
+    "tests-final": "162 pass after center-atlas report counters/unused imports cleanup",
+    "full-grid-timing": "first measurement script wrongly normalized existing geometry object; failure script/log retained",
+    "full-grid-timing-02": "installed synthetic all-free full-grid timing, no motion certificate"
+  },
+  "production_scene_used": "src/luggage_description/config/scene_tf_deploy_update.yaml",
+  "no_gt_online": true,
+  "process_scope": "Most tests pure callbacks. Existing TestNodeComputeInputs constructs in-process rclpy Node/executor, destroyed by cleanup. No Gazebo/native endpoint/controller/robot process.",
+  "qualification": "contract coverage only; deployment full-model baseline not_evaluated",
+  "teardown": "rclpy test nodes/executors stopped by fixture cleanup; no sim started"
+}

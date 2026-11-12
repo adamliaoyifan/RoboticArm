@@ -23,7 +23,6 @@ from luggage_description.frame_diagnostics import BoundaryContext
 from luggage_description.ros_frame_bindings.poses import pose_from_message
 from luggage_description.ros_frame_bindings.surfaces import surface_from_message
 from luggage_description.suction_contact_model import load_suction_contact_model
-from luggage_description.container_geometry import normalize_descriptor, opening_inward_datum
 from luggage_perception.ros_suction_domain import domain_from_message, require_matching_detection
 from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy
 from luggage_planning.joint_operation_certification import EndpointModel, NativeOperationCertificationPort
@@ -307,25 +306,15 @@ class JointOperationPrepareNode(Node):
                 target = Transform(record['position'],record['quaternion_xyzw'])
                 def same_geometry(candidate):
                     pose = candidate.container_from_box
-                    flipped = pose.compose(Transform((0.,0.,0.),(0.,0.,1.,0.)))
                     return (all(abs(a-b)<=1e-8 for a,b in zip(pose.translation,target.translation)) and
-                        any(abs(sum(a*b for a,b in zip(q,target.quaternion_xyzw)))>=1.-1e-12
-                            for q in (pose.quaternion_xyzw,flipped.quaternion_xyzw)))
+                        abs(sum(a*b for a,b in zip(pose.quaternion_xyzw,target.quaternion_xyzw)))>=1.-1e-12)
                 if not any(same_geometry(candidate) for candidate in pool):
                     raise ValueError('REQUESTED_SLOT_NOT_IN_BOUNDED_GEOMETRIC_POOL')
                 result.append(PlacementCandidate('requested-'+str(index),target))
             return tuple(result)
-        if not pool: return ()
-        metadata = json.loads(confirmed.confirmation_json)
-        point,normal = opening_inward_datum(normalize_descriptor(metadata['geometry_descriptor']))
-        def depth(slot): return sum((v-p)*n for v,p,n in zip(slot.container_from_box.translation,point,normal))
-        selected = [pool[0]]
-        fallback = min(pool,key=depth)
-        if fallback != pool[0]: selected.append(fallback)
-        # Directed half turns preserve the admitted physical rectangular footprint.
-        return tuple(PlacementCandidate(slot.slot_id+suffix,slot.container_from_box.compose(rotation))
-            for slot in selected for suffix,rotation in (('',Transform((0.,0.,0.),(0.,0.,0.,1.))),
-                                                        (':pi',Transform((0.,0.,0.),(0.,0.,1.,0.)))))
+        # Shared retention puts one deep target per directed heading first,
+        # then the shallow alternatives. Never fabricate a half turn here.
+        return pool
 
     def _prepare(self,request,response):
         from luggage_msgs.msg import JointOperationPlanV2

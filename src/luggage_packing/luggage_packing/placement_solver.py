@@ -366,7 +366,8 @@ def _same_layer_reason(candidate, placed_aabbs, floor_z, clearance_m,
 def placement_constraint_verdict(
         candidate, inner_h, placed_aabbs=None, aperture_y=None,
         hull_contains=None, inner_size=None, smallest_size=None, hull=None,
-        floor_z=0.0, same_layer_clearance_m=None, support_tol=0.05):
+        floor_z=0.0, same_layer_clearance_m=None, support_tol=0.05,
+        corridor_as_ranking=False):
     """Return ``(reason, capacity_ok)`` for one candidate.
 
     ``reason`` is ``None`` when every gate passes, otherwise the first reject
@@ -413,13 +414,16 @@ def placement_constraint_verdict(
         return REASON_OVERLAP, capacity_ok
     if layer_reason:
         return layer_reason, capacity_ok
-    # The corridor sweep is the expensive gate; it only matters once the box
-    # already fits, so it stays behind the cheap gates as before.
+    # The production query uses this coarse straight sweep only as a hint.
+    # It cannot prove that a full robot+payload trajectory cannot go around.
     if (inner_size is not None and smallest_size is not None):
         from luggage_packing.insertion_corridor import corridor_blocked
-        if corridor_blocked(
-                box, placed_aabbs or [], inner_size, smallest_size,
-                hull=hull):
+        blocked = corridor_blocked(
+            box, [_placed_aabb(placed, floor_z) for placed in (placed_aabbs or [])],
+            inner_size, smallest_size, hull=hull)
+        if corridor_as_ranking:
+            candidate.setdefault("detail", {})["straight_corridor_blocked"] = blocked
+        elif blocked:
             return REASON_CORRIDOR_BLOCKED, capacity_ok
     return None, capacity_ok
 
@@ -559,6 +563,7 @@ def _candidate_sort_key(candidate):
         float(candidate.get("support_layer_z", 0.0)),
         -float(candidate.get("depth_m", 0.0)),
         -float(detail.get("route_clearance_m", 0.0) or 0.0),
+        bool(detail.get("straight_corridor_blocked", False)),
         -float(candidate.get("score", 0.0)),
         str(candidate.get("candidate_id", "")),
     )
@@ -766,15 +771,64 @@ def _snap_yaws(allowed_yaws):
     snapped = []
     seen = set()
     for yaw in allowed_yaws or [0.0]:
-        # Reduce to [0, pi) since a box footprint is symmetric under pi.
-        reduced = yaw % math.pi
-        is_rotated = abs(reduced - math.pi / 2.0) < abs(reduced - 0.0)
+        is_rotated = bool(int(round(float(yaw) / (math.pi / 2))) % 2)
         key = 1 if is_rotated else 0
         if key in seen:
             continue
         seen.add(key)
         snapped.append((yaw, is_rotated))
     return snapped
+
+
+def _headings_for_footprint(allowed_yaws, rotated, expand_half_turn):
+    """Keep each explicitly requested directed quarter-turn in its footprint.
+
+    The legacy symmetry switch may add the opposite heading; production passes
+    all four explicitly and does not infer headings from box symmetry.
+    """
+    result = []
+    for requested in allowed_yaws or [0.0]:
+        quadrant = int(round(float(requested) / (math.pi / 2))) % 4
+        if quadrant % 2 != int(rotated):
+            continue
+        if quadrant not in result:
+            result.append(quadrant)
+        if expand_half_turn and (quadrant + 2) % 4 not in result:
+            result.append((quadrant + 2) % 4)
+    return [quadrant * math.pi / 2 for quadrant in result]
+
+
+def retain_directed_candidates(candidates, limit):
+    """Reserve one preferred and one shallow fallback per admitted heading.
+
+    Then retain the remaining packing order. A limit smaller than the number
+    of headings cannot preserve them all; callers must expose that budget.
+    No new target or heading is invented here.
+    """
+    limit = max(0, int(limit))
+    groups = {}
+    for candidate in candidates:
+        heading = round(float(candidate['heading_theta']) % (2 * math.pi), 8)
+        groups.setdefault(heading, []).append(candidate)
+    selected, identities = [], set()
+
+    def retain(candidate):
+        identity = candidate['candidate_id']
+        if identity not in identities and len(selected) < limit:
+            selected.append(candidate)
+            identities.add(identity)
+
+    for group in groups.values():
+        retain(group[0])
+    for group in groups.values():
+        retain(min(group, key=lambda row: (float(row.get('support_layer_z', 0)),
+                                          float(row.get('depth_m', 0)),
+                                          row['candidate_id'])))
+    for candidate in candidates:
+        retain(candidate)
+        if len(selected) == limit:
+            break
+    return selected
 
 
 def _footprint_cells(footprint_l, footprint_w, resolution):
@@ -1232,13 +1286,7 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
         if cells_x > nx or cells_y > ny:
             continue
         footprint_class = 1 if rotated else 0
-        base_heading = math.pi / 2.0 if rotated else 0.0
-        headings = [base_heading]
-        if expand_headings:
-            # Convergence 5.1: theta+pi is a distinct physical rotation with
-            # the same symmetric footprint; both are emitted for the TCP/IK
-            # stage, never merged here.
-            headings.append(base_heading + math.pi)
+        headings = _headings_for_footprint(allowed_yaws, rotated, expand_headings)
 
         # Vectorized aggregates for EVERY window of this yaw (exact
         # parity with _window_stats/_support_ratio/_footprint_edge_state;
@@ -1380,7 +1428,7 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                         "candidate_id": "c%03d_%03d_f%d_h%d" % (
                             ix0, iy0, footprint_class, heading_index),
                         "center_container": center_container,
-                        "box_yaw": box_yaw,
+                        "box_yaw": heading_theta,
                         "heading_theta": heading_theta,
                         "footprint_class": footprint_class,
                         "support_layer_z": support_layer,
@@ -1397,6 +1445,7 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                         "collision_margin": round(clearance_top, 4),
                         "confidence_ratio": round(confidence_ratio, 4),
                         "support_source": support_source,
+                        "volume_verified": False,
                         "reachability_score": -1.0,
                         "score": round(score, 4),
                         "feasible": feasible,
@@ -1434,7 +1483,8 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                         candidate["feasible"] = False
                         candidate["reason"] = REASON_OUTSIDE_HULL
                     if (feasible and candidate["feasible"]
-                            and support_source == "sensor"
+                            and (support_source == "sensor"
+                                 or cfg.get("verify_floor_prior_volume", False))
                             and volume_verifier is not None):
                         # Reviews 2026-11-08_1751: the authorization gate.
                         # The candidate's OWN box volume must be observed
@@ -1467,7 +1517,11 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
     # support layer low-to-high, depth deep-to-shallow, route clearance,
     # score, stable id. Feasible-first, then rejected in the same order.
     candidates.sort(key=lambda c: (not c["feasible"], _candidate_sort_key(c)))
-    feasible = [c for c in candidates if c["feasible"]][: int(cfg["top_n"])]
+    feasible = [c for c in candidates if c["feasible"]]
+    if cfg.get("retain_heading_diversity", False):
+        feasible = retain_directed_candidates(feasible, cfg["top_n"])
+    else:
+        feasible = feasible[:int(cfg["top_n"])]
     rejected = [c for c in candidates if not c["feasible"]][: int(cfg["keep_rejected"])]
     return feasible + rejected
 
@@ -1672,10 +1726,13 @@ def ranked_feasible_candidates(result, max_candidates=5):
     feasible = [
         candidate for candidate in (result.get("candidates") or [])
         if candidate.get("feasible")]
-    feasible.sort(key=_motion_rank_key)
+    shared_admission = result.get('admission_policy', {}).get('name') == 'shared_observed_volume'
+    feasible.sort(key=_candidate_sort_key if shared_admission else _motion_rank_key)
     limit = int(max_candidates or 0)
     if limit <= 0:
         limit = 5
+    if shared_admission:
+        return retain_directed_candidates(feasible, limit)
     return feasible[:limit]
 
 
