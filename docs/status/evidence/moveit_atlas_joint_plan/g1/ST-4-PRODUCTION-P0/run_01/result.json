@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "installed_checks": 32,
+  "fixture_tests": 5,
+  "launch_parse": 2,
+  "negative_prefix_rejected": true,
+  "overlay_isolation": true,
+  "artifact_bytes": 1581340,
+  "robot_actions": 0,
+  "scope": "P0 only; maps, motion and whole-cycle not_evaluated"
+}
