@@ -35,6 +35,7 @@ class ExecutionMonitor:
         self._support=None;self._sample=initial;self._contact_since=None
         self._panel_collision_name=panel_collision_name
         self._max_monitor_gap_s=0.;self._samples=0
+        self._edge_transition=None
         self._prior_attached=initial.attached
         self._lower_maxima={body.name:dict(translation_m=0.,rotation_deg=0.) for body in initial.lower}
         if initial.attached:
@@ -74,7 +75,7 @@ class ExecutionMonitor:
     def _declared_contacts(self,sample,*,record_intended=True):
         return validate_declared_contacts(sample,self._state.dimensions,self._config,
             self._policy,self._allow_support,self._contact_mode,self._panel_collision_name,self._scene,
-            record_intended=record_intended)
+            record_intended=record_intended,edge_transition=(self._edge_transition if self._phase=='push' else None))
 
     def observe_native_contacts(self,row):
         """Check each raw native step without advancing the 50Hz scene monitor.
@@ -97,11 +98,25 @@ class ExecutionMonitor:
         return None
 
     def begin_phase(self,name,contact_mode=False,attached=False,allow_support=True):
+        if name=='push' and self._policy.push_edge_transition_enabled:
+            if (self._policy.push_edge_point_tolerance_m>self._config.contact_tolerance_m or
+                    self._policy.push_edge_penetration_m>self._config.contact_penetration_m):
+                raise ValueError('EDGE_LIMITS_EXCEED_SUPPORT_LIMITS')
+            from push_edge_transition import PushEdgeTransition
+            self._edge_transition=PushEdgeTransition(self._action,self._state.dimensions,
+                self._scene.snapshot.surfaces,self._policy)
+        self._scene.support_edge_validator=(self._fcl_edge_contact if name=='push' and self._edge_transition else None)
         self._phase=name;self._contact_mode=contact_mode
         self._expected_attached=attached;self._allow_support=allow_support
         self._push_history.clear();self._contact_since=None
         self._trace.write(json.dumps(dict(event='phase',phase=name,stamp_s=self._sample.stamp_s,
             contact_mode=contact_mode,expected_attached=attached,allow_support=allow_support))+'\n');self._trace.flush()
+
+    def _fcl_edge_contact(self,body,box,support,bounds,point,normal,depth):
+        if self._phase!='push' or self._sample.attached:return False
+        inverse=self._scene.container_world
+        return self._edge_transition.classify(inverse@box,body,inverse@support,bounds,
+            (inverse@np.r_[point,1.])[:3],inverse[:3,:3]@normal,depth,normal_toward_box=False)
 
     def confirm_detached(self,native):
         if native['attached']:raise ValueError('DETACH_NOT_CONFIRMED')
@@ -228,4 +243,5 @@ class ExecutionMonitor:
     def metrics(self):
         return dict(samples=self._samples,max_monitor_gap_s=self._max_monitor_gap_s,
                     lower_maxima={name:dict(values) for name,values in self._lower_maxima.items()},
+                    push_edge_transition=(self._edge_transition.metrics() if self._edge_transition else None),
                     failure=self._failure,physical_execution='not_certified_by_monitor_alone')

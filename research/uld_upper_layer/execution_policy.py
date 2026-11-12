@@ -38,9 +38,18 @@ class ExecutionPolicy:
     controller_tracking_error_rad: float = .01
     failure_capture_lag_s: float = 1.
 
+    push_edge_transition_enabled: bool = False
+    push_edge_point_tolerance_m: float = .0001
+    push_edge_penetration_m: float = .00005
+    push_edge_event_band_m: float = .01
+    push_edge_max_duration_s: float = 1.
+
     def __post_init__(self):
         for field in fields(self):
             value=getattr(self,field.name)
+            if field.name=='push_edge_transition_enabled':
+                if type(value) is not bool:raise ValueError('INVALID_EDGE_MODE_ENABLE')
+                continue
             if isinstance(value,bool) or not math.isfinite(value) or value<=0:
                 raise ValueError('INVALID_EXECUTION_POLICY:'+field.name)
         if self.failure_capture_reserve_bytes>=self.max_case_bytes:

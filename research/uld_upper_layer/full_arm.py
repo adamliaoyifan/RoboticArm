@@ -276,6 +276,9 @@ class FullArmScene:
                         self.config.contact_penetration_m,self.config.contact_normal_alignment_deg,
                         c.depth,normal_toward_box=False)
                     if support_failure is None:continue
+                    edge_validator=getattr(self,'support_edge_validator',None)
+                    if edge_validator and edge_validator(other,transform,support_pose,
+                            support_mesh.bounds,c.point,c.normal,c.depth):continue
                 return dict(reason='PAYLOAD_WORLD_COLLISION',pair=['payload',other],
                             point=c.point.tolist(),depth_m=float(c.depth),support_diagnostic=support_failure)
         hit,names,contacts=self.robot.in_collision_single(mesh,transform,return_names=True,return_data=True)

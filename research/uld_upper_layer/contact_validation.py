@@ -11,8 +11,9 @@ from support_contact import support_contact_failure
 
 
 def validate_declared_contacts(sample,dimensions,config,policy,allow_support,
-                               contact_mode,panel_collision_name,geometry,*,record_intended=True):
+                               contact_mode,panel_collision_name,geometry,*,record_intended=True,edge_transition=None):
     intended=[]
+    edge_contacts=[];strict_support_count=0
     lower_by_collision={body.name+'::body::collision':body for body in sample.lower}
     for contact in sample.contacts:
         lower=lower_by_collision.get(contact.other_collision)
@@ -23,9 +24,20 @@ def validate_declared_contacts(sample,dimensions,config,policy,allow_support,
             contact.normal_toward_payload_container,config.contact_tolerance_m,
             config.contact_penetration_m,min(policy.contact_normal_alignment_deg,
                 config.contact_normal_alignment_deg),contact.depth_m,normal_toward_box=True)
+        if diagnostic is None:strict_support_count+=1
+        elif allow_support and edge_transition and not sample.attached and edge_transition.classify(
+                sample.container_T_box,lower.name,lower.container_T_body,[-half,half],
+                contact.point_container,contact.normal_toward_payload_container,contact.depth_m,
+                normal_toward_box=True):
+            edge_contacts.append((lower.name,contact.depth_m));continue
         if not allow_support or diagnostic:
             return dict(reason='NATIVE_CONTACT_OUTSIDE_DECLARED_SUPPORT',
                         body=lower.name,diagnostic=diagnostic),intended
+    if edge_contacts:
+        if not strict_support_count:
+            return dict(reason='PUSH_EDGE_WITHOUT_STRICT_NATIVE_SUPPORT'),intended
+        failure=edge_transition.observe(sample.stamp_s,edge_contacts)
+        if failure:return failure,intended
     panel_contacts=[contact for contact in sample.contacts if contact.other_collision==panel_collision_name]
     if not panel_contacts:return None,intended
     if not contact_mode:return dict(reason='FORBIDDEN_NATIVE_PANEL_CONTACT'),intended
