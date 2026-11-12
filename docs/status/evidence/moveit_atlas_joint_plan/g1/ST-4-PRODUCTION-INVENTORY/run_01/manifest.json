@@ -1,0 +1,347 @@
+{
+  "captured_at": "2026-11-12T14:31:39.263548+08:00",
+  "revision": "dbe3157bed63b5d6f103a3e82545d3787d4db277",
+  "dirty_entries": 139,
+  "case": "production entry/source/install read-only inventory",
+  "capture_complete": true,
+  "replay_possible": true,
+  "inputs": [
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/CMakeLists.txt",
+      "exists": true,
+      "symlink": false,
+      "sha256": "befb0988fabcaf8a7c682583c9f1219aaba2c56efa4c6dd72bb62f379195b145",
+      "bytes": 3260,
+      "mtime_ns": 1794383103394425448,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/CMakeLists.txt",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_planning/CMakeLists.txt"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/launch/hardware_pick.launch.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "6467b70f76c96cf44b7c53a7298ff6624f3261a4da089bb63e41b2cd08509b90",
+      "bytes": 32655,
+      "mtime_ns": 1794366623143927727,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/launch/hardware_pick.launch.py",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_planning/launch/hardware_pick.launch.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/launch/joint_operation_prepare.launch.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "c7fd391bf2f5e61e736b56cf98f88e51276d6011750205e8cabdf6172ba8c635",
+      "bytes": 1470,
+      "mtime_ns": 1794381778591237511,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/launch/joint_operation_prepare.launch.py",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_planning/launch/joint_operation_prepare.launch.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/hardware_placement_launch.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "38961627ce206fa3cc0f71c675a0abb1410762a96df499db44cb250d3bc122cf",
+      "bytes": 1612,
+      "mtime_ns": 1794302876117560941,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/hardware_placement_launch.py",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_planning/luggage_planning/hardware_placement_launch.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/scripts/hardware_pick_driver.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "280003c8f48b438e30b9532b9c48eeb3faf492e01ac7b2cae3e7df43964ccc3f",
+      "bytes": 41935,
+      "mtime_ns": 1794302876122561026,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/scripts/hardware_pick_driver.py",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_planning/scripts/hardware_pick_driver.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/scripts/motion_planner_node.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "2359584c31a3054e9e44cb6453a1490c33a86e16d526e62be1ab23cb82e1ceea",
+      "bytes": 64510,
+      "mtime_ns": 1794403321278879283,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/scripts/motion_planner_node.py",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_planning/scripts/motion_planner_node.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/hardware_place_planning.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "9168345ba1673677cc4b59ee75e6fa55f5ed40012d31c59feed0b95867fa7dfa",
+      "bytes": 14396,
+      "mtime_ns": 1794302876117560941,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/hardware_place_planning.py",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_planning/luggage_planning/hardware_place_planning.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/typed_driver_adapter.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "257cdd65e2e4a81f50ef0b646b41f5bfbe6d668a7faa84900c7491ea6f1d987a",
+      "bytes": 39012,
+      "mtime_ns": 1794357864670388250,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/typed_driver_adapter.py",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_planning/luggage_planning/typed_driver_adapter.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/joint_operation_prepare_node.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "5e39ee523566f5b266bebafdc6c42261ce2faa09134834b9a40adfad675a0b2a",
+      "bytes": 26978,
+      "mtime_ns": 1794399863591902087,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/joint_operation_prepare_node.py",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_planning/luggage_planning/joint_operation_prepare_node.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/joint_operation_runtime.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "2f72c7438d1a9be543ac3fdfb2adb0cf8f6482f0f79869b900ff2875937fba43",
+      "bytes": 19194,
+      "mtime_ns": 1794404928766966966,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/joint_operation_runtime.py",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_planning/luggage_planning/joint_operation_runtime.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/joint_operation_runtime_ports.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "87e961b1009928d18f83b720c649be55f21fa8ebe9c7199eab0f10827c0966d6",
+      "bytes": 26130,
+      "mtime_ns": 1794404274404540661,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/joint_operation_runtime_ports.py",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_planning/luggage_planning/joint_operation_runtime_ports.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/joint_operation_observer.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "28b53619074c0c14763c124bb88251d88a66b3916dad1a67b3edce4630f4ca98",
+      "bytes": 14897,
+      "mtime_ns": 1794402082713395491,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/joint_operation_observer.py",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_planning/luggage_planning/joint_operation_observer.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/placement_prior_requests.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "f0bbe9594e61fc5538d32ff3c450f894bfc078688068cf6cbd9782825c862daf",
+      "bytes": 7685,
+      "mtime_ns": 1794302876121561009,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/placement_prior_requests.py",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_planning/luggage_planning/placement_prior_requests.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_packing/scripts/placement_planner_node.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "1e031966dbdf0ce4f82edb3ae8be2f4371c6103d8e1363969aa94fc883134970",
+      "bytes": 112727,
+      "mtime_ns": 1794302876108560788,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_packing/scripts/placement_planner_node.py",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_packing/scripts/placement_planner_node.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_packing/luggage_packing/placement_solver.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "5a9929c25e1b4b6e54cf1f265f491b613f197f07ecde4e2309f1008d5712dbaf",
+      "bytes": 84874,
+      "mtime_ns": 1794302876108560788,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_packing/luggage_packing/placement_solver.py",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_packing/luggage_packing/placement_solver.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/config/cargo_grid.yaml",
+      "exists": true,
+      "symlink": false,
+      "sha256": "ceeaaf1544351085fc161b851823be9b96fb567245de18e901998402b9bf5093",
+      "bytes": 167,
+      "mtime_ns": 1794302876068560105,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/config/cargo_grid.yaml",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_description/config/cargo_grid.yaml"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/uld_occ_observer/config/observer.yaml",
+      "exists": true,
+      "symlink": false,
+      "sha256": "d195b615a2185eae4130dc20eec86a9f25425b9040b68a3cb768aa41a105fc1d",
+      "bytes": 154,
+      "mtime_ns": 1794302876124561061,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/uld_occ_observer/config/observer.yaml",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/uld_occ_observer/config/observer.yaml"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/uld_occ_observer/launch/standalone.launch.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "89d10870259b653a3b5fb1ffd5600301a450389de278c88302d6606086060935",
+      "bytes": 1369,
+      "mtime_ns": 1794302876125561078,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/uld_occ_observer/launch/standalone.launch.py",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/uld_occ_observer/launch/standalone.launch.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/uld_occ_observer/srv/ReadCells.srv",
+      "exists": true,
+      "symlink": false,
+      "sha256": "3fb5bb035ebe6355db95fdb730448bde8e3284d771ad9f9d89701a81c67bb4d7",
+      "bytes": 510,
+      "mtime_ns": 1794302876126561095,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/uld_occ_observer/srv/ReadCells.srv",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/uld_occ_observer/srv/ReadCells.srv"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/uld_occ_observer/srv/ReadSurface.srv",
+      "exists": true,
+      "symlink": false,
+      "sha256": "0bdb1383cdb0f2576d7b3523a5dee11467d20dea0bf93e4ac4e171932005c7db",
+      "bytes": 394,
+      "mtime_ns": 1794302876126561095,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/uld_occ_observer/srv/ReadSurface.srv",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/uld_occ_observer/srv/ReadSurface.srv"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_msgs/srv/GetCargoVolumeV2.srv",
+      "exists": true,
+      "symlink": false,
+      "sha256": "063f2f7ee4ec5f8b0c60bbd1449763c6bdd30cb671ce1692eb3f129d642131a3",
+      "bytes": 946,
+      "mtime_ns": 1794302876107560771,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_msgs/srv/GetCargoVolumeV2.srv",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/src/luggage_msgs/srv/GetCargoVolumeV2.srv"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/build/luggage_planning/CMakeCache.txt",
+      "exists": true,
+      "symlink": false,
+      "sha256": "fe7f60345b1bdfe9c156f65d0e943c49f669c324fc756bab75494fb19408836e",
+      "bytes": 46965,
+      "mtime_ns": 1794310440554753770,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/build/luggage_planning/CMakeCache.txt",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/build/luggage_planning/CMakeCache.txt"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/build/luggage_planning/cmake_install.cmake",
+      "exists": true,
+      "symlink": false,
+      "sha256": "48b2966014017b51e7e12081bc0bc4ee9c1580aa33be5b47243f642c6ac5647d",
+      "bytes": 13680,
+      "mtime_ns": 1794310440581754269,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/build/luggage_planning/cmake_install.cmake",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/build/luggage_planning/cmake_install.cmake"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/build/luggage_planning/install_manifest.txt",
+      "exists": true,
+      "symlink": false,
+      "sha256": "90e4f954fb4855b364586706ac2858a9a1069f2e1cc1116b649dddaec148dd1b",
+      "bytes": 7145,
+      "mtime_ns": 1794325124856283547,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/build/luggage_planning/install_manifest.txt",
+      "snapshot": "docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/snapshots/build/luggage_planning/install_manifest.txt"
+    }
+  ],
+  "install_entries": [
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/install/luggage_planning/lib/luggage_planning/motion_planner_node.py",
+      "exists": true,
+      "symlink": true,
+      "sha256": "2359584c31a3054e9e44cb6453a1490c33a86e16d526e62be1ab23cb82e1ceea",
+      "bytes": 64510,
+      "mtime_ns": 1794403321278879283,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/scripts/motion_planner_node.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/install/luggage_planning/lib/luggage_planning/joint_operation_prepare_node.py",
+      "exists": false,
+      "symlink": false
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/install/luggage_planning/lib/luggage_planning/snapshot_joint_path_node",
+      "exists": false,
+      "symlink": false
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/install/luggage_planning/local/lib/python3.10/dist-packages/luggage_planning/joint_operation_runtime_ports.py",
+      "exists": false,
+      "symlink": false
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/install-mo/luggage_planning/lib/luggage_planning/motion_planner_node.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "19c53b6a7b3764fe6f3912327ac21ceec653c7726b5dcfd893dd1462d3b3e7f7",
+      "bytes": 63015,
+      "mtime_ns": 1794302876000000000,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/install-mo/luggage_planning/lib/luggage_planning/motion_planner_node.py"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/install-mo/luggage_planning/lib/luggage_planning/joint_operation_prepare_node.py",
+      "exists": false,
+      "symlink": false
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/install-mo/luggage_planning/lib/luggage_planning/snapshot_joint_path_node",
+      "exists": true,
+      "symlink": false,
+      "sha256": "6c18e7a38db8dd60d4d8098859c20c068ca2a67481fcb686de4f8bcc2451134b",
+      "bytes": 841632,
+      "mtime_ns": 1794369474000000000,
+      "resolved": "/home/adamliao/work/elfin_humble_ws/install-mo/luggage_planning/lib/luggage_planning/snapshot_joint_path_node"
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/install-mo/luggage_planning/local/lib/python3.10/dist-packages/luggage_planning/joint_operation_runtime_ports.py",
+      "exists": false,
+      "symlink": false
+    },
+    {
+      "path": "/tmp/joint_operation_native/install/luggage_planning/lib/luggage_planning/motion_planner_node.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "8a8a888667e777a7ee7df263ae7fa3279c337e162b494eba7ba7e4934b4ba47d",
+      "bytes": 64030,
+      "mtime_ns": 1794395142000000000,
+      "resolved": "/tmp/joint_operation_native/install/luggage_planning/lib/luggage_planning/motion_planner_node.py"
+    },
+    {
+      "path": "/tmp/joint_operation_native/install/luggage_planning/lib/luggage_planning/joint_operation_prepare_node.py",
+      "exists": true,
+      "symlink": false,
+      "sha256": "ab91531e1b72494881c09d513ba19f7f090b0f10a47bfe7f3bb12c482ae9e6ef",
+      "bytes": 195,
+      "mtime_ns": 1794381240000000000,
+      "resolved": "/tmp/joint_operation_native/install/luggage_planning/lib/luggage_planning/joint_operation_prepare_node.py"
+    },
+    {
+      "path": "/tmp/joint_operation_native/install/luggage_planning/lib/luggage_planning/snapshot_joint_path_node",
+      "exists": true,
+      "symlink": false,
+      "sha256": "e297854b2ca4ab9f44a3978eca254fb744372377b2bb85837085cb68441be069",
+      "bytes": 841632,
+      "mtime_ns": 1794388232000000000,
+      "resolved": "/tmp/joint_operation_native/install/luggage_planning/lib/luggage_planning/snapshot_joint_path_node"
+    },
+    {
+      "path": "/tmp/joint_operation_native/install/luggage_planning/local/lib/python3.10/dist-packages/luggage_planning/joint_operation_runtime_ports.py",
+      "exists": false,
+      "symlink": false
+    }
+  ],
+  "concurrent_changes": [],
+  "matching_processes": [],
+  "scope_limit": "First three argv entries and named prefixes only; no live ROS graph or import test.",
+  "environment": {
+    "AMENT_PREFIX_PATH": null,
+    "COLCON_PREFIX_PATH": null,
+    "PYTHONPATH": null
+  },
+  "robot_actions": 0,
+  "nodes_started": 0,
+  "product_code_changes": 0
+}

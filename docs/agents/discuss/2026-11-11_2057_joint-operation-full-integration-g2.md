@@ -78,3 +78,23 @@ Review corrects next-step ordering: production source O default is1cm; this spar
 User requests comprehensive evidence collection and ComputePlacement/planner review before clearance redesign. Separate ST-4-DESIGN-AUDIT generation1 is documented in docs/reviews/PLACEMENT_PLANNER_DESIGN_AUDIT_20261112.md:31 findings,103 hashed inputs,63 source references,3 finite behavior witnesses. Source-only barriers include quarter-turn omission in new prepare, different candidate gates, default observer resolution1cm vs compute2cm,67 full-volume pages vs64 cap, hardware launch mapper/O mismatch and missing standard installed new entry points. These precede blind atlas expansion. User has allowed final side contact without penetration/pushing and reopened release height/method. No runtime policy changed, no physical/native full-cycle success claimed; generation2 remains claimed/open with its original acceptance. Earlier claim that new prepare directly enforces5cm same-layer spacing is corrected: it lacks the placed-validator callback; the defect is policy divergence. Source/install effective state and all qualification limits are in the audit, including byte-only attachment comments vs identical numeric config.
 
 Audit-only subtask closes at a3841332 on 2026-11-12T13:08:02+08:00; generation2 integration remains open. No runtime changes.
+
+## Reply -- eng/codex -- 2026-11-12 14:27 -- codex/gpt-6
+
+User now requires explicit 90/270 placement headings, common ComputePlacement and
+complete-operation admission, one selected O/G owner with source-resolution parity,
+regional paging discussion, production-default complete planning and eventual real
+complete-model baseline. Follow-up design is
+docs/plans/PRODUCTION_PLACEMENT_CONVERGENCE_G3_20261112.md (draft, not dispatch-ready).
+This does not rewrite claimed generation2 requirements or close their acceptance.
+Read-only inventory captures source/build/install identities under
+docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-INVENTORY/run_01/.
+Standard build install rules predate the new CMake declarations; standard prefix
+mixes an old source symlink with missing new modules, while other prefixes differ.
+Current declared hardware placement launches G but ComputePlacement defaults to O;
+prepare is independent, execute opt-in, and the existing hardware driver remains
+segment-based. No matching named runtime processes were observed; this is not an
+assertion about an external operator terminal. Proposed region reads use explicit
+cell bounds and one snapshot, initially retaining full-volume final certification.
+Current ULD measured input for the final baseline was requested from the user.
+No runtime, robot, simulation, build-prefix or clearance-policy changes made.
