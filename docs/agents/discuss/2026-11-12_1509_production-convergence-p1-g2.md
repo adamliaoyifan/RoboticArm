@@ -1,6 +1,6 @@
 # 2026-11-12 -- production-convergence-p1-g2
 
-- status: open
+- status: done
 - to_role: eng
 - to_agent: codex
 - to_model: gpt-6
@@ -31,3 +31,12 @@ Same bounded P1 scope; supersedes generation1 to pin the exact plan revision e4f
 - claimed_generation: 2
 - claimed_plan_revision: e4f75646
 - claimed_dependencies: ST-4-PRODUCTION-P0=1
+## Result -- eng/codex -- 2026-11-12 15:26 -- codex/gpt-6
+
+- outcome: pass
+- completed_at: 2026-11-12T15:26:50+08:00
+- revision: ea19c48c6f9cd9e0fa049a6ed3b3f2b6ba02dfff
+- tests: 85 behavioral tests; 13-package production build; 35 installed checks; two launch parses
+- summary: Bounded P1 selected owner construction and shared O reader pass; no complete-cycle or live O/G route parity claim
+- evidence: docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-PRODUCTION-P1/run_01/
+
