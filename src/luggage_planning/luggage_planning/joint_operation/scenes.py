@@ -87,6 +87,40 @@ def _box(object_id, dimensions, transform, frame):
     return result
 
 
+def owned_payload_diff(live, desired, pickup_object_id):
+    """Change only this payload; never remove an absent MoveIt object.
+
+    MoveIt reports a failed scene update for a missing world-object removal.
+    Adding a complete replacement already replaces an existing world object.
+    Attachment removal is needed only when the live payload is attached.
+    """
+    from moveit_msgs.msg import PlanningScene, AttachedCollisionObject, CollisionObject
+    diff = PlanningScene(is_diff=True)
+    diff.robot_state.is_diff = True
+    world = [copy.deepcopy(obj) for obj in desired.world.collision_objects
+             if obj.id == pickup_object_id]
+    attached = [copy.deepcopy(obj) for obj in desired.robot_state.attached_collision_objects
+                if obj.object.id == pickup_object_id]
+    if len(world) + len(attached) != 1:
+        raise ValueError('EXACTLY_ONE_DESIRED_PAYLOAD_REQUIRED')
+    live_world = any(obj.id == pickup_object_id for obj in live.world.collision_objects)
+    live_attached = [obj for obj in live.robot_state.attached_collision_objects
+                     if obj.object.id == pickup_object_id]
+    if live_world and not world:
+        diff.world.collision_objects = [CollisionObject(id=pickup_object_id,
+                                                       operation=CollisionObject.REMOVE)]
+    else:
+        diff.world.collision_objects = world
+    if live_attached and not attached:
+        detached = AttachedCollisionObject(link_name=live_attached[0].link_name)
+        detached.object = CollisionObject(id=pickup_object_id, operation=CollisionObject.REMOVE)
+        diff.robot_state.attached_collision_objects = [detached]
+    else:
+        diff.robot_state.attached_collision_objects = attached
+    diff.allowed_collision_matrix = copy.deepcopy(desired.allowed_collision_matrix)
+    return diff
+
+
 def validate_phase_payloads(decoded_scenes, *, pickup_object_id, geometry,
                             world_from_pick_box, world_from_settled_box):
     """Check the actual native inputs contain precisely the frozen envelope.

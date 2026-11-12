@@ -8,11 +8,30 @@ from moveit_msgs.msg import AllowedCollisionEntry, AttachedCollisionObject, Coll
 from rclpy.serialization import deserialize_message, serialize_message
 from shape_msgs.msg import SolidPrimitive
 
-from luggage_planning.joint_operation.scenes import build_operation_scenes
+from luggage_planning.joint_operation.scenes import build_operation_scenes, owned_payload_diff
 from luggage_planning.placement_prior.contracts import Snapshot, Transform
 from st09_contracts.attachment_geometry import freeze_geometry
 from st09_contracts.payload_envelope import EnvelopeLimits
 from test_joint_operation_contracts import example_plan
+
+
+@pytest.mark.parametrize('before,after',[
+    ('absent','pick'),('pick','pick'),('pick','carry'),('carry','carry'),('carry','retreat')])
+def test_live_phase_diff_removes_only_present_payload_and_keeps_other_objects(before,after):
+    phases=compose(baseline())
+    desired=deserialize_message(phases.for_phase(after).scene_cdr,PlanningScene)
+    live=PlanningScene() if before=='absent' else deserialize_message(
+        phases.for_phase(before).scene_cdr,PlanningScene)
+    diff=owned_payload_diff(live,desired,'pickup_box')
+    assert diff.is_diff and diff.robot_state.is_diff
+    assert all(obj.id=='pickup_box' for obj in diff.world.collision_objects)
+    assert all(obj.object.id=='pickup_box' for obj in diff.robot_state.attached_collision_objects)
+    world_removes=[obj for obj in diff.world.collision_objects if obj.operation==CollisionObject.REMOVE]
+    detach=[obj for obj in diff.robot_state.attached_collision_objects
+            if obj.object.operation==CollisionObject.REMOVE]
+    assert bool(world_removes)==(before=='pick' and after=='carry')
+    assert bool(detach)==(before=='carry' and after=='retreat')
+    assert diff.allowed_collision_matrix==desired.allowed_collision_matrix
 
 
 def baseline():

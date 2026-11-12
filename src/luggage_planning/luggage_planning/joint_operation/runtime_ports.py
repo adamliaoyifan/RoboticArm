@@ -291,8 +291,9 @@ class OperationRuntimePorts:
         return self.validated
 
     def apply_phase(self,phase,geometry):
-        from moveit_msgs.msg import PlanningScene, AttachedCollisionObject, CollisionObject
+        from moveit_msgs.msg import PlanningScene
         from rclpy.serialization import serialize_message,deserialize_message
+        from luggage_planning.joint_operation.scenes import owned_payload_diff
         live = self.scene()
         if any(item.object.id!=self.pickup_id for item in live.robot_state.attached_collision_objects):
             raise ValueError('UNEXPECTED_EXTERNAL_ATTACHMENT')
@@ -303,13 +304,7 @@ class OperationRuntimePorts:
             world_from_pick_box=self.plan.world_from_pick_box,
             world_from_settled_box=self.plan.world_from_settled_box)
         desired = deserialize_message(phases.for_phase(phase).scene_cdr,PlanningScene)
-        diff = PlanningScene(is_diff=True);diff.robot_state.is_diff=True
-        remove = CollisionObject(id=self.pickup_id,operation=CollisionObject.REMOVE)
-        diff.world.collision_objects=[remove]+[obj for obj in desired.world.collision_objects if obj.id==self.pickup_id]
-        detached = AttachedCollisionObject(link_name='suction_contact_frame')
-        detached.object = copy.deepcopy(remove)
-        diff.robot_state.attached_collision_objects=[detached]+list(desired.robot_state.attached_collision_objects)
-        diff.allowed_collision_matrix = desired.allowed_collision_matrix
+        diff = owned_payload_diff(live,desired,self.pickup_id)
         result = self.rpc.call(self.apply_client,self.apply_type.Request(scene=diff),self.deadline,'owned_payload_scene')
         if result.success is not True:raise ValueError('OWNED_PAYLOAD_SCENE_REFUSED')
         self.owned_payload=True
