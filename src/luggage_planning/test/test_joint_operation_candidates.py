@@ -173,6 +173,19 @@ def test_internal_unknown_cell_is_not_filled_to_satisfy_target(capture):
     assert domain.support[70*90+45] == 0
 
 
+def test_far_target_does_not_spend_contact_budget_on_impossible_edge_centres():
+    domain,_,model=context_inputs()
+    observed=domain.cells().copy()
+    observed[:2,:]=False;observed[-2:,:]=False
+    observed[:,:2]=False;observed[:,-2:]=False
+    domain=replace(domain,support=observed.astype(np.uint8).tobytes())
+    proposal=propose_contact(domain,model,query_id='far-hint',
+        world_from_place_box=Transform(domain.box_xyz_world,domain.box_quaternion_xyzw),
+        desired_world_from_tool=Transform((.9,.4,1.),(1.,0.,0.,0.)),max_center_checks=256)
+    assert proposal.reason=='OBSERVED_FOOTPRINT_PROPOSAL'
+    assert proposal.checked_centres<=256
+
+
 def test_geometry_proposal_can_still_fail_real_surface_quality(capture):
     request,_ = request_and_context()
     domain,hmap,model = context_inputs()

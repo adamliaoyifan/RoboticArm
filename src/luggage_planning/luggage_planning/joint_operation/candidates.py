@@ -79,8 +79,12 @@ def propose_contact(domain, model, *, query_id, world_from_place_box,
     preferred = np.clip(desired_uv,lower,upper)
     centres = np.argwhere(domain.cells())
     uv = np.asarray(domain.origin_uv_top_m)+(centres+.5)*domain.cell_size_m
+    # Do not spend the bounded containment budget on centres whose physical
+    # footprint cannot fit even the observed grid bounds. The exact observed
+    # cell gate below still rejects holes and irregular boundaries.
+    uv = uv[np.all((uv >= lower) & (uv <= upper), axis=1)]
     distance = np.sum((uv-desired_uv)**2,axis=1)
-    count = min(len(centres),max_center_checks)
+    count = min(len(uv),max_center_checks)
     if count:
         nearest = np.argpartition(distance,count-1)[:count]
         nearest = nearest[np.argsort(distance[nearest],kind='stable')]
