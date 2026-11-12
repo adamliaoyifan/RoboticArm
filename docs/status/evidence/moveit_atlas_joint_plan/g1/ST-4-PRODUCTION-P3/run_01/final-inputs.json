@@ -1,0 +1,7 @@
+{
+  "src/luggage_mapping/test/test_regions.py": "e31b7ad70e0dd7e694a0cd76ab983b9c9dd95196e4c404f80011d6a9113d9f2e",
+  "src/luggage_mapping/luggage_mapping/regions.py": "a679fe7931a2d08ad7791a4251caf09c67617e7f1c1c93f1b3ece042a5ef2723",
+  "src/luggage_mapping/luggage_mapping/observer.py": "364a4854f3aaf8a2d4722a87503ab8655feca7b6d02708e50ef1dc492187b363",
+  "scripts/production/check_install.py": "ab5c28f2e2c2150c49bebde292e676b02def861b24d7619cebdf4575d2928606",
+  "docs/architecture/cargo_grid.md": "c27c3cf57703ff539180ad5f4a1a9f33ac277b050c55b179cf722125c55e9395"
+}

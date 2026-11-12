@@ -1,0 +1,39 @@
+{
+  "outcome": "pass",
+  "tests": 101,
+  "skips": 0,
+  "failures": 0,
+  "command": "scripts/production/run.sh python3 scripts/production/test_source.py -q -o junit_family=legacy src/luggage_mapping/test/test_regions.py src/luggage_planning/test/test_joint_operation_observer.py src/luggage_packing/test/test_placement_query_consumers.py src/luggage_packing/test/test_placement_query.py src/luggage_planning/test/test_map_owner_launch.py --junitxml=<root>/tests-04.xml",
+  "metrics": {
+    "fixture_profile": "typed RPC double, no live throughput claim",
+    "pages": "67",
+    "cells": "4344244",
+    "elapsed_s": "0.7129930835217237",
+    "states_sha256": "0ccd7381bf9ba7a3a7fa4d292c53aa4e54bbcbb1d254bca25beb17b63856254c"
+  },
+  "install": true,
+  "checks": 38,
+  "build_elapsed_s": 6.529497568495572,
+  "coverage": "deterministic ROS typed message transport fixtures, real O full-capture path and source conversion consumers; no running O/G server or native endpoint or Gazebo",
+  "limits": [
+    "complete model simulated baseline not yet achieved",
+    "no staged candidate ROI scheduler enabled",
+    "G initial RPC still full volume",
+    "no transport performance or motion reliability claim"
+  ],
+  "capture_complete": true,
+  "replay_possible": true,
+  "teardown": "not_needed",
+  "finished_at": "2026-11-12T16:26:43.282290+08:00",
+  "closed_input_hashes": {
+    "src/luggage_mapping/test/test_regions.py": "55b52dff2a7759fcabde5070d1bd622afe49f25e9d1a4be6ddfdddc5ccd5ebc3",
+    "src/luggage_mapping/luggage_mapping/regions.py": "3f657310b8779ff6d2519268657ce13420d139db5e0116d27360e66ff286b724",
+    "src/luggage_mapping/luggage_mapping/observer.py": "364a4854f3aaf8a2d4722a87503ab8655feca7b6d02708e50ef1dc492187b363",
+    "scripts/production/check_install.py": "ab5c28f2e2c2150c49bebde292e676b02def861b24d7619cebdf4575d2928606",
+    "docs/architecture/cargo_grid.md": "c27c3cf57703ff539180ad5f4a1a9f33ac277b050c55b179cf722125c55e9395"
+  },
+  "failures_retained": [
+    "failure-01.json",
+    "failure-03.json"
+  ]
+}

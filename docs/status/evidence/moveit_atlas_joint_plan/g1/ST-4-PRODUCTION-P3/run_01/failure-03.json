@@ -1,0 +1,10 @@
+{
+  "stage": "real G ROS DTO -> source-grid adapter",
+  "first_failure": "Generated fixed dimensions array yields numpy.uint32 values; pure NativeGrid expects Python ints",
+  "capture_complete": true,
+  "replay_possible": true,
+  "inputs": "final-inputs/",
+  "log": "tests-final.log",
+  "junit": "tests-final.xml",
+  "repair": "Normalize integral transport dimensions explicitly, reject fractional and bool dimensions; retain strict pure contract"
+}

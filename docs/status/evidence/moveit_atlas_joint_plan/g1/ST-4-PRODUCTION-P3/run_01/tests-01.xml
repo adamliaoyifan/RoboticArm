@@ -1,0 +1,411 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="13" skipped="0" tests="97" time="1.338" timestamp="2026-11-12T16:23:31.140106+08:00" hostname="adamliao-X870-EAGLE-WIFI7"><testcase classname="src.luggage_mapping.test.test_regions" name="test_o_g_blocks_match_scalar_native_grid[origin0-0.01]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_o_g_blocks_match_scalar_native_grid[origin0-0.02]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_o_g_blocks_match_scalar_native_grid[origin1-0.01]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_o_g_blocks_match_scalar_native_grid[origin1-0.02]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_bounds_refuse[begin0-end0]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_bounds_refuse[begin1-end1]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_bounds_refuse[begin2-end2]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_bounds_refuse[begin3-end3]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_bounds_refuse[begin4-end4]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[outside]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[zero_resolution]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[nan_origin]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[huge]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[missing_identity]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[short_states]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[bad_state]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[bad_active]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_invalid_grid_or_block_refuses[inactive_free]" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_offset_region_pages_reset_local_cursor_and_preserve_deadline" time="0.004"><failure message="AssertionError: The 'done' field must be of type 'bool'">def test_offset_region_pages_reset_local_cursor_and_preserve_deadline():
+        port, identity, requests = make_port((120, 100, 20))
+        region = CellRegion((10, 5, 3), (110, 95, 13))  # 90,000 cells
+&gt;       block = port.read_region('lease', identity, 2, region, deadline=123.5)
+
+src/luggage_mapping/test/test_regions.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:261: in read_region
+    raw = self._pages('read_cells', handle, region.count, identity, generation,
+src/luggage_mapping/luggage_mapping/observer.py:281: in _pages
+    page = self.call(self.clients[name],self.services[name].Request(**args),deadline,'observer_'+name)
+src/luggage_mapping/test/test_regions.py:91: in call
+    page = ReadCells.Response(status='OK', identity=SnapshotIdentity(**identity),
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:373: in __init__
+    self.done = kwargs.get('done', bool())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;[AttributeError("'ReadCells_Response' object has no attribute '_done'") raised in repr()] ReadCells_Response object at 0x772a8047d640&gt;
+value = np.False_
+
+    @done.setter
+    def done(self, value):
+        if __debug__:
+&gt;           assert \
+                isinstance(value, bool), \
+                "The 'done' field must be of type 'bool'"
+E           AssertionError: The 'done' field must be of type 'bool'
+
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:494: AssertionError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[identity]" time="0.004"><failure message="AssertionError: The 'done' field must be of type 'bool'">damage = 'identity'
+
+    @pytest.mark.parametrize('damage', ['identity', 'generation', 'validity', 'status', 'cursor',
+                                       'empty', 'short', 'long', 'done', 'state', 'timeout'])
+    def test_malformed_page_never_returns_partial_block(damage):
+        port, identity, requests = make_port((120, 100, 20), damage=damage)
+        with pytest.raises((ValueError, TimeoutError)):
+&gt;           port.read_region('lease', identity, 2, CellRegion((10, 5, 3), (110, 95, 13)), deadline=123.)
+
+src/luggage_mapping/test/test_regions.py:132: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:261: in read_region
+    raw = self._pages('read_cells', handle, region.count, identity, generation,
+src/luggage_mapping/luggage_mapping/observer.py:281: in _pages
+    page = self.call(self.clients[name],self.services[name].Request(**args),deadline,'observer_'+name)
+src/luggage_mapping/test/test_regions.py:91: in call
+    page = ReadCells.Response(status='OK', identity=SnapshotIdentity(**identity),
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:373: in __init__
+    self.done = kwargs.get('done', bool())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;[AttributeError("'ReadCells_Response' object has no attribute '_done'") raised in repr()] ReadCells_Response object at 0x772a7a7e25c0&gt;
+value = np.False_
+
+    @done.setter
+    def done(self, value):
+        if __debug__:
+&gt;           assert \
+                isinstance(value, bool), \
+                "The 'done' field must be of type 'bool'"
+E           AssertionError: The 'done' field must be of type 'bool'
+
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:494: AssertionError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[generation]" time="0.005"><failure message="AssertionError: The 'done' field must be of type 'bool'">damage = 'generation'
+
+    @pytest.mark.parametrize('damage', ['identity', 'generation', 'validity', 'status', 'cursor',
+                                       'empty', 'short', 'long', 'done', 'state', 'timeout'])
+    def test_malformed_page_never_returns_partial_block(damage):
+        port, identity, requests = make_port((120, 100, 20), damage=damage)
+        with pytest.raises((ValueError, TimeoutError)):
+&gt;           port.read_region('lease', identity, 2, CellRegion((10, 5, 3), (110, 95, 13)), deadline=123.)
+
+src/luggage_mapping/test/test_regions.py:132: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:261: in read_region
+    raw = self._pages('read_cells', handle, region.count, identity, generation,
+src/luggage_mapping/luggage_mapping/observer.py:281: in _pages
+    page = self.call(self.clients[name],self.services[name].Request(**args),deadline,'observer_'+name)
+src/luggage_mapping/test/test_regions.py:91: in call
+    page = ReadCells.Response(status='OK', identity=SnapshotIdentity(**identity),
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:373: in __init__
+    self.done = kwargs.get('done', bool())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;[AttributeError("'ReadCells_Response' object has no attribute '_done'") raised in repr()] ReadCells_Response object at 0x772a7a6935c0&gt;
+value = np.False_
+
+    @done.setter
+    def done(self, value):
+        if __debug__:
+&gt;           assert \
+                isinstance(value, bool), \
+                "The 'done' field must be of type 'bool'"
+E           AssertionError: The 'done' field must be of type 'bool'
+
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:494: AssertionError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[validity]" time="0.004"><failure message="AssertionError: The 'done' field must be of type 'bool'">damage = 'validity'
+
+    @pytest.mark.parametrize('damage', ['identity', 'generation', 'validity', 'status', 'cursor',
+                                       'empty', 'short', 'long', 'done', 'state', 'timeout'])
+    def test_malformed_page_never_returns_partial_block(damage):
+        port, identity, requests = make_port((120, 100, 20), damage=damage)
+        with pytest.raises((ValueError, TimeoutError)):
+&gt;           port.read_region('lease', identity, 2, CellRegion((10, 5, 3), (110, 95, 13)), deadline=123.)
+
+src/luggage_mapping/test/test_regions.py:132: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:261: in read_region
+    raw = self._pages('read_cells', handle, region.count, identity, generation,
+src/luggage_mapping/luggage_mapping/observer.py:281: in _pages
+    page = self.call(self.clients[name],self.services[name].Request(**args),deadline,'observer_'+name)
+src/luggage_mapping/test/test_regions.py:91: in call
+    page = ReadCells.Response(status='OK', identity=SnapshotIdentity(**identity),
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:373: in __init__
+    self.done = kwargs.get('done', bool())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;[AttributeError("'ReadCells_Response' object has no attribute '_done'") raised in repr()] ReadCells_Response object at 0x772a7a693040&gt;
+value = np.False_
+
+    @done.setter
+    def done(self, value):
+        if __debug__:
+&gt;           assert \
+                isinstance(value, bool), \
+                "The 'done' field must be of type 'bool'"
+E           AssertionError: The 'done' field must be of type 'bool'
+
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:494: AssertionError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[status]" time="0.004"><failure message="AssertionError: The 'done' field must be of type 'bool'">damage = 'status'
+
+    @pytest.mark.parametrize('damage', ['identity', 'generation', 'validity', 'status', 'cursor',
+                                       'empty', 'short', 'long', 'done', 'state', 'timeout'])
+    def test_malformed_page_never_returns_partial_block(damage):
+        port, identity, requests = make_port((120, 100, 20), damage=damage)
+        with pytest.raises((ValueError, TimeoutError)):
+&gt;           port.read_region('lease', identity, 2, CellRegion((10, 5, 3), (110, 95, 13)), deadline=123.)
+
+src/luggage_mapping/test/test_regions.py:132: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:261: in read_region
+    raw = self._pages('read_cells', handle, region.count, identity, generation,
+src/luggage_mapping/luggage_mapping/observer.py:281: in _pages
+    page = self.call(self.clients[name],self.services[name].Request(**args),deadline,'observer_'+name)
+src/luggage_mapping/test/test_regions.py:91: in call
+    page = ReadCells.Response(status='OK', identity=SnapshotIdentity(**identity),
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:373: in __init__
+    self.done = kwargs.get('done', bool())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;[AttributeError("'ReadCells_Response' object has no attribute '_done'") raised in repr()] ReadCells_Response object at 0x772a805449c0&gt;
+value = np.False_
+
+    @done.setter
+    def done(self, value):
+        if __debug__:
+&gt;           assert \
+                isinstance(value, bool), \
+                "The 'done' field must be of type 'bool'"
+E           AssertionError: The 'done' field must be of type 'bool'
+
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:494: AssertionError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[cursor]" time="0.004"><failure message="AssertionError: The 'done' field must be of type 'bool'">damage = 'cursor'
+
+    @pytest.mark.parametrize('damage', ['identity', 'generation', 'validity', 'status', 'cursor',
+                                       'empty', 'short', 'long', 'done', 'state', 'timeout'])
+    def test_malformed_page_never_returns_partial_block(damage):
+        port, identity, requests = make_port((120, 100, 20), damage=damage)
+        with pytest.raises((ValueError, TimeoutError)):
+&gt;           port.read_region('lease', identity, 2, CellRegion((10, 5, 3), (110, 95, 13)), deadline=123.)
+
+src/luggage_mapping/test/test_regions.py:132: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:261: in read_region
+    raw = self._pages('read_cells', handle, region.count, identity, generation,
+src/luggage_mapping/luggage_mapping/observer.py:281: in _pages
+    page = self.call(self.clients[name],self.services[name].Request(**args),deadline,'observer_'+name)
+src/luggage_mapping/test/test_regions.py:91: in call
+    page = ReadCells.Response(status='OK', identity=SnapshotIdentity(**identity),
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:373: in __init__
+    self.done = kwargs.get('done', bool())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;[AttributeError("'ReadCells_Response' object has no attribute '_done'") raised in repr()] ReadCells_Response object at 0x772a80544040&gt;
+value = np.False_
+
+    @done.setter
+    def done(self, value):
+        if __debug__:
+&gt;           assert \
+                isinstance(value, bool), \
+                "The 'done' field must be of type 'bool'"
+E           AssertionError: The 'done' field must be of type 'bool'
+
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:494: AssertionError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[empty]" time="0.004"><failure message="AssertionError: The 'done' field must be of type 'bool'">damage = 'empty'
+
+    @pytest.mark.parametrize('damage', ['identity', 'generation', 'validity', 'status', 'cursor',
+                                       'empty', 'short', 'long', 'done', 'state', 'timeout'])
+    def test_malformed_page_never_returns_partial_block(damage):
+        port, identity, requests = make_port((120, 100, 20), damage=damage)
+        with pytest.raises((ValueError, TimeoutError)):
+&gt;           port.read_region('lease', identity, 2, CellRegion((10, 5, 3), (110, 95, 13)), deadline=123.)
+
+src/luggage_mapping/test/test_regions.py:132: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:261: in read_region
+    raw = self._pages('read_cells', handle, region.count, identity, generation,
+src/luggage_mapping/luggage_mapping/observer.py:281: in _pages
+    page = self.call(self.clients[name],self.services[name].Request(**args),deadline,'observer_'+name)
+src/luggage_mapping/test/test_regions.py:91: in call
+    page = ReadCells.Response(status='OK', identity=SnapshotIdentity(**identity),
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:373: in __init__
+    self.done = kwargs.get('done', bool())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;[AttributeError("'ReadCells_Response' object has no attribute '_done'") raised in repr()] ReadCells_Response object at 0x772a80544140&gt;
+value = np.False_
+
+    @done.setter
+    def done(self, value):
+        if __debug__:
+&gt;           assert \
+                isinstance(value, bool), \
+                "The 'done' field must be of type 'bool'"
+E           AssertionError: The 'done' field must be of type 'bool'
+
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:494: AssertionError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[short]" time="0.004"><failure message="AssertionError: The 'done' field must be of type 'bool'">damage = 'short'
+
+    @pytest.mark.parametrize('damage', ['identity', 'generation', 'validity', 'status', 'cursor',
+                                       'empty', 'short', 'long', 'done', 'state', 'timeout'])
+    def test_malformed_page_never_returns_partial_block(damage):
+        port, identity, requests = make_port((120, 100, 20), damage=damage)
+        with pytest.raises((ValueError, TimeoutError)):
+&gt;           port.read_region('lease', identity, 2, CellRegion((10, 5, 3), (110, 95, 13)), deadline=123.)
+
+src/luggage_mapping/test/test_regions.py:132: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:261: in read_region
+    raw = self._pages('read_cells', handle, region.count, identity, generation,
+src/luggage_mapping/luggage_mapping/observer.py:281: in _pages
+    page = self.call(self.clients[name],self.services[name].Request(**args),deadline,'observer_'+name)
+src/luggage_mapping/test/test_regions.py:91: in call
+    page = ReadCells.Response(status='OK', identity=SnapshotIdentity(**identity),
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:373: in __init__
+    self.done = kwargs.get('done', bool())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;[AttributeError("'ReadCells_Response' object has no attribute '_done'") raised in repr()] ReadCells_Response object at 0x772a80544340&gt;
+value = np.False_
+
+    @done.setter
+    def done(self, value):
+        if __debug__:
+&gt;           assert \
+                isinstance(value, bool), \
+                "The 'done' field must be of type 'bool'"
+E           AssertionError: The 'done' field must be of type 'bool'
+
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:494: AssertionError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[long]" time="0.004"><failure message="AssertionError: The 'done' field must be of type 'bool'">damage = 'long'
+
+    @pytest.mark.parametrize('damage', ['identity', 'generation', 'validity', 'status', 'cursor',
+                                       'empty', 'short', 'long', 'done', 'state', 'timeout'])
+    def test_malformed_page_never_returns_partial_block(damage):
+        port, identity, requests = make_port((120, 100, 20), damage=damage)
+        with pytest.raises((ValueError, TimeoutError)):
+&gt;           port.read_region('lease', identity, 2, CellRegion((10, 5, 3), (110, 95, 13)), deadline=123.)
+
+src/luggage_mapping/test/test_regions.py:132: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:261: in read_region
+    raw = self._pages('read_cells', handle, region.count, identity, generation,
+src/luggage_mapping/luggage_mapping/observer.py:281: in _pages
+    page = self.call(self.clients[name],self.services[name].Request(**args),deadline,'observer_'+name)
+src/luggage_mapping/test/test_regions.py:91: in call
+    page = ReadCells.Response(status='OK', identity=SnapshotIdentity(**identity),
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:373: in __init__
+    self.done = kwargs.get('done', bool())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;[AttributeError("'ReadCells_Response' object has no attribute '_done'") raised in repr()] ReadCells_Response object at 0x772a805441c0&gt;
+value = np.False_
+
+    @done.setter
+    def done(self, value):
+        if __debug__:
+&gt;           assert \
+                isinstance(value, bool), \
+                "The 'done' field must be of type 'bool'"
+E           AssertionError: The 'done' field must be of type 'bool'
+
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:494: AssertionError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[done]" time="0.004"><failure message="AssertionError: The 'done' field must be of type 'bool'">damage = 'done'
+
+    @pytest.mark.parametrize('damage', ['identity', 'generation', 'validity', 'status', 'cursor',
+                                       'empty', 'short', 'long', 'done', 'state', 'timeout'])
+    def test_malformed_page_never_returns_partial_block(damage):
+        port, identity, requests = make_port((120, 100, 20), damage=damage)
+        with pytest.raises((ValueError, TimeoutError)):
+&gt;           port.read_region('lease', identity, 2, CellRegion((10, 5, 3), (110, 95, 13)), deadline=123.)
+
+src/luggage_mapping/test/test_regions.py:132: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:261: in read_region
+    raw = self._pages('read_cells', handle, region.count, identity, generation,
+src/luggage_mapping/luggage_mapping/observer.py:281: in _pages
+    page = self.call(self.clients[name],self.services[name].Request(**args),deadline,'observer_'+name)
+src/luggage_mapping/test/test_regions.py:91: in call
+    page = ReadCells.Response(status='OK', identity=SnapshotIdentity(**identity),
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:373: in __init__
+    self.done = kwargs.get('done', bool())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;[AttributeError("'ReadCells_Response' object has no attribute '_done'") raised in repr()] ReadCells_Response object at 0x772a80544840&gt;
+value = np.False_
+
+    @done.setter
+    def done(self, value):
+        if __debug__:
+&gt;           assert \
+                isinstance(value, bool), \
+                "The 'done' field must be of type 'bool'"
+E           AssertionError: The 'done' field must be of type 'bool'
+
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:494: AssertionError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[state]" time="0.004"><failure message="AssertionError: The 'done' field must be of type 'bool'">damage = 'state'
+
+    @pytest.mark.parametrize('damage', ['identity', 'generation', 'validity', 'status', 'cursor',
+                                       'empty', 'short', 'long', 'done', 'state', 'timeout'])
+    def test_malformed_page_never_returns_partial_block(damage):
+        port, identity, requests = make_port((120, 100, 20), damage=damage)
+        with pytest.raises((ValueError, TimeoutError)):
+&gt;           port.read_region('lease', identity, 2, CellRegion((10, 5, 3), (110, 95, 13)), deadline=123.)
+
+src/luggage_mapping/test/test_regions.py:132: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:261: in read_region
+    raw = self._pages('read_cells', handle, region.count, identity, generation,
+src/luggage_mapping/luggage_mapping/observer.py:281: in _pages
+    page = self.call(self.clients[name],self.services[name].Request(**args),deadline,'observer_'+name)
+src/luggage_mapping/test/test_regions.py:91: in call
+    page = ReadCells.Response(status='OK', identity=SnapshotIdentity(**identity),
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:373: in __init__
+    self.done = kwargs.get('done', bool())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;[AttributeError("'ReadCells_Response' object has no attribute '_done'") raised in repr()] ReadCells_Response object at 0x772a804df4c0&gt;
+value = np.False_
+
+    @done.setter
+    def done(self, value):
+        if __debug__:
+&gt;           assert \
+                isinstance(value, bool), \
+                "The 'done' field must be of type 'bool'"
+E           AssertionError: The 'done' field must be of type 'bool'
+
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:494: AssertionError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_malformed_page_never_returns_partial_block[timeout]" time="0.004"><failure message="AssertionError: The 'done' field must be of type 'bool'">damage = 'timeout'
+
+    @pytest.mark.parametrize('damage', ['identity', 'generation', 'validity', 'status', 'cursor',
+                                       'empty', 'short', 'long', 'done', 'state', 'timeout'])
+    def test_malformed_page_never_returns_partial_block(damage):
+        port, identity, requests = make_port((120, 100, 20), damage=damage)
+        with pytest.raises((ValueError, TimeoutError)):
+&gt;           port.read_region('lease', identity, 2, CellRegion((10, 5, 3), (110, 95, 13)), deadline=123.)
+
+src/luggage_mapping/test/test_regions.py:132: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:261: in read_region
+    raw = self._pages('read_cells', handle, region.count, identity, generation,
+src/luggage_mapping/luggage_mapping/observer.py:281: in _pages
+    page = self.call(self.clients[name],self.services[name].Request(**args),deadline,'observer_'+name)
+src/luggage_mapping/test/test_regions.py:91: in call
+    page = ReadCells.Response(status='OK', identity=SnapshotIdentity(**identity),
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:373: in __init__
+    self.done = kwargs.get('done', bool())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;[AttributeError("'ReadCells_Response' object has no attribute '_done'") raised in repr()] ReadCells_Response object at 0x772a804ddf40&gt;
+value = np.False_
+
+    @done.setter
+    def done(self, value):
+        if __debug__:
+&gt;           assert \
+                isinstance(value, bool), \
+                "The 'done' field must be of type 'bool'"
+E           AssertionError: The 'done' field must be of type 'bool'
+
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:494: AssertionError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_region_count_and_bounds_rejected_before_rpc" time="0.000" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_full_one_cm_grid_requires_67_pages" time="0.004"><failure message="AssertionError: The 'done' field must be of type 'bool'">record_property = &lt;function record_property.&lt;locals&gt;.append_property at 0x772a80529d80&gt;
+
+    def test_full_one_cm_grid_requires_67_pages(record_property):
+        port, identity, requests = make_port((149, 197, 148))
+        started = time.monotonic()
+&gt;       block = port.read_region('lease', identity, 2, CellRegion((0, 0, 0), (149, 197, 148)), deadline=1000.)
+
+src/luggage_mapping/test/test_regions.py:148: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/observer.py:261: in read_region
+    raw = self._pages('read_cells', handle, region.count, identity, generation,
+src/luggage_mapping/luggage_mapping/observer.py:281: in _pages
+    page = self.call(self.clients[name],self.services[name].Request(**args),deadline,'observer_'+name)
+src/luggage_mapping/test/test_regions.py:91: in call
+    page = ReadCells.Response(status='OK', identity=SnapshotIdentity(**identity),
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:373: in __init__
+    self.done = kwargs.get('done', bool())
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;[AttributeError("'ReadCells_Response' object has no attribute '_done'") raised in repr()] ReadCells_Response object at 0x772a804df6c0&gt;
+value = np.False_
+
+    @done.setter
+    def done(self, value):
+        if __debug__:
+&gt;           assert \
+                isinstance(value, bool), \
+                "The 'done' field must be of type 'bool'"
+E           AssertionError: The 'done' field must be of type 'bool'
+
+install-production/uld_occ_observer/local/lib/python3.10/dist-packages/uld_occ_observer/srv/_read_cells.py:494: AssertionError</failure></testcase><testcase classname="src.luggage_mapping.test.test_regions" name="test_complete_capture_uses_region_and_releases_lease[False]" time="0.029" /><testcase classname="src.luggage_mapping.test.test_regions" name="test_complete_capture_uses_region_and_releases_lease[True]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_config_uses_exact_native_bytes_and_dimensions" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_x_fastest_unknown_occupied_and_inactive_are_preserved" time="0.002" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_partial_known_column_is_not_promoted_to_free_volume" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_real_candidate_consumer_reads_immutable_observer_volume" time="0.011" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[missing_cell]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[invalid_state]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[missing_column]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[duplicate_column]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[active_count]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[known_count]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[has_occupied]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_conversion_rejects_incomplete_or_contradictory_views[top_z]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_every_page_carries_the_entire_lease_identity[epoch-2]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_every_page_carries_the_entire_lease_identity[map_revision-8]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_every_page_carries_the_entire_lease_identity[observed_revision-10]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_every_page_carries_the_entire_lease_identity[last_integrated_stamp_ns-13]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_every_page_carries_the_entire_lease_identity[geometry_hash-different]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_every_page_carries_the_entire_lease_identity[config_digest-different]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_every_page_carries_the_entire_lease_identity[clock_domain-other]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_issuance_retains_map_source_and_refuses_rebinding" time="0.095" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_page_completion_is_checked_behaviorally[cursor]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_page_completion_is_checked_behaviorally[empty]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_page_completion_is_checked_behaviorally[short_done]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_page_completion_is_checked_behaviorally[not_done]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_page_completion_is_checked_behaviorally[array_shape]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_page_completion_is_checked_behaviorally[validity]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_page_completion_is_checked_behaviorally[generation]" time="0.001" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_timed_out_acquire_stays_single_flight_and_releases_late_handle_once" time="0.124" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_completed_response_cannot_reopen_acquire_before_late_cleanup_consumption" time="0.011" /><testcase classname="src.luggage_planning.test.test_joint_operation_observer" name="test_release_still_runs_when_its_capture_fails_and_blocks_new_capture" time="0.000" /><testcase classname="src.luggage_packing.test.test_placement_query_consumers" name="test_compute_and_complete_prepare_preserve_the_same_directed_candidates" time="0.029" /><testcase classname="src.luggage_packing.test.test_placement_query_consumers" name="test_compute_refuses_unknown_volume_and_unverified_planned_box_copy" time="0.016" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_four_directed_headings_survive_identical_footprints_and_pool_limits[4-size0]" time="0.019" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_four_directed_headings_survive_identical_footprints_and_pool_limits[4-size1]" time="0.018" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_four_directed_headings_survive_identical_footprints_and_pool_limits[8-size0]" time="0.018" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_four_directed_headings_survive_identical_footprints_and_pool_limits[8-size1]" time="0.019" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_absolute_origin_is_independent_of_legacy_height_zero[-0.17-0.01]" time="0.101" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_absolute_origin_is_independent_of_legacy_height_zero[-0.17-0.02]" time="0.019" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_absolute_origin_is_independent_of_legacy_height_zero[0.53-0.01]" time="0.081" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_absolute_origin_is_independent_of_legacy_height_zero[0.53-0.02]" time="0.019" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_floor_prior_never_authorizes_unseen_volume[missing]" time="0.020" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_floor_prior_never_authorizes_unseen_volume[short]" time="0.040" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_floor_prior_never_authorizes_unseen_volume[unknown]" time="0.023" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_floor_prior_never_authorizes_unseen_volume[occupied]" time="0.023" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_floor_prior_never_authorizes_unseen_volume[inactive]" time="0.022" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_face_touching_is_allowed_but_positive_penetration_is_rejected" time="0.015" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_blocked_straight_corridor_and_center_atlas_are_hints_not_exclusion" time="0.020" /><testcase classname="src.luggage_packing.test.test_placement_query" name="test_integral_volume_matches_zero_erosion_scalar_reference" time="0.015" /><testcase classname="src.luggage_planning.test.test_map_owner_launch" name="test_one_owner_and_consumer_resolution[-observer]" time="0.035" /><testcase classname="src.luggage_planning.test.test_map_owner_launch" name="test_one_owner_and_consumer_resolution[-grid_g]" time="0.001" /><testcase classname="src.luggage_planning.test.test_map_owner_launch" name="test_one_owner_and_consumer_resolution[0.02-observer]" time="0.005" /><testcase classname="src.luggage_planning.test.test_map_owner_launch" name="test_one_owner_and_consumer_resolution[0.02-grid_g]" time="0.000" /><testcase classname="src.luggage_planning.test.test_map_owner_launch" name="test_optical_input_is_explicit_and_never_semantic_cloud" time="0.005" /><testcase classname="src.luggage_planning.test.test_map_owner_launch" name="test_invalid_owner_and_tampered_effective_configuration_reject" time="0.009" /><testcase classname="src.luggage_planning.test.test_map_owner_launch" name="test_planning_compatibility_exports_are_same_classes" time="0.000" /><testcase classname="src.luggage_planning.test.test_map_owner_launch" name="test_full_one_cm_grid_reads_all_67_pages_without_magic_cap" time="0.072" /><testcase classname="src.luggage_planning.test.test_map_owner_launch" name="test_bad_pages_refuse[stalled]" time="0.000" /><testcase classname="src.luggage_planning.test.test_map_owner_launch" name="test_bad_pages_refuse[mixed]" time="0.000" /><testcase classname="src.luggage_planning.test.test_map_owner_launch" name="test_bad_pages_refuse[short]" time="0.000" /><testcase classname="src.luggage_planning.test.test_map_owner_launch" name="test_compute_callback_consumes_shared_owner_capture[1]" time="0.008" /><testcase classname="src.luggage_planning.test.test_map_owner_launch" name="test_compute_callback_consumes_shared_owner_capture[0]" time="0.003" /><testcase classname="src.luggage_planning.test.test_map_owner_launch" name="test_compute_callback_consumes_shared_owner_capture[2]" time="0.003" /><testcase classname="src.luggage_planning.test.test_map_owner_launch" name="test_ordinary_launch_callback_defaults_to_o" time="0.006" /></testsuite></testsuites>

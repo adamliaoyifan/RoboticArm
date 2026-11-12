@@ -18,6 +18,7 @@ from luggage_description.cargo_grid_contract import MAX_VOLUME_CELLS
 from luggage_description.container_geometry import normalize_descriptor
 from luggage_mapping.source import OperationMapSource
 from luggage_mapping.surface import ConfirmedSurface, freeze
+from luggage_mapping.regions import CellBlock, CellRegion, NativeGrid
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,8 @@ class ObserverConfiguration:
 
 IDENTITY_FIELDS = ('epoch', 'map_revision', 'observed_revision', 'last_integrated_stamp_ns',
                    'geometry_hash', 'config_digest', 'clock_domain')
+# ReadCells/ReadSurface owner transport maximum, not a spatial coverage limit.
+OBSERVER_PAGE_CELLS = 65536
 
 
 def identity_record(identity):
@@ -231,7 +234,11 @@ class ObserverSnapshotPort:
             generation = lease.validity.generation
             nx, ny, nz = self.config.dimensions_xyz
             columns = self._pages('read_surface',handle,nx*ny,identity,generation,deadline)
-            states = self._pages('read_cells',handle,nx*ny*nz,identity,generation,deadline)
+            block = self.read_region(handle, identity, generation,
+                                     CellRegion((0, 0, 0), (nx, ny, nz)), deadline=deadline)
+            # The surface bridge uses the owner's explicit out-of-domain code;
+            # shared blocks instead expose it as unknown plus inactive coverage.
+            states = bytes(s if a else 3 for s, a in zip(block.states, block.active))
             snapshot = assemble_snapshot(self.config,identity,generation,columns,states,
                                         scene_revision=scene_revision,request_id=request_id)
             if require_latest and not self.current(snapshot.source,deadline=deadline):
@@ -240,27 +247,59 @@ class ObserverSnapshotPort:
         finally:
             self._release(lease)
 
-    def _pages(self, name, handle, count, identity, generation, deadline):
-        values, cursor = [], 0
-        for _ in range(math.ceil(count/65536)+1):
-            args = dict(handle=handle,cursor=cursor,limit=65536)
+    def read_region(self, handle, identity, generation, region, *, deadline):
+        """Read explicit coverage inside an already admitted, still-owned lease.
+
+        This low-level operation never acquires/releases/rebinds a snapshot. The
+        capture owner must validate freshness and release even after a failure.
+        """
+        descriptor = self.config.descriptor()
+        grid = NativeGrid(self.config.resolution_m,
+                          (-descriptor['length']/2, -descriptor['width']/2, descriptor['floor_z']),
+                          self.config.dimensions_xyz)
+        region.validate_grid(grid)
+        raw = self._pages('read_cells', handle, region.count, identity, generation,
+                          deadline, region=region)
+        provenance = freeze(dict(producer='observer', identity=identity,
+                                 validity_generation=generation))
+        return CellBlock(grid, region, provenance, bytes(0 if s == 3 else s for s in raw),
+                         bytes(s != 3 for s in raw))
+
+    def _pages(self, name, handle, count, identity, generation, deadline, *, region=None):
+        if name == 'read_cells':
+            region = region or CellRegion((0, 0, 0), self.config.dimensions_xyz)
+            if (region.count != count or any(b > n for b, n in
+                    zip(region.end, self.config.dimensions_xyz))):
+                raise ValueError('OBSERVER_REGION_COUNT_OR_BOUNDS')
+        elif region is not None:
+            raise ValueError('OBSERVER_SURFACE_IS_FULL_DOMAIN')
+        values, cursor = (bytearray() if name == 'read_cells' else []), 0
+        for _ in range(math.ceil(count/OBSERVER_PAGE_CELLS)):
+            args = dict(handle=handle,cursor=cursor,limit=OBSERVER_PAGE_CELLS)
             if name == 'read_cells':
-                args.update(begin=[0,0,0],end=list(self.config.dimensions_xyz))
+                args.update(begin=list(region.begin),end=list(region.end))
             page = self.call(self.clients[name],self.services[name].Request(**args),deadline,'observer_'+name)
             admit_response(page,identity,generation)
             if name == 'read_cells':
-                chunk = list(page.states)
+                chunk = page.states
+                if any(v not in (0, 1, 2, 3) for v in chunk):
+                    raise ValueError('OBSERVER_INVALID_CELL_STATE')
             else:
                 fields = ('x','y','active_count','known_count','has_occupied','top_z')
                 if len({len(getattr(page,field)) for field in fields}) != 1:
                     raise ValueError('OBSERVER_SURFACE_PAGE_SHAPE')
                 chunk = [dict(zip(fields,row)) for row in zip(*(getattr(page,f) for f in fields))]
-            values.extend(chunk)
-            if (not chunk or page.next_cursor != cursor+len(chunk) or len(values) > count
-                    or page.done != (len(values) == count)):
+            if (not len(chunk) or len(chunk) > OBSERVER_PAGE_CELLS
+                    or page.next_cursor != cursor+len(chunk) or cursor+len(chunk) > count
+                    or page.done != (cursor+len(chunk) == count)):
                 raise ValueError('OBSERVER_PAGE_PROGRESS_OR_COMPLETENESS')
+            # Owner pages fill limit except for the final tail. Accepting a short
+            # intermediate page would invalidate the dimension-derived page bound.
+            if not page.done and len(chunk) != OBSERVER_PAGE_CELLS:
+                raise ValueError('OBSERVER_SHORT_INTERMEDIATE_PAGE')
+            values.extend(chunk)
             if page.done:
-                return values
+                return bytes(values) if name == 'read_cells' else values
             cursor = page.next_cursor
         raise ValueError('OBSERVER_PAGE_LIMIT')
 

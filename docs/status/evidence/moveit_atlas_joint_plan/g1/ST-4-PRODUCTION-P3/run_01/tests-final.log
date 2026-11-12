@@ -1,0 +1,42 @@
+..................................F..................................... [ 72%]
+...........................                                              [100%]
+=================================== FAILURES ===================================
+________________ test_real_o_g_volume_dtos_share_region_result _________________
+
+tmp_path = PosixPath('/tmp/pytest-of-adamliao/pytest-1632/test_real_o_g_volume_dtos_shar0')
+
+    def test_real_o_g_volume_dtos_share_region_result(tmp_path):
+        from luggage_msgs.srv import GetCargoVolumeV2
+        from test_joint_operation_observer import configuration, snapshot
+        config, _, _ = configuration(tmp_path)
+        raw = [1]*64;raw[5] = 2;raw[21] = 3
+        observed = snapshot(config, raw).volume
+        grid_g = GetCargoVolumeV2.Response(resolution_m=observed.resolution_m,
+            origin_container=observed.origin_container, dimensions_xyz=observed.dimensions_xyz,
+            states=observed.states, active=observed.active)
+        region = CellRegion((0, 1, 0), (3, 3, 3))
+        a = block_from_volume(observed, region, identity=b'admitted-O')
+>       b = block_from_volume(grid_g, region, identity=b'admitted-G')
+
+src/luggage_mapping/test/test_regions.py:223: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/luggage_mapping/luggage_mapping/regions.py:101: in block_from_volume
+    grid = NativeGrid(volume.resolution_m, tuple(volume.origin_container),
+<string>:6: in __init__
+    ???
+src/luggage_mapping/luggage_mapping/regions.py:26: in __post_init__
+    _cell_tuple(self.dimensions_xyz)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+value = (np.uint32(4), np.uint32(4), np.uint32(4))
+
+    def _cell_tuple(value):
+        if (type(value) is not tuple or len(value) != 3
+                or any(type(v) is not int for v in value)):
+>           raise ValueError('REGION_INTEGER_CELL_COORDINATES_REQUIRED')
+E           ValueError: REGION_INTEGER_CELL_COORDINATES_REQUIRED
+
+src/luggage_mapping/luggage_mapping/regions.py:16: ValueError
+=========================== short test summary info ============================
+FAILED src/luggage_mapping/test/test_regions.py::test_real_o_g_volume_dtos_share_region_result
+1 failed, 98 passed in 2.05s

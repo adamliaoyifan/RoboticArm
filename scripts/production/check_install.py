@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MODULES = (
     'luggage_mapping.observer',
     'luggage_mapping.configuration',
+    'luggage_mapping.regions',
     'luggage_planning.joint_operation_prepare_node',
     'luggage_planning.joint_operation_runtime',
     'luggage_planning.joint_operation_runtime_ports',

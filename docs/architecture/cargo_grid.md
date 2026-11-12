@@ -31,6 +31,23 @@ free space. G's separate snapshot adapter remains behind the same placement
 surface/volume evidence boundary. This selection does not by itself qualify the
 legacy selector or a complete-operation execution client for both backends.
 
+`luggage_mapping.regions` defines exact source-grid half-open integer cell
+regions and immutable blocks. Blocks keep the original grid, explicit covered
+bounds, source identity bytes, x-fastest states and active mask. They cannot be
+passed as complete volumes. Reading outside a block's coverage refuses; it never
+implies free space. Origins are container-absolute, including Z. No interpolation,
+new spacing, radius heuristic or cross-revision merging is implied.
+
+O's leased reader paginates an explicit region from local cursor zero with the
+same bounds and identity on every page. A complete production capture uses this
+same reader over the full grid and retains surface/volume agreement checks.
+The lease owner remains responsible for acquisition/freshness/release. O wire
+out-of-domain state 3 becomes unknown plus inactive in the shared block. G can
+produce the same representation by slicing an already admitted frozen volume;
+its GetCargoVolumeV2 still transfers the entire grid. That adapter saves no
+initial network traffic. Candidate-specific staged reads are not enabled yet;
+final full-model trajectory certification continues to require the full volume.
+
 Deployment accepts 0.005 through 0.05 m, finite. Allocation and volume transport
 share MAX_VOLUME_CELLS=8,000,000. Counts are validated before buffers are allocated;
 an excessive grid is refused rather than silently coarsened. 1cm on the current

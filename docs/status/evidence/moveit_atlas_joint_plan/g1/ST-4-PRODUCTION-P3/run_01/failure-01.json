@@ -1,0 +1,12 @@
+{
+  "stage": "typed RPC fixture response construction",
+  "first_failure": "ROS fixed array arithmetic produced numpy.bool_ for done; generated ROS response requires bool",
+  "profile": "test double, not owner wire failure",
+  "capture_complete": true,
+  "replay_possible": true,
+  "inputs": "attempt-01/",
+  "log": "tests-01.log",
+  "junit": "tests-01.xml",
+  "command": "test-command.txt",
+  "repair": "Convert fixed-array-derived region count to Python int inside transport fixture"
+}
