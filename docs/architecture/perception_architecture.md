@@ -204,3 +204,17 @@ The acquisition service is read-only and cannot move hardware or write maps.
 Later O consumption must use these exact point bytes and obtain source-bound
 owner provenance, conditional unique same-cargo association and native scene
 admission. A partition alone authorizes no obstacle removal.
+
+An upstream instance mask may be a filled detector rectangle, rather than a
+measured object contour. Its frame-local label proposes a region; it cannot
+prove that every labelled depth return belongs to cargo. Downstream association
+must qualify actual visible geometry and ambiguous/background returns before
+asserting contributor ownership. Calibration must describe the actual image
+model: colour alignment does not establish rectification. A pinhole-only
+consumer must reject nonzero distortion rather than silently zero coefficients.
+
+`eval/cargo_acquisition_audit.py` and `eval/cargo_bag_audit.py` are offline
+source-coverage diagnostics, invoked by `scripts/audit_cargo_bags.py`. They use
+recorded native schemas without starting ROS or changing raw bags, planning,
+robot or O state. Exact timestamp coverage, reported shape spread and historical
+held detections are not independent pose accuracy or physical identity evidence.
