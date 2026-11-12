@@ -24,7 +24,7 @@ from luggage_description.frame_diagnostics import BoundaryContext
 from luggage_description.ros_frame_bindings.poses import pose_from_message
 from luggage_description.ros_frame_bindings.surfaces import surface_from_message
 from luggage_description.suction_contact_model import load_suction_contact_model
-from luggage_perception.ros_suction_domain import domain_from_message, require_matching_detection
+from luggage_perception.ros_suction_domain import domain_from_message, domain_to_message, require_matching_detection
 from luggage_description.container_geometry import descriptor_from_scene_config
 from luggage_description.scene_tf_config_utils import load_scene_tf_config
 from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy
@@ -259,6 +259,7 @@ class JointOperationPrepareNode(Node):
         if frozen_domain is not None:domain = frozen_domain
         if domain is None or joints is None: raise ValueError('OBSERVATION_OR_JOINTS_UNAVAILABLE')
         if frozen_domain is None:
+            self._record('domain_admission_input',domain_to_message(domain))
             from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
             if not 0 <= self.get_clock().now().nanoseconds-domain.stamp_ns <= ATTACHMENT_MAX_AGE_NS:
                 raise ValueError('INITIAL_STATIONARY_OBSERVATION_AGE_REFUSED')

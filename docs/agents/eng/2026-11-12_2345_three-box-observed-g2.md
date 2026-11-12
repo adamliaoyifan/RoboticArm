@@ -769,3 +769,25 @@ Raw capture rotates per box and triggers on post-place exploration/failure;
 all typed plan/map/certificate boundaries persist independently. No prior
 placement, simulator geometry as online input, new planner or cache is added.
 104 focused behavioral cases pass; build/install/live evidence follows.
+
+## Diagnostic38 initial observation race -- 2026-11-13T06:00+08:00
+
+Build59/install192 pass. Three-cycle attempt stops before any product motion:
+first explicit floor enumeration then prepare refuses independent detection/domain
+mismatch. `diagnostic_38/observation_pair_review.json` proves submitted detection
+and saved domain share exact stamp11.287s/digest32c4a0f1 and match all geometry;
+later domain differs. Source establishes prepare reads latest domain, while the
+new client full candidate enumeration took2.85s. Exact service-side domain was
+not captured, so this race mechanism is supported but the original service
+acquisition is not directly recoverable. Added typed `domain_admission_input`
+capture before validation so the next failure is complete evidence.
+
+Recommended minimum wiring fix: after observed candidate enumeration, reacquire
+fresh matched detection/domain immediately before submission. Preserve candidate
+support height from O while adjusting center by half the newly measured height
+difference. These remain proposals: main shared admission rechecks actual new
+size/volume, contact and full native trajectory. No pose or dimension approval
+is inherited from the older acquisition. This avoids adding a second domain
+history/cache and its raw-context lifetime problem. No gate is loosened and no
+failed full planning run is automatically retried.39 focused wiring cases pass.
+Diagnostic38 failure raw/map/scene captured; teardown0;3box remains incomplete.

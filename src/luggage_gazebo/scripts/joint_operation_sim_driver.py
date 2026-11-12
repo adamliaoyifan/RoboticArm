@@ -393,6 +393,19 @@ class OperationSimDriver(Node):
                     vertical_margin=self.launch['collision_policy']['vertical_collision_margin_m'])
                 self.record('explicit_task_candidates',json.dumps(report,sort_keys=True).encode())
                 if not slots:raise RuntimeError('NO_OBSERVED_'+task_mode.upper()+'_PLACEMENT')
+                # Enumeration proposals are not frozen contact evidence. Join a
+                # fresh acquisition just before the service pins it. Preserve the
+                # observed support height; server rechecks every pose with NEW
+                # measured dimensions, observed volume and complete native route.
+                proposal_height=domain.box_wdh[2]
+                detection,domain=wait_observed_detection(
+                    lambda remaining:self.call(self.detect,DetectLuggage.Request(),'submit_detect',timeout=remaining),
+                    lambda:self.domain,deadline=time.monotonic()+30.)
+                height_shift=(domain.box_wdh[2]-proposal_height)/2
+                slots=tuple(Transform((slot.translation[0],slot.translation[1],slot.translation[2]+height_shift),
+                    slot.quaternion_xyzw) for slot in slots)
+                self.record('submit_top_domain',domain)
+                for key,message in self.images.items():self.record('submit_detection_'+key,message)
             return self.prepare_from_observation(detection,domain,lease.identity,slots=slots)
         finally:
             self.call(self.release_snapshot,ReleaseSnapshot.Request(handle=lease.handle),'release_prepare_snapshot')
