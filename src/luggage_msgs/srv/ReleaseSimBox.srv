@@ -1,0 +1,7 @@
+# Simulation actuator only. No planned pose or measured geometry is accepted.
+# Recreate the same physical instance as dynamic at its actual current pose.
+string model_name
+uint64 expected_generation
+---
+bool success
+string message

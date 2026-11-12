@@ -185,6 +185,7 @@ class VacuumControllerNode(Node):
         self.declare_parameter("world", "airport_loading")
         self.declare_parameter("panel_frame", "suction_contact_frame")
         self.declare_parameter("follow_rate_hz", 30.0)
+        self.declare_parameter("physical_release_on_detach", False)
         self.declare_parameter("do0_service", "/elfin/vacuum/set_do0")
         self.declare_parameter("do1_service", "/elfin/vacuum/set_do1")
         self.declare_parameter("di0_topic", "/vacuum/di0")
@@ -280,6 +281,7 @@ class VacuumControllerNode(Node):
                     self.get_parameter("blowoff_hold_sec").value))
         else:
             from luggage_planning.planning_scene_client import PlanningSceneClient
+            from luggage_planning.sim_physical_release import SimPhysicalReleaseClient
             scene = PlanningSceneClient(self, callback_group=group)
             gz_client = GzSetPoseClient(
                 self, group, str(self.get_parameter("world").value))
@@ -289,7 +291,9 @@ class VacuumControllerNode(Node):
                 follow_rate_hz=float(
                     self.get_parameter("follow_rate_hz").value),
                 carry_filter=carry_filter,
-                physical_relation_provider=self._resolve_physical_attachment)
+                physical_relation_provider=self._resolve_physical_attachment,
+                physical_release_provider=(SimPhysicalReleaseClient(self,group,self._follow_lock)
+                    if self.get_parameter("physical_release_on_detach").value else None))
 
         self._vacuum_on = False
         self._last_fail_reason = ""

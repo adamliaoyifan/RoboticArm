@@ -29,21 +29,24 @@ def server_render_engine(config):
     return engine
 
 
-def operation_perception_parameters(config):
+def operation_evidence_lifetime_s(config):
     """Retain the same acquisition for the composed, bounded operation window.
 
     This is storage lifetime, not physical freshness or timestamp renewal.
     Identity/model changes still revoke the owner's frozen evidence.
     """
-    if config.get('planning_pipeline') != 'joint_operation':
-        return {}
     from luggage_planning.joint_operation.preparation_profile import execution_observation_age_limit_ns
     preparation = float(config['operation_prepare_budget_s'])
     execution = float(config.get('operation_execution_budget_s', 600.))
     if not math.isfinite(execution) or execution <= 0:
         raise ValueError('FINITE_OPERATION_EXECUTION_BUDGET_REQUIRED')
-    return {'frozen_suction_lifetime_s':
-            execution_observation_age_limit_ns(preparation) / 1e9 + execution}
+    return execution_observation_age_limit_ns(preparation) / 1e9 + execution
+
+
+def operation_perception_parameters(config):
+    if config.get('planning_pipeline') != 'joint_operation':
+        return {}
+    return {'frozen_suction_lifetime_s':operation_evidence_lifetime_s(config)}
 
 
 def simulated_self_mask_error_bound(robot_xml):
@@ -167,6 +170,7 @@ def operation_composition(config, robot_xml, semantic_xml):
             connection_max_edge_s=float(config.get('operation_connection_max_edge_s',2.)),
             max_branch_attempts=int(config.get('operation_max_branch_attempts',3)),
             max_branch_attempts_per_candidate=int(config.get('operation_max_branch_attempts_per_candidate',2)),
+            issued_plan_lifetime_s=operation_evidence_lifetime_s(config),
             max_preparation_budget_s=float(config['operation_prepare_budget_s'])),atlas_parameters]))
     (folder/'robot.urdf').write_text(robot_xml)
     (folder/'robot.srdf').write_text(semantic_xml)
@@ -179,6 +183,7 @@ def operation_composition(config, robot_xml, semantic_xml):
         startup_authorizes_motion=False)
     manifest['operation_atlas'] = dict(status=atlas_status, parameters=atlas_parameters)
     manifest['perception_policy'] = operation_perception_parameters(config)
+    manifest['issued_plan_lifetime_s'] = operation_evidence_lifetime_s(config)
     manifest['observer_self_mask'] = dict(geometry='actual_urdf_collision_shapes',
         scale=1.,padding_m=self_mask_error,padding_source='half_simulator_range_resolution',
         transform_time='cloud_acquisition',

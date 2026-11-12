@@ -130,6 +130,9 @@ class OperationSimDriver(Node):
                 lambda msg,k=key:self.sensor_diagnostics.__setitem__(k,msg),qos_profile_sensor_data)
         self.create_subscription(DetectionFrame,'/luggage/perception/detection_frame',
             lambda msg:self.sensor_diagnostics.__setitem__('detection_frame',msg),qos_profile_sensor_data)
+        self.create_subscription(String,'/luggage/simulation_release',
+            lambda msg:self.record('physics_release_report',msg),QoSProfile(
+                depth=1,durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.prepare = self.create_client(PrepareJointOperationV2,'/joint_operation/prepare')
         self.detect = self.create_client(DetectLuggage,'/luggage_detector/detect_luggage')
         self.validity = self.create_client(GetValidity,'/uld_occ_observer/get_validity')

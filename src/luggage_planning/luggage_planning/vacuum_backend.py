@@ -187,7 +187,7 @@ class SimVacuumBackend(VacuumBackend):
     """
 
     def __init__(self, gz_client, scene, follow_rate_hz=30.0, carry_filter=None,
-                 physical_relation_provider=None):
+                 physical_relation_provider=None, physical_release_provider=None):
         self._gz = gz_client
         self._scene = scene
         self.follow_rate_hz = float(follow_rate_hz)
@@ -195,6 +195,8 @@ class SimVacuumBackend(VacuumBackend):
         # None in unit tests, which have no Gazebo. The sim node always sets it.
         self._carry_filter = carry_filter
         self._physical_relation_provider = physical_relation_provider
+        self._physical_release_provider = physical_release_provider
+        self._physical_release_failure = ''
         self._attached = False
         self._model_name = None
         self._offset_xyz = None
@@ -361,9 +363,12 @@ class SimVacuumBackend(VacuumBackend):
         self._offset_quat = None
 
     def detach(self, context):
+        if self._physical_release_failure:
+            return False,self._physical_release_failure
         if not self._attached:
             return True, "not attached"
         model = self._model_name
+        generation=(self._physical_relation or {}).get('generation')
         # Unlock at the release command so a later retreat TCP cannot keep
         # composing the frozen grasp onto the payload.
         self._unlock_follow()
@@ -376,5 +381,13 @@ class SimVacuumBackend(VacuumBackend):
         if not scene_ok:
             self.last_error = scene_msg
             return False, "VACUUM_BACKEND_ERROR: detach %s" % scene_msg
+        if self._physical_release_provider is not None:
+            try:
+                released,message=self._physical_release_provider(model,generation)
+            except Exception as error:
+                released,message=False,str(error)
+            if released is not True:
+                self._physical_release_failure='SIM_PHYSICAL_RELEASE_UNRESOLVED:'+message
+                return False,self._physical_release_failure
         # Leave the box where it is; physics takes over.
         return True, "detached %s" % model

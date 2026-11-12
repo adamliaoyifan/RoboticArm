@@ -134,3 +134,10 @@ def test_expiry_while_checking_payload_cannot_return_positive(monkeypatch):
         result=original(*args);now[0]=15.;return result
     monkeypatch.setattr(module,'admit_operation_plan',slow)
     assert not store.current(p)
+
+@pytest.mark.parametrize('lifetime,expected',[(300.,False),(960.,True)])
+def test_issued_storage_survives_composed_execution_without_lookup_renewal(lifetime,expected):
+    now=[0.];store=registry(clock=lambda:now[0],lifetime_s=lifetime);p=plan()
+    store.issue(p,contact_binding=contact_binding(p))
+    now[0]=310.;assert store.current(p)==expected
+    now[0]=lifetime;assert not store.current(p)

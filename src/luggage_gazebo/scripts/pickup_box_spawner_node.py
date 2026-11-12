@@ -36,6 +36,7 @@ from luggage_msgs.srv import (
     ClearCurrentBox,
     FinalizeCurrentBox,
     GetCurrentBox,
+    ReleaseSimBox,
     SpawnNextBox,
     SyncPickupBox,
 )
@@ -229,6 +230,8 @@ class PickupBoxSpawner(Node):
         self._current_box = None
         self._current_model = None
         self._current_ref = None
+        self._release_state = None
+        self._release_lock = threading.Lock()
         # Perception-measured geometry backfilled by sync_detected_pickup_box.
         # Cleared on spawn/clear/finalize: a fresh instance is unmeasured.
         self._measured = None
@@ -260,6 +263,7 @@ class PickupBoxSpawner(Node):
             String, "/luggage/current_box", transient)
         self._finalized_pub = self.create_publisher(
             String, "/luggage/finalized_models", transient)
+        self._release_pub = self.create_publisher(String,'/luggage/simulation_release',transient)
         self._size_eval_pub = self.create_publisher(
             String, "/luggage/perception/size_eval/spawned", transient)
 
@@ -280,6 +284,8 @@ class PickupBoxSpawner(Node):
         self.create_service(
             FinalizeCurrentBox, "/pickup_box_spawner/finalize_current_box", self.handle_finalize,
             callback_group=self._group)
+        self.create_service(ReleaseSimBox, '/pickup_box_spawner/release_sim_box',
+                            self.handle_release_sim_box, callback_group=self._group)
         self.create_service(
             GetCurrentBox, "/pickup_box_spawner/get_current_box", self.handle_get_current,
             callback_group=self._group)
@@ -684,6 +690,46 @@ class PickupBoxSpawner(Node):
         self._publish_box_state()
         response.success = True
         response.message = "cleared current pickup box"
+        return response
+
+    def handle_release_sim_box(self, request, response):
+        if not self._release_lock.acquire(blocking=False):
+            response.message='RELEASE_PENDING_OR_UNRESOLVED';return response
+        try:
+            return self._release_sim_box(request,response)
+        finally:
+            self._release_lock.release()
+
+    def _release_sim_box(self, request, response):
+        """Physics-only handover, bound to the current instance generation."""
+        from luggage_gazebo.entity_replacement import probe_model
+        from luggage_gazebo.simulation_release import release_model
+        identity=lambda:(str(self._current_model or ''),int(self._generation))
+        expected=(request.model_name,int(request.expected_generation))
+        if identity()!=expected:
+            response.message='RELEASE_INSTANCE_MISMATCH';return response
+        previous=getattr(self,'_release_state',None)
+        if previous is not None and previous['identity']==expected:
+            response.success=previous['success']
+            response.message=previous['reason'];return response
+        # Record pending before any delete. Duplicate calls never issue a second
+        # destructive replacement after a timeout or ambiguous creation result.
+        state=dict(identity=expected,success=False,reason='RELEASE_PENDING_OR_UNRESOLVED')
+        self._release_state=state
+        def create(values,sdf,budget):
+            pose=Pose();pose.position.x,pose.position.y,pose.position.z=values[:3]
+            pose.orientation=_quaternion_from_rpy(*values[3:])
+            return self._spawn_model(request.model_name,pose,sdf=sdf,timeout=budget/2)
+        try:
+            report=release_model(model=request.model_name,generation=expected[1],identity=identity,
+                sdf=self._box_sdf(request.model_name,self._spawn_size,self._spawn_mass,self._spawn_visual),
+                probe=lambda budget:probe_model(request.model_name,budget),
+                delete=lambda budget:self._delete_model(request.model_name,timeout=budget/2),create=create)
+        except Exception as error:
+            report=dict(success=False,reason='SIM_RELEASE_ERROR:'+str(error))
+        state.update(success=report['success'],reason=report['reason'])
+        self._release_pub.publish(String(data=json.dumps(report,sort_keys=True)))
+        response.success=state['success'];response.message=state['reason']
         return response
 
     def handle_finalize(self, _req, _response):

@@ -130,6 +130,8 @@ def test_composition_binds_one_owner_and_identical_native_model(tmp_path,monkeyp
     prepare_parameters={}
     for group in evaluate_parameters(LaunchContext(),normalize_parameters(prepare['parameters'])):
         prepare_parameters.update(group)
+    assert prepare_parameters['issued_plan_lifetime_s']==operation_launch.operation_evidence_lifetime_s(settings)
+    assert manifest['issued_plan_lifetime_s']==prepare_parameters['issued_plan_lifetime_s']
     assert prepare_parameters['connection_max_edge_s']==5.
     assert prepare_parameters['max_branch_attempts']==8
     assert prepare_parameters['max_branch_attempts_per_candidate']==2

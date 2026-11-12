@@ -659,3 +659,35 @@ satisfy these product gates.
   invocation above is the actual evidence, not the typo result.
 - Evidence diagnostic34/{cycle,run/execution,reference,final_suffix50}; raw source
   archive complete, owned teardown0. No retreat/adoption/three-box pass yet.
+
+## Diagnostic35 and physical handover audit -- 2026-11-13T05:12+08:00
+
+- Startup7.89s/prepare34.36s; actual long carry succeeds but descending refusal
+  at execution309.64s precedes any new O read. Exact CheckPrepared response is
+  current=false, PLAN_NOT_CURRENTLY_ISSUED. Owner registry still defaults300s.
+  This is distinct from frozen acquisition storage fixed in build50.
+- Recommended composed policy: same bounded960s storage lifetime for issued
+  provenance and frozen observation. Derive from existing admission+execution
+  budgets; original timestamps, expiry/no-lookup-renewal and live checks remain.
+  Manifest and behavioural composition/expiry checks expose both values.
+- IMPORTANT correction to prior intended physics description: diagnostic34
+  reference19/20/21 shows same released physical centre z=.70502148 throughout
+  ~20s, about5cm above intended settled centre. Source establishes carried SDF
+  static=true; SimVacuumBackend.detach only stops SetPose follow and removes
+  scene attachment. Dynamic replacement existed ONLY in legacy smoke driver,
+  absent from the new route. Thus34 vacuum-off is not physical settled success.
+- Minimal wiring repair: simulation spawner now owns ReleaseSimBox, bound to
+  current model/generation. Reuse its actual original spawn SDF, change only
+  static flag/carry collision mask, observe actual current pose, require observed
+  deletion before one dynamic recreate. Same geometry/visuals; no target pose,
+  measured dimensions, planner or O write is accepted by this service. Duplicate
+  unresolved release cannot issue another destructive command. Actuator presence
+  acknowledgement is not settled support. Save full report/SDF on separate
+  simulation_release topic; driver archives it under reference only.
+- Only explicit joint_operation opts into physical_release_on_detach. Legacy
+  smoke driver keeps its original handover ownership and cannot double-recreate.
+  Sim vacuum stops future follow, drains in-flight follow lock, then requests
+  handover; ambiguous release remains a failure on duplicate detach.
+- Focused tests123 pass before final follow-lock/composition assertion updates.
+  Build52 compiles typed interface; build53 covers first wiring; final build54
+  required before live verification. No physical settle/retreat/adoption claim.

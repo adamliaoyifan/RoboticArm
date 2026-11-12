@@ -546,3 +546,25 @@ class TestPlanningSceneMessages(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_sim_detach_physically_releases_same_generation_after_unlock_and_scene():
+    backend=SimVacuumBackend(FakeGzClient(),FakeScene())
+    assert backend.attach(TestSimBackend()._context())[0]
+    backend._physical_relation={'generation':9}
+    calls=[]
+    def release(model,generation):
+        assert not backend.is_attached() and backend._scene.detached==model
+        calls.append((model,generation));return True,'dynamic'
+    backend._physical_release_provider=release
+    assert backend.detach({})[0]
+    assert backend.detach({})[0] and calls==[('pickup_box_0001',9)]
+
+
+def test_failed_physical_handover_cannot_be_approved_by_duplicate_detach():
+    backend=SimVacuumBackend(FakeGzClient(),FakeScene(),
+        physical_release_provider=lambda *a:(False,'ambiguous create'))
+    assert backend.attach(TestSimBackend()._context())[0]
+    backend._physical_relation={'generation':9}
+    assert not backend.detach({})[0]
+    assert not backend.detach({})[0]

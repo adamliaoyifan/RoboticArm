@@ -100,6 +100,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SpawnNextBox.srv"
   "srv/ClearCurrentBox.srv"
   "srv/FinalizeCurrentBox.srv"
+  "srv/ReleaseSimBox.srv"
   "srv/VerifyPlacedBox.srv"
   "srv/GetNextSlot.srv"
   "srv/ComputePlacement.srv"

@@ -331,3 +331,22 @@ fake production success path. Drivers that call production services
 online path even when they live under `luggage_gazebo`. Catalog size,
 `GetCurrentBox`, and unverified planned poses are GT for this rule. The
 defect catalog is [real_scenario.md](real_scenario.md).
+
+### Explicit joint-operation simulation release
+
+The joint-operation Gazebo composition sets `physical_release_on_detach=true`.
+Its simulation vacuum backend stops follow and drains the active follow call,
+then invokes `/pickup_box_spawner/release_sim_box` with physical model name and
+expected generation. The spawner uses its original spawn SDF and the observed
+current physical pose to recreate that same body as dynamic, restoring its full
+collision mask. Geometry and visual mesh remain unchanged. It observes deletion
+before one creation attempt; unresolved/duplicate requests do not issue another
+destructive replacement. The separate simulation release report contains the
+exact SDF and handover trace for evaluation.
+
+This service accepts no requested placement pose, measured planning dimensions
+or map writes. Its acknowledgement proves only dynamic body presence. Actual
+settling and post-place sensor observations remain required; the online planner
+and O receive no simulator geometry or pose. Legacy simulation routes keep their
+existing release owner (`physical_release_on_detach=false`) to avoid duplicate
+physical replacement. Hardware does not call this simulation actuator service.
