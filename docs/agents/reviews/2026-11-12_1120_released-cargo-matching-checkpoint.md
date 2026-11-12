@@ -31,6 +31,18 @@ A bounded owner ledger can retain source-frame plus native hit-cell/local-label 
 
 Only source-complete exclusively-own occupied geometry can eventually be replaced in a read-only private planning scene by conservative measured cargo geometry with the existing padding. Other obstacles and unknowns remain. Current-source checks and full native original-suffix validation still precede any controller goal.5cm release gap and original trajectories remain unchanged.
 
+## Data availability update -- 2026-11-12 11:28+08:00
+
+User supplied `/home/adamliao/work/robotarm_bags`; no box pose/detection error
+assessment exists. Read-only metadata discovery found10 bags. The September16
+floor-box pick bag has preprocessed RGB/depth/calibration, instance masks,
+TF/joints, vacuum and trajectory events, native PointCloud2 LiDAR, and a
+debrief reporting a single floor suitcase, two off-centre picks and a failed
+last pick. This is useful historical failure evidence, not a current ULD
+multi-box association benchmark or independent metrology. A bounded read-only
+data audit is now specified in the parent plan. Asked whether independent
+measurements or ULD/multi-box scenes exist; do not presume either capability.
+
 ## Review status
 
 No request to change the user's goal or to approve hardware motion. Current requested information is actual-data availability, not permission to discard obstacles. Continue measured evidence/owner-interface work; physical matching thresholds remain unresolved until their empirical basis is reviewed. Keep ST-4-INTEGRATION generation2 open and unchanged; later generation3 requires full preserved acceptance and deploy witness.

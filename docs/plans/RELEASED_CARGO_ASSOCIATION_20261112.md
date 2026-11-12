@@ -94,6 +94,65 @@ threshold hidden in resource constants. Production wiring remains opt-in.
    view means representation remains coarse and the operation refuses; a
    diagnostic geometric proof is not a physical sensor observation.
 
+## ST-4-OBS-DATA-AUDIT generation1 (dispatch-complete)
+
+User supplied `/home/adamliao/work/robotarm_bags` on2026-11-12: raw data
+exists, no measured box pose/detection error report. Add this read-only
+prerequisite before OBS-MATCH. Owner codex/gpt-6, base c1ef631125cac8e698eff3c37c618a33bd9f37fb,
+dependencies none. No runtime threshold, sensor playback, robot action or O
+replacement is authorized by this assessment. The historical September bags
+are not automatically representative of the current deployment calibration.
+
+Workload: inventory all10 discovered metadata.yaml files once; deeply inspect
+`20260916_212503_floor_box_pick/bags/pick/pick_0.mcap` once, with an optional
+second indexed pass for at most3 evenly ordered exact-join source examples.
+Report every selected source topic's actual header acquisition stamps, frames,
+counts, duplicates, header/log lag distribution and exact RGB/depth/mask/info
+join count. Report TF edges/static extrinsics, joint-difference distributions,
+actual event messages and available reference/scene labels. Sampling selection
+is explicit; examples do not establish worst-case coverage. Resource budget:
+<=128MiB evidence, <=15min wall clock; failure stops capture with a durable
+manifest. Raw MCAPs stay unchanged; record metadata hashes, MCAP size/mtime and
+per-replayed-source CDR/schema hashes instead of rereading6.5GB for a full hash.
+
+Acceptance is a finite functional AND, once per deterministic test: synthetic
+MCAP counts agree with written messages; exact same-stamp/frame joining accepts;
+one-nanosecond or frame mismatch does not join; duplicate/conflicting inputs
+remain visible rather than silently overwritten; CDR acquisition-stamp parsing
+honours endian/layout and refuses malformed records. Real-run inventory must
+cover10/10 current metadata files; inspected topic counts must match metadata
+for each fully read selected topic, or explicitly fail. A valid empty join is
+a measured result, not a test failure. At least one decoded real image/mask
+example and acquisition/source manifest are required; if no join exists,
+capture one unmatched source boundary. Native MCAP reader/schema decoding only,
+no Humble playback or generated-type substitution for newer recorded schemas.
+
+All required finite cases must pass; this does not estimate physical per-box
+reliability. Absolute pose/size error, false physical association rate, static
+scene repeatability and current-deployment transfer are `not_evaluated` unless
+independent reference/scene/motion evidence actually supports them. No P95
+error inferred from acceptance targets or multiframe self-agreement. Next
+measurement plan must distinguish repeatability, cross-view consistency and
+independent accuracy; freeze labels, independent units, holdout and minimum
+sample/power before scoring a matching policy.
+
+Command: `PYTHONPATH=src/luggage_perception python3
+src/luggage_perception/scripts/audit_cargo_bags.py --root
+/home/adamliao/work/robotarm_bags --output <evidence>/run_01`; focused pytest
+command and exact dirty/source hashes recorded in manifest. Installed runtime
+is unaffected; no ROS graph is created. Preserve failures before correction.
+
+| Boundary | T1 trace | Trigger | T2 payload | Window | Bound/format | Replay |
+|---|---|---|---|---|---|---|
+| Metadata/MCAP ingest | paths/counts/types/storage/bytes/mtime | missing/count mismatch/decode error | exact metadata/schema/offending CDR + error | single record | JSON/CDR <=16MiB | audit same immutable source or retained record |
+| Acquisition join | topic/stamp/frame/lag/count/conflicts | malformed/conflicting source or zero join | contributing source headers + one complete example | exact requested acquisition | JSON/CDR/PNG <=64MiB | pure join test and native schema decoder |
+| Coverage assessment | available event/reference/view evidence | unsupported accuracy/identity inference | labels/events and metric availability reasons | bounded run summary | JSON/Markdown <=16MiB | inspect preserved summary; no physical claim |
+
+Capture health verifies all selected CDRs/schemas and output JSON/images are
+decodable and source identities retained; record timing as diagnostic overhead.
+Failure before scoring consumes no physical experiment. This audit has no
+scored matching campaign and cannot enable substitution.
+
 ## ST-4-OBS-JOIN acceptance (dispatch-complete)
 
 Environment: source-first Python3/ROS Humble, isolated generated interfaces
