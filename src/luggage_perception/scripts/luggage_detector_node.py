@@ -2085,8 +2085,6 @@ class LuggageDetector(Node):
         output.instance_id, output.generation = frame.instance_id, int(frame.generation)
         output.reason = 'OBSERVED_TOP_DOMAIN_UNAVAILABLE'
         service = getattr(self, '_directed_suction_service', None)
-        if service is not None:
-            service.replace_context(None)
         try:
             evaluation = getattr(self, '_last_suction_eval', None)
             if (not frame.pca_valid or frame.box.header != frame.header or evaluation is None
@@ -2106,10 +2104,15 @@ class LuggageDetector(Node):
         except (TypeError, ValueError) as error:
             # Publish this frame's invalid result; never silently reuse the
             # previous frame or turn fitted box dimensions into support.
+            if service is not None:
+                service.replace_context(None)
             output.valid = False
             output.support = []
             output.domain_sha256 = ''
             output.reason = 'OBSERVED_TOP_DOMAIN_UNAVAILABLE:'+str(error)
+        # The last published immutable acquisition stays available during sample
+        # construction. Replace it only with a complete matching acquisition or
+        # the explicit invalid result above; never expose an unpublished gap.
         publisher.publish(output)
 
     def _publish_frame_contracts_v2(self, frame, cloud_msg):

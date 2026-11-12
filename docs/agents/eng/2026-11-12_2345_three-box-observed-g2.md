@@ -849,3 +849,27 @@ trigger also on successful adoption so passive completion keeps a raw window.
 78 focused cases pass. Support ratio/tilt/gap policy remains unchanged: offline
 .01/.02/.03/.05 support-contact band sweep recorded, NOT applied merely because
 some values yield passing stack candidates. Full3box functional gate unproven.
+
+## Diagnostic42 frozen-acquisition handoff -- 2026-11-13T06:37+08:00
+
+Frozen62 renderer controls pass for delete/reuse and dynamic release replacement.
+Diagnostic42 readiness9.09s, box1prepare43.18s and complete execution351.90s
+pass; post-place view measures432/475 target columns (90.95%) at2cm O. Actual
+settled contact capture identifies box1 body versus ULD collision mesh, at floor
+height. Return pickup succeeds; box2 rendering/detection is restored. Box2
+prepare refuses before map/native planning on frozen acquisition mismatch.
+Captured server admission detection/domain stamps and requested digest agree;
+retention roundtrip1.87ms. The old response does not distinguish unavailable
+context from a newer digest, so that exact live subcause is not established.
+Failed case raw/map/scene complete and teardown0.
+
+Source clears current samples BEFORE constructing the next context. Reentrant
+retain during that construction reproduces refusal in2/2 offline behavioral
+cases, including a valid next frame. Recommend complete-then-swap publication:
+keep last published immutable acquisition while building; valid next frame swaps
+matching samples, invalid next frame explicitly clears. Identity/model revocation
+and original acquisition freshness unchanged; no history or permissive fallback.
+New refusal diagnostics distinguish unavailable from differing digest for future
+evidence.76 focused cases pass,17 opt-in ROS transport cases skipped; no measured
+live success-rate improvement claimed. Evidence wiring63 and diagnostic42/
+frozen_handoff_review.json. Three-box gate remains incomplete.

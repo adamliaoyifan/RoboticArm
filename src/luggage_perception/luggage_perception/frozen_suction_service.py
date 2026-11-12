@@ -46,7 +46,9 @@ class FrozenSuctionService:
             if expected is not None and context is None:
                 raise ValueError('FROZEN_BINDING_UNAVAILABLE_OR_EXPIRED')
             if context is None or request.domain_sha256 != context.domain_sha256:
-                raise ValueError('CURRENT_MEASURED_ACQUISITION_MISMATCH')
+                current = context.domain_sha256 if context is not None else 'unavailable'
+                raise ValueError('CURRENT_MEASURED_ACQUISITION_MISMATCH:'
+                    'requested='+request.domain_sha256+':current='+current)
             require_matching_detection(context.domain,request.detection,generation=int(request.generation),
                 contact_model_hash=context.domain.contact_model_hash)
             if (_digest(self.model_provider().as_dict()) != context.policy_sha256

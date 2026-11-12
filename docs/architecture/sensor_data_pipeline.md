@@ -85,6 +85,10 @@ completed coherently; individual `accepted` flags determine contact admission.
 Stale/unavailable input or deadline returns no partial contact list. A new
 invalid detection clears the available context; an in-flight batch keeps its
 original pinned snapshot. Caller freshness and scene admission remain required.
+Building the next sampling context must not clear the last published immutable
+context before the replacement is complete. A valid frame swaps in its matching
+samples before publication; an invalid frame explicitly clears availability.
+This publication handoff adds neither context history nor a freshness exemption.
 Context capture cost is recorded as `suction_directed_context_ms`. This optional
 service issues no robot, vacuum, scene or OCC writes and does not alter legacy
 candidate acceptance.

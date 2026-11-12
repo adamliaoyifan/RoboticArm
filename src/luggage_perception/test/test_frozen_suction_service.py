@@ -190,6 +190,35 @@ def test_retain_requires_exact_current_measured_context(handler_case,kind):
     assert not response.retained and not response.binding.binding_sha256
 
 
+@pytest.mark.parametrize('next_frame_valid',[True,False])
+def test_published_context_stays_available_while_next_samples_are_built(handler_case,monkeypatch,next_frame_valid):
+    """A concurrent retain must not see an unpublished construction gap."""
+    import importlib.util
+    from luggage_msgs.msg import DetectionFrame
+    from luggage_perception.directed_suction_service import DirectedSuctionService
+    import luggage_perception.ros_suction_domain as wire
+    f=handler_case;directed=DirectedSuctionService();directed.replace_context(f.context)
+    f.handler.context_provider=directed.context_snapshot
+    path=Path(__file__).parents[1]/'scripts/luggage_detector_node.py'
+    spec=importlib.util.spec_from_file_location('detector_publication_handoff',path)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    monkeypatch.setattr(wire,'observed_domain_for_detection',lambda *args:f.context.domain)
+    retained=[];outputs=[]
+    def build(box):
+        retained.append(f.call('retain',f.retain_request))
+        if not next_frame_valid:raise ValueError('next samples invalid')
+        return f.context
+    fake=SimpleNamespace(_suction_top_domain_pub=SimpleNamespace(publish=outputs.append),
+        _last_suction_eval=SimpleNamespace(instance_id=f.context.domain.instance_id,generation=f.context.domain.generation),
+        _directed_suction_service=directed,_suction_evaluator=SimpleNamespace(directed_quality_context=build))
+    frame=DetectionFrame(header=f.original.detection.header,box=f.original.detection,pca_valid=True,
+        instance_id=f.context.domain.instance_id,generation=f.context.domain.generation)
+    module.LuggageDetector._publish_suction_top_domain(fake,frame)
+    assert retained[0].retained,retained[0].reason
+    assert outputs[-1].valid is next_frame_valid
+    assert directed.context_snapshot() is (f.context if next_frame_valid else None)
+
+
 @pytest.mark.parametrize('kind',['binding','frame','box','generation','dimensions','model','revoked','budget','pose'])
 def test_actual_identity_or_source_refuses_with_inactive_response(handler_case,kind):
     f=handler_case;saved=f.call('retain',f.retain_request);assert saved.retained
