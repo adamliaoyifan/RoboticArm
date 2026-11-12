@@ -262,14 +262,8 @@ class OperationRuntimePorts:
 
     @staticmethod
     def same_collision_map(a,b):
-        # Full classification and measured surface content, never revision alone.
-        if (a.volume.resolution_m,a.volume.origin_container,a.volume.dimensions_xyz,a.volume.states,a.volume.active)!=\
-                (b.volume.resolution_m,b.volume.origin_container,b.volume.dimensions_xyz,b.volume.states,b.volume.active):
-            return False
-        keys = ('floor_z_container','ceiling_z_container','resolution_m','origin_xy_container',
-                'state','surface_z_container')
-        left,right = a.surface.record(),b.surface.record()
-        return all(left[k]==right[k] for k in keys)
+        from luggage_mapping.observer import same_planning_content
+        return same_planning_content(a,b)
 
     def source_current(self, snapshot, geometry):
         self.retryable_change=False

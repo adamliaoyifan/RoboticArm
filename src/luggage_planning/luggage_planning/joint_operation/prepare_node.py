@@ -318,7 +318,7 @@ class JointOperationPrepareNode(Node):
             captured = self.observer.capture(scene_revision=self.revision,request_id=request.request_id,
                 expected_epoch=request.expected_map_epoch,
                 expected_revision=None if latest else request.expected_map_revision,
-                deadline=deadline)
+                deadline=deadline,require_latest=False)
             return captured.surface,captured.volume,captured.source
         parameters = self._call(self.map_parameters,GetParameters.Request(names=['require_confirmed_map']),deadline,'map_parameters')
         if len(parameters.values)!=1 or parameters.values[0].type!=1:
@@ -429,6 +429,9 @@ class JointOperationPrepareNode(Node):
                                      ranking_geometry=ranking_geometry)
             reference = Transform.from_matrix(self.model.urdf.tcp(list(request.start_joints),self.model.path))
             inputs = PreparationInputs(snapshot,domain,placements,reference,self.pickup_id,observed)
+            from luggage_mapping.observer import ObserverSnapshot
+            captured_maps = ({map_source:ObserverSnapshot(map_source,confirmed,volume)}
+                             if self.observer is not None else {})
             def observation_current(limit):
                 checked = self.observed_contacts.retain(domain,request.detection,
                     request_id=request.request_id,observation_id=request.observation_id,
@@ -441,7 +444,7 @@ class JointOperationPrepareNode(Node):
                 scene = self._scene(limit)
                 observed_current = observation_current(limit)
                 latest = self.store.current()
-                map_current = (self.observer.current(map_source,deadline=limit) if self.observer is not None
+                map_current = (self.observer.planning_current(captured_maps[map_source],deadline=limit) if self.observer is not None
                                else latest is not None and latest.identity==confirmed.identity)
                 return (map_current
                     and observed_current
@@ -450,6 +453,7 @@ class JointOperationPrepareNode(Node):
             if self.observer is not None:
                 def capture_latest(limit):
                     surface,latest_volume,source = self._capture_map(request,limit,latest=True)
+                    captured_maps[source]=ObserverSnapshot(source,surface,latest_volume)
                     scene = self._scene(limit)
                     fresh_snapshot = build_private_snapshot(surface,scene,self.model.model_sha256,self.container,
                         collision_margin_m=self.margin,volume=latest_volume,
@@ -458,7 +462,7 @@ class JointOperationPrepareNode(Node):
                 finalizer = LatestMapFinalizer(original_surface=confirmed,original_source=map_source,
                     original_snapshot=snapshot,baseline_hash=expected_world,capture=capture_latest,
                     read_baseline=self._scene,source_current=lambda source,limit:
-                        self.observer.current(source,deadline=limit),observation_current=observation_current,
+                        self.observer.planning_current(captured_maps[source],deadline=limit),observation_current=observation_current,
                     certification=self.preparation.planner.certification,attempts=self.refresh_attempts)
                 def finalize(plan,candidate,current,limit):
                     nonlocal map_source

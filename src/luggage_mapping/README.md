@@ -17,3 +17,12 @@ optical point-cloud topic/frame. Segmented cargo points cannot substitute for
 sensor rays. Sensor ingestion and the complete default operation client are
 separate convergence units. G uses its native single-snapshot query path with
 volume evidence enabled; G full transport and O regional access still differ.
+
+`ObserverSnapshotPort.current` retains strict source-version semantics.
+`planning_current` obtains fresh complete evidence and compares exact native
+classification, active coverage and measured support heights, while requiring
+the same epoch/configuration/validity generation and nondecreasing acquisition
+versions. O log-odds-only revisions can therefore preserve a planning verdict;
+known/unknown/occupied or support changes cannot. It never refreshes the retained
+observation timestamp. Complete-operation prepare and execution share this
+content comparison; changed content still requires full native recertification.

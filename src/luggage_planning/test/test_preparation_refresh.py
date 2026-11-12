@@ -277,6 +277,7 @@ def test_real_root_finalization_binds_latest_issuance_and_releases_lock(mode):
     from luggage_planning.joint_operation.adapters import operation_plan_to_message
     from luggage_planning.joint_operation.prepare_node import JointOperationPrepareNode
     from luggage_planning.joint_operation.preparation_profile import PreparationBudget
+    from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy
     from test_preparation_profile import query_and_inputs
     f = setup(blocked=True)
     request, context, _ = query_and_inputs(30.)
@@ -306,8 +307,9 @@ def test_real_root_finalization_binds_latest_issuance_and_releases_lock(mode):
         _current=lambda *args, **kwargs:context.domain,
         _record=lambda kind, value:records.append(kind), _capture_map=capture_map,
         _scene=lambda deadline:f.fresh.baseline if True in leases else f.old.baseline,
-        _placements=lambda *args:(), observed_contacts=SimpleNamespace(retain=retain),
-        observer=SimpleNamespace(current=lambda source, **kwargs:source == f.fresh.source),
+        _placements=lambda *args,**kwargs:(), observed_contacts=SimpleNamespace(retain=retain),
+        limits=load_attachment_geometry_policy(),
+        observer=SimpleNamespace(planning_current=lambda captured, **kwargs:captured.source == f.fresh.source),
         preparation=SimpleNamespace(prepare=run, planner=SimpleNamespace(certification=f.certifier)),
         refresh_attempts=2, revision='scene', margin=.05, vertical_margin=.05,
         container=f.old.snapshot.world_from_container,

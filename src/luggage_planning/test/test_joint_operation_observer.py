@@ -52,6 +52,31 @@ def snapshot(config, states, columns=None):
                              states,scene_revision='scene',request_id='req')
 
 
+@pytest.mark.parametrize('change',[
+    None,'occupied','unknown','inactive','generation','epoch','configuration','time_reversal'])
+def test_planning_current_compares_full_content_and_fixed_source_not_logodds_revision(tmp_path,change):
+    config,_,_=configuration(tmp_path)
+    original=snapshot(config,[1]*64)
+    states=[1]*64
+    if change=='occupied':states[0]=2
+    if change=='unknown':states[0]=0
+    if change=='inactive':states[0]=3
+    current_identity=dict(identity(config),map_revision=900,observed_revision=1000,
+                          last_integrated_stamp_ns=13_000_000_000)
+    if change=='epoch':current_identity['epoch']=2
+    if change=='configuration':current_identity['config_digest']='b'*64
+    if change=='time_reversal':current_identity['last_integrated_stamp_ns']=11_000_000_000
+    current=assemble_snapshot(config,current_identity,3 if change=='generation' else 2,
+        columns_for(config,states),states,scene_revision='scene',request_id='req')
+    port=object.__new__(ObserverSnapshotPort)
+    requests=[]
+    def capture(**kwargs):requests.append(kwargs);return current
+    port.capture=capture
+    assert port.planning_current(original,deadline=123.) is (change is None)
+    assert requests[0]['expected_epoch']==1 and requests[0]['require_latest'] is False
+    assert original.source.map_revision==7 and original.source.last_integrated_stamp_ns==12_000_000_000
+
+
 def test_config_uses_exact_native_bytes_and_dimensions(tmp_path):
     config,geometry,path=configuration(tmp_path,size=(.4,.4,.7))
     assert config.config_digest==hashlib.sha256(geometry.read_bytes()+b'\n'+path.read_bytes()+

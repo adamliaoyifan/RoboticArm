@@ -116,6 +116,21 @@ class ObserverSnapshot:
     volume: ObserverVolume
 
 
+def same_planning_content(left, right):
+    """Exact classification/surface equality, excluding probability bookkeeping.
+
+    This is not source admission: callers must separately validate epoch,
+    configuration, validity generation and acquisition/version monotonicity.
+    """
+    a,b=left.volume,right.volume
+    if (a.resolution_m,a.origin_container,a.dimensions_xyz,a.states,a.active)!=(
+            b.resolution_m,b.origin_container,b.dimensions_xyz,b.states,b.active):return False
+    a,b=left.surface.record(),right.surface.record()
+    return all(a[key]==b[key] for key in (
+        'floor_z_container','ceiling_z_container','resolution_m','origin_xy_container',
+        'state','surface_z_container'))
+
+
 def _owner_bridge():
     # O ships the canonical pure converters alongside its executable. Resolve
     # its ament-owned file explicitly; do not require a script-dir PYTHONPATH.
@@ -360,3 +375,21 @@ class ObserverSnapshotPort:
                 and lease.identity.last_integrated_stamp_ns >= source.last_integrated_stamp_ns)
         finally:
             self._release(lease)
+
+    def planning_current(self, checked, *, deadline):
+        """Fresh full evidence with identical motion/placement-relevant content.
+
+        Native O also advances map_revision for log-odds-only changes. Such a
+        change needs exact content comparison, not a false stale-map rejection.
+        Every known/unknown/occupied or support-height change still returns False.
+        Original evidence and its timestamps remain untouched.
+        """
+        source=checked.source
+        current=self.capture(scene_revision=source.scene_revision,request_id=checked.surface.record()['request_id'],
+            expected_epoch=source.epoch,expected_revision=None,deadline=deadline,require_latest=False)
+        fixed=('scene_revision','geometry_hash','epoch','config_digest','clock_domain',
+               'validity_generation','initialization_id','declared_by','initialization_stamp_ns')
+        advances=('map_revision','observed_revision','last_integrated_stamp_ns')
+        return (all(getattr(source,key)==getattr(current.source,key) for key in fixed)
+            and all(getattr(source,key)<=getattr(current.source,key) for key in advances)
+            and same_planning_content(checked,current))

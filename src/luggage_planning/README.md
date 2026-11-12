@@ -69,6 +69,11 @@ with the action budget, preserves the original timestamps, and is recorded in
 `stationary_map_scope.json`. Epoch/config/validity and changed-content checks
 remain active. Preparation still requires its configured fresh observation;
 post-release adoption still requires an actual acquisition after release/settle.
+Preparation pins immutable lease pages without demanding a newer counter stay
+unchanged during transfer. Its final source checks compare fresh complete O
+classification/support content using the same comparison as execution; a
+log-odds-only revision cannot force refusal, while changed content still enters
+the existing full-chain latest-map certification path.
 Frozen contact evidence must pass the original age limit when opening a new
 action. Only that admitted action retains it through its bounded deadline,
 without renewing its timestamp; perception-owner revocation still applies.
