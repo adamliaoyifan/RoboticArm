@@ -31,3 +31,13 @@ Wire explicit observed O full-model Gazebo operation pipeline and client; rehear
 - claimed_generation: 1
 - claimed_plan_revision: 983e80e1
 - claimed_dependencies: ST-4-PREPARATION-LATEST-MAP=1
+
+## Post -- eng/codex -- 2026-11-12 18:07 -- codex/gpt-6
+
+Three unscored startup attempts preserved. Review completed: (1) missing launch
+argument declarations; (2) client read identity before launch materialized it;
+(3) controller activation transient sampled once, plus actual Best Effort /
+Reliable domain incompatibility. No product controller goal issued. Next bounded
+startup attempt uses measured controller readiness and actual DDS delivery test,
+with same full-model/O policy. Baseline remains open. Source/archive/CDR/log
+pointers: ST-4-GAZEBO-OPERATION/rehearsal_01..03 and offline_01/qos_transport.log.

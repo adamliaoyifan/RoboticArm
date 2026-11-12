@@ -28,6 +28,7 @@ from luggage_msgs.srv import DetectLuggage, PrepareJointOperationV2, SpawnNextBo
 from uld_occ_observer.srv import GetValidity, ResetObservation
 from controller_manager_msgs.srv import ListControllers
 import yaml
+from luggage_gazebo.operation_readiness import wait_active_controllers
 
 
 JOINTS = ['elfin_joint%d'%i for i in range(1,7)]
@@ -45,7 +46,8 @@ class OperationSimDriver(Node):
         self.images = {}
         self.clock_count = 0
         self.create_subscription(JointState,'/joint_states',lambda msg:setattr(self,'joint',msg),qos_profile_sensor_data)
-        self.create_subscription(SuctionTopDomainV2,'/luggage/suction_top_domain_v2',lambda msg:setattr(self,'domain',msg),10)
+        self.create_subscription(SuctionTopDomainV2,'/luggage/suction_top_domain_v2',
+            lambda msg:setattr(self,'domain',msg),qos_profile_sensor_data)
         self.create_subscription(Clock,'/clock',lambda msg:setattr(self,'clock_count',self.clock_count+1),qos_profile_sensor_data)
         for key, cls, topic in [('rgb',Image,'/luggage/preprocessed/camera/color/image'),
                 ('depth',Image,'/luggage/preprocessed/camera/depth/image'),
@@ -136,10 +138,8 @@ class OperationSimDriver(Node):
                     '/validate_route_v2','/luggage/evaluate_directed_suction_v2',
                     '/luggage/retain_suction_observation_v2','/vacuum/command_v2'}
         self.wait(lambda:required.issubset(dict(self.get_service_names_and_types())),10.,'NATIVE_OR_OBSERVATION_PORT_NOT_READY')
-        controllers = self.call(self.controllers,ListControllers.Request(),'ready_controllers')
-        active = {controller.name for controller in controllers.controller if controller.state=='active'}
-        if not {'joint_state_broadcaster','elfin_arm_controller'}.issubset(active):
-            raise RuntimeError('CONTROLLERS_NOT_ACTIVE')
+        wait_active_controllers(lambda:self.call(self.controllers,ListControllers.Request(),'ready_controllers'),
+                                deadline=time.monotonic()+45.)
         if not set(JOINTS).issubset(self.joint.name):raise RuntimeError('SIX_JOINTS_MISSING')
         for name,msg in self.images.items():self.record('ready_'+name,msg)
         self.record('ready_joints',self.joint)

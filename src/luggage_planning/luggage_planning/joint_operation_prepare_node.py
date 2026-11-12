@@ -144,7 +144,10 @@ class JointOperationPrepareNode(Node):
             self.create_subscription(String,'/luggage/cargo_map/surface_2d',self._confirmation,qos)
         else:
             raise ValueError('map_backend must be observer or explicit grid_g compatibility')
-        self.create_subscription(SuctionTopDomainV2,'/luggage/suction_top_domain_v2',self._domain,10)
+        # Detector publishes a sensor stream. A RELIABLE reader cannot receive
+        # a BEST_EFFORT writer; frozen quality RPCs provide retained evidence.
+        sensor_qos = QoSProfile(depth=10,reliability=ReliabilityPolicy.BEST_EFFORT)
+        self.create_subscription(SuctionTopDomainV2,'/luggage/suction_top_domain_v2',self._domain,sensor_qos)
         self.create_subscription(JointState,'/joint_states',self._joints,10)
         self.create_service(PrepareJointOperationV2,'/joint_operation/prepare',self._prepare,
                             callback_group=ReentrantCallbackGroup())
