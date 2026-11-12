@@ -228,6 +228,11 @@ class NativeOperationRevalidationPort:
                 return result('CANCELLED_OR_DEADLINE')
             error = _valid_response(response,request,self.model.model_sha256)
             if error:
+                if self.recorder and any(not leg.valid for leg in response.leg_results):
+                    from luggage_planning.route_collision_diagnostics import route_refusal_summary
+                    self.recorder('refusal_summary.json',json.dumps(
+                        route_refusal_summary(request,response,model=self.model),
+                        sort_keys=True,allow_nan=False).encode())
                 return result(error)
         except Exception as error:
             return result('REVALIDATION_TRANSPORT_REFUSED:'+str(error))

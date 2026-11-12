@@ -117,6 +117,11 @@ The native request retains original knots and controller-interpolated samples
 of every remaining leg in full private phase scenes, including the released
 world obstacle. Compatible changed geometry can pass without global replanning;
 a target miss, collision, deadline or identity change yields no accepted receipt.
+When capture is enabled, a native suffix refusal also records a bounded summary
+of failed leg, phase-scene index, first invalid sample/TCP and contact pairs with
+their matched world/attached geometry. Preserve the full request/response CDR.
+The summary reports model collisions; object names and contact enums establish
+neither physical contact nor cargo ownership and authorize no obstacle removal.
 The receipt retains the original plan/certificate binding plus a separate native
 validation digest. The port has no controller, vacuum, planner, scene-write or
 map-write capability. Production adapters still need to implement the required

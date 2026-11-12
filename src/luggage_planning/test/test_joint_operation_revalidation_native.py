@@ -207,7 +207,16 @@ def test_new_carry_or_released_retreat_obstacle_refuses_in_native_gate(native_ga
     before=len(native_gate.records);result=port(native_gate).validate(plan,**args)
     assert not result.receipt.accepted,result
     assert 'NATIVE_CERTIFICATION_REFUSED' in result.receipt.reason
-    assert len(native_gate.records)==before+2
+    assert len(native_gate.records)==before+3
+    record=native_gate.records[-1]
+    assert record['kind']=='refusal_summary.json'
+    summary=json.loads((native_gate.directory/record['file']).read_text())
+    assert summary['response_identity_matches']
+    assert summary['legs'] and any(row['reason']=='COLLISION' for row in summary['legs'])
+    assert all(row['load_state_index'] in (1,2) for row in summary['legs'])
+    matches=[match for row in summary['legs'] for contact in row['contacts']
+        for body in ('body_1_scene_matches','body_2_scene_matches') for match in contact[body]]
+    assert any(match['representation']=='world_object' and match['primitives'] for match in matches)
 
 
 def test_source_change_after_native_response_discards_positive(native_gate,issued):
