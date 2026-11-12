@@ -10,6 +10,25 @@ from luggage_planning.joint_operation.map_source import OperationMapSource, Oper
 from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
 
 
+def test_runtime_archive_budget_counts_lossless_stored_bytes_and_preserves_raw_hash(tmp_path):
+    import gzip,hashlib,threading
+    runtime=JointOperationRuntime.__new__(JointOperationRuntime)
+    runtime._record_lock=threading.RLock();runtime.directory=tmp_path
+    runtime.records=[];runtime.bytes=0;runtime.evidence_limit=1000
+    runtime.machine=SimpleNamespace(state='fixture',may_have_payload=False)
+    runtime.owner=SimpleNamespace(motion_lock=threading.Lock())
+    raw=b'repeated exact frozen scene'*1000
+    runtime.record('native_request',raw)
+    row=runtime.records[0];stored=(tmp_path/row['file']).read_bytes()
+    assert gzip.decompress(stored)==raw
+    assert row['sha256']==hashlib.sha256(raw).hexdigest()
+    assert row['stored_sha256']==hashlib.sha256(stored).hexdigest()
+    assert runtime.bytes==row['stored_bytes']==len(stored)<runtime.evidence_limit<len(raw)
+    runtime.evidence_limit=runtime.bytes
+    with pytest.raises(ValueError,match='EVIDENCE_CAP'):runtime.record('next',b'next')
+    assert len(runtime.records)==1
+
+
 def test_operation_journal_retains_unresolved_across_restart_and_completed_replay(tmp_path):
     path=tmp_path/'owner.json'
     owner=OperationJournal(str(path),capacity=2)

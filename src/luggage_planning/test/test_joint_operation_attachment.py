@@ -46,6 +46,19 @@ def test_distinct_stamps_are_preserved_without_extending_age(source):
     with pytest.raises(ContractViolation, match='SEALED_ATTACHMENT_REBIND_REFUSED'): freeze(source)
 
 
+def test_explicit_operation_window_keeps_original_stamp_and_does_not_renew_on_reuse(source):
+    _,box,tcp,geometry,proof=source
+    operation_window=2*ATTACHMENT_MAX_AGE_NS
+    provider=MeasuredAttachmentProvider('scene','calibration',max_age_ns=operation_window)
+    scoped=(provider,box,tcp,geometry,proof)
+    record=freeze(scoped,now_ns=box.stamp_ns+ATTACHMENT_MAX_AGE_NS+1)
+    assert record.acquisition_stamp_ns==box.stamp_ns
+    assert provider.stationary_evidence_for('request').tcp_confirmation_stamp_ns==tcp.stamp_ns
+    assert freeze(scoped,now_ns=box.stamp_ns+operation_window) is record
+    provider.expire_stale('request',box.stamp_ns+operation_window+1)
+    with pytest.raises(ContractViolation):provider.latest_record('request')
+
+
 @pytest.mark.parametrize('field,value', [
     ('request_id', 'other'), ('box_id', 'other'), ('generation', 4),
     ('scene_revision', 'other'), ('frozen_binding_sha256', 'd'*64),

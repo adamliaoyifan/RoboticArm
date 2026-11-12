@@ -5,6 +5,7 @@ or carrying fault retains ownership. The durable journal also refuses dispatch
 after a process restart with an unresolved operation; it never releases vacuum.
 """
 import copy
+import gzip
 import hashlib
 import json
 import math
@@ -113,11 +114,13 @@ class JointOperationRuntime:
         with self._record_lock:
             if self.directory is None:raise ValueError('OPERATION_EVIDENCE_NOT_OPEN')
             raw=value if isinstance(value,bytes) else serialize_message(value)
-            if self.bytes+len(raw)>self.evidence_limit:raise ValueError('OPERATION_EVIDENCE_CAP')
-            file='%05d_'%len(self.records)+name.replace('/','_')
-            (self.directory/file).write_bytes(raw)
-            self.records.append(dict(file=file,sha256=hashlib.sha256(raw).hexdigest(),bytes=len(raw)))
-            self.bytes+=len(raw)
+            stored=gzip.compress(raw,compresslevel=1,mtime=0)
+            if self.bytes+len(stored)>self.evidence_limit:raise ValueError('OPERATION_EVIDENCE_CAP')
+            file='%05d_'%len(self.records)+name.replace('/','_')+'.gz'
+            (self.directory/file).write_bytes(stored)
+            self.records.append(dict(file=file,sha256=hashlib.sha256(raw).hexdigest(),bytes=len(raw),
+                encoding='gzip',stored_bytes=len(stored),stored_sha256=hashlib.sha256(stored).hexdigest()))
+            self.bytes+=len(stored)
             (self.directory/'manifest.json').write_text(json.dumps(dict(records=self.records,
                 bytes=self.bytes,phase=self.machine.state,may_have_payload=self.machine.may_have_payload,
                 motion_owned=self.owner.motion_lock.locked()),sort_keys=True))

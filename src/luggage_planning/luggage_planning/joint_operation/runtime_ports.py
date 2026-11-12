@@ -187,7 +187,21 @@ class OperationRuntimePorts:
             scope_open_stamp_ns=now_ns,max_retained_age_ms=self.observer.max_age_ms,
             wall_deadline=deadline,content_change='full_native_suffix_revalidation',
             physical_collision_detection_available=False),sort_keys=True).encode())
+        # A new action must pass the original acquisition-age limit first.
+        # This also keeps completed-plan replay tombstones aligned with that
+        # limit. Only this admitted action receives a longer retained window.
         self.provider = MeasuredAttachmentProvider(self.revision,identity.model_sha256)
+        if not self.observation_current():raise ValueError('ORIGINAL_OPERATION_OBSERVATION_REFUSED')
+        observation_age_ns = self.node.get_clock().now().nanoseconds-domain.stamp_ns
+        retained_observation_age_ns = observation_age_ns + math.ceil(goal.budget_s*1e9)
+        self.provider = MeasuredAttachmentProvider(self.revision,identity.model_sha256,
+            max_age_ns=retained_observation_age_ns)
+        self.record('stationary_contact_scope.json',json.dumps(dict(
+            original_acquisition_stamp_ns=domain.stamp_ns,
+            initial_admission_age_ns=observation_age_ns,
+            max_retained_age_ns=retained_observation_age_ns,wall_deadline=deadline,
+            premise='stationary_until_seal_then_fixed_actual_grasp',
+            renews_acquisition=False),sort_keys=True).encode())
         self.attachment = StationaryOperationAttachmentPort(self.provider,self.contacts,
             certificate_current=self.check_issued,now_ns=lambda:self.node.get_clock().now().nanoseconds,
             recorder=self.record)
@@ -206,7 +220,11 @@ class OperationRuntimePorts:
     def observation_current(self):
         domain = self.observation.domain
         age = self.node.get_clock().now().nanoseconds-domain.stamp_ns
-        if not 0<=age<=self.provider.max_age_ns:return False
+        if not 0<=age<=self.provider.max_age_ns:
+            self.record('contact_age_refused.json',json.dumps(dict(
+                original_stamp_ns=domain.stamp_ns,age_ns=age,
+                max_age_ns=self.provider.max_age_ns),sort_keys=True).encode())
+            return False
         retained = self.contacts.retain(domain,self.detection,request_id=self.plan.identity.request_id,
             observation_id=self.plan.identity.observation_id,expected_observation=self.observation,
             deadline=self.deadline,cancelled=self.cancelled)
