@@ -73,16 +73,18 @@ def test_prepare_binds_repository_identity_and_releases_lease_on_refusal(monkeyp
 
 
 @pytest.mark.parametrize('replan',[False,True])
-def test_explicit_start_declares_empty_without_mandatory_portal_motion(tmp_path,replan):
+@pytest.mark.parametrize('capture',[False,True])
+def test_explicit_start_declares_empty_without_mandatory_portal_motion(tmp_path,replan,capture):
     module=driver_module()
     from luggage_msgs.msg import JointOperationPlanV2
     from test_joint_operation_observer import configuration
     config,geometry,config_file=configuration(tmp_path)
-    calls=[];poses=[];actions=[]
+    calls=[];poses=[];actions=[];capture_events=[]
     def call(client,request,name,*args):
         calls.append((client,request))
         if client=='validity':return SimpleNamespace(epoch=1)
         if client=='initialize':
+            assert capture_events==(['trigger'] if capture else [])
             assert request.declared_by=='explicit_operator_start'
             assert request.geometry_hash==config.descriptor()['geometry_hash']
             return SimpleNamespace(status='OK')
@@ -93,7 +95,9 @@ def test_explicit_start_declares_empty_without_mandatory_portal_motion(tmp_path,
         refused=replan and len(actions)==1
         return SimpleNamespace(result=SimpleNamespace(success=not refused,outcome='STOPPED',
             motion_terminal=True,may_have_payload=False,reason='BOUND_NATIVE_ADMISSION_REQUIRED'))
-    probe=SimpleNamespace(args=SimpleNamespace(start=True,views=None,prepick_replans=int(replan)),extra_views={},folder=tmp_path,
+    probe=SimpleNamespace(args=SimpleNamespace(start=True,views=None,prepick_replans=int(replan),capture_operation=capture),
+        failure_capture=SimpleNamespace(trigger=lambda:capture_events.append('trigger'),close=lambda:capture_events.append('close')),
+        extra_views={},folder=tmp_path,
         launch={'resolved':{'observe_pose_name':'pickup'},'map_owner':{
             'geometry_file':str(geometry),'config_file':str(config_file)}},
         validity='validity',initialize='initialize',spawn='spawn',execute='execute',call=call,

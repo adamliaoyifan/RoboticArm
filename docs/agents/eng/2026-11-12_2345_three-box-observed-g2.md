@@ -526,3 +526,21 @@ satisfy these product gates.
   diagnostic_27/{cycle/observer_failure,reference,
   payload_containment_eval_v2.json,run/execution}. No floor tolerance, nominal
   target, release gap, map obstacle or static model was changed.
+
+## Startup28--30 and earlier source capture -- 2026-11-13T04:20+08:00
+
+- diagnostic28 repeats startup failure123.53s; unique IGN_PARTITION is not a
+  demonstrated repair. Both26/28 log an actual RSP get_parameters response
+  send timeout, then gz_ros2_control never logs URDF receipt. This localizes
+  the observed failure to parameter response delivery; DDS root cause remains
+  unproven. startup29/30 readiness-only rehearsals pass8.99/8.75s, teardown0.
+  No box task or motion acceptance is inferred from those passes.
+- Recommendation: retain working transport, distinguish this named startup
+  refusal from task failure, preserve next delayed-start live graph/backtrace
+  before retry. Do not claim unique partition improved reliability.
+- Source capture now starts before initialize_empty in opted-in diagnostics,
+  retaining earliest pickup/prepare writes rather than only action feedback.
+  Earlier-only occupied floor voxels otherwise cannot be traced. Same768MiB
+  bounded archive and explicit drop reporting; no map policy changed.
+- Behavioral driver checks33 pass; build46 all13 packages passes7.09s with
+  no changed source inputs. Actual full cycle and3box baseline remain open.

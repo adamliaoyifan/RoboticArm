@@ -387,6 +387,10 @@ class OperationSimDriver(Node):
             if not self.args.start:
                 self.flush(outcome='READY_ONLY',capture_complete=True,replay_possible=True)
                 return 0
+            # Include the first sensor writes after initial-empty declaration;
+            # action-only capture cannot explain O changes made during prepare.
+            if getattr(self.args,'capture_operation',False):
+                self.failure_capture.trigger()
             # --start is an explicit operator authorization for this diagnostic.
             def initialize():
                 from luggage_mapping.observer import ObserverConfiguration
@@ -461,7 +465,7 @@ def main():
     parser.add_argument('--prepick-replans',type=int,default=0,
         help='Explicit bounded new complete plans after terminal pre-pick map/native refusal (0..2)')
     parser.add_argument('--capture-operation',action='store_true',
-        help='Persist source clouds/TF from action start, bounded to768MiB; requires failure hold')
+        help='Persist source clouds/TF before map initialization, bounded to768MiB; requires failure hold')
     args = parser.parse_args()
     if not 0 <= args.failure_hold_s <= 60:parser.error('failure hold must be within 0..60 seconds')
     if not 0 <= args.prepick_replans <= 2:parser.error('prepick replans must be within 0..2')
