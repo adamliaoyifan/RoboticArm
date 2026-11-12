@@ -142,6 +142,12 @@ class IdealVacuum : public sim::System, public sim::ISystemConfigure,
     }
   }
   void PostUpdate(const sim::UpdateInfo &info,const sim::EntityComponentManager &ecm) override {
+    // This topic represents physics steps, not server update callbacks. Gazebo
+    // also invokes PostUpdate while paused; cached world poses can refresh then
+    // without advancing simTime or joint positions. Publishing those callbacks
+    // would give two different observations the same physical-step identity.
+    // PreUpdate likewise handles attachment commands only on unpaused steps.
+    if (info.paused) return;
     ignition::msgs::StringMsg message;
     std::ostringstream json;json<<std::setprecision(15)
       <<"{\"ready\":"<<(ready.load()?"true":"false")

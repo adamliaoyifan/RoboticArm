@@ -619,6 +619,12 @@ then captures the actual box and grasp in the same simulator. Offline computatio
 runs with the owned physics clock paused and restores it before any trajectory
 submission, including on failures. No pose/controller target is changed by clock
 control. `planning_clock_control.jsonl` records every request/response.
+Before a complete placement experiment, `--planning-pause-rehearsal` exercises
+the real clock service, held attachment and resumed native stream without a
+placement trajectory. Native observation publication occurs only on unpaused
+physics steps: Gazebo also calls `PostUpdate` while paused, when cached poses
+can refresh without a new physics timestamp. Clock-service waits continue
+draining observations; missing native steps and conflicting states still fail.
 
 Controller commands and aligned reference/feedback are archived separately.
 Feedback subscriptions retain the newest sample; native contact capture remains

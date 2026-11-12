@@ -51,9 +51,12 @@ def main():
     parser.add_argument('--config',type=Path)
     parser.add_argument('--initialize-pick',type=Path)
     parser.add_argument('--capture-after-pick',action='store_true')
+    parser.add_argument('--planning-pause-rehearsal',action='store_true')
     parser.add_argument('--capture-rehearsal',action='store_true',
         help='Deliberate diagnostic failure after controller hold; never a physical action verdict')
     args=parser.parse_args();out=args.evidence.resolve()
+    if args.planning_pause_rehearsal and (not args.initialize_pick or args.planning_run or args.live_request):
+        parser.error('--planning-pause-rehearsal requires --initialize-pick and no placement input')
     if args.live_request:
         if args.planning_run or not args.scene_config or not args.config:
             parser.error('--live-request needs --scene-config and --config, without --planning-run')
@@ -138,7 +141,7 @@ def main():
             if not args.replan_live and (max(errors+[distance])>config.contact_penetration_m or angle>policy.initial_rotation_deg or joint_error>policy.initial_joint_error_rad):
                 raise ValueError('LIVE_INITIAL_STATE_DIFFERS_FROM_NOMINAL_PLAN')
             save(out/'nominal_plan.json',plan)
-        elif args.live_request:
+        elif args.initialize_pick:
             action=action_from_record(json.loads(args.initialize_pick.read_text())['action'])
         else:
             actions,_=generate_actions(assets,snapshot,state,replace(config,max_action_candidates=1))
@@ -182,8 +185,12 @@ def main():
             save(out/'nominal_plan.json',plan)
             save(out/'executed_planning_run.json',dict(path=str(live_path)))
         if args.capture_rehearsal:raise RuntimeError('DIAGNOSTIC_CAPTURE_REHEARSAL')
-        result=(PhysicalExecutor(runtime,monitor,observe,state.dimensions,config,policy).execute(plan) if plan else
-                dict(status='monitor_hold_pass',scope='native_observation_and_actual_controller_hold_only'))
+        if args.planning_pause_rehearsal:
+            from planning_pause import rehearse_pause
+            result=rehearse_pause(runtime,monitor,observe,policy)
+        else:
+            result=(PhysicalExecutor(runtime,monitor,observe,state.dimensions,config,policy).execute(plan) if plan else
+                    dict(status='monitor_hold_pass',scope='native_observation_and_actual_controller_hold_only'))
         result['monitor']=monitor.metrics();result['stream']=observe.metrics();save(out/'summary.json',result)
         manifest['capture_complete']=True;manifest['replay_possible']=True
     except BaseException as exc:

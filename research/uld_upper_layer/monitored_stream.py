@@ -17,6 +17,7 @@ class NativeSampleMonitor:
         self._contact_stamp=monitor.sample.stamp_s
         self._contact_initial_stamp=self._contact_stamp
         self._contact_samples=0;self._max_native_gap_s=0.
+        self._last_native=None;self._duplicate_native_messages=0
 
     def __call__(self,row):
         started=time.perf_counter();self._calls+=1
@@ -34,6 +35,14 @@ class NativeSampleMonitor:
             # single upper timestamp bound for the whole observation batch.
             if native['sim_time_s']>newest['sim_time_s']:break
             gap=native['sim_time_s']-self._contact_stamp
+            if gap==0 and native==self._last_native:
+                # Gazebo may republish an identical PostUpdate state while its
+                # physics clock is paused. A message is not a new physics step.
+                self._duplicate_native_messages+=1
+                continue
+            if gap==0:
+                return self._monitor.fail_execution('NATIVE_STATE_CHANGED_WITHOUT_TIME_ADVANCE',
+                    offending_stamp_s=self._contact_stamp,invalid_observation=dict(row,vacuum=native))
             self._max_native_gap_s=max(self._max_native_gap_s,gap)
             observation=dict(row,vacuum=native,native_latest_stamp_s=newest['sim_time_s'])
             if gap<=0 or gap>self._native_step_s+1e-9:
@@ -45,7 +54,7 @@ class NativeSampleMonitor:
             self._contact_samples+=1
             reason=self._monitor.observe_native_contacts(observation)
             if reason:return reason
-            self._contact_stamp=native['sim_time_s']
+            self._contact_stamp=native['sim_time_s'];self._last_native=native
             previous=self._monitor.sample
             state_changed=(native['attached']!=previous.attached or native['processed_commands']!=previous.processed_commands)
             if native['sim_time_s']-previous.stamp_s<self._policy.monitor_period_s-1e-9 and not state_changed:continue
@@ -58,12 +67,18 @@ class NativeSampleMonitor:
             return self._monitor.fail_execution('NATIVE_CONTACT_STREAM_MISSING',
                 offending_stamp_s=newest['sim_time_s'],previous_stamp_s=self._contact_stamp,
                 invalid_observation=row)
+        if newest['sim_time_s']==self._contact_stamp:
+            if self._last_native is None:self._last_native=newest
+            elif newest!=self._last_native:
+                return self._monitor.fail_execution('NATIVE_STATE_CHANGED_WITHOUT_TIME_ADVANCE',
+                    offending_stamp_s=self._contact_stamp,invalid_observation=row)
         # Validate the newest streams even when native time did not advance;
         # a stopped capture or clock cannot hide behind an empty history.
         return self._monitor.observe(row)
 
     def metrics(self):return dict(max_native_processing_backlog_s=self._max_backlog_s,
         callbacks=self._calls,selected_samples=self._selected_samples,max_callback_wall_s=self._max_callback_wall_s,
+        duplicate_native_messages=self._duplicate_native_messages,
         native_contact_samples=self._contact_samples,native_contact_last_stamp_s=self._contact_stamp,
         native_contact_initial_stamp_s=self._contact_initial_stamp,
         native_contact_step_s=self._native_step_s,max_native_contact_gap_s=self._max_native_gap_s,

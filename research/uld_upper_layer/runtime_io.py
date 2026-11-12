@@ -255,19 +255,31 @@ class RuntimeIO:
                         native_contact_samples=self.native_contact_samples,
                         native_empty_contact_samples=self.native_empty_contact_samples)
 
-    def set_physics_paused(self,paused):
+    def set_physics_paused(self,paused,monitor=None):
         if not self.launch or self.launch.poll() is not None or not self.world_name:
             raise RuntimeError('OWNED_SIM_REQUIRED_FOR_CLOCK_CONTROL')
         command=['ign','service','-s',f'/world/{self.world_name}/control',
             '--reqtype','ignition.msgs.WorldControl','--reptype','ignition.msgs.Boolean',
             '--timeout','3000','--req','pause: '+('true' if paused else 'false')]
-        result=subprocess.run(command,env=self.env,capture_output=True,text=True,timeout=5)
-        accepted=result.returncode==0 and re.search(r'data:\s*true',result.stdout) is not None
+        process=subprocess.Popen(command,env=self.env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        deadline=time.monotonic()+5;failure=None
+        while process.poll() is None:
+            if time.monotonic()>deadline:
+                process.kill();process.wait();break
+            if monitor is not None:
+                import rclpy
+                rclpy.spin_once(self.node,timeout_sec=self._capture_policy.monitor_period_s)
+                reason=monitor(self.snapshot())
+                if reason and failure is None:failure=reason
+            else:time.sleep(.01)
+        stdout,stderr=process.communicate()
+        accepted=process.returncode==0 and re.search(r'data:\s*true',stdout) is not None
         with (self.output/'planning_clock_control.jsonl').open('a') as stream:
             stream.write(json.dumps(dict(wall=time.time(),pause=paused,
                 native_stamp_s=(self.snapshot().get('vacuum') or {}).get('sim_time_s'),
-                accepted=accepted,command=command,response=result.stdout,stderr=result.stderr))+'\n')
+                accepted=accepted,command=command,response=stdout,stderr=stderr))+'\n')
         if not accepted:raise RuntimeError('PLANNING_CLOCK_CONTROL_REJECTED')
+        if failure:raise RuntimeError(failure)
 
     def stop(self):
         if self.clock_capture:self.clock_capture.stop()

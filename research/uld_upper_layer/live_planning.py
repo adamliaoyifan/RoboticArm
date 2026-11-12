@@ -25,7 +25,7 @@ def validate_held_start(request,sample,config,policy):
 def plan_while_held(runtime,monitor,observe,assets,snapshot,state,template_path,output,config,policy,
                     scene_path,seed=0):
     from planning_pause import paused_for_planning
-    with paused_for_planning(runtime):
+    with paused_for_planning(runtime,observe):
         return _plan_while_held(runtime,monitor,observe,assets,snapshot,state,template_path,
                                output,config,policy,scene_path,seed)
 

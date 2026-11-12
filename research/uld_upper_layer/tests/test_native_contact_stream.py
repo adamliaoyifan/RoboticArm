@@ -79,6 +79,22 @@ class NativeContactStreamContracts(unittest.TestCase):
             self.assertEqual(monitor.metrics()['samples'],full_count)
             self.assertLessEqual(callback.metrics()['max_native_contact_gap_s'],.001000001)
 
+    def test_identical_republication_is_not_a_new_physics_step(self):
+        events=self.events(10);events.insert(5,dict(events[4]))
+        monitor,callback,_=self.monitor(events)
+        self.assertIsNone(callback(dict(vacuum=events[-1])))
+        self.assertEqual(callback.metrics()['native_contact_samples'],10)
+        self.assertEqual(callback.metrics()['duplicate_native_messages'],1)
+        self.assertLessEqual(callback.metrics()['max_native_contact_gap_s'],.001000001)
+
+    def test_changed_state_at_same_physics_stamp_is_never_ignored(self):
+        events=self.events(10)
+        monitor,callback,_=self.monitor(events)
+        self.assertIsNone(callback(dict(vacuum=events[-1])))
+        changed=dict(events[-1],pose_command_count=1)
+        self.assertEqual(callback(dict(vacuum=changed)),'NATIVE_STATE_CHANGED_WITHOUT_TIME_ADVANCE')
+        self.assertIsNotNone(monitor.failure)
+
     def test_missing_native_step_cannot_be_hidden_by_valid_full_check(self):
         for step in (.001,.002):
             events=self.events(10,step);del events[4]
