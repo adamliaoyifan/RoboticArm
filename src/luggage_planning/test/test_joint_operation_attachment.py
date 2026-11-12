@@ -105,3 +105,21 @@ def test_legacy_unequal_stamps_still_refused(source):
             source_kind=AttachmentSourceKind.MEASURED_ATTACH_CONFIRMED,source_method='measured',
             dimensions_wdh=geometry.measured_dimensions_wdh,cargo_id='box',box_id='box',cycle_id='cycle')
     assert provider.record_for('request') is None
+
+
+@pytest.mark.parametrize('sealed', [False, True])
+def test_unqualified_seal_reports_actuator_reason_before_decoding_empty_pose(monkeypatch, sealed):
+    import time
+    from types import SimpleNamespace
+    from luggage_msgs.srv import VacuumCommandV2
+    from luggage_planning.joint_operation.actual_contact import RetainedContactObservation
+    from luggage_planning.joint_operation import attachment
+    monkeypatch.setattr(attachment, 'admit_operation_plan', lambda *a: None)
+    port = attachment.StationaryOperationAttachmentPort(None, None,
+        certificate_current=lambda _: True, now_ns=lambda: 1)
+    plan = SimpleNamespace(identity=None, plan_digest='digest')
+    reply = VacuumCommandV2.Response(success=sealed, message='original backend reason')
+    expected = ('SEALED_ATTACHMENT_MEASUREMENT_UNQUALIFIED' if sealed else 'ATTACHMENT_BACKEND_REFUSED')
+    with pytest.raises(ValueError, match=expected + ':original backend reason'):
+        port.qualify(plan, RetainedContactObservation(None, None), None, None, reply,
+                     deadline=time.monotonic()+1., cancelled=lambda: False)

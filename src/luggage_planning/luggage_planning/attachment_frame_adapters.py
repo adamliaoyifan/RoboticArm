@@ -243,11 +243,12 @@ def handle_vacuum_command_v2(request, response, *, scene_revision, generation,
             'position': actual['translation'],
             'quaternion_xyzw': actual['quaternion_xyzw'],
         })
+        from luggage_planning.vacuum_instance_identity import actuator_instance_id
         ok, message = backend.attach({
             "attach_record": attachment,
             "tool_pose": tool,
             "physical_relation": physical_relation,
-            "model_name": str(request.box_id),
+            "model_name": actuator_instance_id(request),
             "scene_box_size": attachment["size_wdh"],
         })
         response.success = bool(ok)
@@ -257,7 +258,8 @@ def handle_vacuum_command_v2(request, response, *, scene_revision, generation,
             response.attached_box_wdh = list(attachment['size_wdh'])
             response.conservative_geometry = geometry_message
             response.has_measured_attachment = True
-        response.diagnostic = diagnostic_to_message(box_pose, context, None if ok else None)
+        response.diagnostic = diagnostic_to_message(box_pose, context, None if ok else ContractError(
+            "ATTACHMENT_BACKEND_REFUSED", "backend", "successful physical attachment", message))
         return response
     except BoundaryContractError as exc:
         return _fail(response, context, record, exc, _revision_evidence(

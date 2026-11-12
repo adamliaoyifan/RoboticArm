@@ -101,3 +101,42 @@ def test_unavailable_physics_stops_before_scene_attach(controller,monkeypatch):
     assert 'PHYSICAL_ATTACHMENT_UNAVAILABLE' in response.message
     assert not response.has_measured_attachment
     assert not scene and not follow and not node._backend.is_attached()
+
+
+def test_observed_task_id_resolves_exact_actuator_instance(controller, monkeypatch):
+    from luggage_msgs.msg import SuctionCandidate
+    node, scene, follow = controller
+    observed = []
+    monkeypatch.setattr(physical, 'observe_model_pose',
+                        lambda model: (observed.append(model) or [-1.,0.,.9835], [0.,0.,0.,1.]))
+    request = _request(LIVE)
+    request.box_id = request.measured_box.id = 'detected_box'
+    request.measured_box.suction_candidates = [SuctionCandidate(
+        instance_id='pickup_box_0001_carryon', generation=2)]
+    result = node._handle_command_v2(request, VacuumCommandV2.Response())
+    assert result.success and result.has_measured_attachment, result.message
+    assert observed == ['pickup_box_0001_carryon']
+    assert node._backend.last_attach_record['box_id'] == 'detected_box'
+    assert node._backend.follow_step([-1.,0.,1.107],[1.,0.,0.,0.])[0]
+    assert follow[-1][0] == 'pickup_box_0001_carryon'
+    assert list(result.attached_box_wdh) == [.516,.390,.247]
+
+
+@pytest.mark.parametrize('damage', ['wrong_epoch', 'ambiguous', 'unregistered'])
+def test_observed_instance_refuses_before_effects(controller, monkeypatch, damage):
+    from luggage_msgs.msg import SuctionCandidate
+    node, scene, follow = controller
+    monkeypatch.setattr(physical, 'observe_model_pose',
+                        lambda _: ([-1.,0.,.9835], [0.,0.,0.,1.]))
+    request = _request(LIVE)
+    request.box_id = request.measured_box.id = 'detected_box'
+    request.measured_box.suction_candidates = [SuctionCandidate(
+        instance_id='pickup_box_0001_carryon', generation=2)]
+    if damage == 'wrong_epoch': request.measured_box.suction_candidates[0].generation = 3
+    elif damage == 'ambiguous': request.measured_box.suction_candidates.append(
+        SuctionCandidate(instance_id='other', generation=2))
+    else: request.measured_box.suction_candidates[0].instance_id = 'unregistered'
+    result = node._handle_command_v2(request, VacuumCommandV2.Response())
+    assert not result.success and not result.has_measured_attachment
+    assert not result.diagnostic.accepted
+    assert not scene and not follow and not node._backend.is_attached()

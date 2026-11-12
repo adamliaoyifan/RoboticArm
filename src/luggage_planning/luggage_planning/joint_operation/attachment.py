@@ -48,6 +48,12 @@ class StationaryOperationAttachmentPort:
         if type(observation) is not RetainedContactObservation:
             raise ValueError('ORIGINAL_FROZEN_OBSERVATION_REQUIRED')
         identity, domain = plan.identity, observation.domain
+        # A refused seal has no measured-grasp contract. Preserve its actual
+        # actuator reason before attempting to decode the default empty pose.
+        if response.success is not True:
+            raise ValueError('ATTACHMENT_BACKEND_REFUSED:' + response.message)
+        if response.has_measured_attachment is not True:
+            raise ValueError('SEALED_ATTACHMENT_MEASUREMENT_UNQUALIFIED:' + response.message)
         if Transform(domain.box_xyz_world, domain.box_quaternion_xyzw) != plan.world_from_pick_box:
             raise ValueError('ATTACHMENT_ORIGINAL_BOX_POSE_MISMATCH')
         from luggage_perception.ros_suction_domain import require_matching_detection
