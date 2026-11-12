@@ -61,7 +61,9 @@ def test_composition_binds_one_owner_and_identical_native_model(tmp_path,monkeyp
     monkeypatch.setattr(operation_launch,'Node',lambda **kwargs:kwargs)
     settings=config(tmp_path)
     settings.update(scene_tf_config=str(Path(get_package_share_directory('luggage_description'))/
-        'config/scene_tf_deploy_update.yaml'),cargo_map_resolution_m='')
+        'config/scene_tf_deploy_update.yaml'),cargo_map_resolution_m='',
+        operation_connection_max_edge_s='5.0',operation_max_branch_attempts='8',
+        operation_max_branch_attempts_per_candidate='2')
     xml,semantic='<robot name="test"><link name="world"/></robot>','<robot name="test"/>'
     nodes,runtime=operation_launch.operation_composition(settings,xml,semantic)
     assert [node['package'] for node in nodes].count('uld_occ_observer')==1
@@ -80,6 +82,13 @@ def test_composition_binds_one_owner_and_identical_native_model(tmp_path,monkeyp
     assert manifest['startup_authorizes_motion'] is False
     assert runtime['enable_joint_operation'] is True
     assert runtime['collision_margin_m'] == .02
+    prepare=next(node for node in consumers if node['executable']=='joint_operation_prepare_node.py')
+    prepare_parameters={}
+    for group in evaluate_parameters(LaunchContext(),normalize_parameters(prepare['parameters'])):
+        prepare_parameters.update(group)
+    assert prepare_parameters['connection_max_edge_s']==5.
+    assert prepare_parameters['max_branch_attempts']==8
+    assert prepare_parameters['max_branch_attempts_per_candidate']==2
     placement=next(node for node in nodes if node['package']=='luggage_packing')
     settings=evaluate_parameters(LaunchContext(),normalize_parameters(placement['parameters']))[0]
     assert settings['atlas_runtime_config']==operation_launch.operation_atlas_config(config(tmp_path))

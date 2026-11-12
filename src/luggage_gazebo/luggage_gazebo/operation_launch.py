@@ -113,6 +113,9 @@ def operation_composition(config, robot_xml, semantic_xml):
     nodes.append(Node(package='luggage_planning', executable='joint_operation_prepare_node.py',
         name='joint_operation_prepare', output='screen', parameters=[common,dict(
             map_backend='observer', evidence_dir=str(folder/'prepare'),
+            connection_max_edge_s=float(config.get('operation_connection_max_edge_s',2.)),
+            max_branch_attempts=int(config.get('operation_max_branch_attempts',3)),
+            max_branch_attempts_per_candidate=int(config.get('operation_max_branch_attempts_per_candidate',2)),
             max_preparation_budget_s=float(config['operation_prepare_budget_s'])),atlas_parameters]))
     (folder/'robot.urdf').write_text(robot_xml)
     (folder/'robot.srdf').write_text(semantic_xml)

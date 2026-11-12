@@ -52,6 +52,10 @@ Only numerical collinear redundancy is removed; all three opening waypoints
 remain explicit. Rest-to-rest quintic segments use the configured velocity and
 acceleration limits without globally stretching the path for one short corner.
 Local Cartesian contact, lift, release and retreat keep their existing timing.
+The simulation profile exposes per-edge connection time and global/per-candidate
+branch limits. Its diagnostic search uses 5s per edge and 8 total branches,
+at most 2 per coupled candidate, within the existing 300s preparation watchdog.
+These are search budgets, not reachability decisions or a production latency SLA.
 Prepare evidence stores lossless gzip CDR files; `boundaries.jsonl` records raw
 and stored sizes/hashes. Decompress before deserialization; the budget counts
 stored bytes and still refuses when full.

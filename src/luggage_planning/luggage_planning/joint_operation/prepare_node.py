@@ -117,7 +117,8 @@ class JointOperationPrepareNode(Node):
         contacts = DirectedContactPort(self,recorder=recorder('quality'))
         self.observed_contacts = FrozenActualContactPort(self,recorder=recorder('observation'))
         endpoints = NativeOperationEndpointPort(self,recorder=recorder('local'))
-        connections = NativeSnapshotConnectionPort(self,recorder=recorder('connection'))
+        connections = NativeSnapshotConnectionPort(self,recorder=recorder('connection'),
+            max_edge_s=float(param('connection_max_edge_s',2.)))
         aperture_router = ApertureRouter(aperture,self.model,
             NativeSnapshotIKPort(self,self.model,recorder=recorder('aperture_ik')),connections,
             rigid_vertices=fixed_tool_vertices(self.model),
@@ -131,7 +132,8 @@ class JointOperationPrepareNode(Node):
             aperture_router=aperture_router)
         planner = JointOperationPlanner(endpoints,connections,certifier,velocity_scale=velocity,
             acceleration_scale=acceleration,certification_reserve_s=float(param('certification_reserve_s',5.)),
-            max_candidates=8,max_branch_attempts=3,max_branch_attempts_per_candidate=2,
+            max_candidates=8,max_branch_attempts=param('max_branch_attempts',3),
+            max_branch_attempts_per_candidate=param('max_branch_attempts_per_candidate',2),
             aperture_router=aperture_router)
         atlas,atlas_reason = None,'ATLAS_UNAVAILABLE_ONLINE_IK'
         atlas_paths = [str(param(name,'')) for name in

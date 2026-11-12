@@ -76,6 +76,9 @@ def _default_launch_values():
         "operation_lidar_frame": "livox_frame",
         "operation_run_dir": "",
         "operation_prepare_budget_s": "300.0",
+        "operation_connection_max_edge_s": "2.0",
+        "operation_max_branch_attempts": "3",
+        "operation_max_branch_attempts_per_candidate": "2",
         "scene_tf_config": os.path.join(
             get_package_share_directory("luggage_description"),
             "config",
@@ -1348,6 +1351,9 @@ def generate_launch_description():
             profile_arg('operation_lidar_frame', 'Expected physical LiDAR acquisition frame.'),
             profile_arg('operation_run_dir', 'Absolute fresh evidence/journal directory for joint_operation.'),
             profile_arg('operation_prepare_budget_s', 'Diagnostic complete-preparation watchdog, not a production latency target.'),
+            profile_arg('operation_connection_max_edge_s', 'Maximum native connection search time per edge.'),
+            profile_arg('operation_max_branch_attempts', 'Complete-operation branch attempts within the shared deadline.'),
+            profile_arg('operation_max_branch_attempts_per_candidate', 'Branch attempts per coupled grasp and placement candidate.'),
             profile_arg('volume_evidence_source', 'Legacy placement volume reader; complete-operation composition owns O explicitly.'),
             profile_arg('cargo_map_max_raycast_points', 'Legacy G integration ray budget.'),
             profile_arg(
