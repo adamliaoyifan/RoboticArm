@@ -104,3 +104,21 @@ def test_generated_slots_refuse_missing_hull_and_shifted_grid():
     with pytest.raises(ValueError, match='centered'):
         enumerate_placements(replace(confirmed, record_json=json.dumps(record).encode()),
                              (.2,.2,.2), 3)
+
+
+def test_target_admission_is_independent_of_rank_cap_but_requires_known_volume():
+    from luggage_planning.placement_prior.requests import enumerate_placements, admit_placement_targets
+    confirmed, volume = confirmed_grid(), confirmed_volume()
+    targets = enumerate_placements(confirmed, (.2,.1,.2), 128, volume=volume)
+    assert len(targets) == 128
+    first = enumerate_placements(confirmed, (.2,.1,.2), 1, volume=volume)
+    target = targets[-1].container_from_box
+    assert target != first[0].container_from_box
+    assert admit_placement_targets(confirmed, (.2,.1,.2), (target,), volume=volume) == (True,)
+    for state in (0, 2):  # unknown or occupied never becomes authorized by ranking
+        volume.states = bytes([state]) * len(volume.states)
+        assert admit_placement_targets(confirmed, (.2,.1,.2), (target,), volume=volume) == (False,)
+    volume = confirmed_volume()
+    shifted = Transform(tuple(a + (.001 if i == 0 else 0.)
+                              for i,a in enumerate(target.translation)), target.quaternion_xyzw)
+    assert admit_placement_targets(confirmed, (.2,.1,.2), (shifted,), volume=volume) == (False,)

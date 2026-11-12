@@ -49,7 +49,9 @@ def test_compute_and_complete_prepare_preserve_the_same_directed_candidates():
     assert result.success, result.message
     assert len(result.candidates) == 8
     assert {heading(c.pose.orientation) for c in result.candidates} == {0, 1, 2, 3}
-    prepare = NS(slot_limit=8, margin=.05, revision='cal')
+    from st09_contracts.payload_envelope import EnvelopeLimits
+    prepare = NS(slot_limit=8, margin=0., vertical_margin=0., revision='cal',
+                 limits=EnvelopeLimits(0., (0.,0.,0.), (0.,0.), 0.))
     prepare_request = NS(detection=NS(width=.2, depth=.1, height=.2), slots=[])
     pool = JointOperationPrepareNode._placements(prepare, prepare_request, confirmed, volume)
     assert len(pool) == len(result.candidates)

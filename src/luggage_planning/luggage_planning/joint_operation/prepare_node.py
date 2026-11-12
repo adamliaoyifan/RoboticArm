@@ -50,7 +50,7 @@ from luggage_planning.joint_operation.preparation import JointOperationPreparati
 from luggage_planning.joint_operation.preparation_refresh import LatestMapFinalizer, RefreshCapture
 from luggage_planning.pickup_collision import pickup_collision_aabb
 from luggage_planning.placement_prior.contracts import PlacementCandidate, Transform
-from luggage_planning.placement_prior.requests import enumerate_placements
+from luggage_planning.placement_prior.requests import enumerate_placements, admit_placement_targets
 from luggage_planning.placement_prior.snapshot import build_private_snapshot, proposal_scene_hash
 from luggage_planning.placement_prior.surface import ConfirmedSurfaceStore
 from luggage_planning.planning_scene_client import BOX_OBJECT_ID
@@ -346,12 +346,6 @@ class JointOperationPrepareNode(Node):
     def _placements(self,request,confirmed,volume):
         from st09_contracts.attachment_geometry import freeze_geometry
         dimensions=(request.detection.width,request.detection.depth,request.detection.height)
-        # A centred contact is a cheap ranking proposal. Actual directed
-        # contact/attachment and native checks remain the motion authority.
-        ranking_geometry=freeze_geometry(dimensions,(0.,0.,dimensions[2]/2),(1.,0.,0.,0.),self.limits)
-        pool = enumerate_placements(confirmed,dimensions,self.slot_limit,volume=volume,margin=self.margin,
-            ranking_geometry=ranking_geometry,release_gap_m=PLACE_RELEASE_GAP_M,
-            vertical_margin=self.vertical_margin)
         if request.slots:
             result = []
             for index,slot in enumerate(request.slots):
@@ -359,14 +353,18 @@ class JointOperationPrepareNode(Node):
                     self.revision,'container_link','box_center','scene')
                 record = pose_from_message(slot,'slot',context)
                 target = Transform(record['position'],record['quaternion_xyzw'])
-                def same_geometry(candidate):
-                    pose = candidate.container_from_box
-                    return (all(abs(a-b)<=1e-8 for a,b in zip(pose.translation,target.translation)) and
-                        abs(sum(a*b for a,b in zip(pose.quaternion_xyzw,target.quaternion_xyzw)))>=1.-1e-12)
-                if not any(same_geometry(candidate) for candidate in pool):
-                    raise ValueError('REQUESTED_SLOT_NOT_IN_BOUNDED_GEOMETRIC_POOL')
                 result.append(PlacementCandidate('requested-'+str(index),target))
+            admitted = admit_placement_targets(confirmed,dimensions,
+                tuple(candidate.container_from_box for candidate in result),volume=volume)
+            if not all(admitted):
+                raise ValueError('REQUESTED_SLOT_NOT_GEOMETRICALLY_ADMITTED')
             return tuple(result)
+        # A centred contact is a cheap ranking proposal. Actual directed
+        # contact/attachment and native checks remain the motion authority.
+        ranking_geometry=freeze_geometry(dimensions,(0.,0.,dimensions[2]/2),(1.,0.,0.,0.),self.limits)
+        pool = enumerate_placements(confirmed,dimensions,self.slot_limit,volume=volume,margin=self.margin,
+            ranking_geometry=ranking_geometry,release_gap_m=PLACE_RELEASE_GAP_M,
+            vertical_margin=self.vertical_margin)
         # Shared retention puts one deep target per directed heading first,
         # then the shallow alternatives. Never fabricate a half turn here.
         return pool

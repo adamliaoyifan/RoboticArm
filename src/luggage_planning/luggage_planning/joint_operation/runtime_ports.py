@@ -25,7 +25,7 @@ from luggage_planning.joint_operation.scenes import build_operation_scenes, _res
 from luggage_planning.joint_operation.motion import MeasuredJointSample
 from luggage_planning.placement_prior.contracts import Transform
 from luggage_planning.placement_prior.snapshot import build_private_snapshot, proposal_scene_hash
-from luggage_planning.placement_prior.requests import enumerate_placements
+from luggage_planning.placement_prior.requests import admit_placement_targets
 from luggage_planning.trajectory_timing import cartesian_joint_limits
 from luggage_planning.waypoint_generator import PLACE_RELEASE_GAP_M
 
@@ -297,13 +297,8 @@ class OperationRuntimePorts:
             # still includes both current O obstacles and the released world box.
             return self.released_target==settled
         target = self.container.inverse().compose(settled)
-        pool = enumerate_placements(self.last_map.surface,geometry.measured_dimensions_wdh,
-            self.slot_limit,volume=self.last_map.volume,margin=self.margin,
-            ranking_geometry=geometry,release_gap_m=PLACE_RELEASE_GAP_M,
-            vertical_margin=self.vertical_margin)
-        from luggage_planning.joint_operation.contracts import _same_pose
-        return any(_same_pose(target,p.container_from_box) or _same_pose(target,
-            p.container_from_box.compose(Transform((0.,0.,0.),(0.,0.,1.,0.)))) for p in pool)
+        return admit_placement_targets(self.last_map.surface,geometry.measured_dimensions_wdh,
+            (target,),volume=self.last_map.volume)[0]
 
     def validate(self,index):
         self.retryable_change=False

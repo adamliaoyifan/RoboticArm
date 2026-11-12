@@ -429,3 +429,13 @@ candidate generator. The live selector may also use it as a path prior.
 Offline replay (`packing_replay.FreeSpaceModelStrategy`) and
 `scripts/ros1_reference/placement_planner_node.py` use this path. Humble
 `placement_planner_node.py` does not.
+
+### Execution target admission and search ranking
+
+An already selected grid placement is re-admitted against the complete finite
+shared-query target set from the current typed surface and same-snapshot XYZ
+volume. Candidate ranking and retained search-pool size do not authorize or
+refuse that target. Requested slots in whole-operation preparation use the same
+rule. Directed quarter-turn orientation, support, hull, unknown-volume and
+non-penetration gates remain unchanged; full-model trajectory validation owns
+arm and conservative attached-payload motion clearance.
