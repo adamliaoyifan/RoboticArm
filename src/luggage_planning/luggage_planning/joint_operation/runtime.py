@@ -165,6 +165,23 @@ class JointOperationRuntime:
             time.sleep(.01)
         raise ValueError('OPERATION_SETTLE_NOT_CONFIRMED')
 
+    def validate_with_refresh(self,index,*,deadline,cancelled):
+        """Recheck an unexecuted suffix when a valid source changes mid-check.
+
+        Event effects (especially vacuum release) remain outside this loop.
+        Collision/identity refusals are final; each retry captures and validates
+        the complete suffix against the new source within the same action budget.
+        """
+        for attempt in range(self.refresh_attempts):
+            checked=self.ports.validate(index)
+            self.record('barrier_validation_attempt.json',json.dumps(dict(index=index,
+                attempt=attempt,accepted=checked.receipt.accepted,
+                reason=checked.receipt.reason,retryable_source_change=self.ports.retryable_change)).encode())
+            if (checked.receipt.accepted or not self.ports.retryable_change
+                    or cancelled() or time.monotonic()>=deadline):
+                break
+        return checked
+
     def execute(self,handle):
         result=self.action.Result(outcome='STOPPED',motion_terminal=True)
         if not self._active.acquire(blocking=False):
@@ -192,7 +209,7 @@ class JointOperationRuntime:
                     continue
                 kind=command.kind
                 if kind.startswith('validate_'):
-                    checked=self.ports.validate(command.leg_index)
+                    checked=self.validate_with_refresh(command.leg_index,deadline=deadline,cancelled=cancelled)
                     command=self.machine.validation_finished(command.token,checked.receipt)
                 elif kind=='execute_leg':
                     # Every leg gets an actual fresh-scene suffix check inside
@@ -234,7 +251,7 @@ class JointOperationRuntime:
                     command=self.machine.release_confirmed(command.token,success=self.ports.release())
                 elif kind=='apply_release_and_validate_retreat':
                     self.ports.apply_phase('retreat',self.ports.geometry)
-                    checked=self.ports.validate(command.leg_index)
+                    checked=self.validate_with_refresh(command.leg_index,deadline=deadline,cancelled=cancelled)
                     command=self.machine.validation_finished(command.token,checked.receipt)
                 elif kind=='cancel_motion':
                     self.motion.cancel()

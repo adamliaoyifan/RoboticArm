@@ -179,3 +179,23 @@ def test_preparation_window_and_replay_retention_share_original_acquisition_boun
     assert journal.used('first')
     journal.finish(second,bound+2)
     assert not journal.used('first') and journal.used('second')
+
+@pytest.mark.parametrize('case',('converges','collision','exhausted','cancelled','deadline'))
+def test_barrier_rechecks_only_valid_source_changes_with_bounded_attempts(case):
+    import time
+    runtime=object.__new__(JointOperationRuntime)
+    runtime.refresh_attempts=3
+    calls=[];records=[]
+    def validate(index):
+        calls.append(index)
+        accepted=case=='converges' and len(calls)==2
+        runtime.ports.retryable_change=case!='collision' and not accepted
+        return SimpleNamespace(receipt=SimpleNamespace(accepted=accepted,
+            reason='NATIVE_SUFFIX_CHECKED' if accepted else 'refused'))
+    runtime.ports=SimpleNamespace(validate=validate,retryable_change=False)
+    runtime.record=lambda name,data:records.append(json.loads(data))
+    result=runtime.validate_with_refresh(5,deadline=time.monotonic()+(-1 if case=='deadline' else 10),
+        cancelled=lambda:case=='cancelled')
+    assert len(calls)==({'converges':2,'exhausted':3}.get(case,1))
+    assert result.receipt.accepted==(case=='converges')
+    assert len(records)==len(calls) and all(row['index']==5 for row in records)

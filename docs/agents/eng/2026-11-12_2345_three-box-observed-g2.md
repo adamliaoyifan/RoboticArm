@@ -637,3 +637,25 @@ satisfy these product gates.
 - Evidence: diagnostic33/{run/prepare/boundaries.jsonl,run/execution,reference,
   run_manifest.json}; actual failure capture durable before owned teardown0.
   Release, retreat, adoption and three-box gate still unachieved.
+
+## Diagnostic34 -- 2026-11-13T04:57+08:00
+
+- Build50/install192 checks pass. Startup9.20s, prepare16.36s, execute105.58s.
+  FIRST actual descent and vacuum release both succeed. Retreat not submitted:
+  released barrier checks once while occupied O changes1198->1188 (rev37->43),
+  then returns CERTIFICATE_OR_SOURCE_NOT_CURRENT. No collision verdict occurred.
+- Preserved final boundary O and full native replay accept retained descent AND
+  retreat (source revision43, replay0.505s). This distinguishes stale evidence
+  from blocked motion. Physical post-release observations are saved separately.
+- Source mechanism: execute_leg already has bounded valid-source refresh, while
+  validate_* and apply_release_and_validate_retreat each called validate once.
+  Recommended consistency repair: reuse the same configured attempt bound for
+  unexecuted suffix barrier validation, only when ports marks a valid source
+  change. Vacuum/scene event effects stay outside the loop; collision, identity
+  refusal, cancellation and deadline stop retries. Full native checks remain.
+- Behavioural verification40 pass/46 environment-dependent skips covers source
+  convergence, collision no-retry, exhaustion, cancellation/deadline. First
+  invocation used nonexistent test filename and ran zero checks; corrected
+  invocation above is the actual evidence, not the typo result.
+- Evidence diagnostic34/{cycle,run/execution,reference,final_suffix50}; raw source
+  archive complete, owned teardown0. No retreat/adoption/three-box pass yet.
