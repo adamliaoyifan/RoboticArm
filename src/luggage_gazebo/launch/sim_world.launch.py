@@ -1357,6 +1357,11 @@ def generate_launch_description():
             profile_arg('planning_pipeline', 'legacy_segments or joint_operation; select the complete observed operation explicitly.'),
             profile_arg('operation_run_dir', 'Absolute fresh evidence/journal directory for joint_operation.'),
             profile_arg('operation_prepare_budget_s', 'Diagnostic complete-preparation watchdog, not a production latency target.'),
+            profile_arg('volume_evidence_source', 'Legacy placement volume reader; complete-operation composition owns O explicitly.'),
+            profile_arg('cargo_map_max_raycast_points', 'Legacy G integration ray budget.'),
+            profile_arg('planning_pipeline', 'legacy_segments or joint_operation; select the complete observed operation explicitly.'),
+            profile_arg('operation_run_dir', 'Absolute fresh evidence/journal directory for joint_operation.'),
+            profile_arg('operation_prepare_budget_s', 'Diagnostic complete-preparation watchdog, not a production latency target.'),
                 "Read-only placement-prior sidecar (explicit opt-in; "
                 "default false = zero prior processes)."),
             profile_arg(

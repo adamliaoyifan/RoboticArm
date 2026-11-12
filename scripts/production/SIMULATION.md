@@ -67,7 +67,8 @@ group automatically. Readiness rehearsal (add `--start` for one explicit cycle):
 ```bash
 scripts/production/run.sh /usr/bin/python3 scripts/production/simulation.py \
   --evidence /absolute/fresh/rehearsal \
-  --semantic-deps /absolute/frozen/semantic/dependencies
+  --semantic-deps /absolute/frozen/semantic/dependencies \
+  --build-receipt /absolute/passing/build/manifest.json
 ```
 
 `runtime/launch.json` reports whether the existing reviewed atlas matches the

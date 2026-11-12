@@ -2,6 +2,22 @@ import pytest
 from luggage_gazebo.operation_launch import validate_operation_selection
 
 
+def test_every_default_can_actually_resolve_from_declared_launch_arguments():
+    import importlib.util
+    from pathlib import Path
+    from launch import LaunchContext
+    from launch.actions import DeclareLaunchArgument
+    path=Path(__file__).resolve().parents[1]/'launch/sim_world.launch.py'
+    spec=importlib.util.spec_from_file_location('operation_sim_world_test',path)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    context=LaunchContext()
+    for action in module.generate_launch_description().entities:
+        if isinstance(action,DeclareLaunchArgument):action.execute(context)
+    resolved=module._resolved_launch_config(context)
+    assert set(resolved)==set(module._default_launch_values())
+    assert resolved['planning_pipeline']=='legacy_segments'
+
+
 def config(tmp_path):
     return dict(planning_pipeline='joint_operation',operation_run_dir=str(tmp_path/'fresh'),
         operation_prepare_budget_s='300.0',

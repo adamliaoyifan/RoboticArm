@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+import tarfile
 import time
 
 from ament_index_python.packages import get_package_share_directory
@@ -48,6 +49,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--evidence',required=True,type=Path)
     parser.add_argument('--semantic-deps',required=True,type=Path)
+    parser.add_argument('--build-receipt',required=True,type=Path)
     parser.add_argument('--start',action='store_true')
     parser.add_argument('--domain',default=7,type=int)
     args = parser.parse_args()
@@ -70,6 +72,28 @@ def main():
         manifest.update(outcome='DEPENDENCY_PREFIX_MISSING',nodes_started=0,capture_complete=True,
                         replay_possible=True)
         write();return 2
+    # Preserve source bytes, including pre-existing shared untracked runtime
+    # modules. A dirty hash alone is not a replay artifact.
+    suffixes={'.py','.cpp','.h','.hpp','.yaml','.yml','.json','.xml','.msg','.srv',
+              '.action','.xacro','.srdf','.sh','.stl','.STL','.dae','.obj','.npz','.sdf','.dsv'}
+    receipt=json.loads(args.build_receipt.read_text())
+    if not receipt.get('passed'):
+        raise ValueError('PASSING_PRODUCTION_BUILD_RECEIPT_REQUIRED')
+    import hashlib
+    changed=[name for name,digest in receipt['source_after'].items()
+        if not (ROOT/name).is_file() or hashlib.sha256((ROOT/name).read_bytes()).hexdigest()!=digest]
+    if changed:
+        manifest.update(outcome='SOURCE_CHANGED_SINCE_BUILD',changed=changed);write();return 2
+    manifest['build_receipt']=str(args.build_receipt.resolve())
+    (folder/'build_receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+    with tarfile.open(folder/'runtime_sources.tar.gz','w:gz') as archive:
+        bases=[ROOT/row.split()[1] for row in receipt['packages']]+[ROOT/'scripts/production']
+        for base in bases:
+            for path in sorted(base.rglob('*')):
+                if (path.is_file() and path.suffix in suffixes and
+                        not {'__pycache__','.pytest_cache','.git'} & set(path.parts)):
+                    archive.add(path,arcname=str(path.relative_to(ROOT)),recursive=False)
+    manifest['source_archive']='runtime_sources.tar.gz';write()
     pidfile = Path('/tmp/elfin_humble_sim.pid')
     if pidfile.exists():
         manifest.update(outcome='PIDFILE_REQUIRES_OWNER_REVIEW',pidfile=pidfile.read_text())
@@ -129,8 +153,19 @@ def main():
                 (folder/'snapshot.log').write_text(snapshot.stdout+snapshot.stderr)
                 manifest['snapshot_exit_code']=snapshot.returncode
                 stop(bag);bag=None
-                manifest['capture_complete']=(folder/'sensor_window/metadata.yaml').is_file()
-                if not manifest['capture_complete']:manifest['missing'].append('bounded sensor bag')
+                metadata=folder/'sensor_window/metadata.yaml'
+                manifest['capture_complete']=metadata.is_file()
+                if metadata.is_file():
+                    import yaml
+                    bag_info=yaml.safe_load(metadata.read_text())['rosbag2_bagfile_information']
+                    manifest['sensor_message_count']=bag_info['message_count']
+                    manifest['sensor_topics']={row['topic_metadata']['name']:row['message_count']
+                        for row in bag_info['topics_with_message_count']}
+                    if launch.poll() is not None and not bag_info['message_count']:
+                        manifest['sensor_capture']='not_applicable_before_sensor_start'
+                    elif not bag_info['message_count']:
+                        manifest['capture_complete']=False
+                if not manifest['capture_complete']:manifest['missing'].append('nonempty bounded sensor bag')
                 write()
     except Exception as error:
         manifest['exception']=type(error).__name__+':'+str(error);write()
