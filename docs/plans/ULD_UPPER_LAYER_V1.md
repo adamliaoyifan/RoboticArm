@@ -2237,3 +2237,35 @@ case_id、attempt_index、scene_sha256；runner通过--calibration-enrollment
 197项离线行为回归已通过，含真实CLI在错case/world时未建仿真、正确绑定
 达到slot gate，未用源文件字符串检查代替行为。首单元实际结果尚未存在；
 54、1%细化、严格接触管/正式C5和剩余A/D仍open。
+
+### 19.38 释放校准首个分组完成：40%/0deg三次均失稳
+
+冻结558806497a11d6a61489c4c3f44bd8e64e4aa6be代码及全部runtime文件hash，
+矩阵catalog SHA256为7db23089e542ed333c8fc5e2bef7a434637580ebd5220b6932319c4cd44d4872。
+54单元初始目录保留21几何可用/33几何不可用，三个新单元分别绑定登记、
+case/world/config/source/binary身份；历史trial03不计入本矩阵。
+
+40%/yaw0/repetition0,1,2分别实际运行并owned teardown成功。每次吸附保持
+两段3s并确认物理初始条件，随后解除约束、由双轴控制器开始撤出；首次箱体
+转角超过0.5deg即停止。三次均在7.185/7.179/7.181sim秒触发，转角均约
+0.517400925deg，位移约1.235921491mm。该时刻工具无任何接触，附着约束
+已消失，原生解除计数1，无箱体命令；有效下层顶面接触仍存在。
+
+冻结源代码回放完整8185/8179/8182原生物理步，含停止后1s触发窗口；
+三次native间隔均不超过1.000001ms。每个失稳audit的10项检查全部为true，
+实时monitor与重放metrics逐字段相等，全部source/assets/产物hash经校验。
+停止后可能出现的工具保护接触不用于宣称独立稳定；负例只证明首次无工具
+接触时已经失稳，不宣称撤出完成。初始实际面积约39.9999994%、COM裕量
+约-55mm，始终diagnostic_outside_policy，execution_admitted=false。
+
+分组结果为observed_unstable_3_of_3，仅代表该朝向/布局/材料/COM的初步
+重复性；不证明普适40%边界或统计可靠性。矩阵当前3有效失稳、18pending、
+33几何不可用，尚无稳定侧边界，最小稳定比例not_evaluated。其余54目录、
+1%细化、全臂严格接触管、正式C5及A/D仍open，不降低任何原门槛。
+
+证据：primary/docs/status/evidence/uld_upper_layer_v1/release_calibration_matrix_g12_01/
+的catalog.json、progress.json、各case/attempt01/instability_audit.json及inventory.json。
+本轮终态483个产物hash全部校验，约149MB（含重复源模型与二进制）。
+初次启动在导入ROS依赖前失败，原因是命令覆盖了PYTHONPATH；未创建仿真、
+未消耗物理样本。修正为保留ROS路径后运行。离线audit首版误导入pose_error
+的日志亦保留并修正，修正后完整回放通过；没有因此重复物理实验。
