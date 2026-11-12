@@ -191,3 +191,16 @@ must not rebuild from `out.stats` plus stamp and frame_id.
   `data_frame` (`camera_link` despite an optical header) is a preprocessor
   parameter; evidence lives in
   [m2_perception_occlusion_problem.md](../status/m2_perception_occlusion_problem.md).
+
+## Source-bound cargo observation partitions
+
+A cargo observation partition binds exact-acquisition colour-aligned RGB,
+depth, per-frame instance mask, calibration and optical-to-container TF.
+Deproject once and retain point-to-source-pixel indices; label0 and other
+instances remain in the cloud. Its labels are local to that frame, never
+physical cargo identity or permission to replace O occupancy. No guessed
+support completion, nearest-stamp join, latest TF or task-label substitution.
+The acquisition service is read-only and cannot move hardware or write maps.
+Later O consumption must use these exact point bytes and obtain source-bound
+owner provenance, conditional unique same-cargo association and native scene
+admission. A partition alone authorizes no obstacle removal.

@@ -450,3 +450,17 @@ placement-prior-occ-voxel-{0,1,2,3}; native_contact_summary.json contains the
 decoded contacts. This establishes the rejected collision pair, not whether
 the voxel representation is excessive or the physical path is clear. Do not
 delete voxels, lower margins or exempt the contact pair on this evidence alone.
+
+### 2026-11-12 checkpoint: source-bound released cargo observations
+
+User retains5cm release gap, authorizes a new observation-association module
+(no existing post-release interface), and accepts conditional unique matching
+from frozen pickup + actual fixed attachment/release + measured before/after
+geometry under static-other-cargo premise. Ambiguity/occlusion/contradiction
+retains O. Exact staged requirements and finite functional acceptance:
+`docs/plans/RELEASED_CARGO_ASSOCIATION_20261112.md`.
+Only ST-4-OBS-JOIN is dispatch-ready initially. Claimed gen2 integration remains
+unchanged; source-proven replacement and integration require later dispatch,
+with gen2 superseded only by a complete gen3 checkpoint preserving its gates.
+This authorization does not establish physical collision monitoring or permit
+planned-AABB carving, unclassified/unknown removal or frozen-map execution.
