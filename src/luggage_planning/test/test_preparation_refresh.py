@@ -309,7 +309,8 @@ def test_real_root_finalization_binds_latest_issuance_and_releases_lock(mode):
         _placements=lambda *args:(), observed_contacts=SimpleNamespace(retain=retain),
         observer=SimpleNamespace(current=lambda source, **kwargs:source == f.fresh.source),
         preparation=SimpleNamespace(prepare=run, planner=SimpleNamespace(certification=f.certifier)),
-        refresh_attempts=2, revision='scene', margin=.05, container=f.old.snapshot.world_from_container,
+        refresh_attempts=2, revision='scene', margin=.05, vertical_margin=.05,
+        container=f.old.snapshot.world_from_container,
         pickup_id='pickup_box', store=SimpleNamespace(current=lambda:None),
         issued=SimpleNamespace(issue=lambda plan, **kwargs:calls.append((plan, kwargs))),
         get_logger=lambda:SimpleNamespace(error=lambda text:None))
