@@ -4,6 +4,24 @@ project(luggage_perception)
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
 
+# The O ray adapters share one acquisition-time, actual-URDF self mask.
+find_package(rclcpp REQUIRED)
+find_package(moveit_core REQUIRED)
+find_package(moveit_ros_perception REQUIRED)
+find_package(GLUT REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(urdf REQUIRED)
+find_package(srdfdom REQUIRED)
+find_package(OpenSSL REQUIRED)
+add_executable(observer_self_mask_node src/observer_self_mask_node.cpp)
+ament_target_dependencies(observer_self_mask_node rclcpp moveit_core
+  moveit_ros_perception sensor_msgs std_msgs tf2_ros urdf srdfdom)
+target_link_libraries(observer_self_mask_node OpenSSL::Crypto)
+target_compile_options(observer_self_mask_node PRIVATE -Wall -Wextra)
+install(TARGETS observer_self_mask_node DESTINATION lib/${PROJECT_NAME})
+
 # NOTE: ament_python_install_package COPIES the package under
 # install/*/dist-packages (the scripts below stay symlinks only under
 # --symlink-install). Library edits are invisible to installed CLIs until

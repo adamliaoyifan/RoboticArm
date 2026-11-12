@@ -218,3 +218,31 @@ source-coverage diagnostics, invoked by `scripts/audit_cargo_bags.py`. They use
 recorded native schemas without starting ROS or changing raw bags, planning,
 robot or O state. Exact timestamp coverage, reported shape spread and historical
 held detections are not independent pose accuracy or physical identity evidence.
+
+## Observed O robot-return adapter
+
+The explicit Gazebo `joint_operation` composition routes both stationary optical
+and LiDAR endpoints through `observer_self_mask_node` before the sole O owner.
+This C++ node is an adapter to MoveIt's existing `ShapeMask`; it introduces no
+custom geometric classifier. It loads the identical expanded URDF/SRDF used by
+planning, including every collision shape and its collision-origin transform.
+Scale is 1 and additional padding is 0. Mesh containment follows MoveIt's body
+representation; this is not a measured sensor-error calibration.
+
+Every body transform must resolve at the cloud's original acquisition stamp in
+the original physical cloud frame before invoking the mask. Missing/invalid TF
+refuses the entire frame, because the upstream mask may otherwise retain a
+previous body transform. No latest-TF fallback is allowed. Removed endpoints
+remove their whole ray; no infinite endpoints or free-space rays are fabricated.
+Outside endpoints retain all fields and the original frame/stamp. The node
+publishes source stamp, model digest, body count, robot-hit count, clipped count
+and refusal reason on `/luggage/observation/self_mask_status`. Unmasked topics
+remain available for bounded failure evidence. The adapter never edits existing
+O voxels and never masks cargo or static ULD geometry.
+
+The unbuilt ROS 1 `urdf_robot_self_mask` files and hand-configured
+`RobotSelfPointFilter` are reference implementations, not this route's filter.
+This integration is qualified by native behavioral tests (nonzero collision
+origin, external point retention, missing-one-body-TF refusal), saved full-model
+cloud replay, and separate full-model end-to-end evidence. Passing the adapter
+checks alone is not a completed loading cycle.

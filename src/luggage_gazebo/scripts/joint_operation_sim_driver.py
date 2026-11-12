@@ -100,7 +100,10 @@ class OperationSimDriver(Node):
             for topic,cls in [('/joint_states',JointState),('/tf',TFMessage),
                     ('/tf_static',TFMessage),('/uld_occ_observer/receipts',UpdateReceipt),
                     ('/luggage/observation/optical_points',PointCloud2),
-                    ('/luggage/observation/lidar_points',PointCloud2)]:
+                    ('/luggage/observation/lidar_points',PointCloud2),
+                    ('/luggage/observation/optical_points_unmasked',PointCloud2),
+                    ('/luggage/observation/lidar_points_unmasked',PointCloud2),
+                    ('/luggage/observation/self_mask_status',String)]:
                 qos = (QoSProfile(depth=1,durability=DurabilityPolicy.TRANSIENT_LOCAL)
                        if topic=='/tf_static' else qos_profile_sensor_data)
                 self.create_subscription(cls,topic,lambda msg,t=topic,c=cls:
@@ -118,6 +121,7 @@ class OperationSimDriver(Node):
         for key,cls,topic in [
                 ('depth_status',String,'/luggage/observation/status'),
                 ('lidar_status',String,'/luggage/observation/lidar_status'),
+                ('self_mask_status',String,'/luggage/observation/self_mask_status'),
                 ('o_receipt',UpdateReceipt,'/uld_occ_observer/receipts'),
                 ('lidar',PointCloud2,'/livox/lidar'),
                 ('optical_rays',PointCloud2,'/luggage/observation/optical_points')]:

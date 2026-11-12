@@ -93,11 +93,19 @@ def operation_composition(config, robot_xml, semantic_xml):
             lidar_cloud_topic='/luggage/observation/lidar_points',
             lidar_frame=config.get('operation_lidar_frame','livox_frame'))]),
         Node(package='luggage_perception', executable='observer_depth_node.py', name='observer_depth',
-            output='screen', parameters=[dict(use_sim_time=True)]),
+            output='screen', parameters=[dict(use_sim_time=True)],
+            remappings=[('/luggage/observation/optical_points',
+                         '/luggage/observation/optical_points_unmasked')]),
         Node(package='luggage_perception', executable='observer_lidar_node.py', name='observer_lidar',
             output='screen', parameters=[dict(use_sim_time=True,
                 lidar_topic=config.get('operation_lidar_topic','/livox/lidar'),
-                lidar_frame=config.get('operation_lidar_frame','livox_frame'))]),
+                lidar_frame=config.get('operation_lidar_frame','livox_frame'))],
+            remappings=[('/luggage/observation/lidar_points',
+                         '/luggage/observation/lidar_points_unmasked')]),
+        Node(package='luggage_perception', executable='observer_self_mask_node', name='observer_self_mask',
+            output='screen', parameters=[dict(use_sim_time=True,
+                robot_description=common['robot_description'],
+                robot_description_semantic=common['robot_description_semantic'])]),
         Node(package='luggage_packing', executable='placement_planner_node.py', name='placement_planner',
             output='screen', parameters=[dict(use_sim_time=True, scene_tf_config=scene,
                 atlas_runtime_config=operation_atlas_config(config),
@@ -127,6 +135,9 @@ def operation_composition(config, robot_xml, semantic_xml):
                         ('luggage_gazebo','luggage_planning','luggage_perception','luggage_description')},
         startup_authorizes_motion=False)
     manifest['operation_atlas'] = dict(status=atlas_status, parameters=atlas_parameters)
+    manifest['observer_self_mask'] = dict(geometry='actual_urdf_collision_shapes',
+        scale=1.,padding_m=0.,transform_time='cloud_acquisition',
+        missing_transform='refuse_whole_cloud',removed_endpoint='discard_whole_ray')
     manifest['collision_policy'] = {key:common[key] for key in
         ('collision_margin_m','vertical_collision_margin_m')}
     (folder/'launch.json').write_text(json.dumps(manifest, indent=2)+'\n')
