@@ -64,3 +64,21 @@ def test_actual_operation_enumerator_consumes_typed_initial_surface(tmp_path):
     placements=enumerate_placements(captured.surface,(.1,.1,.1),8,volume=captured.volume,margin=.02)
     assert placements
     assert all(p.container_from_box.translation[2]==pytest.approx(.65) for p in placements)
+
+
+def test_zero_extra_vertical_padding_preserves_actual_blocked_voxel_height(tmp_path):
+    from moveit_msgs.msg import PlanningScene
+    from rclpy.serialization import deserialize_message
+    from luggage_planning.placement_prior.snapshot import build_private_snapshot
+    from luggage_planning.placement_prior.contracts import Transform
+    config,_,_=configuration(tmp_path)
+    states=[1]*64;states[0]=2;states[1]=0
+    captured=assemble_snapshot(config,identity(config),2,columns_for(config,states),states,
+                              scene_revision='scene',request_id='map')
+    result=build_private_snapshot(captured.surface,PlanningScene(),'model',
+        Transform((0.,0.,0.),(0.,0.,0.,1.)),collision_margin_m=.02,
+        vertical_collision_margin_m=0.,volume=captured.volume)
+    scene=deserialize_message(result.scene_cdr,PlanningScene)
+    assert len(scene.world.collision_objects)==2, 'Occupied and unknown both remain'
+    for obstacle in scene.world.collision_objects:
+        assert obstacle.primitives[0].dimensions==pytest.approx((.14,.14,.1))

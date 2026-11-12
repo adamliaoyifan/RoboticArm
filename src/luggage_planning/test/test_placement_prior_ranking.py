@@ -25,3 +25,19 @@ def test_rotated_payload_and_margin_are_included():
     wide=dict(center_container=[.3,.3,.15],heading_theta=0.,candidate_id='wide')
     tall=dict(wide,heading_theta=np.pi/2,candidate_id='rotated')
     assert rank_payload_clearance([tall,wide],[.3,.1,.1],volume,0.)==[wide,tall]
+
+
+def test_existing_attachment_envelope_ranks_interior_before_wall_without_veto():
+    from luggage_description.container_geometry import cuboid_from_inner_size
+    from st09_contracts.attachment_geometry import freeze_geometry
+    from st09_contracts.payload_envelope import EnvelopeLimits
+    hull=cuboid_from_inner_size((1.,1.,1.))
+    volume=SimpleNamespace(dimensions_xyz=[10,10,10],states=bytes([1])*1000,
+        active=[True]*1000,origin_container=[-.5,-.5,0.],resolution_m=.1)
+    wall=dict(center_container=[.39,0.,.05],heading_theta=0.,candidate_id='wall')
+    interior=dict(wall,center_container=[.25,0.,.05],candidate_id='interior')
+    geometry=freeze_geometry((.2,.1,.1),(0.,0.,.05),(1.,0.,0.,0.),
+        EnvelopeLimits(5.,(.1,.1,.1),(0.,0.),.005))
+    rows=rank_payload_clearance([wall,interior],[.2,.1,.1],volume,.02,
+        hull=hull,geometry=geometry,release_gap_m=.05,vertical_margin=0.)
+    assert rows==[interior,wall]

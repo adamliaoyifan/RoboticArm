@@ -34,7 +34,8 @@ def proposal_scene_hash(scene):
 
 
 def build_private_snapshot(confirmed_surface, baseline_scene, model_hash,
-                           world_from_container, *, collision_margin_m, volume=None):
+                           world_from_container, *, collision_margin_m, volume=None,
+                           vertical_collision_margin_m=None):
     from geometry_msgs.msg import Pose
     from moveit_msgs.msg import CollisionObject
     from shape_msgs.msg import SolidPrimitive
@@ -45,6 +46,10 @@ def build_private_snapshot(confirmed_surface, baseline_scene, model_hash,
         raise ValueError('full baseline scene required')
     if not math.isfinite(collision_margin_m) or collision_margin_m < 0:
         raise ValueError('explicit nonnegative collision margin required')
+    vertical_margin = (collision_margin_m if vertical_collision_margin_m is None
+                       else vertical_collision_margin_m)
+    if not math.isfinite(vertical_margin) or vertical_margin < 0:
+        raise ValueError('nonnegative vertical collision margin required')
     if surface['frame_id'] != 'container_link':
         raise ValueError('container-frame OCC required')
     # Never mutate the captured ROS message or owner scene.
@@ -66,7 +71,9 @@ def build_private_snapshot(confirmed_surface, baseline_scene, model_hash,
             obj = CollisionObject(); obj.id = COLUMN_PREFIX+"voxel-"+str(index)
             obj.header.frame_id="world"; obj.operation=CollisionObject.ADD
             shape=SolidPrimitive(); shape.type=SolidPrimitive.BOX
-            shape.dimensions=[v+2*collision_margin_m for v in dimensions]
+            shape.dimensions=[dimensions[0]+2*collision_margin_m,
+                              dimensions[1]+2*collision_margin_m,
+                              dimensions[2]+2*vertical_margin]
             pose=Pose(); pose.position.x,pose.position.y,pose.position.z=world.translation
             pose.orientation.x,pose.orientation.y,pose.orientation.z,pose.orientation.w=world.quaternion_xyzw
             obj.primitives=[shape]; obj.primitive_poses=[pose]

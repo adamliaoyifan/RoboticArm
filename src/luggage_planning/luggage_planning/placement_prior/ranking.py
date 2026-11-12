@@ -3,7 +3,8 @@ import math
 import numpy as np
 
 
-def rank_payload_clearance(candidates, box_wdh, volume, margin):
+def rank_payload_clearance(candidates, box_wdh, volume, margin, *, hull=None,
+                           geometry=None, release_gap_m=0., vertical_margin=None):
     """Prioritize clear payload AABBs, retaining solver order within each group.
 
     Input volume has already passed snapshot admission. This does not authorize
@@ -25,13 +26,27 @@ def rank_payload_clearance(candidates, box_wdh, volume, margin):
     for index, candidate in enumerate(candidates):
         yaw = float(candidate['heading_theta'])
         c, s = abs(math.cos(yaw)), abs(math.sin(yaw))
-        width, depth, height = box_wdh
-        half = np.array([(c*width+s*depth)/2, (s*width+c*depth)/2, height/2]) + margin
         center = np.asarray(candidate['center_container'])
+        dimensions = box_wdh
+        if geometry is not None:
+            quat=(0.,0.,math.sin(yaw/2),math.cos(yaw/2))
+            center,_=geometry.conservative_pose_at_box(center,quat)
+            center=np.asarray(center)
+            dimensions=geometry.conservative.dimensions_wdh
+        center=center+np.array([0.,0.,release_gap_m])
+        width, depth, height = dimensions
+        mz=margin if vertical_margin is None else vertical_margin
+        half = np.array([(c*width+s*depth)/2+margin,
+                         (s*width+c*depth)/2+margin, height/2+mz])
+        outside_hull=False
+        if hull is not None:
+            from luggage_description.container_geometry import contains_oriented_box
+            outside_hull=not contains_oriented_box(hull,center,dimensions,yaw,
+                                                   margin=margin,floor_margin=0.)
         lower = np.maximum(0, np.minimum(maximum, np.floor((center-half-origin)/resolution).astype(int)))
         upper = np.maximum(0, np.minimum(maximum, np.ceil((center+half-origin)/resolution).astype(int)))
         x0, y0, z0 = lower; x1, y1, z1 = upper
         count = (prefix[z1,y1,x1]-prefix[z0,y1,x1]-prefix[z1,y0,x1]-prefix[z1,y1,x0]
                  +prefix[z0,y0,x1]+prefix[z0,y1,x0]+prefix[z1,y0,x0]-prefix[z0,y0,x0])
-        ranked.append((bool(count), index, candidate))
-    return [row[2] for row in sorted(ranked, key=lambda row: row[:2])]
+        ranked.append((outside_hull, bool(count), index, candidate))
+    return [row[3] for row in sorted(ranked, key=lambda row: row[:3])]

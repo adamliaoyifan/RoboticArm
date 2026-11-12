@@ -24,7 +24,8 @@ def measured_detection_view(box):
         box_size=tuple(size), stamp_ns=int(box.header.stamp.sec)*1000000000+int(box.header.stamp.nanosec))
 
 
-def enumerate_placements(confirmed, box_wdh, max_slots, *, volume=None, margin=.05):
+def enumerate_placements(confirmed, box_wdh, max_slots, *, volume=None, margin=.05,
+                         ranking_geometry=None, release_gap_m=0., vertical_margin=None):
     from luggage_packing.placement_query import placement_query
     from luggage_packing.placement_solver import retain_directed_candidates
     from luggage_packing.placement_volume_query import KnownFreeVolume, evidence_from_volume
@@ -52,7 +53,10 @@ def enumerate_placements(confirmed, box_wdh, max_slots, *, volume=None, margin=.
     candidates = [candidate for candidate in result['candidates'] if candidate['feasible']]
     if volume is not None:
         from luggage_planning.placement_prior.ranking import rank_payload_clearance
-        candidates = rank_payload_clearance(candidates, box_wdh, volume, margin)
+        from luggage_description.container_geometry import normalize_descriptor
+        candidates = rank_payload_clearance(candidates, box_wdh, volume, margin,
+            hull=normalize_descriptor(descriptor) if ranking_geometry is not None else None,
+            geometry=ranking_geometry,release_gap_m=release_gap_m,vertical_margin=vertical_margin)
     candidates = retain_directed_candidates(candidates, max_slots)
     result = []
     for candidate in candidates:

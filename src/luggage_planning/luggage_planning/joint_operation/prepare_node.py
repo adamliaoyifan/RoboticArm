@@ -91,9 +91,12 @@ class JointOperationPrepareNode(Node):
         contact_model = load_suction_contact_model(contact_path)
         self.limits = load_attachment_geometry_policy(param('attachment_geometry_config',''))
         self.margin = float(param('collision_margin_m',.05))
+        self.vertical_margin = float(param('vertical_collision_margin_m',self.margin))
         self.start_tolerance = float(param('start_tolerance_rad',.01))
         self.slot_limit = int(param('geometric_slot_limit',256))
-        if (not math.isfinite(self.margin) or self.margin < 0 or not math.isfinite(self.start_tolerance)
+        if (not math.isfinite(self.margin) or self.margin < 0
+                or not math.isfinite(self.vertical_margin) or self.vertical_margin < 0
+                or not math.isfinite(self.start_tolerance)
                 or self.start_tolerance < 0 or not 1 <= self.slot_limit <= 2048):
             raise ValueError('finite nonnegative margins and bounded geometry pool required')
         self.pickup_id = str(param('pickup_object_id',BOX_OBJECT_ID))
@@ -332,8 +335,14 @@ class JointOperationPrepareNode(Node):
         return self.static_world.admit(self._call(self.scene_client,request,deadline,'scene').scene)
 
     def _placements(self,request,confirmed,volume):
-        pool = enumerate_placements(confirmed,(request.detection.width,request.detection.depth,request.detection.height),
-                                    self.slot_limit,volume=volume,margin=self.margin)
+        from st09_contracts.attachment_geometry import freeze_geometry
+        dimensions=(request.detection.width,request.detection.depth,request.detection.height)
+        # A centred contact is a cheap ranking proposal. Actual directed
+        # contact/attachment and native checks remain the motion authority.
+        ranking_geometry=freeze_geometry(dimensions,(0.,0.,dimensions[2]/2),(1.,0.,0.,0.),self.limits)
+        pool = enumerate_placements(confirmed,dimensions,self.slot_limit,volume=volume,margin=self.margin,
+            ranking_geometry=ranking_geometry,release_gap_m=PLACE_RELEASE_GAP_M,
+            vertical_margin=self.vertical_margin)
         if request.slots:
             result = []
             for index,slot in enumerate(request.slots):
@@ -400,7 +409,8 @@ class JointOperationPrepareNode(Node):
                 volume = timing.call('g_volume_capture',self._grid_g_volume,confirmed,deadline)
             snapshot = timing.call('private_scene',build_private_snapshot,
                 confirmed,baseline,self.model.model_sha256,self.container,
-                                              collision_margin_m=self.margin,volume=volume)
+                                              collision_margin_m=self.margin,volume=volume,
+                                              vertical_collision_margin_m=self.vertical_margin)
             placements = timing.call('placement_candidates',self._placements,request,confirmed,volume)
             reference = Transform.from_matrix(self.model.urdf.tcp(list(request.start_joints),self.model.path))
             inputs = PreparationInputs(snapshot,domain,placements,reference,self.pickup_id,observed)
@@ -427,7 +437,8 @@ class JointOperationPrepareNode(Node):
                     surface,latest_volume,source = self._capture_map(request,limit,latest=True)
                     scene = self._scene(limit)
                     fresh_snapshot = build_private_snapshot(surface,scene,self.model.model_sha256,self.container,
-                        collision_margin_m=self.margin,volume=latest_volume)
+                        collision_margin_m=self.margin,volume=latest_volume,
+                        vertical_collision_margin_m=self.vertical_margin)
                     return RefreshCapture(surface,latest_volume,source,scene,fresh_snapshot)
                 finalizer = LatestMapFinalizer(original_surface=confirmed,original_source=map_source,
                     original_snapshot=snapshot,baseline_hash=expected_world,capture=capture_latest,

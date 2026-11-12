@@ -227,6 +227,14 @@ that fails the same check.
 
 ### Atlas is a prior for route search
 
+Whole-operation slot ranking can use a centred-contact attachment envelope,
+the configured release gap, exact container hull and same-source O. This is a
+cheap ranking proposal, not a change to the nominal box size or a placement veto.
+It retains blocked/outside-envelope proposals as fallback; actual offset contact,
+payload geometry and native whole-arm trajectories remain authoritative. The
+purpose is to avoid spending the bounded native budget exclusively on nominal
+wall-touching boxes whose existing conservative envelopes cross the ULD wall.
+
 The shared production query does not use `atlas_unreachable` as a slot veto.
 The legacy `placement.hard_reject` option affects direct/offline annotation;
 the shared query records that rejection as a center-grasp hint and preserves
