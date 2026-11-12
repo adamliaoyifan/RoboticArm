@@ -2269,3 +2269,48 @@ case/world/config/source/binary身份；历史trial03不计入本矩阵。
 初次启动在导入ROS依赖前失败，原因是命令覆盖了PYTHONPATH；未创建仿真、
 未消耗物理样本。修正为保留ROS路径后运行。离线audit首版误导入pose_error
 的日志亦保留并修正，修正后完整回放通过；没有因此重复物理实验。
+
+### 19.39 40%与45%两朝向已运行；保留一个未评估负例
+
+沿用catalog7db23089与冻结runtime/config全部hash；本轮没有改运行代码、
+模型、原生插件、控制器或任何生产门槛。按目录补完40%/90deg及45%/
+0deg、90deg各3次，累计12次独立重置物理运行，均完整采集且owned teardown。
+
+| 支撑比例 / yaw | 三次预定运行 | 有效物理样本 | 当前分组结论 |
+|---|---|---|---|
+| 40% / 0deg | 三次转角超限 | 三次失稳 | observed_unstable_3_of_3 |
+| 40% / 90deg | 三次转角超限 | 两次失稳、一次not_evaluated | 少于3有效样本，分组not_evaluated |
+| 45% / 0deg | 三次转角超限 | 三次失稳 | observed_unstable_3_of_3 |
+| 45% / 90deg | 三次转角超限 | 三次失稳 | observed_unstable_3_of_3 |
+
+40%/90deg/repeat1（case a29c7a731ef198fa41b2）不能计入有效失稳：
+首次0.504356deg超限在7.179s，当帧原生支撑接触为空。此前7.153s开始
+间歇为空，7.178s仍有接触；所有接触组件均available、完整数据流连续，
+因此不是缺失组件或采集截断。无工具接触、吸附约束已解除、其他9项audit
+通过且live/replay metrics一致，但原定有效支撑接触见证门槛不通过，保留
+not_evaluated、unit_terminal=false，不将错误字符串当成合格负例。
+接触间歇的物理原因未建立；不推断为仿真器缺陷、不放宽门槛、不重跑该次
+来凑样本。诊断记录持久化后继续其他预先定义的单元，不声称本组已经完成
+最少3个有效样本要求。后续若修订负例判定，须显式版本化并保留原判定。
+
+全部12次98280原生步重放，11项合格负例的10个检查均通过；另1项保留
+上述明确失败。每次live/replay metrics逐字段相等。再独立从raw native
+重建解除前完整3s controlled-hold窗口，每次3001步，共36012步；物理
+初始条件/工具无接触/完整窗口/最终typed sample/校准readiness及false执行
+准入均复现，通过12组检查。初版离线readiness比较再次遇到tuple/list
+序列化差异，保留原脚本/失败日志，改比较相同JSON表示后重放通过；没有
+改物理结果或重新消耗样本。
+
+矩阵投影现为11 physical_instability、1 not_evaluated、9 pending、
+33 geometrically_unavailable。没有矩阵稳定样本/稳定边界，最小已测稳定
+比例仍not_evaluated；3/3失稳只代表该输入条件的初步重复性。历史trial03
+不计入新矩阵。50%/55%/60%的9个单元、有效1%细化、全臂严格接触管、
+正式C5及剩余A/D继续open，不宣称闭环可行性或统计可靠性已经完成。
+
+证据仍仅primary release_calibration_matrix_g12_01：checkpoint_12cases.json、
+baseline_audit_12cases.json、progress.json及各case原始native/clock、audit、
+登记/manifest与a29c..._diagnostic_resolution.json。当前1920个文件hash
+全部验证，约598MB；首次3例投影/清单已留快照，immutable catalog未改。
+新增prepare_next按目录生成下一个单元，不给答案轨迹；非终态单元必须有
+显式诊断记录才允许继续其他预定单元。稳定正向audit入口仅复用既有脚本并
+做命令参数适配，尚未用新矩阵稳定样本验证，不作为已完成交付。
