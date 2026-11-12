@@ -873,3 +873,31 @@ New refusal diagnostics distinguish unavailable from differing digest for future
 evidence.76 focused cases pass,17 opt-in ROS transport cases skipped; no measured
 live success-rate improvement claimed. Evidence wiring63 and diagnostic42/
 frozen_handoff_review.json. Three-box gate remains incomplete.
+
+## Diagnostic43 second-box candidate starvation -- 2026-11-13T06:55+08:00
+
+Build63/install192. First observed floor cycle passes: prepare39.15s, execute
+209.14s, return pickup55.52s. Box2 freezes exact measured observation successfully
+then fails SEARCH_INCOMPLETE34.15s; no second product motion. All8 local requests
+cover only4 placement proposals (2 directed contacts each), all NO_PLACE_LOCAL_BRANCH.
+Typed collision samples name carried conservative box versus O rear-wall voxel
+481/529, not box1. Original nearby-deep/shallow unused proposals fail5/5 saved
+native local replays; five existing shared-admitted interior proposals pass5/5
+with2 place branches each, unchanged grasp/scene/model. No full-route claim.
+Evidence diagnostic43/second_{local_rejection_review,payload_ranking_review}.json
+and second_candidate_native_replay,second_central_native_replay. Actual contact
+ledger only reports ULD floor for released box1; static carry means this is not
+physical collision proof for the whole carry. All failed raw/scene/O captured;
+teardown0. First boundary actual O gives52 legal stack proposals at unchanged
+shared gates; previous stride4 snapshot gave0. This is evidence of availability
+for that measured workload, not a generalized rate improvement.
+
+Recommend minimal proposal ordering and budget-unit repair (plan append): keep
+packing preference, reserve an existing interior fallback per heading before
+old shallow fallback, retain8 placement groups with2 contacts each rather than
+spending8 groups on4 placements. No new target or planner, no relaxed geometry.
+Extra maximum16 contact/native candidate attempts and potential packing-order
+tradeoff explicitly recorded. Unit tests exercise exact resource bound and
+legacy retention. Source of observed normal mismatch in diagnostic ranking is
+not yet changed; ranking remains only a proposal, native actual-envelope checks
+remain final authority.

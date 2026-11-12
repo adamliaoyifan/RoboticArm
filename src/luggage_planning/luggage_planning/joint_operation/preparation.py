@@ -86,16 +86,15 @@ class JointOperationPreparation:
                     timing.unit = placement.slot_id
                     if stopped() or self.clock() >= planning_deadline or groups >= request.candidate_limit:
                         return
+                    groups += 1
                     target_box = snapshot.world_from_container.compose(placement.container_from_box)
                     proposed = []
-                    for opposite in (False,True):
-                        if groups >= request.candidate_limit: break
-                        groups += 1
+                    for contact_index,opposite in enumerate((False,True)):
                         hint = inputs.world_from_reference_tool
                         if opposite:
                             hint = hint.compose(Transform((0.,0.,0.),(0.,0.,1.,0.)))
                         proposal = timing.call('contact_proposal',propose_contact,domain,self.model,
-                            query_id=placement.slot_id+':'+str(groups),
+                            query_id=placement.slot_id+':'+str(2*(groups-1)+contact_index+1),
                             world_from_place_box=target_box,desired_world_from_tool=hint,
                             max_center_checks=self.max_center_checks)
                         trace.append((proposal.query_id,proposal.reason,proposal.checked_centres))

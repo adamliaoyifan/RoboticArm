@@ -163,3 +163,32 @@ Raw capture rotates per box and triggers on post-place exploration/failure;
 all typed plan/map/certificate boundaries persist independently. No prior
 placement, simulator geometry as online input, new planner or cache is added.
 104 focused behavioral cases pass; build/install/live evidence follows.
+
+## Measured candidate-budget repair -- 2026-11-13T06:55+08:00
+
+Diagnostic43 completes observed floor box1 and returns with actual O retained.
+Box2 reaches native local planning: all8 tried grasp groups cover only the first4
+placement proposals, and all place branches fail. Preserved collision witnesses
+identify the conservative payload versus O voxels at the ULD rear wall (world
+[-2.225,.655,.72]), not box1. Five unused near-deep/shallow original proposals
+reproduce local failure. Five already shared-admitted interior proposals with the
+SAME retained grasp, full robot and O each produce2 valid place branches in native
+replay. This is local evidence, not a complete-route or success-rate claim.
+
+Under the user's10h recommendation delegation, apply a bounded ordering/budget
+repair without new planner or geometric exemption: retain preferred packing goal
+per heading, then the existing feasible proposal nearest container XY centre per
+heading, then previous shallow fallback and remaining packing order. The centre
+is a source-frame ranking reference; no new pose is fabricated and no candidate
+is admitted by this ranking. Define candidate_limit as up to8 PLACEMENT proposals
+with up to2 directed contacts each, under the unchanged300s shared deadline. The
+old implementation spent that limit on contacts, never reaching existing fallback
+placements. First deep proposals keep priority. This can spend up to16 contact
+queries/native local candidates, not the old8; report the extra work explicitly.
+
+Offline acceptance once: retain4 preferred plus4 interior rows at cap8, all from
+original input; cap12 also retains4 shallow; legacy/small caps unchanged. Actual
+proposal/quality/binding test must visit8 placements with2 unique contacts each
+and stop before placement9. All focused placement/profile/refresh cases pass.
+Then freeze/build/install and run the same three-box procedure, preserving the
+first failed boundary. No support, tilt, padding, release or trajectory gate change.

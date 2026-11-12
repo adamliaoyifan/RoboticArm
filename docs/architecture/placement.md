@@ -52,8 +52,14 @@ container-local 2.5D height map:
 - Production accepts directed quarter turns `{0, π/2, π, 3π/2}`. Footprint
   calculations reuse two rectangle classes, but all requested physical
   headings survive candidate generation, retention and slot serialization.
-  Bounded retention reserves one preferred and one shallow alternative per
-  heading before filling the remaining packing order. A smaller caller budget
+  Bounded retention reserves one preferred, one existing feasible candidate
+  nearest the container's XY centre, and one shallow alternative per heading
+  before filling the remaining packing order. The interior proposal is a
+  fallback when the actual eccentric payload cannot use a wall-adjacent target;
+  its coordinates still come from the admitted finite query, never a fixed goal.
+  Complete-operation `candidate_limit` counts up to eight placement proposals,
+  each with at most two directed contact proposals under one shared deadline.
+  A smaller caller budget
   can limit actual trajectory attempts; exhaustion is not proof of no space.
 - `peak` is the maximum `height` under the footprint.
 - The box rests on that surface: `z = peak + box_height / 2` in

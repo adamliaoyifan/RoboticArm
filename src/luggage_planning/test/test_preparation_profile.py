@@ -159,6 +159,35 @@ def test_candidate_stage_profile_runs_actual_proposal_quality_and_binding():
     assert all(r[4:] == ['completed', 'profile-slot'] for r in times)
 
 
+def test_candidate_limit_covers_placements_with_both_directed_contacts():
+    from dataclasses import replace
+    from luggage_perception.directed_suction_service import DirectedSuctionService
+    from luggage_planning.joint_operation.contacts import contact_query, contact_evidence
+    from luggage_planning.placement_prior.contracts import PlacementCandidate
+    from test_joint_operation_candidates import placed_pose, service_response
+    request,context,inputs=query_and_inputs(30.)
+    service=DirectedSuctionService(clock=lambda:0.);service.replace_context(context)
+    batches=[];consumed=[]
+    class Contacts:
+        def evaluate(self,domain,detection,queries,model,**kwargs):
+            batches.append([q.query_id for q in queries])
+            query=contact_query(domain,detection,queries,model,budget_s=1.)
+            return contact_evidence(service.handle(query,service_response()),query,domain,model)
+    def consume(identity,joints,candidates,**kwargs):
+        consumed.extend(candidates)
+        return SimpleNamespace(status='SEARCH_INCOMPLETE',plan=None,trace=())
+    owner=JointOperationPreparation(Contacts(),SimpleNamespace(reserve_s=.2,prepare=consume),
+        context._model,EnvelopeLimits(5.,(.1,.1,.1),(.01,.02),.005),
+        max_center_checks=64,budget=PreparationBudget(60.),clock=lambda:10.)
+    inputs=replace(inputs,placements=tuple(PlacementCandidate('slot-'+str(i),placed_pose(0.)) for i in range(10)),
+        world_from_reference_tool=Transform((0.,-.8,1.),(1.,0.,0.,0.)))
+    response=owner.prepare(request,PrepareJointOperationV2.Response(),inputs,deadline=40.,revalidate=lambda *args:True)
+    assert response.reason=='SEARCH_INCOMPLETE' and not response.plan.plan_digest
+    assert len(batches)==8 and all(len(batch)==2 for batch in batches)
+    assert len({query for batch in batches for query in batch})==16
+    assert len(consumed)==16
+
+
 def test_new_prepare_refuses_old_observation_but_retained_same_plan_keeps_original_stamp():
     from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
     request, context, _ = query_and_inputs(30.)
@@ -169,6 +198,7 @@ def test_new_prepare_refuses_old_observation_but_retained_same_plan_keeps_origin
     now = [domain.stamp_ns]
     root = SimpleNamespace(_state_lock=threading.Lock(), domain=domain,
         joints=(domain.stamp_ns,(0.,)*6), start_tolerance=.01,
+        _record=lambda *args:None,
         preparation=SimpleNamespace(model=context._model),
         get_clock=lambda:SimpleNamespace(now=lambda:SimpleNamespace(nanoseconds=now[0])))
     assert JointOperationPrepareNode._current(root, request) is domain

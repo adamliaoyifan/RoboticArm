@@ -799,7 +799,7 @@ def _headings_for_footprint(allowed_yaws, rotated, expand_half_turn):
 
 
 def retain_directed_candidates(candidates, limit):
-    """Reserve one preferred and one shallow fallback per admitted heading.
+    """Reserve preferred, interior and shallow proposals per admitted heading.
 
     Then retain the remaining packing order. A limit smaller than the number
     of headings cannot preserve them all; callers must expose that budget.
@@ -820,6 +820,18 @@ def retain_directed_candidates(candidates, limit):
 
     for group in groups.values():
         retain(group[0])
+    # Packing preference often puts every heading against the same wall. The
+    # eventual eccentric attachment can have a larger envelope than ranking's
+    # centred proposal. Reserve an already-admitted interior alternative before
+    # adjacent grid points consume the cap. The container frame is centred in
+    # XY; its origin is a ranking reference, never a generated placement target.
+    # Legacy rows without container coordinates retain their previous ordering.
+    for group in groups.values():
+        positioned = [row for row in group if 'center_container' in row]
+        if positioned:
+            retain(min(positioned, key=lambda row: (
+                sum(float(v)**2 for v in row['center_container'][:2]),
+                row['candidate_id'])))
     for group in groups.values():
         retain(min(group, key=lambda row: (float(row.get('support_layer_z', 0)),
                                           float(row.get('depth_m', 0)),
