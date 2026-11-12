@@ -91,10 +91,28 @@ def test_explicit_start_declares_empty_without_mandatory_portal_motion(tmp_path)
         launch={'resolved':{'observe_pose_name':'pickup'},'map_owner':{
             'geometry_file':str(geometry),'config_file':str(config_file)}},
         validity='validity',initialize='initialize',spawn='spawn',execute='execute',call=call,
-        readiness=lambda:None,observe_pose=lambda p:poses.append(p),
+        readiness=lambda:None,observe_pose=lambda p,**kwargs:poses.append(p),
         stage=lambda name,f:f(),plan=lambda:(JointOperationPlanV2(),DetectedLuggage(),SuctionTopDomainV2()),
         action=lambda *a:SimpleNamespace(result=SimpleNamespace(success=True)),
         flush=lambda **kwargs:None,domain=None,images={})
     assert module.OperationSimDriver.run(probe)==0
     assert poses==['pickup']
     assert [c for c,_ in calls]==['validity','initialize','spawn']
+
+
+@pytest.mark.parametrize('require_uld',[False,True])
+def test_pickup_view_does_not_require_an_unrelated_uld_hit(tmp_path,monkeypatch,require_uld):
+    module=driver_module()
+    poses=tmp_path/'poses.yaml'
+    poses.write_text('poses:\n  pickup:\n    valid: true\n    values: [0, 0, 0, 0, 0, 0]\n')
+    monkeypatch.setattr(module.time,'sleep',lambda _:None)
+    probe=SimpleNamespace(launch={'resolved':{'robot_poses_config':str(poses)}},extra_views={},
+        move='move',validity='validity',images={},joint=JointState(),
+        read_scene=lambda _:None,record=lambda *a:None,
+        action=lambda *a:SimpleNamespace(result=SimpleNamespace(error_code=SimpleNamespace(val=1))),
+        call=lambda *a:SimpleNamespace(last_integrated_stamp_ns=0))
+    if require_uld:
+        with pytest.raises(RuntimeError,match='NO_INTEGRATED_SENSOR_VIEW'):
+            module.OperationSimDriver.observe_pose(probe,'pickup',require_uld_observation=True)
+    else:
+        module.OperationSimDriver.observe_pose(probe,'pickup',require_uld_observation=False)

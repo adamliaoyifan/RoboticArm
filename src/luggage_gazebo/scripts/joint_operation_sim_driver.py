@@ -19,7 +19,8 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.serialization import serialize_message
-from sensor_msgs.msg import JointState, Image, CameraInfo
+from sensor_msgs.msg import JointState, Image, CameraInfo, PointCloud2
+from std_msgs.msg import String
 from rosgraph_msgs.msg import Clock
 from moveit_msgs.action import MoveGroup
 from moveit_msgs.msg import Constraints, JointConstraint
@@ -28,6 +29,7 @@ from luggage_msgs.action import ExecuteJointOperationV2
 from luggage_msgs.msg import SuctionTopDomainV2
 from luggage_msgs.srv import DetectLuggage, PrepareJointOperationV2, SpawnNextBox
 from uld_occ_observer.srv import GetValidity, ResetObservation, GetSnapshot, ReleaseSnapshot, InitializeEmpty
+from uld_occ_observer.msg import UpdateReceipt
 from luggage_mapping.observer import admit_response, identity_record
 from controller_manager_msgs.srv import ListControllers
 import yaml
@@ -73,6 +75,7 @@ class OperationSimDriver(Node):
         self.extra_views=load_diagnostic_views(args.view_poses,self.launch)
         self.records, self.stages, self.joint, self.domain = [], [], None, None
         self.images = {}
+        self.sensor_diagnostics = {}
         self.clock_count = 0
         self.create_subscription(JointState,'/joint_states',lambda msg:setattr(self,'joint',msg),qos_profile_sensor_data)
         self.create_subscription(SuctionTopDomainV2,'/luggage/suction_top_domain_v2',
@@ -82,6 +85,14 @@ class OperationSimDriver(Node):
                 ('depth',Image,'/luggage/preprocessed/camera/depth/image'),
                 ('info',CameraInfo,'/luggage/preprocessed/camera/depth/camera_info')]:
             self.create_subscription(cls,topic,lambda msg,k=key:self.images.__setitem__(k,msg),qos_profile_sensor_data)
+        for key,cls,topic in [
+                ('depth_status',String,'/luggage/observation/status'),
+                ('lidar_status',String,'/luggage/observation/lidar_status'),
+                ('o_receipt',UpdateReceipt,'/uld_occ_observer/receipts'),
+                ('lidar',PointCloud2,'/livox/lidar'),
+                ('optical_rays',PointCloud2,'/luggage/observation/optical_points')]:
+            self.create_subscription(cls,topic,
+                lambda msg,k=key:self.sensor_diagnostics.__setitem__(k,msg),qos_profile_sensor_data)
         self.prepare = self.create_client(PrepareJointOperationV2,'/joint_operation/prepare')
         self.detect = self.create_client(DetectLuggage,'/luggage_detector/detect_luggage')
         self.validity = self.create_client(GetValidity,'/uld_occ_observer/get_validity')
@@ -186,7 +197,7 @@ class OperationSimDriver(Node):
         request.components.components=1023
         return self.call(self.scene,request,name)
 
-    def observe_pose(self, name):
+    def observe_pose(self, name, *, require_uld_observation=True):
         poses = yaml.safe_load(Path(self.launch['resolved']['robot_poses_config']).read_text())['poses']
         poses.update(self.extra_views)
         target = poses[name]
@@ -207,7 +218,10 @@ class OperationSimDriver(Node):
         # Wait for the existing stationary-depth adapter and O receipt, no guessed free-space.
         time.sleep(1.)
         validity = self.call(self.validity,GetValidity.Request(),'view_validity')
-        if validity.last_integrated_stamp_ns<=0:raise RuntimeError('NO_INTEGRATED_SENSOR_VIEW')
+        # Pickup is outside ULD. Its view must provide measured detection, not
+        # an unrelated ULD hit; initial empty authorization comes from O.
+        if require_uld_observation and validity.last_integrated_stamp_ns<=0:
+            raise RuntimeError('NO_INTEGRATED_SENSOR_VIEW')
         # Preserve this settled stage even if later motion ages it out of the
         # bounded failure sensor ring. Model bytes + joints retain camera TF.
         for key,msg in self.images.items():self.record('view_'+name+'_'+key,msg)
@@ -268,7 +282,8 @@ class OperationSimDriver(Node):
             views=self.args.views.split(',') if self.args.views else list(self.extra_views)
             for pose in views:
                 self.stage('observe_'+pose,lambda p=pose:self.observe_pose(p))
-            self.stage('return_pick_observe',lambda:self.observe_pose(self.launch['resolved']['observe_pose_name']))
+            self.stage('return_pick_observe',lambda:self.observe_pose(
+                self.launch['resolved']['observe_pose_name'],require_uld_observation=False))
             spawned = self.stage('physics_spawn',lambda:self.call(self.spawn,SpawnNextBox.Request(),'physics_spawn',30.))
             if not spawned.success:raise RuntimeError('SPAWN_FAILED')
             # Ignore response.box; only the simulator actuator owns that truth.
@@ -280,6 +295,7 @@ class OperationSimDriver(Node):
             self.flush(outcome='FULL_CYCLE_PASS',capture_complete=True,replay_possible=True)
             return 0
         except Exception as error:
+            for name,msg in self.sensor_diagnostics.items():self.record('failure_'+name,msg)
             if self.domain is not None:self.record('failure_top_domain',self.domain)
             for name,msg in self.images.items():self.record('failure_'+name,msg)
             if self.joint is not None:self.record('failure_joints',self.joint)
