@@ -2389,3 +2389,61 @@ panel_support_gap8.499993mm，低于门槛的64%以上不运行。
 资源上下文；如观测超限必须原样保存停止，不调门槛。此安排不改变物理
 RTF .25/1ms或各监控策略。精确脚本/参数与源hash归档至各自campaign。
 单元200MB预留、组总5GB，原600sim/1800wall预算。
+
+### 19.42 纵向60%与63%独立物理验证完成；不等于全臂准入
+
+运行全程保持源模型/config/plugin不变。确认长边平行elfin_base_link Y，
+沿base−Y插入（研究scene container+X/container yaw0），panel接触面朝上。
+原8个工具部件、24动态下层箱、ceiling、质量/材料/碰撞与监控门槛保留。
+
+| 名义比例 | 静态源几何 | 本轮物理证据 | 结论边界 |
+|---|---|---|---|
+| 60% | 完整panel可容纳，源间隙约25mm | 1次完整解除/down/out/独立3s，207027native全部回放、12项通过 | 初始实测面积.599999993934204<.60，保留严格执行准入拒绝；有效稳定校准，不补跑到3/3 |
+| 61/62% | 可用；独立重建源输入一致 | 未运行物理 | 不宣称稳定或全误差包络通过 |
+| 63% | 完整panel可容纳，源间隙约8.5mm | 3次独立重启，全部完整解除/down/out/独立3s，原生回放/实际panel/初始policy通过 | 本组3/3观测稳定，不是可靠性证明或最小稳定比例 |
+| 64%及以上（当前平面交接族） | 64%剩198mm，小于完整panel与现有裕量所需200.000007mm；65–80%同样拒绝 | 未启动仿真 | 几何不可用，不计物理失稳；不推导其他动作族全局不可行 |
+
+63%补充目录8c7a95fd02dd707260a1f6122bf8d73492588f77d0231801337789e1fb95455a，
+case723d7c59bf3c0375ed62/c9e8f16a120a4f349440/dfb682253b53063b2560，
+各207166/207160/207162native帧，总621488逐步全量复核；
+每次完整3s controlled-hold基线额外3001帧，总9003。
+每次12项原生回放检查、9项实际空间/方向/支撑检查全部通过。实际空间检查
+绑定settled与首次原生确认解除的同stamp观测：完整实体panel投影包含于
+箱底，距所有实测下层箱投影>=5mm；全部相机/支架/雷达继续实际3D几何
+检查。初始源panel法向container+Z，原生全过程旋转跟踪复核保持朝上。
+
+本组实测最小面积比例0.629998095162164、COM裕量
+71.498747304mm；实际解除panel/下层投影
+最小间隙8.499996219mm，50Hz完整工具实测
+最小间隙8.498996394mm。
+箱体最大位移0.001415439mm、
+转角0.000094805455deg；下层最大位移
+0.001908542mm、转角
+0.000137895169deg。面积是几何近接触面积，
+原生接触点/抗倾覆凸包均保存；压力面积及载荷分担仍not_evaluated。
+
+碰撞优先保持：63%仅为独立夹具高比例稳定校准，不能锁死为planner目标。
+若要求支撑边法向位置误差5mm后仍保留5mm安全间隙，名义8.5mm已不满足
+10mm必要条件；这不改变任何原误差域/碰撞门槛，也不能以稳定抵消拒绝。
+后续联合规划从源输入推导可行窗口，可考察61/62%等候选，但仍须实际
+全臂连续碰撞、误差包络与原接触准入；本组不证明这些候选已通过。
+保持禁止侧碰；翻转/推入接缝模式、正式C5、其余A/D和D555实际输入继续open。
+
+原54矩阵单独保留：14有效失稳+1未评估+1稳定+5pending+33几何不可用，
+原暂停55%不当有效样本。16已分类单元335538native全回放，48016基线
+帧复核；checkpoint_16cases.json及2698文件/1004100060bytes清单已核验。
+暂停55%原manifest未运行最后hash writer，单独paused55_artifact_snapshot
+冻结原文件；离线checkpoint初次KeyError和旧脚本保留，未重跑物理或
+修改原manifest来伪造完整样本。63%组512文件/412603568bytes全部hash
+核验。四次本轮物理运行逐次独占/teardown；前次冻结回放可并发，实际
+环境ROS_DOMAIN_ID7/IGN_PARTITION及wall区间保存，三个63%仿真区间互不重叠。
+
+结果与复核命令只在primary证据树：
+- release_calibration_matrix_g12_01/eligibility_60plus.json、checkpoint_16cases.json；
+- release_calibration_upper_range_g12_01/group_result.json、preflight.json、
+  geometry_refinement_replay.json、baseline_audit_3cases.json、各requirements审计
+  与inventory.json；运行各verify_entry.py/requirements_audit.py及finalize_group.py
+  的确切参数与原生日志归档。原计划0717b4e5约束、配置和runtime源hash可回放。
+
+本轮验证完成，MOTION-PHYSICS与总目标保持open，不提交完整可行性或
+生产执行准入结论。工作树仍仅保留本计划，不把evidence写入工作树。
