@@ -120,6 +120,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/OrchestratorStep.srv"
   "action/PlanMotion.action"
   "action/PlanMotionV2.action"
+  "action/ExecuteJointOperationV2.action"
   "action/GoToRobotPose.action"
   "action/GoToJointValues.action"
   "action/AimCameraAtContainer.action"

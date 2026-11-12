@@ -111,6 +111,8 @@ class MotionPlannerNode(Node):
         super().__init__("motion_planner", **node_options)
         self._group = ReentrantCallbackGroup()
         self._motion_owner = MotionOwnership()
+        self.declare_parameter("enable_joint_operation", False)
+        self._joint_operation = None
 
         self.declare_parameter("robot_poses_config", "")
         self.declare_parameter("default_observe_pose", "current")
@@ -357,6 +359,10 @@ class MotionPlannerNode(Node):
                 modules=[(_sys.modules["__main__"], "module", "application")],
                 package_names=["luggage_planning"])
 
+        if bool(self.get_parameter("enable_joint_operation").value):
+            from luggage_planning.joint_operation.runtime import JointOperationRuntime
+            self._joint_operation = JointOperationRuntime(self)
+
         # Do not wait_for_server here: __init__ runs before the executor
         # spins, so discovery of /move_action always times out and the
         # node sits 60 s before advertising PlanMotion. execute_callback
@@ -366,6 +372,11 @@ class MotionPlannerNode(Node):
 
     # ------------------------------------------------------------------
     # shared plumbing
+
+    def destroy_node(self):
+        if self._joint_operation is not None:
+            self._joint_operation.shutdown()
+        return super().destroy_node()
 
     def _accept_goal(self, goal_request):
         return GoalResponse.ACCEPT

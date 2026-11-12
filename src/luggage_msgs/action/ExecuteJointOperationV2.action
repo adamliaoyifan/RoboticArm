@@ -1,0 +1,18 @@
+# Execute only a complete plan independently retained by the prepare owner.
+# Preserve the original detection/domain; xyz is a pre-seal contact proposal,
+# never a replacement box centre or a way to change the sealed grasp.
+luggage_msgs/JointOperationPlanV2 plan
+luggage_msgs/DetectedLuggage detection
+luggage_msgs/SuctionTopDomainV2 top_domain
+float64 budget_s
+---
+bool success
+string outcome
+string reason
+bool may_have_payload
+bool motion_terminal
+luggage_msgs/OperationMapSourceV2 final_map_source
+---
+string request_id
+string stage
+uint32 next_leg_index
