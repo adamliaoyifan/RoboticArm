@@ -470,3 +470,21 @@ not a wall silence limit. A halted clock/native stream uses the existing
 `condition_wait_budget_s` wall budget, and failure snapshots retain both ages,
 simulation stamps and queue depth. A physics pause advances no cargo or
 simulation age; it must not fail solely because wall time exceeds100ms.
+
+`release_calibration` owns the configurable54-unit workload and frozen outcome
+values, not a controller or ROS session. Its catalog uses the original snapshot/
+assets/config to enumerate each support ratio, orientation and repetition.
+`CalibrationEnrollment` explicitly binds campaign/workload/case/attempt/world
+identities; `release_trial.py --calibration-enrollment <json>` validates this
+before constructing a simulator and retains it in the run manifest. A pilot
+without this binding cannot be counted as a matrix repetition.
+
+`assess_attempt` consumes a case plus durable evidence and expected campaign/
+workload IDs. It verifies artifact hashes and complete capture/teardown before
+reading the verdict. Stable requires actual detach, both completed motions and
+the independent stability replay. Unstable requires an independently replayed
+first detached, tool-contact-free instability witness; an error message alone
+is insufficient. Geometrically unavailable, pending and unmeasured failures
+remain distinct; all outputs keep `execution_admitted=false`. Assessment values
+are immutable; the campaign owner owns the case-to-attempt ledger and must not
+count two attempts of one repetition as two independent samples.

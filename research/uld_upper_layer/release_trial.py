@@ -19,6 +19,7 @@ from assets import load, sha256
 from carriage_commands import CarriageCommandPublisher
 from execution_policy import ExecutionPolicy
 from release_collision import ReleaseCollisionScene
+from release_calibration import CalibrationEnrollment
 from release_execution import ReleaseExecutionMonitor, ReleaseMotionPolicy, motion_reference
 from release_fixture import ReleaseFixturePolicy
 from release_observation import ReleaseObservationReader
@@ -42,6 +43,7 @@ def main():
     parser.add_argument('--joint-bridge', type=Path, required=True)
     parser.add_argument('--policy', type=Path)
     parser.add_argument('--motion-policy', type=Path)
+    parser.add_argument('--calibration-enrollment', type=Path)
     args = parser.parse_args()
     out = args.evidence.resolve()
     if not out.is_relative_to(COORD/'docs/status/evidence'):
@@ -57,6 +59,11 @@ def main():
         raise ValueError('COMPLETE_TOOL_CONTACTS_REQUIRED')
     if sha256(args.scene_dir/'source_fixture.json') != spec['source_fixture_sha256']:
         raise ValueError('RELEASE_SOURCE_FIXTURE_CHANGED')
+    enrollment = None
+    if args.calibration_enrollment:
+        enrollment = CalibrationEnrollment(**json.loads(args.calibration_enrollment.read_text()))
+        if enrollment.case_id != spec['case']['case_id'] or enrollment.scene_sha256 != spec['world_sha256']:
+            raise ValueError('CALIBRATION_ENROLLMENT_SCENE_MISMATCH')
     config = UpperConfig.load(**spec['configuration']); carriage = ReleaseFixturePolicy(**spec['fixture_policy'])
     if fixture['physics_step_s'] > motion_policy.native_max_gap_s:
         raise ValueError('RELEASE_NATIVE_STEP_EXCEEDS_POLICY')
@@ -70,6 +77,8 @@ def main():
         shutil.copyfile(path, source/path.name)
     for name in ('release.sdf', 'release_scene.json', 'source_fixture.json'):
         shutil.copyfile(args.scene_dir/name, out/name)
+    if enrollment:
+        save(out/'calibration_enrollment.json', asdict(enrollment))
     # Preserve failure inputs, native binaries and original geometry before
     # physics starts; teardown must not be the first opportunity to save them.
     asset_dir = out/'assets'; asset_dir.mkdir(); asset_index = {}
@@ -96,6 +105,7 @@ def main():
         scene_sha256=sha256(world), plugin_sha256=sha256(spec['native_plugin']), joint_bridge_sha256=sha256(args.joint_bridge),
         assets_hashes=assets['hashes'], source_hashes={p.name: sha256(p) for p in source.iterdir()},
         command=__import__('sys').argv, environment=dict(ROS_DOMAIN_ID='7', IGN_PARTITION='uld_upper_release_trial'),
+        calibration_enrollment=asdict(enrollment) if enrollment else None,
         capture_complete=False, replay_possible=False, teardown_complete=False,
         execution_admitted=False, formal_C_success=False, arm_reachability='not_evaluated')
     save(out/'manifest.json', manifest)

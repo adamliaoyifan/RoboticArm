@@ -1,0 +1,6 @@
+# Independent release workload; never a full-arm C campaign.
+support_ratios: [0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]
+box_yaws_deg: [0.0, 90.0]
+repetitions: 3
+scheduling_real_time_factor: 0.25
+max_retained_bytes: 5000000000

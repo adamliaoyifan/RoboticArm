@@ -2175,3 +2175,39 @@ COM最小裕量54.998718mm。实测比例低于0.60，initial_execution_policy_s
 工具真实正接触覆盖、D555或可靠性，也不计正式C或54个校准单元。下一步
 继续54矩阵与所需细化，随后完成接触管/全动作C5及剩余A/D。总目标、
 MOTION-PHYSICS及未通过项保持open，不能据此结项整个上层放置功能。
+
+### 19.37 54单元校准目录与首个矩阵实验入口（尚未执行）
+
+release_calibration.yaml显式枚举比例[.40,.45,.50,.55,.60,.65,.70,.75,.80]、
+yaw[0,90]、各3次，RTF0.25、总保留5GB；其他物理/执行阈值与scene03
+完全相同。实际源模型目录回归确认54个唯一case，21可用/33几何不可用，
+任何几何结果都不是物理样本。release_calibration.py只生成工作负载/
+读取证据分型，无机器人副作用；数据寿命绑定catalog/model/config版本。
+
+每个矩阵尝试用显式CalibrationEnrollment绑定campaign_id、workload_revision、
+case_id、attempt_index、scene_sha256；runner通过--calibration-enrollment
+读取并在建仿真/创建输出前校验。原trial03等无此绑定的预演不得计入54
+单元。assess_attempt消费者要求原始native/clock、源世界、登记与各阶段
+输出hash清单完整、采集可回放且owned teardown成功；稳定样本另需完整
+正向replay全部门槛。缺退出、缺稳定窗或仅服务成功不能通过。
+
+不稳定负例允许在解除后、完整撤出前观测到明确失败：必须有原生约束已
+消失、无箱体命令、首次箱体2mm/.5deg超限时工具尚未接触、有效bottom/top
+支撑接触及之前所有native步均经过重放的证据。该负例只证明已声明条件下
+发生自由箱体失稳，不得称退出成功或独立稳定3s。若先被工具干扰、下层超限、
+观测/接线错误或未解除，记not_evaluated并诊断，不从错误字符串推断不稳定。
+任何失败完整保留后才决定是否重试；不得盲跑后续重复。每点至少3个有效
+物理结果，3/3稳定才是该点初步可重复稳定，不是统计可靠性认证；混合结果
+和无稳定/不稳定两侧证据仍分别报告，不凭单点推普适最小面积。
+
+目录为primary/docs/status/evidence/uld_upper_layer_v1/release_calibration_matrix_g12_01。
+输入固定fixture05、release-g12_02插件/双轴bridge、50Hz执行policy及中心COM。
+每个可用case独立生成/tmp/uld_upper_release_calibration_g12_01/<case>_attempt01
+世界，先检查全机唯一Gazebo，真实动态24下层/完整工具/原材料不变。
+先按目录顺序执行首个可用case(.40,yaw0,repeat0)，每个200MB/600sim/1800wall，
+每次都先保留证据/复核再清理并登记。总5GB预算按完整单元实际产物计算；
+运行前还预留下一单元200MB空间，不通过预算/采集门槛则不得继续。
+
+197项离线行为回归已通过，含真实CLI在错case/world时未建仿真、正确绑定
+达到slot gate，未用源文件字符串检查代替行为。首单元实际结果尚未存在；
+54、1%细化、严格接触管/正式C5和剩余A/D仍open。
