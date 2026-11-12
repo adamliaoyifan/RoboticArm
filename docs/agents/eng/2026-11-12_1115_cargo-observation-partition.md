@@ -4,12 +4,12 @@
 - agent: codex
 - model: gpt-6
 - cli: codex
-- status: open
+- status: done
 - parent: MOVEIT-ATLAS-JOINT-PLAN-20261111
 - subtask: ST-4-OBS-JOIN
 - base_revision: 7b697e00
 - started_at: 2026-11-12T11:04:56+08:00
-- completed_at: n/a
+- completed_at: 2026-11-12T11:14:30+08:00
 
 ## Summary
 
@@ -38,7 +38,7 @@ Plan18f35ccb, ST-4-OBS-JOIN generation2 (administrative replacement of symbolic-
 
 ## Result
 
-Bounded implementation verified; commit/lifecycle closure pending. Physical cargo association, exhaustive O contributor provenance, safe private-scene substitution, current deploy_update witness and original full integration matrix remain open. New service alone cannot clear an O voxel.
+Pass at cf3192f6acfddd90f8e6716a3e9b3a38e34f8991; bounded OBS-JOIN generation2 closed through agent_complete.sh. Physical cargo association, exhaustive O contributor provenance, safe private-scene substitution, current deploy_update witness and original full integration matrix remain open. New service alone cannot clear an O voxel.
 
 ## Pointers
 
