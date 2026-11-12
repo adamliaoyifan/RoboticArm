@@ -22,6 +22,7 @@ from sensor_msgs.msg import JointState, Image, CameraInfo
 from rosgraph_msgs.msg import Clock
 from moveit_msgs.action import MoveGroup
 from moveit_msgs.msg import Constraints, JointConstraint
+from moveit_msgs.srv import GetPlanningScene
 from luggage_msgs.action import ExecuteJointOperationV2
 from luggage_msgs.msg import SuctionTopDomainV2
 from luggage_msgs.srv import DetectLuggage, PrepareJointOperationV2, SpawnNextBox
@@ -64,6 +65,7 @@ class OperationSimDriver(Node):
         self.execute = ActionClient(self,ExecuteJointOperationV2,'/joint_operation/execute')
         self.move = ActionClient(self,MoveGroup,'/move_action')
         self.controllers = self.create_client(ListControllers,'/controller_manager/list_controllers')
+        self.scene = self.create_client(GetPlanningScene,'/get_planning_scene')
 
     def record(self, name, message):
         raw = serialize_message(message)
@@ -146,6 +148,9 @@ class OperationSimDriver(Node):
         if not set(JOINTS).issubset(self.joint.name):raise RuntimeError('SIX_JOINTS_MISSING')
         for name,msg in self.images.items():self.record('ready_'+name,msg)
         self.record('ready_joints',self.joint)
+        scene_request = GetPlanningScene.Request()
+        scene_request.components.components = 1023
+        self.call(self.scene,scene_request,'ready_scene')
 
     def observe_pose(self, name):
         poses = yaml.safe_load(Path(self.launch['resolved']['robot_poses_config']).read_text())['poses']
@@ -166,6 +171,10 @@ class OperationSimDriver(Node):
         time.sleep(1.)
         validity = self.call(self.validity,GetValidity.Request(),'view_validity')
         if validity.last_integrated_stamp_ns<=0:raise RuntimeError('NO_INTEGRATED_SENSOR_VIEW')
+        # Preserve this settled stage even if later motion ages it out of the
+        # bounded failure sensor ring. Model bytes + joints retain camera TF.
+        for key,msg in self.images.items():self.record('view_'+name+'_'+key,msg)
+        self.record('view_'+name+'_joints',self.joint)
 
     def plan(self):
         detection,domain = wait_observed_detection(

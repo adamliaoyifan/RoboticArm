@@ -1,0 +1,11 @@
+# Empty-load proposals requalified for the exact full Gazebo model.
+# No geometric admission decision follows from the sampled center status.
+enabled: true
+atlas_dir: reachability_atlas_deploy_update_gazebo
+basename: s20_container_collision_aware
+hash_policy: strict
+payload:
+  policy: auto
+placement:
+  hard_reject: false
+  w_reachability: 0.3

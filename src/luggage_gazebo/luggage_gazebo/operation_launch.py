@@ -19,6 +19,13 @@ from luggage_mapping.configuration import owner_configuration
 from luggage_planning.atlas_runtime import load_atlas_runtime_for_scene, resolve_atlas_files
 
 
+def operation_atlas_config(config):
+    """Explicit overrides win; complete Gazebo uses its offline reviewed model."""
+    explicit = str(config.get('atlas_runtime_config', '')).strip()
+    return explicit or str(Path(get_package_share_directory('luggage_planning'))/
+                           'config/atlas_runtime_gazebo_operation.yaml')
+
+
 def validate_operation_selection(config):
     pipeline = config['planning_pipeline']
     if pipeline not in ('legacy_segments', 'joint_operation'):
@@ -50,10 +57,9 @@ def operation_composition(config, robot_xml, semantic_xml):
         observer_config=str(Path(get_package_share_directory('uld_occ_observer'))/'config/observer.yaml'),
         artifact_root=folder/'map_owner')
     revision = scene_revision_from_path(scene)
-    # Use the configured scene atlas, but never mint a replacement qualification
-    # when the Gazebo model differs. The prepare owner reports/refuses mismatches.
+    # Never mint a replacement qualification when model bytes differ.
     atlas_files = resolve_atlas_files(load_atlas_runtime_for_scene(scene,
-        str(config.get('atlas_runtime_config','')) or None))
+        operation_atlas_config(config)))
     atlas_parameters = {}
     atlas_status = 'ATLAS_UNAVAILABLE_ONLINE_IK'
     if atlas_files:

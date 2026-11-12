@@ -786,8 +786,10 @@ def _launch_setup(context):
     _check_renderer()
     cfg = _resolved_launch_config(context)
     scene_tf_config = cfg["scene_tf_config"]
-    from luggage_gazebo.operation_launch import validate_operation_selection, operation_composition
+    from luggage_gazebo.operation_launch import validate_operation_selection, operation_composition, operation_atlas_config
     complete_operation = validate_operation_selection(cfg)
+    if complete_operation:
+        cfg['atlas_runtime_config'] = operation_atlas_config(cfg)
     gui = _as_bool(cfg["gui"])
     initial_joint_args = _initial_joint_xacro_args(cfg)
     frame_params = _frame_runtime_params(cfg, scene_tf_config,
@@ -1339,6 +1341,11 @@ def generate_launch_description():
                 default_value="",
                 description="Optional grouped YAML profile. CLI launch args override profile values.",
             ),
+            profile_arg('planning_pipeline', 'legacy_segments or joint_operation; select the complete observed operation explicitly.'),
+            profile_arg('operation_run_dir', 'Absolute fresh evidence/journal directory for joint_operation.'),
+            profile_arg('operation_prepare_budget_s', 'Diagnostic complete-preparation watchdog, not a production latency target.'),
+            profile_arg('volume_evidence_source', 'Legacy placement volume reader; complete-operation composition owns O explicitly.'),
+            profile_arg('cargo_map_max_raycast_points', 'Legacy G integration ray budget.'),
             profile_arg(
                 "scene_tf_config",
                 "Scene TF YAML path.",
@@ -1354,14 +1361,6 @@ def generate_launch_description():
             profile_arg("gui", "Start Gazebo GUI."),
             profile_arg(
                 "start_placement_prior",
-            profile_arg('planning_pipeline', 'legacy_segments or joint_operation; select the complete observed operation explicitly.'),
-            profile_arg('operation_run_dir', 'Absolute fresh evidence/journal directory for joint_operation.'),
-            profile_arg('operation_prepare_budget_s', 'Diagnostic complete-preparation watchdog, not a production latency target.'),
-            profile_arg('volume_evidence_source', 'Legacy placement volume reader; complete-operation composition owns O explicitly.'),
-            profile_arg('cargo_map_max_raycast_points', 'Legacy G integration ray budget.'),
-            profile_arg('planning_pipeline', 'legacy_segments or joint_operation; select the complete observed operation explicitly.'),
-            profile_arg('operation_run_dir', 'Absolute fresh evidence/journal directory for joint_operation.'),
-            profile_arg('operation_prepare_budget_s', 'Diagnostic complete-preparation watchdog, not a production latency target.'),
                 "Read-only placement-prior sidecar (explicit opt-in; "
                 "default false = zero prior processes)."),
             profile_arg(

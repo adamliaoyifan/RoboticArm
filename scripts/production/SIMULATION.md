@@ -71,6 +71,15 @@ scripts/production/run.sh /usr/bin/python3 scripts/production/simulation.py \
   --build-receipt /absolute/passing/build/manifest.json
 ```
 
-`runtime/launch.json` reports whether the existing reviewed atlas matches the
-actual full simulation model. A mismatch remains an explicit online-IK fallback;
-the runtime never reissues an atlas receipt to hide a model change.
+The complete-operation entry defaults to `atlas_runtime_gazebo_operation.yaml`,
+whose unchanged empty-load seed arrays passed all12,098 FK/native state checks
+against the exact full Gazebo model. The hardware model retains its separate
+receipt. `atlas_runtime_config` explicitly overrides this selection.
+`runtime/launch.json` reports the actual model/scene/artifact binding. Any mismatch
+remains an explicit online-IK fallback; runtime never reissues a receipt. Atlas
+qualification alone does not establish live consumption or a successful cycle.
+
+The client binds preparation to a real current O snapshot lease. GetValidity
+metadata is transition-time evidence, not the latest map revision. Settled view
+RGB/depth/intrinsics/joints and the initial full PlanningScene are saved at their
+stage boundaries so later motion cannot evict them from the failure sensor ring.

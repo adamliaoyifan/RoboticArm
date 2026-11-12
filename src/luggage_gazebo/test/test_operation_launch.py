@@ -79,3 +79,36 @@ def test_composition_binds_one_owner_and_identical_native_model(tmp_path,monkeyp
     assert manifest['model_sha256']==hashlib.sha256((xml+semantic).encode()).hexdigest()
     assert manifest['startup_authorizes_motion'] is False
     assert runtime['enable_joint_operation'] is True
+
+
+def test_full_gazebo_uses_reviewed_config_and_explicit_override_wins():
+    from luggage_gazebo.operation_launch import operation_atlas_config
+    from ament_index_python.packages import get_package_share_directory
+    from pathlib import Path
+    expected=str(Path(get_package_share_directory('luggage_planning'))/'config/atlas_runtime_gazebo_operation.yaml')
+    assert operation_atlas_config({})==expected
+    assert operation_atlas_config({'atlas_runtime_config':'/reviewed/custom.yaml'})=='/reviewed/custom.yaml'
+
+
+def test_installed_gazebo_atlas_exact_model_is_admitted():
+    import hashlib,json
+    from pathlib import Path
+    from ament_index_python.packages import get_package_share_directory
+    from luggage_gazebo.operation_launch import operation_atlas_config
+    from luggage_planning.atlas_runtime import load_atlas_runtime,resolve_atlas_files
+    from luggage_planning.joint_operation_atlas import load_operation_atlas
+    from luggage_description.scene_tf_config_utils import world_transform,load_scene_tf_config
+    from luggage_planning.placement_prior_contracts import Transform
+    from scipy.spatial.transform import Rotation
+    npz,meta=resolve_atlas_files(load_atlas_runtime(operation_atlas_config({})))
+    folder=Path(npz).parent
+    xml=(folder/'robot_description.xml').read_text()
+    srdf=(folder/'robot_description_semantic.xml').read_text()
+    receipt=folder/'operation_atlas_qualification.json'
+    scene=Path(get_package_share_directory('luggage_description'))/'config/scene_tf_deploy_update.yaml'
+    xyz,rpy=world_transform(load_scene_tf_config(str(scene)),'container_link')
+    reader=load_operation_atlas(npz,meta,receipt,scene,robot_description=xml,
+        model_sha256=hashlib.sha256((xml+srdf).encode()).hexdigest(),
+        scene_revision=hashlib.md5(scene.read_bytes()).hexdigest(),
+        world_from_container=Transform(tuple(xyz),tuple(Rotation.from_euler('xyz',rpy).as_quat())))
+    assert reader.reason=='QUALIFIED' and reader.atlas is not None

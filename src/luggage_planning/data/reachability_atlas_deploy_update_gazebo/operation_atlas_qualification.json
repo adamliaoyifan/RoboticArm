@@ -1,0 +1,12 @@
+{
+  "qualification": {
+    "artifact_sha256": "d2012d8ad64273662386c7f8b7e03ebcc39840698c23ba98f9dc7e45ee91a971",
+    "scene_tf_hash": "413055f4740a733fb8ef18867db86adb",
+    "urdf_hash": "92099f0056f87bed5aa9cd69079a4858",
+    "geometry_hash": "3460c2f23aa597efe71ad8e66b6b5faf",
+    "payload_hash": "76c68297d76f4daa84ab4ac2bea08a84",
+    "validation_id": "gazebo_requalification_01:all_seed_fk_and_native"
+  },
+  "model_sha256": "51df00b411c9bbf57390a2a256828d195b637becd2b3ab31a5f77a49005624a5",
+  "scene_revision": "413055f4740a733fb8ef18867db86adb"
+}
