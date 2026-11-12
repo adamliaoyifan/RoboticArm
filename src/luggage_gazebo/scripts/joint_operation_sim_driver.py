@@ -25,18 +25,25 @@ from rosgraph_msgs.msg import Clock
 from tf2_msgs.msg import TFMessage
 from moveit_msgs.action import MoveGroup
 from moveit_msgs.msg import Constraints, JointConstraint
-from moveit_msgs.srv import GetPlanningScene
+from moveit_msgs.srv import GetPlanningScene, ApplyPlanningScene
+from moveit_msgs.msg import PlanningScene, CollisionObject
+from shape_msgs.msg import SolidPrimitive
 from luggage_msgs.action import ExecuteJointOperationV2
-from luggage_msgs.msg import SuctionTopDomainV2
+from luggage_msgs.msg import SuctionTopDomainV2, DetectionFrame
 from luggage_msgs.srv import DetectLuggage, PrepareJointOperationV2, SpawnNextBox
 from uld_occ_observer.srv import GetValidity, ResetObservation, GetSnapshot, ReleaseSnapshot, InitializeEmpty
 from uld_occ_observer.msg import UpdateReceipt
-from luggage_mapping.observer import admit_response, identity_record
+from luggage_mapping.observer import admit_response, identity_record, ObserverConfiguration, ObserverSnapshotPort
+from luggage_planning.joint_operation.runtime_ports import OperationRpc
+from luggage_planning.placement_prior.snapshot import build_private_snapshot, COLUMN_PREFIX
+from luggage_planning.placement_prior.contracts import Transform
 from controller_manager_msgs.srv import ListControllers
 import yaml
 from luggage_gazebo.operation_readiness import wait_active_controllers, wait_observed_detection, wait_static_scene
 from luggage_gazebo.observer_failure_capture import ObserverFailureCapture
-from luggage_description.scene_tf_config_utils import load_scene_tf_config, pedestal_enabled
+from luggage_description.scene_tf_config_utils import load_scene_tf_config, pedestal_enabled, world_transform
+from scipy.spatial.transform import Rotation
+from rclpy.serialization import deserialize_message
 from luggage_description.scene_mesh_utils import container_model_name
 
 
@@ -83,6 +90,7 @@ class OperationSimDriver(Node):
         self.launch = json.loads(Path(args.run_dir,'launch.json').read_text())
         self.extra_views=load_diagnostic_views(args.view_poses,self.launch)
         self.records, self.stages, self.joint, self.domain = [], [], None, None
+        self._record_lock=threading.RLock()
         self.images = {}
         self.sensor_diagnostics = {}
         self.clock_count = 0
@@ -115,6 +123,8 @@ class OperationSimDriver(Node):
                 ('optical_rays',PointCloud2,'/luggage/observation/optical_points')]:
             self.create_subscription(cls,topic,
                 lambda msg,k=key:self.sensor_diagnostics.__setitem__(k,msg),qos_profile_sensor_data)
+        self.create_subscription(DetectionFrame,'/luggage/perception/detection_frame',
+            lambda msg:self.sensor_diagnostics.__setitem__('detection_frame',msg),qos_profile_sensor_data)
         self.prepare = self.create_client(PrepareJointOperationV2,'/joint_operation/prepare')
         self.detect = self.create_client(DetectLuggage,'/luggage_detector/detect_luggage')
         self.validity = self.create_client(GetValidity,'/uld_occ_observer/get_validity')
@@ -127,9 +137,17 @@ class OperationSimDriver(Node):
         self.move = ActionClient(self,MoveGroup,'/move_action')
         self.controllers = self.create_client(ListControllers,'/controller_manager/list_controllers')
         self.scene = self.create_client(GetPlanningScene,'/get_planning_scene')
+        self.apply_scene = self.create_client(ApplyPlanningScene,'/apply_planning_scene')
+        owner=self.launch['map_owner']
+        self.observer_rpc=OperationRpc(self.record)
+        self.observer=ObserverSnapshotPort(self,configuration=ObserverConfiguration.load(
+            owner['geometry_file'],owner['config_file']),call=self.observer_rpc.call,recorder=self.record)
 
     def record(self, name, message):
-        raw = serialize_message(message)
+        with self._record_lock:self._record_locked(name,message)
+
+    def _record_locked(self, name, message):
+        raw = message if isinstance(message,bytes) else serialize_message(message)
         if sum(row['bytes'] for row in self.records)+len(raw)>256*1024*1024:
             raise RuntimeError('DRIVER_CAPTURE_LIMIT')
         file = '%04d_%s.cdr'%(len(self.records),name)
@@ -137,13 +155,14 @@ class OperationSimDriver(Node):
             (self.folder/'reference').mkdir(exist_ok=True)
             file = 'reference/'+file
         (self.folder/file).write_bytes(raw)
-        self.records.append(dict(file=file,ros_type=type(message).__module__+'.'+type(message).__name__,
+        self.records.append(dict(file=file,ros_type='raw_bytes' if isinstance(message,bytes) else type(message).__module__+'.'+type(message).__name__,
             bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest(),wall_monotonic=time.monotonic()))
         self.flush()
 
     def flush(self, **result):
-        (self.folder/'manifest.json').write_text(json.dumps(dict(records=self.records,
-            stages=self.stages, **result),indent=2)+'\n')
+        with self._record_lock:
+            (self.folder/'manifest.json').write_text(json.dumps(dict(records=self.records,
+                stages=self.stages, **result),indent=2)+'\n')
 
     def wait(self, predicate, timeout, reason):
         deadline = time.monotonic()+timeout
@@ -249,6 +268,45 @@ class OperationSimDriver(Node):
         for key,msg in self.images.items():self.record('view_'+name+'_'+key,msg)
         self.record('view_'+name+'_joints',self.joint)
 
+    def return_to_pick_observation(self, plan):
+        """Existing MoveGroup view motion with actual O in its live scene.
+
+        Only this diagnostic's generated O objects are applied/removed. Keep
+        them on unresolved action/transport failure; never restore a whole scene.
+        """
+        validity=self.call(self.validity,GetValidity.Request(),'return_view_validity')
+        captured=self.observer.capture(scene_revision=self.launch['scene_revision'],
+            request_id='return-pick-view',expected_epoch=validity.epoch,
+            expected_revision=None,deadline=time.monotonic()+15.,require_latest=False)
+        baseline=self.read_scene('return_view_baseline').scene
+        if any(obj.id.startswith(COLUMN_PREFIX) for obj in baseline.world.collision_objects):
+            raise RuntimeError('OBSERVATION_OCC_NAMESPACE_ALREADY_OWNED')
+        xyz,rpy=world_transform(load_scene_tf_config(self.launch['resolved']['scene_tf_config']),'container_link')
+        container=Transform(tuple(xyz),tuple(Rotation.from_euler('xyz',rpy).as_quat()))
+        snapshot=build_private_snapshot(captured.surface,baseline,self.launch['model_sha256'],container,
+            volume=captured.volume,**self.launch['collision_policy'])
+        private=deserialize_message(snapshot.scene_cdr,PlanningScene)
+        objects=[obj for obj in private.world.collision_objects if obj.id.startswith(COLUMN_PREFIX)]
+        pickup=CollisionObject(id='diagnostic-return-pickup',operation=CollisionObject.ADD)
+        pickup.header.frame_id='world'
+        if any(obj.id==pickup.id for obj in baseline.world.collision_objects):
+            raise RuntimeError('OBSERVATION_PICKUP_NAMESPACE_ALREADY_OWNED')
+        pickup.primitives=[SolidPrimitive(type=SolidPrimitive.BOX,
+            dimensions=list(plan.predicted_attachment.measured_dimensions_wdh))]
+        pickup.primitive_poses=[plan.world_from_pick_box]
+        objects.append(pickup)
+        diff=PlanningScene(is_diff=True);diff.robot_state.is_diff=True
+        diff.world.collision_objects=objects
+        applied=self.call(self.apply_scene,ApplyPlanningScene.Request(scene=diff),'return_view_apply_o')
+        if not applied.success:raise RuntimeError('OBSERVATION_OCC_APPLY_REFUSED')
+        self.observe_pose(self.launch['resolved']['observe_pose_name'],require_uld_observation=False)
+        # observe_pose only returns on an acknowledged successful terminal action.
+        remove=PlanningScene(is_diff=True);remove.robot_state.is_diff=True
+        remove.world.collision_objects=[CollisionObject(id=obj.id,operation=CollisionObject.REMOVE)
+                                        for obj in objects]
+        if not self.call(self.apply_scene,ApplyPlanningScene.Request(scene=remove),'return_view_remove_o').success:
+            raise RuntimeError('OBSERVATION_OCC_CLEANUP_REFUSED')
+
     def plan(self):
         detection,domain = wait_observed_detection(
             lambda remaining:self.call(self.detect,DetectLuggage.Request(),'detect',timeout=remaining),
@@ -322,6 +380,7 @@ class OperationSimDriver(Node):
                 # motion ownership. Acquire NEW measured contact/map evidence,
                 # prepare a NEW complete plan from actual current joints, and
                 # keep the same observed physical instance. Never retarget a seal.
+                self.stage('return_pick_retry_'+str(attempt+1),lambda:self.return_to_pick_observation(plan))
                 plan,detection,domain=self.stage('prepare_retry_'+str(attempt+1),self.plan)
                 if not original_instance or domain.instance_id!=original_instance:
                     raise RuntimeError('PREPICK_REPLAN_INSTANCE_CHANGED')

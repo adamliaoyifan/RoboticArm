@@ -127,6 +127,8 @@ def operation_composition(config, robot_xml, semantic_xml):
                         ('luggage_gazebo','luggage_planning','luggage_perception','luggage_description')},
         startup_authorizes_motion=False)
     manifest['operation_atlas'] = dict(status=atlas_status, parameters=atlas_parameters)
+    manifest['collision_policy'] = {key:common[key] for key in
+        ('collision_margin_m','vertical_collision_margin_m')}
     (folder/'launch.json').write_text(json.dumps(manifest, indent=2)+'\n')
     runtime = dict(common, enable_joint_operation=True,
         max_preparation_budget_s=float(config['operation_prepare_budget_s']),

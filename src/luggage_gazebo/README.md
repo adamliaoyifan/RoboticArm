@@ -42,3 +42,8 @@ empty-tool source/native refusal. The driver obtains fresh detection/contact and
 O, uses the actual current joints, and requires the same observed instance. It
 never retries a carrying or uncertain action and never changes a sealed grasp.
 Every original plan, result and preparation trace remains preserved.
+Re-observation returns to the existing pickup view with the latest native O
+volume temporarily present in MoveIt's scene, using the exact launch-recorded
+collision policy. Unknown and occupied voxels remain obstacles. Only generated
+O object IDs are removed after acknowledged terminal success; an unresolved
+motion retains them. Unrelated static/world objects are never replaced.

@@ -98,11 +98,12 @@ def test_explicit_start_declares_empty_without_mandatory_portal_motion(tmp_path,
             'geometry_file':str(geometry),'config_file':str(config_file)}},
         validity='validity',initialize='initialize',spawn='spawn',execute='execute',call=call,
         readiness=lambda:None,observe_pose=lambda p,**kwargs:poses.append(p),
+        return_to_pick_observation=lambda plan:poses.append('retry_pick'),
         stage=lambda name,f:f(),plan=lambda:(JointOperationPlanV2(),DetectedLuggage(),SuctionTopDomainV2(instance_id='observed-instance')),
         action=action,
         flush=lambda **kwargs:None,domain=None,images={})
     assert module.OperationSimDriver.run(probe)==0
-    assert poses==['pickup']
+    assert poses==(['pickup','retry_pick'] if replan else ['pickup'])
     assert [c for c,_ in calls]==['validity','initialize','spawn']
     assert len(actions)==1+int(replan)
     assert all(a[1].top_domain.instance_id=='observed-instance' for a in actions)
@@ -117,6 +118,46 @@ def test_preseal_replan_refuses_uncertain_or_carrying_results(field,value):
                 may_have_payload=False,reason='BOUND_NATIVE_ADMISSION_REQUIRED')
     if field:fields[field]=value
     assert module.can_reprepare_before_pick(SimpleNamespace(**fields)) is (field is None)
+
+
+@pytest.mark.parametrize('failure',[False,True])
+def test_return_view_includes_actual_unknown_and_occupied_o_until_terminal(tmp_path,monkeypatch,failure):
+    from test_joint_operation_observer import configuration,snapshot
+    from moveit_msgs.msg import PlanningScene,CollisionObject
+    module=driver_module();config,_,_=configuration(tmp_path)
+    states=[1]*64;states[0]=2;states[63]=0
+    captured=snapshot(config,states);effects=[]
+    baseline=PlanningScene();baseline.world.collision_objects=[CollisionObject(id='unrelated-static')]
+    def call(client,request,name):
+        if client=='validity':return SimpleNamespace(epoch=1)
+        assert client=='apply'
+        effects.append(request.scene)
+        return SimpleNamespace(success=True)
+    def observe(name,**kwargs):
+        assert len(effects)==1
+        assert len(effects[0].world.collision_objects)==3
+        assert all(o.operation==CollisionObject.ADD for o in effects[0].world.collision_objects)
+        if failure:raise TimeoutError('unresolved motion')
+    monkeypatch.setattr(module,'load_scene_tf_config',lambda _:None)
+    monkeypatch.setattr(module,'world_transform',lambda *args:((0.,0.,0.),(0.,0.,0.)))
+    probe=SimpleNamespace(validity='validity',apply_scene='apply',call=call,
+        observer=SimpleNamespace(capture=lambda **kwargs:captured),
+        launch={'scene_revision':'scene','model_sha256':'model',
+            'resolved':{'scene_tf_config':'site','observe_pose_name':'pickup'},
+            'collision_policy':{'collision_margin_m':.02,'vertical_collision_margin_m':0.}},
+        read_scene=lambda _:SimpleNamespace(scene=baseline),observe_pose=observe)
+    from luggage_msgs.msg import JointOperationPlanV2
+    plan=JointOperationPlanV2()
+    plan.predicted_attachment.measured_dimensions_wdh=[.2,.3,.4]
+    if failure:
+        with pytest.raises(TimeoutError):module.OperationSimDriver.return_to_pick_observation(probe,plan)
+        assert len(effects)==1
+    else:
+        module.OperationSimDriver.return_to_pick_observation(probe,plan)
+        assert len(effects)==2
+        assert {o.id for o in effects[0].world.collision_objects}=={o.id for o in effects[1].world.collision_objects}
+        assert all(o.operation==CollisionObject.REMOVE for o in effects[1].world.collision_objects)
+    assert [o.id for o in baseline.world.collision_objects]==['unrelated-static']
 
 
 @pytest.mark.parametrize('require_uld',[False,True])
