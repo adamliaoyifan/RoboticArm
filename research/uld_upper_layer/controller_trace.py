@@ -16,10 +16,18 @@ class ControllerTrace:
     def __init__(self,path):
         self._stream=gzip.open(path,'wt',compresslevel=3)
         self.count=0;self.latest=None
+        self._tracking_checks=0;self._max_feedback_age_s=0.;self._max_tracking_error_rad=0.
     def observe(self,message,topic=None):
         self.latest=dict(state_record(message),topic=topic)
         self._stream.write(json.dumps(self.latest)+'\n');self._stream.flush();self.count+=1
     def close(self):self._stream.close()
+    def record_check(self,age_s,error_rad):
+        self._tracking_checks+=1
+        self._max_feedback_age_s=max(self._max_feedback_age_s,age_s)
+        self._max_tracking_error_rad=max(self._max_tracking_error_rad,error_rad)
+    def metrics(self):
+        return dict(messages=self.count,tracking_checks=self._tracking_checks,
+            max_feedback_age_s=self._max_feedback_age_s,max_tracking_error_rad=self._max_tracking_error_rad)
 
 
 def record_command(runtime,event,**fields):
@@ -40,6 +48,7 @@ def check_tracking(runtime,threshold_rad,max_age_s):
     if len(names)!=6 or len(reference)!=6 or len(feedback)!=6:
         raise RuntimeError('CONTROLLER_JOINT_FEEDBACK_INCOMPLETE')
     error=max(abs(a-b) for a,b in zip(reference,feedback))
+    runtime.controller_trace.record_check(abs(native.get('sim_time_s',0)-state['stamp_s']),error)
     if error>threshold_rad:
         (runtime.output/'controller_tracking_failure.json').write_text(json.dumps(dict(
             threshold_rad=threshold_rad,max_error_rad=error,state=state),indent=2)+'\n')

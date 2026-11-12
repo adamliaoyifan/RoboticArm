@@ -630,5 +630,12 @@ Controller commands and aligned reference/feedback are archived separately.
 Feedback subscriptions retain the newest sample; native contact capture remains
 at every physics step. `controller_tracking_error_rad` in execution policy adds
 a position-tracking stop without joint current, torque or tactile feedback.
+Feedback has a dedicated read-only ROS executor, independent of the command
+thread's collision/contact checks. `--feedback-hold-seconds 60` rehearses that
+wiring with an initialized pick and no placement input. Summary tracking metrics
+record the number of checks, maximum feedback age and maximum position error.
+Tune `joint_speed_scaling` to measured tracking capability; source speed limits
+alone do not establish the controller's tracking accuracy. A longer engineering
+time/capture budget is separate from collision, support and tracking thresholds.
 Source actuator parameters, collision thresholds and material properties are
 not changed to accommodate a failed motion.

@@ -52,9 +52,15 @@ def main():
     parser.add_argument('--initialize-pick',type=Path)
     parser.add_argument('--capture-after-pick',action='store_true')
     parser.add_argument('--planning-pause-rehearsal',action='store_true')
+    parser.add_argument('--feedback-hold-seconds',type=float,default=0.,
+        help='Independent controller-feedback/native-monitor hold rehearsal, without placement')
     parser.add_argument('--capture-rehearsal',action='store_true',
         help='Deliberate diagnostic failure after controller hold; never a physical action verdict')
     args=parser.parse_args();out=args.evidence.resolve()
+    if args.feedback_hold_seconds and (not np.isfinite(args.feedback_hold_seconds) or
+            args.feedback_hold_seconds<=0 or not args.initialize_pick or args.planning_run or
+            args.live_request or args.planning_pause_rehearsal or args.capture_after_pick):
+        parser.error('--feedback-hold-seconds requires a positive duration, initialized pick and no other action')
     if args.planning_pause_rehearsal and (not args.initialize_pick or args.planning_run or args.live_request):
         parser.error('--planning-pause-rehearsal requires --initialize-pick and no placement input')
     if args.live_request:
@@ -185,13 +191,23 @@ def main():
             save(out/'nominal_plan.json',plan)
             save(out/'executed_planning_run.json',dict(path=str(live_path)))
         if args.capture_rehearsal:raise RuntimeError('DIAGNOSTIC_CAPTURE_REHEARSAL')
-        if args.planning_pause_rehearsal:
+        if args.feedback_hold_seconds:
+            monitor.begin_phase('controller_feedback_hold',True,True,False)
+            q=list(monitor.sample.q)
+            hold=dict(positions=[q,q],velocities=[[0.]*6,[0.]*6],
+                      time_from_start=[0.,args.feedback_hold_seconds])
+            ArmController(runtime,tracking_error_rad=policy.controller_tracking_error_rad,
+                feedback_max_age_s=policy.observation_max_age_s).execute(hold,observe,policy.wall_budget_s)
+            result=dict(status='controller_feedback_hold_pass',hold_seconds=args.feedback_hold_seconds,
+                upper_placement='not_evaluated')
+        elif args.planning_pause_rehearsal:
             from planning_pause import rehearse_pause
             result=rehearse_pause(runtime,monitor,observe,policy)
         else:
             result=(PhysicalExecutor(runtime,monitor,observe,state.dimensions,config,policy).execute(plan) if plan else
                     dict(status='monitor_hold_pass',scope='native_observation_and_actual_controller_hold_only'))
-        result['monitor']=monitor.metrics();result['stream']=observe.metrics();save(out/'summary.json',result)
+        result['monitor']=monitor.metrics();result['stream']=observe.metrics()
+        result['controller_tracking']=runtime.controller_trace.metrics();save(out/'summary.json',result)
         manifest['capture_complete']=True;manifest['replay_possible']=True
     except BaseException as exc:
         failed=True
@@ -213,6 +229,7 @@ def main():
         if monitor:monitor.save_trigger(out/'trigger_window.jsonl.gz',tail)
         save(out/'summary.json',dict(status='failed',monitor=monitor.metrics() if monitor else None,
                                     stream=observe.metrics() if observe else None,
+                                    controller_tracking=runtime.controller_trace.metrics() if runtime.controller_trace else None,
                                     post_window_captured=bool(tail and tail[-1][0]-stamp>=policy.trigger_post_s)))
         manifest['capture_complete']=bool(tail and tail[-1][0]-stamp>=policy.trigger_post_s)
         manifest['replay_possible']=manifest['capture_complete']

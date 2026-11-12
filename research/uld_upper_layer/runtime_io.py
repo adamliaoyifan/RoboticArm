@@ -42,7 +42,7 @@ class RuntimeIO:
             self.native_step_s=float(fixture['physics_step_s'])
             if not 0<self.native_step_s:raise ValueError('INVALID_NATIVE_PHYSICS_STEP')
             self.contact_topic=fixture.get('contact_observation_topic',self.contact_topic)
-        self.controller_trace=None
+        self.controller_trace=None;self.controller_capture=None
         self.launch=None;self.pose_capture=None;self.contact_capture=None
         self.clock_capture=None
         self.contacts=None;self.contact_stamp=None;self.contact_count=0
@@ -81,16 +81,10 @@ class RuntimeIO:
         from rclpy.qos import qos_profile_sensor_data
         rclpy.init()
         self.node=rclpy.create_node('upper_layer_ideal_experiment')
-        from control_msgs.msg import JointTrajectoryControllerState
         from controller_trace import ControllerTrace
+        from controller_capture import ControllerFeedbackCapture
         self.controller_trace=ControllerTrace(self.output/'controller_state.jsonl.gz')
-        from rclpy.qos import QoSProfile,ReliabilityPolicy
-        # Tracking needs the latest aligned reference/feedback pair, not queued
-        # historical states. Native physics-step capture remains lossless.
-        controller_qos=QoSProfile(depth=1,reliability=ReliabilityPolicy.BEST_EFFORT)
-        topic='/elfin_arm_controller/controller_state'
-        self.node.create_subscription(JointTrajectoryControllerState,topic,
-            lambda msg:self.controller_trace.observe(msg,topic),controller_qos)
+        self.controller_capture=ControllerFeedbackCapture(self.controller_trace)
         self.joint_trace=(self.output/'joint_states.jsonl').open('w')
         def joints(msg):
             names=[f'elfin_joint{i}' for i in range(1,7)]
@@ -245,7 +239,8 @@ class RuntimeIO:
                         messages=self.pose_count,q=self.q,q_stamp=self.q_stamp,
                         clock=self.clocks[-1] if self.clocks else None,
                         first_clock=self.first_clock,
-                        capture_error=self.capture_error or budget_error or (self.pose_capture.error if self.pose_capture else None)
+                        capture_error=self.capture_error or budget_error or
+                        (self.controller_capture.error if self.controller_capture else None) or (self.pose_capture.error if self.pose_capture else None)
                             or (self.contact_capture.error if self.contact_capture else None)
                             or (self.vacuum_capture.error if self.vacuum_capture else None)
                             or (self.clock_capture.error if self.clock_capture else None),
@@ -282,6 +277,7 @@ class RuntimeIO:
         if failure:raise RuntimeError(failure)
 
     def stop(self):
+        if self.controller_capture:self.controller_capture.stop()
         if self.clock_capture:self.clock_capture.stop()
         if self.pose_capture:self.pose_capture.stop()
         if self.contact_capture:self.contact_capture.stop()
