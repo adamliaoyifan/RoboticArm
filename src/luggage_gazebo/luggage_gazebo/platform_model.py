@@ -1,10 +1,10 @@
-"""Bind the pickup platform's rendered and physical box to scene dimensions."""
+"""Bind floor-mounted box fixtures' rendered and physical scene dimensions."""
 
 import math
 import xml.etree.ElementTree as ET
 
 
-def platform_sdf(template_xml, size):
+def platform_sdf(template_xml, size, *, link_name='platform_link'):
     """Return a private SDF with bottom-centred visual/collision geometry.
 
     The scene config also drives platform-top TF and box spawning. Loading the
@@ -16,9 +16,9 @@ def platform_sdf(template_xml, size):
             math.isfinite(value) and value > 0 for value in dimensions):
         raise ValueError("platform size must contain three positive finite values")
     root = ET.fromstring(template_xml)
-    link = root.find("model/link[@name='platform_link']")
+    link = root.find("model/link[@name='%s']" % link_name)
     if link is None:
-        raise ValueError("pickup platform template has no platform_link")
+        raise ValueError("static box template has no " + link_name)
     for kind in ("visual", "collision"):
         parts = link.findall(kind)
         if len(parts) != 1:

@@ -41,8 +41,9 @@ def test_launch_sends_configured_geometry_to_create(monkeypatch):
     launch = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(launch)
     config = launch.load_scene_tf_config(
-        str(package.parent / "luggage_description/config/scene_tf.yaml"))
+        str(package.parent / "luggage_description/config/scene_tf_deploy_update.yaml"))
     config["pickup_platform"]["size"] = [1., 1., .86]
+    config["pedestal"]["size"] = [.62, .48, .93]
     monkeypatch.setattr(launch, "load_scene_tf_config", lambda _: config)
     monkeypatch.setattr(launch, "get_package_share_directory", lambda _: str(package))
     monkeypatch.setattr(launch, "Node", lambda **kwargs: kwargs)
@@ -54,4 +55,14 @@ def test_launch_sends_configured_geometry_to_create(monkeypatch):
     root = ET.fromstring(args[args.index('-string') + 1])
     assert float(root.findtext('model/link/visual/geometry/box/size').split()[2]) == .86
     assert float(root.findtext('model/link/collision/geometry/box/size').split()[2]) == .86
+    assert '-file' not in args
+    pedestal = next(action for action in actions
+                    if action['arguments'][action['arguments'].index('-name') + 1]
+                    == 'robot_pedestal')
+    args = pedestal['arguments']
+    root = ET.fromstring(args[args.index('-string') + 1])
+    for kind in ('visual', 'collision'):
+        part = root.find('model/link/' + kind)
+        assert list(map(float,part.findtext('geometry/box/size').split())) == [.62,.48,.93]
+        assert float(part.findtext('pose').split()[2]) == pytest.approx(.93/2)
     assert '-file' not in args

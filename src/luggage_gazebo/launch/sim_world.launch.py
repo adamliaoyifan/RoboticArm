@@ -52,6 +52,7 @@ from luggage_description.scene_tf_config_utils import (
     gazebo_pickup_platform_spawn_pose,
     load_scene_tf_config,
     pedestal_enabled,
+    pedestal_config,
     pickup_platform_enabled,
     pickup_platform_config,
 )
@@ -522,10 +523,13 @@ def _scene_model_actions(scene_tf_config: str):
     for model, spawn in spawns:
         sdf_path = os.path.join(gz_share, "models", model, "model.sdf")
         sdf_xml = None
-        if model == "pickup_platform":
+        if model in ("pickup_platform", "robot_pedestal"):
+            fixture = (pickup_platform_config(config) if model == "pickup_platform"
+                       else pedestal_config(config))
+            link_name = 'platform_link' if model == 'pickup_platform' else 'pedestal_link'
             with open(sdf_path, encoding="utf-8") as template:
                 sdf_xml = platform_sdf(
-                    template.read(), pickup_platform_config(config)["size"])
+                    template.read(), fixture["size"], link_name=link_name)
         actions.append(_create_node(model, sdf_path, spawn, sdf_xml=sdf_xml))
     return actions
 

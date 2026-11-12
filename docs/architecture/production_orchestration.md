@@ -403,3 +403,15 @@ one fresh standard spawner may query/recover an already-loaded controller after
 a lost service reply, then a repeated failure requests named shutdown. Bare
 legacy startup remains unchanged. The recovery branch has behavioral event
 coverage; healthy live rehearsal alone is not failure-rate qualification.
+
+### Configured simulation fixture geometry
+
+`sim_world.launch.py` must bind both the pickup platform and robot pedestal
+visual/collision box dimensions and bottom-centred half-height poses to the
+selected `scene_tf` configuration. A stock SDF's dimensions are not an independent
+source of truth. The exact same configured pedestal dimensions drive MoveIt's
+static world and robot base height. Runtime supplies a private configured SDF to
+Gazebo create; the template on disk remains unchanged. Scene agreement must be
+checked before interpreting observed occupancy or motion refusals as robot or
+ULD reachability problems. No sensor points or observed cargo geometry are
+replaced by fixture configuration.

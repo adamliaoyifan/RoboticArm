@@ -954,3 +954,46 @@ Build66 compiled successfully but its source-freeze gate correctly reports two
 headers edited during compilation; it is NOT a frozen live-run artifact. Freeze
 and rebuild67 after native behavioural checks (pending, measured box removal,
 wrong identity, release, delayed pre-release cloud).
+
+Follow-up: saved45 window matches9 current occupied cells to measured payload
+endpoints but ZERO within the refused target footprint. Do NOT attribute all45
+failure to the load filter defect. Other ghosts / surface sensitivity remain
+open hypotheses; early carry is outside that preserved window. Add a bounded
+128MiB read-only all-operation filtered-ULD-endpoint ledger with exact container
+and tool transforms to46; this supplies no planning input and permits source
+backtrace without dumping every full sensor frame throughout the campaign.
+
+28e802cf frozen build67 succeeds7.10s, no changed inputs, install192/192.
+Native installed wire and vacuum regression32pass. Covers wrong-identity
+confirmation refusal, pending-cloud refusal, actual additional shape filtering,
+release restore, and delayed attached-time cloud after release. Diagnostic46
+starts with explicit current profile; unloaded self-filter acknowledgement and
+readiness8.14s pass. Source remains frozen throughout the run.
+
+### Diagnostic46 / physical pedestal differs from MoveIt (23:28 UTC)
+
+Readiness8.14s. First preparation succeeded, alignment executed; BEFORE actual
+pick, full suffix native certification rejects future carry against O voxel0
+(depth0.0001735m), attached pickup_box vs placement-prior-occ-voxel-0.
+No actual carrying collision is claimed. Preserve refusal_summary and typed
+native input/output; failure hold and teardown0. New ledger captures2299/2299
+filtered clouds, zero queue/TF/cap drops,509kB; 96 LiDAR frames hit offending
+cell[2,24,16]. This is direct measured evidence, not guessed source.
+
+Root cause established: `_scene_model_actions` resizes pickup_platform from
+scene config but passes the STOCK pedestal SDF unchanged. Gazebo visual and
+collision size[1.05,.74,.86] at yaw90; MoveIt and deploy_update source use
+[.74,.50,.86]. The actual endpoint lies inside the larger pedestal and outside
+the planned one (fixture_geometry_review.json). Its real return is voxelized
+and padded by the already declared2cm O policy. Do not call it a ULD-frame
+failure, payload-return failure, or measured physical impact. It is inconsistent
+physical/planning fixture geometry exposed by observation.
+
+Recommendation: extend existing bottom-centred static-box SDF binding to
+pedestal, using the same source config as MoveIt, preserve both collision and
+visual, no geometry deletion or O bypass. Behavioural launch test changes BOTH
+fixture dimensions and checks emitted create XML, including half-height origin;
+7tests pass. Existing template remains available, but runtime sends configured
+private SDF. Atlas configuration/model binding is unchanged; only Gazebo's
+incorrect physical fixture is brought into agreement with that frozen source.
+The separate45 floor-level endpoint issue remains open pending the next run.
