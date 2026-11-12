@@ -47,7 +47,7 @@ def _worker(repo,snapshot,state,action,start_q,seeds,config,selection_policy,exe
                 if not prepared['valid']:
                     result=prepared['plan'];result['reason']='FREE_BOX_ENVELOPE_REJECTED'
                     result['valid']=False
-                    result['envelope_diagnostic']=prepared.get('diagnostic')
+                    result['envelope_diagnostic']=dict(reason=prepared['reason'],diagnostic=prepared.get('diagnostic'))
                 else:
                     result=prepared['plan']
                     atomic_json(output/'envelope_prepared_result.json',result)

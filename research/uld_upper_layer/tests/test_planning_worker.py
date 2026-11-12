@@ -31,7 +31,7 @@ class WorkerScoreAdmission(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory,patch('ompl.util.RNG'),\
              patch('assets.load',return_value={}),patch('full_arm.FullArmScene',Scene),\
              patch('stage_planner.plan_action',return_value=dict(valid=True,stages=[])),\
-             patch('free_box_validation.prepare_free_box_motion',return_value=dict(valid=False,
+             patch('free_box_validation.prepare_free_box_motion',return_value=dict(valid=False,reason='ENVELOPE_STAGE_CANNOT_BE_REROUTED',
                 plan=dict(valid=True,stages=[]),diagnostic=dict(reason='TUBE_UNPROVED'))),\
              patch('plan_clearance.score_plan') as score:
             _worker('.',None,None,None,[],[],UpperConfig.load(),SelectionPolicy.load(),ExecutionPolicy.load(),directory,5.,0)

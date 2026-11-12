@@ -23,8 +23,8 @@ def prepare_free_box_motion(assets, snapshot, state, plan, config, selection_pol
         candidate['valid'] = False
         return dict(valid=False, reason=reason, diagnostic=diagnostic,
                     plan=candidate, repairs=repairs)
-    from physical_executor import STAGES
-    if (not candidate.get('valid') or tuple(s['name'] for s in candidate['stages']) != STAGES or
+    from physical_executor import expected_stages
+    if (not candidate.get('valid') or tuple(s['name'] for s in candidate['stages']) != expected_stages(candidate) or
             not all(s['certificate'].get('valid') for s in candidate['stages'])):
         return reject('COMPLETE_NOMINAL_PLAN_REQUIRED')
     while time.monotonic() < deadline:

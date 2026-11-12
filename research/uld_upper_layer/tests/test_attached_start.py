@@ -39,6 +39,20 @@ class AttachedStart(unittest.TestCase):
             self.assertTrue(carry.call_args.kwargs['start_attached'])
             self.assertEqual(payload_calls[0][0][1],'attached')
 
+    def test_attached_score_reaches_support_gate_and_incomplete_suffix_is_rejected(self):
+        from plan_clearance import score_plan
+        plan=dict(valid=True,start_attached=True,action=dict(placement=dict(snapshot_id='s',config_revision='c')),
+            stages=[dict(name=n,certificate=dict(valid=True)) for n in STAGES[3:]])
+        scene=SimpleNamespace(snapshot=SimpleNamespace(snapshot_id='s'))
+        config=SimpleNamespace(revision='c')
+        with patch('plan_clearance._support_trace',return_value=dict(valid=False,reason='PUSH_SUPPORT_POLICY')) as support:
+            result=score_plan(scene,None,plan,config,None,1.)
+            self.assertEqual(result['reason'],'PUSH_SUPPORT_POLICY');self.assertEqual(support.call_count,1)
+            plan['stages']=plan['stages'][1:]
+            result=score_plan(scene,None,plan,config,None,1.)
+            self.assertEqual(result['reason'],'COMPLETE_CERTIFIED_NOMINAL_PLAN_REQUIRED')
+            self.assertEqual(support.call_count,1)
+
     def test_executor_stage_contract_and_missing_live_attachment_fail_closed(self):
         self.assertEqual(expected_stages(dict(start_attached=True)),STAGES[3:])
         self.assertEqual(expected_stages({}),STAGES)

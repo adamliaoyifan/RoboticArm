@@ -110,9 +110,9 @@ def _support_trace(scene,state,action,config,deadline):
 
 
 def score_plan(scene,state,plan,config,policy,deadline,emit=None):
-    from physical_executor import STAGES
+    from physical_executor import expected_stages
     started=time.monotonic()
-    if (not plan.get('valid') or tuple(s['name'] for s in plan['stages'])!=STAGES or
+    if (not plan.get('valid') or tuple(s['name'] for s in plan['stages'])!=expected_stages(plan) or
         not all(s['certificate'].get('valid') for s in plan['stages'])):
         return dict(valid=False,reason='COMPLETE_CERTIFIED_NOMINAL_PLAN_REQUIRED')
     action=plan['action']

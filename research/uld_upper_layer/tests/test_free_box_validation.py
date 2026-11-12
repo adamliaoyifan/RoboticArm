@@ -42,6 +42,16 @@ class FreeBoxPreparationContracts(unittest.TestCase):
                 time.monotonic() + (-1 if expired else 3), self.events.append)
         return result, validate, route
 
+    def test_already_attached_suffix_reaches_same_envelope_gate(self):
+        self.plan['start_attached']=True
+        self.plan['stages']=self.plan['stages'][3:]
+        result,validate,route=self.prepare([self.passed])
+        self.assertTrue(result['valid']);self.assertEqual(validate.call_count,1)
+        route.assert_not_called()
+        self.plan['stages']=self.plan['stages'][1:]
+        result,validate,route=self.prepare([self.passed])
+        self.assertFalse(result['valid']);validate.assert_not_called()
+
     def test_repair_is_independently_rechecked_without_changing_input_or_endpoints(self):
         original = deepcopy(self.plan)
         result, validate, route = self.prepare([self.failed, self.passed])
