@@ -166,3 +166,14 @@ reuse qualified static atlas connectivity as hints, with runtime O/grasp/payload
 revalidation. Do not fix one entrance pose or constrain the entire pickup route
 to a thin doorway slab. Implementation and performance remain unverified.
 Owner note has official references, local API evidence and boundary details.
+
+## Reply -- eng/codex -- 2026-11-12 19:40 -- codex/gpt-6
+
+Discussed user's fast plane-waypoint idea. Recommend geometric aperture erosion
+then atlas joint-branch retrieval and short crossing certification; return pose,
+q and passage witness rather than XYZ alone. Nominal source aperture bounds and
+source SHA preserved in portal_region_review_01/summary.json. Owner note records
+the offset-grasp rectangle formula, actual-tilt/full-tool generalization, search
+order, existing-atlas extension proposal and conservative-region limitations.
+No fixed waypoint, new clearance constant, runtime algorithm change or claimed
+speed gain. Full integration baseline remains open.

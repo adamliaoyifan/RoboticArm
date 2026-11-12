@@ -1,0 +1,43 @@
+{
+  "scope": "Configured nominal opening only; not a full robot or mesh passage certificate",
+  "frame": "container_link",
+  "height_semantics": "absolute container z",
+  "source": "src/luggage_description/config/scene_tf_deploy_update.yaml",
+  "source_sha256": "989225a14e7de881247865ca5813cbbc703e425cd5bb91433402c6e306449b5f",
+  "corners": [
+    [
+      -0.745,
+      0.398,
+      0.597
+    ],
+    [
+      -0.745,
+      -0.928,
+      0.597
+    ],
+    [
+      -0.745,
+      -0.928,
+      2.009
+    ],
+    [
+      -0.745,
+      0.398,
+      2.009
+    ]
+  ],
+  "bounds": [
+    [
+      -0.745,
+      -0.745
+    ],
+    [
+      -0.928,
+      0.398
+    ],
+    [
+      0.597,
+      2.009
+    ]
+  ]
+}

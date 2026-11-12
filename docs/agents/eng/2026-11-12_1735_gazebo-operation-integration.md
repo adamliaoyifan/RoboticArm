@@ -126,3 +126,55 @@ and final certification on the same full-model workload.
 
 Official references: https://moveit.picknik.ai/humble/doc/examples/move_group_interface/move_group_interface_tutorial.html
 and https://moveit.picknik.ai/humble/doc/how_to_guides/using_ompl_constrained_planning/ompl_constrained_planning.html.
+
+## Fast opening candidates proposal -- 2026-11-12 19:40
+
+User proposes a collision-free intermediate point in the opening plane, with
+panel down, generated quickly. Recommend this decomposition, but return typed
+TCP pose + exact joint branch + short crossing witness, not just XYZ. Point
+collision freedom alone does not establish a collision-free incoming/outgoing
+connection. No measured latency or completed integration claimed.
+
+Nominal source opening in container coordinates: x=-0.745m,
+y=[-0.928,0.398]m,z=[0.597,2.009]m (absolute container z). Extracted via existing
+scene helper with source SHA in portal_region_review_01/summary.json. Bounds are
+configuration evidence, not a physically measured/mesh-qualified passage.
+
+Geometric broad phase for an upright box and fixed yaw: let a be box half-extent
+along opening lateral direction, h its height, and d be box-centre lateral offset
+from suction contact. Contact y must lie in [y_min+a-d,y_max-a-d]; contact z must
+lie in [z_min+h,z_max]. These bounds deliberately omit uncertainty/tool geometry
+and must not authorize motion. General form for a fixed tool/box envelope K
+relative to contact origin is p_i in [A_min_i-min(K_i),A_max_i-max(K_i)] for the
+two opening-plane axes. Inflate geometry or inset aperture by the explicitly
+owned uncertainty once; no new default5cm assumption. Full cup-on-box-face
+coverage remains independently required for the chosen grasp.
+
+Projected fixed-tool/box envelope erosion is an efficient conservative proposal
+region for a fixed-orientation transit family. It cannot label the task physically
+unreachable when empty: articulating links are not rigid with the cup, some fixed
+parts need not traverse the full plane, and permitted rotations/curved crossings
+can require exact section/sweep analysis. Preserve actual observed small tilt in
+the full transform, using the upright formula only as an explanatory special case.
+
+Proposed cheap-to-expensive order: aperture erosion per box/grasp/yaw; qualified
+static atlas branch retrieval; exact FK/IK refinement at the plane; static robot
+and payload collision; O collision and approach/exit crossing checks; connect
+pickup and placement branches; whole-chain certification. Prefer broad-clearance
+region candidates and joint branches compatible with both ends; expand candidates
+on incomplete search. Never fix one centre point, winding or entrance J6.
+
+Reuse the existing atlas artifact with an explicit aperture section (proposal):
+exact plane TCP pose/yaw, branch q, static clearance, joint-limit/singularity
+metrics, and static crossing path identities. Exact plane IK is required: nearby
+0.15m voxel seeds cannot be treated as plane witnesses or interpolated as proof.
+Payload size and eccentric grasp remain runtime inputs. Crossing extent follows
+normal projection of relevant geometry and frame thickness; do not invent a
+fixed +/-centimetre pair. First try a simple passage, then flexible crossing
+families under the same opening requirement. Final carry/empty exit differ.
+
+Cache validated short paths with source identities; all changed O, actual payload,
+grasp or model/scene conditions require applicable revalidation. A static path
+cache is not an authorization cache. Benchmark region extraction, branch lookup,
+IK/collision, short crossing, middle connection and complete certification
+separately before assigning production latency targets. Current code is unchanged.
