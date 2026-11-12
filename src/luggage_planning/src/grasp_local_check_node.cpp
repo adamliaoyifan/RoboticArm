@@ -7,6 +7,8 @@
 #include <chrono>
 #include <geometric_shapes/shapes.h>
 #include <iomanip>
+#include <map>
+#include <set>
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <openssl/sha.h>
@@ -108,7 +110,12 @@ public:
     detail << diagnostic << ",\"last_contact\":" << std::quoted(last_contact_)
            << ",\"pick_hint_count\":" << req_.pick_entry_seed_joints_flat.size() / 6
            << ",\"place_hint_count\":" << req_.place_entry_seed_joints_flat.size() / 6
-           << "}";
+           << ",\"collision_samples\":[";
+    for (size_t i=0;i<contact_samples_.size();++i) {
+      if (i) detail << ',';
+      detail << contact_samples_[i];
+    }
+    detail << "]}";
     res.diagnostics_json = detail.str();
   }
 
@@ -140,6 +147,23 @@ private:
       if (!r.contacts.empty())
         last_contact_ = r.contacts.begin()->first.first + " / " +
                         r.contacts.begin()->first.second;
+      if (!r.contacts.empty() && !r.contacts.begin()->second.empty() &&
+          contact_samples_.size()<12 &&
+          sampled_contacts_.insert(phase_+":"+last_contact_).second) {
+        const auto &contact=r.contacts.begin()->second.front();
+        std::vector<double> joints;
+        state.copyJointGroupPositions(group_,joints);
+        const auto tcp=state.getGlobalLinkTransform(tcp_).translation();
+        std::ostringstream sample;
+        sample << "{\"phase\":" << std::quoted(phase_)
+               << ",\"pair\":" << std::quoted(last_contact_)
+               << ",\"depth_m\":" << contact.depth
+               << ",\"contact_world\":[" << contact.pos.x() << ',' << contact.pos.y() << ',' << contact.pos.z()
+               << "],\"tcp_world\":[" << tcp.x() << ',' << tcp.y() << ',' << tcp.z() << "],\"joints\":[";
+        for (size_t i=0;i<joints.size();++i) {if(i)sample << ',';sample << joints[i];}
+        sample << "]}";
+        contact_samples_.push_back(sample.str());
+      }
     }
     return !r.collision;
   }
@@ -249,13 +273,16 @@ private:
         state.setJointGroupPositions(group_, q);
         state.update();
       }
+      phase_=incoming_carrying ? "place_entry" : "pick_entry";
       if (!solve(state, entry))
         continue;
       luggage_msgs::msg::GraspLocalBranch branch;
       branch.seed_index = seed;
+      phase_=incoming_carrying ? "place_contact" : "pick_contact";
       if (!path(state, contact, branch.incoming))
         continue;
       payload(state, box, !incoming_carrying);
+      phase_=incoming_carrying ? "place_departure" : "pick_departure";
       if (!valid(state) || !path(state, exit, branch.outgoing))
         continue;
       bool duplicate = false;
@@ -282,6 +309,9 @@ private:
   shapes::ShapeConstPtr shape_;
   const std::string payload_ = "prior-local-box";
   std::string last_contact_;
+  std::string phase_;
+  std::set<std::string> sampled_contacts_;
+  std::vector<std::string> contact_samples_;
   unsigned ik_ = 0, checks_ = 0, collisions_ = 0, jumps_ = 0;
 };
 } // namespace
