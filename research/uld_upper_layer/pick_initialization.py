@@ -56,7 +56,7 @@ def initialize_pick(runtime,assets,scene_dir,record_path,config,policy,output):
     with (output/'monitor.jsonl').open('w') as trace:
         monitor=ExecutionMonitor(reader,scene,state,action,config,policy,initial,trace,
             panel_collision_name=runtime.panel_contact['collision_name'],
-            failure_capture=runtime.begin_failure_capture)
+            failure_capture=runtime.begin_failure_capture,timing=runtime.monitor_timing)
         observe=NativeSampleMonitor(runtime,monitor,policy)
         monitor.begin_phase('pick_contact',True,False,True)
         reason=observe(row)

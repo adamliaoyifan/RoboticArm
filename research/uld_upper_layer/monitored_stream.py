@@ -9,6 +9,7 @@ import math
 class NativeSampleMonitor:
     def __init__(self,runtime,monitor,policy):
         self._runtime=runtime;self._monitor=monitor;self._policy=policy
+        self._timing=getattr(runtime,'monitor_timing',None)
         self._max_backlog_s=0.
         self._calls=0;self._selected_samples=0;self._max_callback_wall_s=0.
         self._native_step_s=runtime.native_step_s
@@ -21,7 +22,11 @@ class NativeSampleMonitor:
 
     def __call__(self,row):
         started=time.perf_counter();self._calls+=1
-        try:return self._drain(row)
+        try:
+            if self._timing:
+                with self._timing.stage('native_monitor_callback',(row.get('vacuum') or {}).get('sim_time_s')):
+                    return self._drain(row)
+            return self._drain(row)
         finally:self._max_callback_wall_s=max(self._max_callback_wall_s,time.perf_counter()-started)
 
     def _drain(self,row):

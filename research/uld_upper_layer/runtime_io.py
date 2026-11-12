@@ -42,7 +42,7 @@ class RuntimeIO:
             self.native_step_s=float(fixture['physics_step_s'])
             if not 0<self.native_step_s:raise ValueError('INVALID_NATIVE_PHYSICS_STEP')
             self.contact_topic=fixture.get('contact_observation_topic',self.contact_topic)
-        self.controller_trace=None;self.controller_capture=None
+        self.controller_trace=None;self.controller_capture=None;self.monitor_timing=None
         self.launch=None;self.pose_capture=None;self.contact_capture=None
         self.clock_capture=None
         self.contacts=None;self.contact_stamp=None;self.contact_count=0
@@ -54,6 +54,8 @@ class RuntimeIO:
         self.capture_error=None
 
     def start(self):
+        from monitor_timing import MonitorTiming
+        self.monitor_timing=MonitorTiming(self.output/'monitor_timing.jsonl.gz')
         # launch_scene performs the machine-wide exclusivity check itself.
         if self.env.get('ELFIN_GZ_STRIP_PANEL_COLLISION','').strip():
             raise RuntimeError('PANEL_COLLISION_STRIPPING_INCOMPATIBLE_WITH_PHYSICAL_PUSH')
@@ -282,6 +284,9 @@ class RuntimeIO:
         if self.pose_capture:self.pose_capture.stop()
         if self.contact_capture:self.contact_capture.stop()
         if self.vacuum_capture:self.vacuum_capture.stop()
+        if self.monitor_timing:
+            self.monitor_timing.close()
+            (self.output/'monitor_timing_metrics.json').write_text(json.dumps(self.monitor_timing.metrics(),indent=2)+'\n')
         if hasattr(self,'node'):
             import rclpy
             self.node.destroy_node()

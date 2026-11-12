@@ -167,7 +167,7 @@ def main():
         trace=gzip.open(out/'monitor.jsonl.gz','wt',compresslevel=3)
         monitor=ExecutionMonitor(reader,scene,state,action,config,policy,initial,trace,
                                  panel_collision_name=runtime.panel_contact['collision_name'],
-                                 failure_capture=runtime.begin_failure_capture)
+                                 failure_capture=runtime.begin_failure_capture,timing=runtime.monitor_timing)
         observe=NativeSampleMonitor(runtime,monitor,policy)
         # Warm up the real observation boundary while holding the current arm.
         if initial.attached:

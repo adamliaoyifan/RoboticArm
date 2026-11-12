@@ -643,5 +643,8 @@ profile, not evidence of real-time hardware readiness. The diagnostic
 `failure_capture_lag_s` retains raw states beyond the pre-window independently of
 `observation_max_age_s`. A monitor failure triggers raw capture before controller
 cancellation; delayed or invalid observations still need durable failure data.
+`monitor_timing.jsonl.gz` and its metrics distinguish slow collision checks,
+observation writes, total callback wall/thread CPU time and cyclic-GC pauses.
+These bounded diagnostics do not change collection policy or physics.
 Source actuator parameters, collision thresholds and material properties are
 not changed to accommodate a failed motion.

@@ -5,6 +5,7 @@ lower/contact stamps. Geometry remains separate from native contact evidence.
 This monitor neither changes cargo poses nor supplies force/torque feedback.
 """
 from collections import deque
+from contextlib import nullcontext
 from dataclasses import asdict,is_dataclass
 import json
 import time
@@ -21,10 +22,11 @@ def pose_error(reference,observed):
 
 class ExecutionMonitor:
     def __init__(self,reader,scene,state,action,config,policy,initial,trace,panel_collision_name=None,
-                 failure_capture=None):
+                 failure_capture=None,timing=None):
         self._reader=reader;self._scene=scene;self._state=state;self._action=action
         self._config=config;self._policy=policy;self._trace=trace
         self._failure_capture=failure_capture
+        self._timing=timing
         self._baseline={b.name:b.container_T_body for b in initial.lower}
         self._initial_stamp=initial.stamp_s;self._started=time.monotonic()
         self._last=None;self._phase='initial';self._expected_attached=initial.attached
@@ -163,7 +165,8 @@ class ExecutionMonitor:
         self._scene.payload['allow_support']=self._allow_support
         failure,intended=self._declared_contacts(sample)
         if failure:return self._stop(failure['reason'],**{k:v for k,v in failure.items() if k!='reason'})
-        failure=self._scene.check_state(sample.q,self._config.collision_margin_m,self._contact_mode)
+        with self._timing.stage('collision_check',sample.stamp_s) if self._timing else nullcontext():
+            failure=self._scene.check_state(sample.q,self._config.collision_margin_m,self._contact_mode)
         if failure:return self._stop('OBSERVED_COLLISION_OR_CLEARANCE',diagnostic=failure)
         self._support=measure_observed_support(sample,self._state.dimensions,self._state.com_local,
             self._config.contact_tolerance_m,self._config.contact_penetration_m)
@@ -182,7 +185,8 @@ class ExecutionMonitor:
             attached=sample.attached,pose_command_count=sample.pose_command_count,
             intended_contact_trace=intended,
             support=asdict(self._support),input_observation=(asdict(row) if is_dataclass(row) else row))
-        self._trace.write(json.dumps(record)+'\n');self._trace.flush()
+        with self._timing.stage('observation_write',sample.stamp_s) if self._timing else nullcontext():
+            self._trace.write(json.dumps(record)+'\n');self._trace.flush()
         return None
 
     def _check_push(self,sample):
