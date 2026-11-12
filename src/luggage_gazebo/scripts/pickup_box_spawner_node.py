@@ -167,6 +167,7 @@ class PickupBoxSpawner(Node):
         # box: primitive AABB. mesh: pre-scaled model:// visual=collision.
         self.declare_parameter("visual_kind", "mesh")
         self.declare_parameter("models_root", "")
+        self._render_asset_root=self.declare_parameter("render_asset_root", "").value
 
         scene_cfg = self.get_parameter("scene_tf_config").value
         scene_cfg_path = scene_cfg or resolve_scene_tf_config_path()
@@ -619,6 +620,9 @@ class PickupBoxSpawner(Node):
             collision_kind="box_recess",
             lid_offset=recess_lid_offset,
         )
+        from luggage_gazebo.render_assets import isolate_visual_assets
+        sdf=isolate_visual_assets(sdf,asset_root=getattr(self,'_render_asset_root',''),
+            models_root=self._models_root_dir)
         dump = os.environ.get("ELFIN_BOX_SDF_DUMP", "").strip()
         if dump:
             parent = os.path.dirname(dump)
@@ -915,6 +919,16 @@ class PickupBoxSpawner(Node):
             response.message = "MESH_REFERENCE_UNAVAILABLE: %s" % exc
             return response
 
+        # Prepare all visual resources before deleting the old instance. A
+        # missing/corrupt asset must not advance the trial or clear a box.
+        model_name = "%s_%04d_%s" % (self._model_prefix,self._sequence+1,id_suffix)
+        try:
+            spawn_sdf=self._box_sdf(model_name,size,mass_kg,visual_id)
+        except Exception as error:
+            self._rng.setstate(rng_state)
+            response.success=False
+            response.message='VISUAL_ASSET_PREPARATION_FAILED:'+str(error)
+            return response
         # Reference validated: now clear the previous instance.
         clear = self.handle_clear(None, None)
         if not clear.success:
@@ -927,7 +941,7 @@ class PickupBoxSpawner(Node):
         try:
             err = self._spawn_model(
                 model_name, pose,
-                sdf=self._box_sdf(model_name, size, mass_kg, visual_id))
+                sdf=spawn_sdf)
         except Exception as exc:  # noqa: BLE001 - service boundary
             response.success = False
             response.message = str(exc)

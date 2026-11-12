@@ -811,3 +811,41 @@ startup path unchanged. Four actual launch-event-handler cases cover normal
 advance, lost-reply recovery branch and repeated failure at both stages; all
 selected launch/driver cases pass. Live healthy startup rehearsal follows;
 transport failure-rate improvement is not inferred unless that branch occurs.
+
+## Diagnostic41 first observed pass; second texture refusal -- 2026-11-13T06:22+08:00
+
+Build61/install192 and startup-only diagnostic40 readiness7.94s/teardown0 pass.
+Diagnostic41 first floor cycle returns success, terminal empty tool, epoch2
+revision1115 after actual six legs, dynamic release and one checked camera view.
+Second box spawn succeeds but no matching measured top in30s; RGB shows same
+shape rendered white and DetectionFrame YOLO empty/DETECT_NO_CLOUD. Failed case
+captures complete actual image/K/depth/raw/source/scene; teardown0. No second
+box motion. First target support/actual payload still need final physical audit.
+
+Two short frozen-build61 renderer controls establish cause boundary without
+robot product motion: delete/reuse first mesh gives detect1 then0; retaining and
+moving first physical instance before same mesh second gives detect1 then1.
+The error follows last-instance removal rather than multi-instance coexistence.
+Official OGRE MeshFactory skips an existing mesh URI on reload; material destroy
+can clear associated resources. Exact installed binary lifetime is not traced,
+so this remains source-supported mechanism plus direct controlled observations.
+
+Recommend per-incarnation file URIs containing IDENTICAL copied original visual
+assets, all hashes recorded in run/render_assets; only URI text changes, no
+physics/collision/texture content changes. Prepare visual assets before clearing
+old instance; resource failure preserves it and RNG/sequence. Enable only the
+explicit joint route. New helper is a simulation resource repair, not perception
+fallback or another planner. Bare legacy path unchanged. Rehearse deletion and
+actual dynamic-replacement controls before another full3box run.
+
+Separate same-image density test:640x360, same measured K and stationary actual
+FK (nearest joint288ms earlier, max velocity2.1e-13); stride4 reaches270 target
+cells, stride2 432, stride1 438. These are projections, not integrated-O claims.
+Select explicit profile stride2:4x direct pixels vs4, almost stride1 coverage at
+one quarter of stride1 rays. O resolution2cm unchanged, no interpolation/fill.
+Copied visual assets and sensor-density choice recorded at wiring62/decision.json.
+Per-box raw capture384MiB,3boxes<=1.125GiB raw plus bounded typed artifacts;
+trigger also on successful adoption so passive completion keeps a raw window.
+78 focused cases pass. Support ratio/tilt/gap policy remains unchanged: offline
+.01/.02/.03/.05 support-contact band sweep recorded, NOT applied merely because
+some values yield passing stack candidates. Full3box functional gate unproven.

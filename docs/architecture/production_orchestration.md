@@ -386,3 +386,20 @@ simulated box without deleting it, and returns with actual O before next pickup.
 All slots are filtered/ranked from exact pinned observed surface+volume; simulator
 spawn dimensions/poses remain actuator/eval-only. This diagnostic flag is not a
 new planner or a claim that bare launch defaults changed.
+
+### Joint simulation sensor density and render-resource lifecycle
+
+The named joint profile samples actual paired depth pixels with stride2; bare
+launch retains4. `operation_depth_pixel_stride` is recorded under observer_depth
+in launch.json. This changes direct measured ray density, never O resolution or
+unknown-state policy. Explicit joint simulation gives the spawner a run-owned
+render_asset_root. Every generated/replaced visual uses a unique file URI with
+content-identical copies of the original model assets and a complete file hash
+manifest. Collision geometry and original texture content stay unchanged. Asset
+preparation precedes deletion of a previous pickup instance. This avoids OGRE
+stale mesh/material reuse after deletion; it supplies no perception geometry.
+Joint controller startup now advances standard spawners only on successful exit;
+one fresh standard spawner may query/recover an already-loaded controller after
+a lost service reply, then a repeated failure requests named shutdown. Bare
+legacy startup remains unchanged. The recovery branch has behavioral event
+coverage; healthy live rehearsal alone is not failure-rate qualification.

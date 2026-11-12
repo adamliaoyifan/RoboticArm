@@ -122,6 +122,9 @@ def test_composition_binds_one_owner_and_identical_native_model(tmp_path,monkeyp
     manifest=json.loads((Path(settings['operation_run_dir'])/'launch.json').read_text())
     assert manifest['model_sha256']==hashlib.sha256((xml+semantic).encode()).hexdigest()
     assert manifest['startup_authorizes_motion'] is False
+    depth=next(node for node in nodes if node['executable']=='observer_depth_node.py')
+    depth_parameters=evaluate_parameters(LaunchContext(),normalize_parameters(depth['parameters']))[0]
+    assert depth_parameters['pixel_stride']==manifest['observer_depth']['pixel_stride']==4
     assert runtime['enable_joint_operation'] is True
     assert runtime['collision_margin_m'] == .02
     assert runtime['operation_source_refresh_attempts'] == 3

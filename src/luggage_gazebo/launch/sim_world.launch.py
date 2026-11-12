@@ -82,6 +82,7 @@ def _default_launch_values():
         "operation_max_branch_attempts_per_candidate": "2",
         "operation_source_refresh_attempts": "2",
         "operation_post_place_views": "0",
+        "operation_depth_pixel_stride": "4",
         "scene_tf_config": os.path.join(
             get_package_share_directory("luggage_description"),
             "config",
@@ -960,6 +961,7 @@ def _launch_setup(context):
             "size_mode": cfg["size_mode"],
             "box_catalog_config": cfg["box_catalog_config"],
             "visual_settle_sec": 2.0,
+            "render_asset_root": os.path.join(cfg["operation_run_dir"],"render_assets") if complete_operation else "",
             "yaw_mode": cfg["yaw_mode"],
             "yaw_range": _csv_floats(cfg["yaw_range"], (0.0, 0.0)),
             "xy_jitter_range": _csv_floats(
@@ -1366,6 +1368,7 @@ def generate_launch_description():
             profile_arg('operation_max_branch_attempts_per_candidate', 'Branch attempts per coupled grasp and placement candidate.'),
             profile_arg('operation_source_refresh_attempts', 'Bounded full suffix recertifications after an unsubmitted source-change refusal (1..8).'),
             profile_arg('operation_post_place_views', 'Maximum additional measured post-place camera views (0 disables, 1..3).'),
+            profile_arg('operation_depth_pixel_stride', 'Measured depth pixel sampling stride for the joint O owner.'),
             profile_arg('volume_evidence_source', 'Legacy placement volume reader; complete-operation composition owns O explicitly.'),
             profile_arg('cargo_map_max_raycast_points', 'Legacy G integration ray budget.'),
             profile_arg(

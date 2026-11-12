@@ -96,7 +96,7 @@ class OperationSimDriver(Node):
         self.completed_boxes=[]
         if getattr(args, 'failure_hold_s', 0.) > 0:
             self.failure_capture = ObserverFailureCapture(self.folder/'observer_failure',
-                disk_limit=(768 if getattr(args,'capture_operation',False) else 256)*1024*1024)
+                disk_limit=(768 if getattr(args,'capture_operation',False) else (384 if getattr(args,'three_box',False) else 256))*1024*1024)
             for topic,cls in [('/joint_states',JointState),('/tf',TFMessage),
                     ('/tf_static',TFMessage),('/uld_occ_observer/receipts',UpdateReceipt),
                     ('/luggage/observation/optical_points',PointCloud2),
@@ -159,7 +159,7 @@ class OperationSimDriver(Node):
         self.failure_capture.close()
         if self.failure_capture.dropped:raise RuntimeError('OBSERVER_WINDOW_DROPPED_RECORDS')
         self._capture_number+=1
-        self.failure_capture=ObserverFailureCapture(self.folder/('observer_box'+str(self._capture_number)))
+        self.failure_capture=ObserverFailureCapture(self.folder/('observer_box'+str(self._capture_number)),disk_limit=384*1024*1024)
         for key,(topic,kind,raw) in tuple(self._static_tf_blocks.items()):
             self.failure_capture.add(topic,kind,raw,persistent=key)
 
@@ -473,6 +473,7 @@ class OperationSimDriver(Node):
                 if source.epoch!=epoch:raise RuntimeError('PERSISTENT_O_EPOCH_CHANGED')
                 self.completed_boxes.append(dict(index=index+1,task_mode=mode,plan_digest=plan.plan_digest,
                     map_epoch=source.epoch,map_revision=source.map_revision,success=True))
+                if self.failure_capture is not None:self.failure_capture.trigger()
                 capture_errors=self.capture_failure_state() or []
                 if capture_errors:raise RuntimeError("CYCLE_BOUNDARY_CAPTURE_INCOMPLETE:"+",".join(capture_errors))
                 if mode is not None:

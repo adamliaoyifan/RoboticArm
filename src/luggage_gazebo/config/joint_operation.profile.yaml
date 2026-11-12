@@ -22,6 +22,9 @@ runtime:
   # the existing bounded retry range; every attempt still fully revalidates.
   operation_source_refresh_attempts: 8
   operation_post_place_views: 3
+  # Same saved view: stride4 hits270 target cells, stride2 432, stride1 438.
+  # Use more actual pixels without interpolation or changing O resolution.
+  operation_depth_pixel_stride: 2
   cargo_map_resolution_m: 0.02
 features:
   use_perception: true

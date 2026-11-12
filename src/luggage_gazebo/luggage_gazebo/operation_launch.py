@@ -138,7 +138,8 @@ def operation_composition(config, robot_xml, semantic_xml):
             lidar_cloud_topic='/luggage/observation/lidar_points',
             lidar_frame=config.get('operation_lidar_frame','livox_frame'))]),
         Node(package='luggage_perception', executable='observer_depth_node.py', name='observer_depth',
-            output='screen', parameters=[dict(use_sim_time=True)],
+            output='screen', parameters=[dict(use_sim_time=True,
+                pixel_stride=int(config.get('operation_depth_pixel_stride',4)))],
             remappings=[('/luggage/observation/optical_points',
                          '/luggage/observation/optical_points_unmasked')]),
         Node(package='luggage_perception', executable='observer_lidar_node.py', name='observer_lidar',
@@ -188,6 +189,8 @@ def operation_composition(config, robot_xml, semantic_xml):
         scale=1.,padding_m=self_mask_error,padding_source='half_simulator_range_resolution',
         transform_time='cloud_acquisition',
         missing_transform='refuse_whole_cloud',removed_endpoint='discard_whole_ray')
+    manifest['observer_depth'] = dict(pixel_stride=int(config.get('operation_depth_pixel_stride',4)),
+        source='direct_measured_pixels_no_interpolation')
     manifest['collision_policy'] = {key:common[key] for key in
         ('collision_margin_m','vertical_collision_margin_m')}
     (folder/'launch.json').write_text(json.dumps(manifest, indent=2)+'\n')

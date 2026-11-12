@@ -210,3 +210,16 @@ class TestCacheTierSeparation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_visual_preparation_failure_preserves_previous_box_and_random_state():
+    node,calls=_make_spawner(_MODELS)
+    original=node._rng.getstate()
+    def fail(*args,**kwargs):raise OSError('asset output unavailable')
+    node._box_sdf=fail
+    response=node.handle_spawn_next(None,_mod.SpawnNextBox.Response())
+    assert not response.success and response.message.startswith('VISUAL_ASSET_PREPARATION_FAILED:')
+    assert calls=={'clear':0,'spawn':0,'delete':0}
+    assert node._sequence==41 and node._current_model=='pickup_box_0041_prior'
+    assert node._rng.getstate()==original
+    assert not node._box_pub.published
