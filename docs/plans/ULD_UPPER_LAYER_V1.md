@@ -2314,3 +2314,48 @@ baseline_audit_12cases.json、progress.json及各case原始native/clock、audit�
 新增prepare_next按目录生成下一个单元，不给答案轨迹；非终态单元必须有
 显式诊断记录才允许继续其他预定单元。稳定正向audit入口仅复用既有脚本并
 做命令参数适配，尚未用新矩阵稳定样本验证，不作为已完成交付。
+
+### 19.40 用户确认基座−Y纵向插入与60%以上的几何前置筛选
+
+2026-11-12用户明确：box长边平行elfin_base_link Y轴，沿base −Y插入；
+未接触下层的箱底区域必须完整容纳源suction panel。先明确条件，再做物理验证。
+这是已有校准工作负载的几何过滤和调度收窄，不改变历史catalog、阈值或物理模型。
+
+源研究scene的base_T_container来自展开URDF和scene_tf.yaml，不读取生产部署TF。
+container +X在base中为[-3.673205e-6,-.999999999993,0]，所以正确姿态为
+container yaw0，等价base yaw约−90deg；container yaw90使长边平行base X，
+不得用“yaw90”无frame简称替代用户要求。仍为container绝对Z，floor .53、
+ceiling2.01，箱体中心参考，尺寸为[.55,.40,.25]m。
+
+几何前置输入：冻结catalog/config、源8工具碰撞体、吸附面180×180mm、
+15mm吸附面箱边裕量、原5mm碰撞间隙、24下层箱体表面及真实TF。输出
+完整箱底/未支撑区域/实体panel投影WKT、panel与支撑间距、方向、源hash、
+逐比例拒绝原因。必须完整panel投影包含于箱底且距支撑>=5mm；全部相机/
+支架/传感器保留源tool_collision检查。轴向容差显式.01deg，不能变更接触
+或碰撞门槛。再执行原连续撤出几何证书与原生物理监控。
+
+离线结果：550mm进深箱长，60%剩220mm；完整panel加现有裕量至少
+200.000007mm，65/70/75/80%分别剩192.5/165/137.5/110mm，全部几何
+拒绝，不启动仿真，不计物理失稳。当前5%步长目录中只有60%/container0
+通过全部静态几何条件。理论panel几何上界约63.63636%，不是稳定阈值，
+也不是完整机械臂/撤出证书。不得靠移动下层、缩工具或减裕量获得更高比例。
+
+执行：原54单元目录保持不变，本轮只选上述通过筛选且未评估的60%/0
+重复0、1、2；跳过暂停的55%及其他朝向。每次新启动、settled3s基线、
+原生解除、down/out撤出完整完成后独立3s稳定；箱体<=2mm/.5deg、下层
+<=3mm/.5deg，原接触/碰撞/采集/绑定门槛全保留。RTF .25、1ms physics、
+50Hz几何、600sim/1800wall预算不变。每次先耐久保存并停止owned sim，
+独立原生逐步回放后才计样本。三个均有效才给3/3观测分组；不足三个
+not_evaluated；这是三次实验的AND，不代表已证明某个真实单次成功率。
+稳定分组不证明普适最小比例、真实感知、完整机械臂或正式C成功。
+
+确切操作（primary evidence root release_calibration_matrix_g12_01）：
+`eligibility_60plus.py`冻结筛选；`prepare_60plus.py`仅消费带hash筛选的
+原目录并准备一个合格单元；`run_entry.py <id>_entry.json`真实执行；
+`audit_stable.py`或原负例审计全量回放，`assess_entry.py`分类，再
+`summarize_matrix.py`投影。行为反例覆盖panel伸出箱底/侵入支撑间隙；
+新实验继续使用19.37已定义证据矩阵、失败前后窗、单次200MB预留/总5GB
+预算与源/dirty-state记录；旧证据和校准结论不改写。
+
+证据只在primary docs/status/evidence/uld_upper_layer_v1/
+release_calibration_matrix_g12_01/eligibility_60plus.{py,json}。
