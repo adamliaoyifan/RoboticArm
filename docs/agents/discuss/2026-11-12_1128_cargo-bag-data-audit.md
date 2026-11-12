@@ -41,4 +41,3 @@ Implement bounded read-only audit of ten user-supplied bag metadata files and Se
 - summary: Closed read-only bag coverage audit only. Found held detections, bbox-filled sample masks and nonzero distortion; no qualified physical error bound, matching threshold, O replacement or full integration completion.
 - evidence: docs/status/evidence/moveit_atlas_joint_plan/g1/ST-4-OBS-DATA-AUDIT/run_02/manifest.json
 - evidence: docs/agents/eng/2026-11-12_1140_cargo-bag-data-audit.md
-
