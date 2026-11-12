@@ -1,0 +1,351 @@
+{
+  "frozen_inputs": [
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/config/scene_tf_deploy_update.yaml",
+      "expected": "989225a14e7de881247865ca5813cbbc703e425cd5bb91433402c6e306449b5f",
+      "current": "989225a14e7de881247865ca5813cbbc703e425cd5bb91433402c6e306449b5f",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/config/atlas_runtime_deploy_update.yaml",
+      "expected": "f17cbb2fd39778a91d494554f73d2281fce1efb8e6656253a8b1ea9d5b0ee7e1",
+      "current": "f17cbb2fd39778a91d494554f73d2281fce1efb8e6656253a8b1ea9d5b0ee7e1",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/scripts/build_reachability_atlas_humble.py",
+      "expected": "4d2a38de2535f2e3a2ad37f4f63f51fa9ec3f76491f707ef05a000b7053762e4",
+      "current": "4d2a38de2535f2e3a2ad37f4f63f51fa9ec3f76491f707ef05a000b7053762e4",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/scripts/reachability_atlas_builder.py",
+      "expected": "32cdb28fa6d1c616590dee068936423d6fa2c82282668451670d4d189f88f830",
+      "current": "32cdb28fa6d1c616590dee068936423d6fa2c82282668451670d4d189f88f830",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_planning/launch/deploy_asset_stack.launch.py",
+      "expected": "26369263116bd31598316c8734114cd934ac81cb5d98e51f8d48f178af0476f2",
+      "current": "26369263116bd31598316c8734114cd934ac81cb5d98e51f8d48f178af0476f2",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/urdf/elfin_s30_with_camera.urdf.xacro",
+      "expected": "500afca9a229200336fc7107db042306eba2922e5c1a21b0f40e2c5b2b74a098",
+      "current": "500afca9a229200336fc7107db042306eba2922e5c1a21b0f40e2c5b2b74a098",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/urdf/elfin_s30_with_camera_tune.urdf.xacro",
+      "expected": "9b56e1e279188e0d70ef745fe0597458f69c36d337fa190bac12e03544742e9a",
+      "current": "9b56e1e279188e0d70ef745fe0597458f69c36d337fa190bac12e03544742e9a",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/urdf/elfin_s20_with_camera_tune.urdf.xacro",
+      "expected": "37569c356167f1217bd84da341e0bde8bb1364f7ffc7ec6ea8ee914a977fa6ee",
+      "current": "37569c356167f1217bd84da341e0bde8bb1364f7ffc7ec6ea8ee914a977fa6ee",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/urdf/eef_sensor_mount.urdf.xacro",
+      "expected": "5497cad8e4d219dc80570bc9b2af5fe34f4a3a2decc37ea8bbdb769a1a889e62",
+      "current": "5497cad8e4d219dc80570bc9b2af5fe34f4a3a2decc37ea8bbdb769a1a889e62",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/urdf/suction_flange_tune_chain.xacro",
+      "expected": "bdf8c9ac473de20389607c70d762a29936d186d3bcb324a00cd328e59f6487cb",
+      "current": "bdf8c9ac473de20389607c70d762a29936d186d3bcb324a00cd328e59f6487cb",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/urdf/realsense_d435.urdf.xacro",
+      "expected": "b78a33f91e58f0ac6dc30b674b746521fda2d511f58094e33bc36a4ae548b61d",
+      "current": "b78a33f91e58f0ac6dc30b674b746521fda2d511f58094e33bc36a4ae548b61d",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/urdf/camera_mount_tune_chain.xacro",
+      "expected": "57b2aecd90f04dd5a4fdffffa7e2ac3830ed15ea12151ee448fcb2537c66268e",
+      "current": "57b2aecd90f04dd5a4fdffffa7e2ac3830ed15ea12151ee448fcb2537c66268e",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/urdf/suction_panel_mount.urdf.xacro",
+      "expected": "13bfd818433052c809a3726db27bb45dc8334ae5148d436f1b50f402f50aca23",
+      "current": "13bfd818433052c809a3726db27bb45dc8334ae5148d436f1b50f402f50aca23",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/urdf/vacuum_gripper.urdf.xacro",
+      "expected": "86a11458bdf08d4bb9056887499cfda93750b07dd676f8ccb80f19b716bd0b4d",
+      "current": "86a11458bdf08d4bb9056887499cfda93750b07dd676f8ccb80f19b716bd0b4d",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/urdf/elfin_s20_with_camera.urdf.xacro",
+      "expected": "13fc62ca68887f534718377c5f3e0c784d6b38d1a30b21ccb75ebb75bc3507cb",
+      "current": "13fc62ca68887f534718377c5f3e0c784d6b38d1a30b21ccb75ebb75bc3507cb",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/urdf/adapter_mount_tune_chain.xacro",
+      "expected": "9b22150cc79f47251dc770e99cc15162f888b07e2a4bba6e2efcd60551ba1194",
+      "current": "9b22150cc79f47251dc770e99cc15162f888b07e2a4bba6e2efcd60551ba1194",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/config/suction_flange_origin.xacro",
+      "expected": "93c34715f9d72dbabab2ac54d834453a621bc7a7c06078f14249e232a536e274",
+      "current": "93c34715f9d72dbabab2ac54d834453a621bc7a7c06078f14249e232a536e274",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/config/eef_mount_adapter_origin.xacro",
+      "expected": "7de8d3dd30c36780fb1e64924b3aa8349a29b671fba2dc867a7dd3c763c656ce",
+      "current": "7de8d3dd30c36780fb1e64924b3aa8349a29b671fba2dc867a7dd3c763c656ce",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/config/mid360_origin.xacro",
+      "expected": "4d1ace78a3e57bba603f37aa5a40c6477d4cb4e0145c242651b36a97a455b942",
+      "current": "4d1ace78a3e57bba603f37aa5a40c6477d4cb4e0145c242651b36a97a455b942",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/luggage_description/config/camera_mount_origin.xacro",
+      "expected": "062782b6ed09a8269834492eadc30e5938f247ecbec86755ae64abcbd1d1e50f",
+      "current": "062782b6ed09a8269834492eadc30e5938f247ecbec86755ae64abcbd1d1e50f",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/elfin_description/meshes/S20/elfin_base.STL",
+      "expected": "eef04b6198369d8e18d0dc778d6211ccb1cac8ff5bcecb1ad5bca3505c916df3",
+      "current": "eef04b6198369d8e18d0dc778d6211ccb1cac8ff5bcecb1ad5bca3505c916df3",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/elfin_description/meshes/S20/elfin_link1.STL",
+      "expected": "c43382af1bb15ed9394c2643e9b65636f45dda9f780a4fcc06fdcd2ca707ce1c",
+      "current": "c43382af1bb15ed9394c2643e9b65636f45dda9f780a4fcc06fdcd2ca707ce1c",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/elfin_description/meshes/S20/elfin_link2.STL",
+      "expected": "0e7bae77d8cb9b77688480fa11d3bb124198f0829f9efdaddbee486ff01f9b1d",
+      "current": "0e7bae77d8cb9b77688480fa11d3bb124198f0829f9efdaddbee486ff01f9b1d",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/elfin_description/meshes/S20/elfin_link3.STL",
+      "expected": "f2a7efb971c7de962e811bbe27d4ada83cd9b64041440dd38d6e61d7c57f3afe",
+      "current": "f2a7efb971c7de962e811bbe27d4ada83cd9b64041440dd38d6e61d7c57f3afe",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/elfin_description/meshes/S20/elfin_link4.STL",
+      "expected": "93f4c05eb3e59f8aa19484d8c5e8babbb361722ddaf0a4c95061905e213760df",
+      "current": "93f4c05eb3e59f8aa19484d8c5e8babbb361722ddaf0a4c95061905e213760df",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/elfin_description/meshes/S20/elfin_link5.STL",
+      "expected": "dadf1b208b83e920226eb672934a645286ae6322fc9497a65b1af5abdc990b73",
+      "current": "dadf1b208b83e920226eb672934a645286ae6322fc9497a65b1af5abdc990b73",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/src/elfin_description/meshes/S20/elfin_link6.STL",
+      "expected": "e94b6f33c970d7c6e3336873e11f1252b44a5eac1620a72b79975c478a41671e",
+      "current": "e94b6f33c970d7c6e3336873e11f1252b44a5eac1620a72b79975c478a41671e",
+      "match": true
+    },
+    {
+      "path": "/tmp/joint_deploy_freeze/install/luggage_description/share/luggage_description/meshes/suction_panel/p01.stl",
+      "expected": "3539ecd0dd3e627ea17ecf27f6b565e16141093301a2c6a8b02c311126f0acfa",
+      "current": "3539ecd0dd3e627ea17ecf27f6b565e16141093301a2c6a8b02c311126f0acfa",
+      "match": true
+    },
+    {
+      "path": "/tmp/joint_deploy_freeze/install/luggage_description/share/luggage_description/meshes/suction_panel/p02.stl",
+      "expected": "0553aa49c0c8fbce8a811386ee0dc6b728c31caef7c3509959fd7db33ced676a",
+      "current": "0553aa49c0c8fbce8a811386ee0dc6b728c31caef7c3509959fd7db33ced676a",
+      "match": true
+    },
+    {
+      "path": "/tmp/joint_deploy_freeze/install/luggage_description/share/luggage_description/meshes/suction_panel/p03.stl",
+      "expected": "e7bca547eba2e2c00312b7012c151e85ef5cff7930234efa51f776754932e517",
+      "current": "e7bca547eba2e2c00312b7012c151e85ef5cff7930234efa51f776754932e517",
+      "match": true
+    },
+    {
+      "path": "/tmp/joint_deploy_freeze/install/luggage_description/share/luggage_description/meshes/suction_panel/p04.stl",
+      "expected": "4e38bcba6d51bddba2f2497c05a12d709effd6b52fb5a076c7090083c75b5a09",
+      "current": "4e38bcba6d51bddba2f2497c05a12d709effd6b52fb5a076c7090083c75b5a09",
+      "match": true
+    },
+    {
+      "path": "/tmp/joint_deploy_freeze/install/luggage_description/share/luggage_description/meshes/suction_panel/p05.stl",
+      "expected": "5270958d90e54588f0b5a87cfd7a4c8b3e1cdc717e8e9053308e2cf92f944e81",
+      "current": "5270958d90e54588f0b5a87cfd7a4c8b3e1cdc717e8e9053308e2cf92f944e81",
+      "match": true
+    },
+    {
+      "path": "/tmp/joint_deploy_freeze/install/luggage_description/share/luggage_description/meshes/arm_realsense/arm_realsense_v1.3.stl",
+      "expected": "6b443a3e3b451c2d4707b5f4e6703195bdc6efae54d545753fad16161e0135ba",
+      "current": "6b443a3e3b451c2d4707b5f4e6703195bdc6efae54d545753fad16161e0135ba",
+      "match": true
+    },
+    {
+      "path": "/home/adamliao/work/elfin_humble_ws/install/luggage_gazebo/share/luggage_gazebo/models/airport_container_real/meshes/container_collision.stl",
+      "expected": "ee2f32572a80f527d66cf03a01d3c93ed1353fbe58252021462e122970102c87",
+      "current": "ee2f32572a80f527d66cf03a01d3c93ed1353fbe58252021462e122970102c87",
+      "match": true
+    }
+  ],
+  "bag_inventory_recheck": [
+    {
+      "metadata": "/home/adamliao/work/robotarm_bags/0915/g5_20260915_205125/metadata.yaml",
+      "metadata_hash_equal": true,
+      "files": [
+        {
+          "path": "/home/adamliao/work/robotarm_bags/0915/g5_20260915_205125/g5_20260915_205125_0.mcap",
+          "exists": true,
+          "size_equal": true,
+          "mtime_equal": true
+        }
+      ],
+      "topics": 23
+    },
+    {
+      "metadata": "/home/adamliao/work/robotarm_bags/0915/pendant_20260915_200450/metadata.yaml",
+      "metadata_hash_equal": true,
+      "files": [
+        {
+          "path": "/home/adamliao/work/robotarm_bags/0915/pendant_20260915_200450/pendant_20260915_200450_0.mcap",
+          "exists": true,
+          "size_equal": true,
+          "mtime_equal": true
+        }
+      ],
+      "topics": 23
+    },
+    {
+      "metadata": "/home/adamliao/work/robotarm_bags/0915/pendant_20260915_200806/metadata.yaml",
+      "metadata_hash_equal": true,
+      "files": [
+        {
+          "path": "/home/adamliao/work/robotarm_bags/0915/pendant_20260915_200806/pendant_20260915_200806_0.mcap",
+          "exists": true,
+          "size_equal": true,
+          "mtime_equal": true
+        }
+      ],
+      "topics": 23
+    },
+    {
+      "metadata": "/home/adamliao/work/robotarm_bags/2026-09-09/pendant_jog_compressed/metadata.yaml",
+      "metadata_hash_equal": true,
+      "files": [
+        {
+          "path": "/home/adamliao/work/robotarm_bags/2026-09-09/pendant_jog_compressed/pendant_jog_compressed_0.mcap",
+          "exists": true,
+          "size_equal": true,
+          "mtime_equal": true
+        }
+      ],
+      "topics": 21
+    },
+    {
+      "metadata": "/home/adamliao/work/robotarm_bags/2026-09-09/pendant_jog_vaccum3/metadata.yaml",
+      "metadata_hash_equal": true,
+      "files": [
+        {
+          "path": "/home/adamliao/work/robotarm_bags/2026-09-09/pendant_jog_vaccum3/pendant_jog_vaccum3_0.mcap",
+          "exists": true,
+          "size_equal": true,
+          "mtime_equal": true
+        }
+      ],
+      "topics": 17
+    },
+    {
+      "metadata": "/home/adamliao/work/robotarm_bags/2026-09-09/pendant_jog_vaccum4/metadata.yaml",
+      "metadata_hash_equal": true,
+      "files": [
+        {
+          "path": "/home/adamliao/work/robotarm_bags/2026-09-09/pendant_jog_vaccum4/pendant_jog_vaccum4_0.mcap",
+          "exists": true,
+          "size_equal": true,
+          "mtime_equal": true
+        }
+      ],
+      "topics": 21
+    },
+    {
+      "metadata": "/home/adamliao/work/robotarm_bags/20260916_212503_floor_box_pick/bags/pick/metadata.yaml",
+      "metadata_hash_equal": true,
+      "files": [
+        {
+          "path": "/home/adamliao/work/robotarm_bags/20260916_212503_floor_box_pick/bags/pick/pick_0.mcap",
+          "exists": true,
+          "size_equal": true,
+          "mtime_equal": true
+        }
+      ],
+      "topics": 77
+    },
+    {
+      "metadata": "/home/adamliao/work/robotarm_bags/record_site_20260908_210234/metadata.yaml",
+      "metadata_hash_equal": true,
+      "files": [
+        {
+          "path": "/home/adamliao/work/robotarm_bags/record_site_20260908_210234/record_site_20260908_210234_0.mcap",
+          "exists": true,
+          "size_equal": true,
+          "mtime_equal": true
+        }
+      ],
+      "topics": 19
+    },
+    {
+      "metadata": "/home/adamliao/work/robotarm_bags/record_site_pendant_20260909_164710/metadata.yaml",
+      "metadata_hash_equal": true,
+      "files": [
+        {
+          "path": "/home/adamliao/work/robotarm_bags/record_site_pendant_20260909_164710/record_site_pendant_20260909_164710_0.mcap",
+          "exists": true,
+          "size_equal": true,
+          "mtime_equal": true
+        }
+      ],
+      "topics": 12
+    },
+    {
+      "metadata": "/home/adamliao/work/robotarm_bags/record_site_pendant_20260911_220406/metadata.yaml",
+      "metadata_hash_equal": true,
+      "files": [
+        {
+          "path": "/home/adamliao/work/robotarm_bags/record_site_pendant_20260911_220406/record_site_pendant_20260911_220406_0.mcap",
+          "exists": true,
+          "size_equal": true,
+          "mtime_equal": true
+        }
+      ],
+      "topics": 23
+    }
+  ],
+  "observer_source_resolution_m": 0.01,
+  "full_grid_dimensions": [
+    149,
+    197,
+    148
+  ],
+  "full_grid_cells": 4344244,
+  "read_cells_limit": 65536,
+  "required_pages": 67,
+  "compute_source_page_cap": 64,
+  "calibration": "not evaluated; bag metadata/stat consistency is not MCAP content hashing or sensor accuracy"
+}
