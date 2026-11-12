@@ -51,6 +51,7 @@ def main():
     parser.add_argument('--semantic-deps',required=True,type=Path)
     parser.add_argument('--build-receipt',required=True,type=Path)
     parser.add_argument('--start',action='store_true')
+    parser.add_argument('--view-poses',type=Path,help='Explicit model/scene-bound diagnostic observation goals')
     parser.add_argument('--domain',default=7,type=int)
     args = parser.parse_args()
     folder = args.evidence.resolve();folder.mkdir(parents=True,exist_ok=False)
@@ -63,6 +64,12 @@ def main():
     def write():
         (folder/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     write()
+    view_input=None
+    if args.view_poses:
+        view_input=folder/'input_view_poses.json'
+        view_input.write_bytes(args.view_poses.read_bytes())
+        manifest['view_poses_source']=str(args.view_poses.resolve())
+        write()
     occupied = residuals()
     if occupied:
         manifest.update(outcome='QUEUED_FOREIGN_SIM',foreign_processes=occupied,capture_complete=True,
@@ -149,6 +156,7 @@ def main():
                     command=['ros2','run','luggage_gazebo','joint_operation_sim_driver.py',
                         '--run-dir',str(folder/'runtime'),'--evidence',str(folder/name)]
                     if start:command.append('--start')
+                    if view_input:command.extend(['--view-poses',str(view_input)])
                     row=dict(stage=name,command=command,begin=time.monotonic());manifest['stages'].append(row);write()
                     with (folder/(name+'.log')).open('w') as output:
                         client=subprocess.Popen(command,env=env,stdout=output,stderr=subprocess.STDOUT,start_new_session=True)

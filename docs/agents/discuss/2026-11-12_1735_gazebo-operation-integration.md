@@ -97,3 +97,28 @@ This also measured/fixed asynchronous release acknowledgement racing a following
 refresh: await it inside original deadline, no lease allocation while uncertain.
 Earlier test-harness/import failures and obsolete exact-revision test expectations
 remain in offline logs; these were not Gazebo product attempts. Baseline OPEN.
+
+## Post -- eng/codex -- 2026-11-12 19:15 -- codex/gpt-6
+
+cycle_04 first camera goal was refused by MoveIt (99999): named model contact
+elfin_link6 versus airport_container_real. No observation trajectory executed,
+no physical impact demonstrated. The earlier14-state camera probe used
+rehearsal_06 ready_scene_response, now proven to contain ZERO world objects.
+Its validity does not qualify environmental collision: review.json explicitly
+withdraws that interpretation. Post-refusal full scene was missing; instrumentation
+now captures complete scenes before/after each goal before another motion attempt.
+Separate atlas_requalification_01 uses an actual container mesh plus pedestal;
+that qualification is not based on the empty readiness scene.
+
+Readiness now waits for configured container collision geometry and enabled
+pedestal in a non-diff full scene, rather than service availability alone.
+24 behavioural client/readiness cases pass; build14 all13 packages passes with
+unchanged source hashes,50 installed checks pass. Diagnostic --view-poses input
+is explicitly model/scene-bound, archived, and always sent through MoveGroup.
+No goal is a trajectory certificate or observed free-space substitute.
+
+Full-scene replay view_candidates_native_02:14 IK states tested,2 valid branches
+for ONE distinct camera view;12 invalid. New diagnostic input selects only that
+view. No live optical coverage claim. rehearsal_07 queued without starting nodes:
+another agent owns Gazebo /tmp/uld_upper_layer_scene_pick_start_g12_03. Baseline
+remains OPEN; next rehearsal proves full-world readiness, then measured view cycle.

@@ -3,6 +3,31 @@ import pytest
 from luggage_gazebo.operation_readiness import wait_active_controllers
 
 
+def scene(objects=(),diff=False):
+    return SimpleNamespace(scene=SimpleNamespace(is_diff=diff,world=SimpleNamespace(collision_objects=[
+        SimpleNamespace(id=name,primitives=[object()] if shape else [],meshes=[])
+        for name,shape in objects])))
+
+
+def test_responsive_empty_scene_is_not_static_world_readiness():
+    from luggage_gazebo.operation_readiness import wait_static_scene
+    samples=iter([scene(),scene([('uld',True)]),scene([('uld',True),('pedestal',True)])])
+    now=[0.]
+    result=wait_static_scene(lambda:next(samples),{'uld','pedestal'},deadline=1.,clock=lambda:now[0],
+        pause=lambda dt:now.__setitem__(0,now[0]+dt))
+    assert len(result.scene.world.collision_objects)==2 and now[0]==.4
+
+
+@pytest.mark.parametrize('sample',[scene(),scene([('uld',False)]),scene([('uld',True)],diff=True)])
+def test_missing_geometry_or_scene_diff_cannot_authorize_motion(sample):
+    from luggage_gazebo.operation_readiness import wait_static_scene
+    now=[0.]
+    with pytest.raises(TimeoutError,match='STATIC_WORLD_GEOMETRY_NOT_READY'):
+        wait_static_scene(lambda:sample,{'uld'},deadline=.5,clock=lambda:now[0],
+            pause=lambda dt:now.__setitem__(0,now[0]+dt))
+    assert now[0]==.5
+
+
 def states(arm, broadcaster='active'):
     return SimpleNamespace(controller=[SimpleNamespace(name='joint_state_broadcaster',state=broadcaster),
         SimpleNamespace(name='elfin_arm_controller',state=arm)])

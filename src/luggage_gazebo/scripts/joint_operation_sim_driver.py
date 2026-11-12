@@ -8,6 +8,7 @@ is serialized with its ROS type so a refusal remains inspectable.
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import threading
 import time
@@ -30,10 +31,35 @@ from uld_occ_observer.srv import GetValidity, ResetObservation, GetSnapshot, Rel
 from luggage_mapping.observer import admit_response, identity_record
 from controller_manager_msgs.srv import ListControllers
 import yaml
-from luggage_gazebo.operation_readiness import wait_active_controllers, wait_observed_detection
+from luggage_gazebo.operation_readiness import wait_active_controllers, wait_observed_detection, wait_static_scene
+from luggage_description.scene_tf_config_utils import load_scene_tf_config, pedestal_enabled
+from luggage_description.scene_mesh_utils import container_model_name
 
 
 JOINTS = ['elfin_joint%d'%i for i in range(1,7)]
+
+
+def load_diagnostic_views(path, launch):
+    """Explicit offline-generated observation goals, bound to this exact cell.
+
+    These are MoveGroup goals, never trajectory/collision approval or map data.
+    Each executed view still needs actual settled sensor evidence.
+    """
+    if not path:return {}
+    record=json.loads(Path(path).read_text())
+    if (record.get('schema')!='diagnostic_observation_poses_v1'
+            or record.get('model_sha256')!=launch['model_sha256']
+            or record.get('scene_revision')!=launch['scene_revision']):
+        raise ValueError('OBSERVATION_VIEW_IDENTITY_MISMATCH')
+    poses=record.get('poses')
+    if not isinstance(poses,dict) or not poses:
+        raise ValueError('OBSERVATION_VIEWS_REQUIRED')
+    for name,pose in poses.items():
+        values=pose.get('values',[])
+        if (not name or pose.get('valid') is not True or len(values)!=6
+                or any(type(value) not in (float,int) or not math.isfinite(value) for value in values)):
+            raise ValueError('OBSERVATION_VIEW_JOINTS_INVALID')
+    return poses
 
 
 class OperationSimDriver(Node):
@@ -44,6 +70,7 @@ class OperationSimDriver(Node):
         self.folder = Path(args.evidence)
         self.folder.mkdir(parents=True, exist_ok=False)
         self.launch = json.loads(Path(args.run_dir,'launch.json').read_text())
+        self.extra_views=load_diagnostic_views(args.view_poses,self.launch)
         self.records, self.stages, self.joint, self.domain = [], [], None, None
         self.images = {}
         self.clock_count = 0
@@ -148,12 +175,19 @@ class OperationSimDriver(Node):
         if not set(JOINTS).issubset(self.joint.name):raise RuntimeError('SIX_JOINTS_MISSING')
         for name,msg in self.images.items():self.record('ready_'+name,msg)
         self.record('ready_joints',self.joint)
-        scene_request = GetPlanningScene.Request()
-        scene_request.components.components = 1023
-        self.call(self.scene,scene_request,'ready_scene')
+        config=load_scene_tf_config(self.launch['resolved']['scene_tf_config'])
+        required={container_model_name(config)}
+        if pedestal_enabled(config):required.add('robot_pedestal')
+        wait_static_scene(lambda:self.read_scene('ready_scene'),required,deadline=time.monotonic()+45.)
+
+    def read_scene(self,name):
+        request=GetPlanningScene.Request()
+        request.components.components=1023
+        return self.call(self.scene,request,name)
 
     def observe_pose(self, name):
         poses = yaml.safe_load(Path(self.launch['resolved']['robot_poses_config']).read_text())['poses']
+        poses.update(self.extra_views)
         target = poses[name]
         if not target['valid']:raise ValueError('INVALID_SITE_POSE:'+name)
         goal = MoveGroup.Goal()
@@ -165,7 +199,9 @@ class OperationSimDriver(Node):
             JointConstraint(joint_name=joint,position=float(value),tolerance_above=.01,
                             tolerance_below=.01,weight=1.) for joint,value in zip(JOINTS,target['values'])])]
         goal.planning_options.plan_only=False
+        self.read_scene('before_observe_'+name)
         result = self.action(self.move,goal,'observe_'+name,90.)
+        self.read_scene('after_observe_'+name)
         if result.result.error_code.val!=1:raise RuntimeError('OBSERVE_MOVEIT:'+str(result.result.error_code.val))
         # Wait for the existing stationary-depth adapter and O receipt, no guessed free-space.
         time.sleep(1.)
@@ -223,7 +259,8 @@ class OperationSimDriver(Node):
                     reset_id='gazebo-start-'+str(time.time_ns()),reason='explicit_simulation_start'),'reset')
                 if result.status!='OK':raise RuntimeError('RESET:'+result.status)
             self.stage('reset',reset)
-            for pose in self.args.views.split(','):
+            views=self.args.views.split(',') if self.args.views else (list(self.extra_views) or ['portal_observe_sim'])
+            for pose in views:
                 self.stage('observe_'+pose,lambda p=pose:self.observe_pose(p))
             self.stage('return_pick_observe',lambda:self.observe_pose(self.launch['resolved']['observe_pose_name']))
             spawned = self.stage('physics_spawn',lambda:self.call(self.spawn,SpawnNextBox.Request(),'physics_spawn',30.))
@@ -251,7 +288,8 @@ def main():
     parser.add_argument('--start',action='store_true',help='Explicitly authorize one simulation cycle')
     parser.add_argument('--run-dir',required=True)
     parser.add_argument('--evidence',required=True)
-    parser.add_argument('--views',default='portal_observe_sim',help='Comma separated calibrated/synthetic site-pose names')
+    parser.add_argument('--views',help='Comma separated site-pose names; defaults to explicit diagnostic views or portal_observe_sim')
+    parser.add_argument('--view-poses',help='Exact model/scene-bound diagnostic observation goals JSON')
     args = parser.parse_args()
     rclpy.init()
     node = OperationSimDriver(args)

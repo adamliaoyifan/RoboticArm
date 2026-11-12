@@ -2,6 +2,20 @@
 import time
 
 
+def wait_static_scene(read, required_ids, *, deadline, clock=time.monotonic, pause=time.sleep):
+    """A responsive scene service can still precede static world insertion."""
+    required=set(required_ids)
+    if not required:raise ValueError('EXPECTED_STATIC_OBJECTS_REQUIRED')
+    while clock()<deadline:
+        response=read()
+        scene=response.scene
+        populated={obj.id for obj in scene.world.collision_objects
+                   if obj.primitives or any(mesh.triangles for mesh in obj.meshes)}
+        if not scene.is_diff and required.issubset(populated):return response
+        pause(min(.2,max(0.,deadline-clock())))
+    raise TimeoutError('STATIC_WORLD_GEOMETRY_NOT_READY')
+
+
 def wait_active_controllers(read, *, deadline, clock=time.monotonic, pause=time.sleep):
     required={'joint_state_broadcaster','elfin_arm_controller'}
     while clock()<deadline:

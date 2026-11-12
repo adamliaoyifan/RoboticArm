@@ -35,7 +35,10 @@ explicit start diagnostic driver; installed source checks.
 - cycles01..03: measured observation motions execute, detection/domain joined; no product-box carry yet. Failures and CDR retained.
 - Full-model atlas:12,098 states native/FK requalified; distribution unchanged; hardware asset untouched.
 - Map-version policy:133 offline and10 actual O/native service tests pass. Content change recertifies before issuance, duplicate observation preserves original time. Release RPC completion is awaited inside original deadline.
-- Known next blocker: measured O only0.919% known active volume,0 placement candidates. Old portal view central ray points outside ULD by full-model FK;14 geometry-derived IK solutions still require native collision and live optical verification.
+- Known next blocker: measured O only0.919% known active volume,0 placement candidates. Old portal view central ray points outside ULD by full-model FK;14 geometry-derived IK states yield2 valid branches for one camera view in a complete static scene; live optical coverage remains unverified.
+
+- cycle04: first observation goal refused, elfin_link6 versus ULD mesh; no physical motion/impact demonstrated. Early ready scene was empty: previous14-state empty-world validity cannot certify environmental collision. Full-scene replay rejects12/14 states.
+- Added static geometry readiness and before/after-goal full-scene capture;24 cases pass, build14 and50 install checks pass. rehearsal07 queued behind a foreign Gazebo stack; no second world launched.
 
 ## Result
 

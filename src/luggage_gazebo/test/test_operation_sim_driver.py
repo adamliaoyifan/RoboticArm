@@ -1,5 +1,6 @@
 """Exercise the diagnostic client's real snapshot/request/lease control flow."""
 import importlib.util
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import pytest
@@ -14,6 +15,26 @@ def driver_module():
     spec=importlib.util.spec_from_file_location('operation_client_test',path)
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     return module
+
+
+@pytest.mark.parametrize('damage',[None,'model','scene','empty','shape','nan','invalid'])
+def test_explicit_observation_views_are_model_bound_goals(tmp_path,damage):
+    module=driver_module()
+    launch=dict(model_sha256='model',scene_revision='scene')
+    record=dict(schema='diagnostic_observation_poses_v1',**launch,
+        poses={'measured_geometry_goal':dict(valid=True,values=[0.]*6)})
+    if damage=='model':record['model_sha256']='other'
+    elif damage=='scene':record['scene_revision']='other'
+    elif damage=='empty':record['poses']={}
+    elif damage=='shape':record['poses']['measured_geometry_goal']['values']=[0.]*5
+    elif damage=='nan':record['poses']['measured_geometry_goal']['values'][0]=float('nan')
+    elif damage=='invalid':record['poses']['measured_geometry_goal']['valid']=False
+    path=tmp_path/'views.json';path.write_text(json.dumps(record))
+    if damage:
+        with pytest.raises(ValueError,match='OBSERVATION_VIEW'):module.load_diagnostic_views(path,launch)
+    else:
+        assert module.load_diagnostic_views(path,launch)==record['poses']
+        assert module.load_diagnostic_views(None,launch)=={}
 
 
 @pytest.mark.parametrize('success',[True,False])

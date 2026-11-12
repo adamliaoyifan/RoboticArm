@@ -28,6 +28,14 @@ motion, detection or cycle execution. Gazebo spawn output is physics-only; only
 measured detector and O outputs populate online planning requests. Legacy G and
 segmented selector owners must not coexist with this O composition.
 
+For diagnostic observation repair, `--view-poses` may supply explicit JSON goals
+using `diagnostic_observation_poses_v1`, bound to the exact model SHA256 and scene
+revision. The runner archives this input. These goals override observation names
+only; MoveGroup must still plan and execute each empty-load motion, and actual
+settled RGB-D/O evidence must establish visibility. Offline IK or static-state
+collision success does not establish a usable view or permit filling unknown
+space. Such diagnostic goals are not calibrated real-cell poses.
+
 ## Operator Request Correlation
 
 The orchestrator publishes each operator prompt with a generated request ID,
