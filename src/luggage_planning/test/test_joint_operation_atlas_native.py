@@ -87,7 +87,8 @@ def atlas_stack(prepare_stack):
     reader=load_operation_atlas(npz,meta,receipt,scene_path,robot_description=xml,
         model_sha256=root.model.model_sha256,scene_revision='scene',world_from_container=root.container)
     provider=AtlasOperationHints(reader,ik,root.preparation.planner.connections,
-        scene_revision='scene',model_sha256=root.model.model_sha256)
+        scene_revision='scene',model_sha256=root.model.model_sha256,
+        operation_geometry_hash=snapshot.geometry_hash)
     return SimpleNamespace(fixture=fixture,candidate=candidate,provider=provider,ik=ik,
         reader=reader,transit=transit,contact_q=contact_q,transit_q=transit_q,directory=directory,
         paths=(npz,meta,receipt,scene_path))
@@ -215,7 +216,8 @@ def test_native_ik_response_binding_and_exact_fk_are_independently_admitted(atla
 def test_atlas_budget_exhaustion_keeps_real_online_prepare_fallback(atlas_stack):
     a=atlas_stack;core=a.fixture.root.preparation;old=core.atlas
     core.atlas=AtlasOperationHints(a.reader,a.ik,a.fixture.root.preparation.planner.connections,
-        scene_revision='scene',model_sha256=a.fixture.root.model.model_sha256,max_refinement_s=1e-9)
+        scene_revision='scene',model_sha256=a.fixture.root.model.model_sha256,
+        operation_geometry_hash=a.candidate.scenes.carry.geometry_hash,max_refinement_s=1e-9)
     try:
         result=a.fixture.call(copy.deepcopy(a.fixture.request))
         assert result.success,result.reason+' '+result.trace_json

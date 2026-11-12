@@ -24,6 +24,8 @@ from luggage_description.ros_frame_bindings.poses import pose_from_message
 from luggage_description.ros_frame_bindings.surfaces import surface_from_message
 from luggage_description.suction_contact_model import load_suction_contact_model
 from luggage_perception.ros_suction_domain import domain_from_message, require_matching_detection
+from luggage_description.container_geometry import descriptor_from_scene_config
+from luggage_description.scene_tf_config_utils import load_scene_tf_config
 from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy
 from luggage_planning.joint_operation_certification import EndpointModel, NativeOperationCertificationPort
 from luggage_planning.joint_operation_connection import NativeSnapshotConnectionPort
@@ -120,6 +122,8 @@ class JointOperationPrepareNode(Node):
                 atlas = AtlasOperationHints(reader,NativeSnapshotIKPort(self,self.model,
                     recorder=recorder('atlas_ik')),connections,scene_revision=self.revision,
                     model_sha256=self.model.model_sha256,
+                    operation_geometry_hash=descriptor_from_scene_config(
+                        load_scene_tf_config(atlas_paths[3])).geometry_hash,
                     max_refinement_s=float(param('atlas_refinement_budget_s',1.)),
                     fallback_time_fraction=float(param('atlas_fallback_time_fraction',.5)))
             except (OSError,TypeError,ValueError,KeyError) as error:

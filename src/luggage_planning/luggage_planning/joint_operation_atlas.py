@@ -45,6 +45,7 @@ def load_operation_atlas(npz_path,yaml_path,receipt_path,scene_path,*,robot_desc
 
 class AtlasOperationHints:
     def __init__(self,reader,ik,connections,*,scene_revision,model_sha256,
+                 operation_geometry_hash,
                  max_refinement_s=1.,fallback_time_fraction=.5):
         if reader.atlas is None or reader.source is None:
             raise ValueError('qualified reader required')
@@ -53,13 +54,20 @@ class AtlasOperationHints:
             raise ValueError('bounded atlas work and at least half remaining time for online fallback required')
         self.reader,self.ik,self.connections=reader,ik,connections
         self.scene_revision,self.model_sha256=scene_revision,model_sha256
+        # The sampler's geometry MD5 describes its legacy bounds block. The
+        # operation scene uses the normalized hull SHA256. The loader already
+        # binds the sampler to exact scene bytes; callers derive this hash from
+        # those same admitted bytes, never by comparing different hash domains.
+        if not isinstance(operation_geometry_hash,str) or not operation_geometry_hash:
+            raise ValueError('operation normalized geometry identity required')
+        self.operation_geometry_hash=operation_geometry_hash
         self.max_refinement_s,self.fallback_time_fraction=max_refinement_s,fallback_time_fraction
 
     def augment(self,candidate,*,request_id,deadline,cancelled,clock):
         scene=candidate.scenes.carry
         source=self.reader.source
         if ((scene.scene_revision,scene.model_hash,scene.geometry_hash)!=
-                (self.scene_revision,self.model_sha256,source.geometry_hash)):
+                (self.scene_revision,self.model_sha256,self.operation_geometry_hash)):
             return candidate,(('atlas','ATLAS_CURRENT_IDENTITY_MISMATCH'),)
         def query(world_tool):
             target=scene.world_from_container.inverse().compose(world_tool)
