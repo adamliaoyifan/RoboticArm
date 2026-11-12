@@ -79,6 +79,9 @@ def test_composition_binds_one_owner_and_identical_native_model(tmp_path,monkeyp
     assert manifest['model_sha256']==hashlib.sha256((xml+semantic).encode()).hexdigest()
     assert manifest['startup_authorizes_motion'] is False
     assert runtime['enable_joint_operation'] is True
+    placement=next(node for node in nodes if node['package']=='luggage_packing')
+    settings=evaluate_parameters(LaunchContext(),normalize_parameters(placement['parameters']))[0]
+    assert settings['atlas_runtime_config']==operation_launch.operation_atlas_config(config(tmp_path))
 
 
 def test_full_gazebo_uses_reviewed_config_and_explicit_override_wins():

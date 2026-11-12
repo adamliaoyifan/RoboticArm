@@ -89,6 +89,7 @@ def operation_composition(config, robot_xml, semantic_xml):
             output='screen', parameters=[dict(use_sim_time=True)]),
         Node(package='luggage_packing', executable='placement_planner_node.py', name='placement_planner',
             output='screen', parameters=[dict(use_sim_time=True, scene_tf_config=scene,
+                atlas_runtime_config=operation_atlas_config(config),
                 volume_evidence_source='observer', validity_backend='observer_o',
                 validity_topic='/uld_occ_observer/validity', validity_status_service='/uld_occ_observer/get_validity',
                 volume_observer_geometry_file=owner.geometry_file,
