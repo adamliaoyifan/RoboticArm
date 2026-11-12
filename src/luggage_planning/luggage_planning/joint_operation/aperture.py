@@ -159,7 +159,8 @@ class ApertureRouter:
                         trace.append(('aperture_selected', tag,
                             [dict(position_world=t.translation, quaternion_xyzw=t.quaternion_xyzw,
                                   joints=q) for t, q in zip(targets, waypoints[1:4])], self.clock()-began))
-                        return GeometricConnection(True, True, 'ORDERED_APERTURE_CONNECTION', tuple(rows), checked)
+                        return GeometricConnection(True, True, 'ORDERED_APERTURE_CONNECTION', tuple(rows), checked,
+                                                   tuple(waypoints[1:4]))
         return failure('APERTURE_SEARCH_INCOMPLETE')
 
     def has_plane_witness(self, draft, candidate):

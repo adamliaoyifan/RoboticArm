@@ -20,6 +20,8 @@ class GeometricConnection:
     reason: str
     positions: tuple = ()
     checked_states: int = 0
+    # Exact checked opening rows that timing must retain as public knots.
+    required_positions: tuple = ()
 
 
 def validate_connection_response(response, *, request_id, snapshot_id,

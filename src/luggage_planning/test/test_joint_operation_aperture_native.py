@@ -112,3 +112,21 @@ def test_native_current_obstacle_refuses_all_proposed_plane_states(native_stack)
     assert not result.success and not result.positions
     assert result.reason=='APERTURE_SEARCH_INCOMPLETE'
     assert not any(row[0]=='aperture_selected' for row in trace)
+
+
+def test_native_ik_chooses_seed_nearest_legal_full_turn_equivalent(native_stack):
+    stack=native_stack
+    target_q=(-.25,-.6,1.2,0.,-.6,3.3)
+    seed=target_q[:-1]+(3.25,)
+    _,_,candidate=candidate_for(stack.model,pick_q=target_q,place_q=target_q)
+    target=Transform.from_matrix(stack.model.urdf.tcp(target_q,stack.model.path))
+    port=NativeSnapshotIKPort(stack.node,stack.model,recorder=lambda kind,value:
+        stack.record('nearest_winding',kind,serialize_message(value)))
+    assert port.client.wait_for_service(timeout_sec=5.)
+    result=port.refine(candidate.scenes.carry,target,seed,request_id='nearest-winding',
+                       deadline=time.monotonic()+2.,cancelled=lambda:False)
+    assert result.complete and result.success,result.reason
+    assert result.joints[-1]>math.pi
+    assert max(abs(a-b) for a,b in zip(result.joints,seed))<.1
+    assert stack.model.matches(result.joints,target)
+    port.client.destroy()

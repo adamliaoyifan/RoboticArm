@@ -6,13 +6,42 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/serialization.hpp>
 #include <chrono>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <iomanip>
 #include <sstream>
+#include <vector>
 
 namespace luggage_planning {
 using SnapshotIKService = luggage_msgs::srv::RefineSnapshotToolTargetV2;
+
+// Select a solver proposal, never rewrite an issued path or clamp a joint.
+// KDL may return a revolute equivalent a full turn away from its input seed.
+// Choose only exact 2*pi equivalents inside the actual loaded joint bounds.
+inline bool selectNearestIKWinding(moveit::core::RobotState& state,
+    const moveit::core::JointModelGroup* group, const std::vector<double>& reference) {
+  const auto& names = group->getVariableNames();
+  if (reference.size()!=names.size()) return false;
+  for (size_t i=0;i<names.size();++i) {
+    if (state.getRobotModel()->getJointOfVariable(names[i])->getType()!=moveit::core::JointModel::REVOLUTE)
+      continue;
+    const double q=state.getVariablePosition(names[i]);
+    if (!std::isfinite(q) || !std::isfinite(reference[i])) return false;
+    const double turn=2*M_PI;
+    double k=std::round((reference[i]-q)/turn);
+    const auto& bounds=state.getRobotModel()->getVariableBounds(names[i]);
+    if (bounds.position_bounded_) {
+      const double lower=std::ceil((bounds.min_position_-q)/turn);
+      const double upper=std::floor((bounds.max_position_-q)/turn);
+      if (lower>upper) return false;
+      k=std::max(lower,std::min(upper,k));
+    }
+    state.setVariablePosition(names[i],q+k*turn);
+  }
+  state.update();
+  return true;
+}
 
 class SnapshotToolIK {
  public:
@@ -72,12 +101,15 @@ class SnapshotToolIK {
         return !result.collision;
       };
       bool solved=false;
+      const std::vector<double> seed(req.seed_joints.begin(),req.seed_joints.end());
       if (elapsed()<req.budget_s) {
         auto callback=[&](moveit::core::RobotState* sample,const moveit::core::JointModelGroup* g,const double* values) {
-          sample->setJointGroupPositions(g,values);return valid(*sample);
+          sample->setJointGroupPositions(g,values);
+          return selectNearestIKWinding(*sample,g,seed) && valid(*sample);
         };
         solved=state.setFromIK(group,target,tcp->getName(),std::min(.05,req.budget_s-elapsed()),callback);
       }
+      solved=solved && selectNearestIKWinding(state,group,seed);
       state.update();
       const auto actual=state.getGlobalLinkTransform(tcp);
       solved=solved && (actual.translation()-target.translation()).norm()<1e-4

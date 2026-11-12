@@ -135,9 +135,15 @@ class PreparationResult:
     elapsed_s: float
 
 
-def timed_operation_leg(name, phase, positions, identity, velocity_scale, acceleration_scale):
+def timed_operation_leg(name, phase, positions, identity, velocity_scale, acceleration_scale,
+                        *, required_positions=()):
     rows = geometric_rows(positions)
-    timing = time_parameterize_cartesian(rows, velocity_scale, acceleration_scale)
+    if name in ('align','carry'):
+        from luggage_planning.joint_operation.polyline_timing import time_parameterize_joint_polyline
+        rows,timing = time_parameterize_joint_polyline(rows,velocity_scale,acceleration_scale,
+                                                      required_positions=required_positions)
+    else:
+        timing = time_parameterize_cartesian(rows, velocity_scale, acceleration_scale)
     knots = tuple(JointKnot(q, tuple(v), tuple(a), (), round(t*1e9))
                   for q, v, a, t in zip(rows, timing.velocities_rad,
                                        timing.accelerations_rad, timing.times_s))
@@ -278,13 +284,18 @@ class JointOperationPlanner:
                     if carrying is None:
                         trace.append((branch_id, "CARRY_CONNECTION_MISS"))
                         continue
+                    carry_required = response.required_positions
                     paths = (("align", "pick", align), ("pick_contact", "pick", pick.incoming),
                              ("pick_lift", "carry", pick.outgoing), ("carry", "carry", carrying),
                              ("place_release", "carry", place.incoming),
                              ("place_retreat", "retreat", place.outgoing))
                     legs = timing.call('time_parameterization',lambda:tuple(
                         timed_operation_leg(name, phase, rows, identity,
-                            self.velocity_scale, self.acceleration_scale) for name, phase, rows in paths))
+                            self.velocity_scale, self.acceleration_scale,
+                            required_positions=carry_required if name=='carry' else ())
+                        for name, phase, rows in paths))
+                    trace.append(('timed_legs',[(leg.name,len(leg.knots),
+                        leg.knots[-1].time_from_start_ns) for leg in legs]))
                     draft = JointOperationPlan(identity, candidate.candidate_id, "pending-native-certification",
                         candidate.world_from_pick_box, candidate.world_from_pick_tool,
                         candidate.world_from_release_box, candidate.world_from_release_tool,
@@ -300,7 +311,8 @@ class JointOperationPlanner:
                     if stopped(deadline):
                         return finish("CANCELLED" if cancelled() else "SEARCH_INCOMPLETE")
                     if not certificate_matches(receipt, draft, candidate):
-                        trace.append((branch_id, "WHOLE_CHAIN_CERTIFICATION_REFUSED"))
+                        trace.append((branch_id, "WHOLE_CHAIN_CERTIFICATION_REFUSED",
+                                      getattr(receipt,'reason','INVALID_RECEIPT')))
                         continue
                     plan = seal_operation_plan(replace(draft, certificate_id=receipt.certificate_id))
                     trace.append((branch_id, "PLAN_READY"))

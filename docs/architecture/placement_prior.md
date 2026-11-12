@@ -865,6 +865,9 @@ Hypothetical templates remain rigid-only hints and cannot authorize pickup.
 The native checker uses configured KDL, up to eight deterministic seeds and two
 branches per end, 5 mm/0.03 rad TCP sampling, 0.01 rad joint interpolation,
 0.15 rad maximum consecutive IK jump, full-arm collision and joint bounds.
+When selecting a new native IK solution, revolute full-turn equivalents are
+chosen nearest the input seed within the loaded model's limits, then checked.
+This proposal selection never clamps a joint or rewrites retained path winding.
 Only suction_panel/payload contact is allowed, matching pickup semantics.
 Scene edits and phase attachment changes exist only in owned private copies;
 existing attachments or reserved-ID conflicts refuse the query. No live scene

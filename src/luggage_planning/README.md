@@ -43,6 +43,15 @@ joint-check step and the loaded group's extent. Search and returned-path checks
 therefore use compatible resolution even when no external OMPL YAML is supplied.
 Opening IK retains both endpoint seeds before its bounded atlas proposals;
 remaining atlas seeds are ranked by raw joint travel, preserving winding.
+Native IK selects the seed-nearest legal full-turn equivalent before checking
+and retaining a new solution. This never clamps a joint or rewrites an issued
+path. Whole-chain refusal traces retain the certification reason and each
+timed leg's knot count and duration.
+Align and carry retain the checked joint polyline and stop at its corners.
+Only numerical collinear redundancy is removed; all three opening waypoints
+remain explicit. Rest-to-rest quintic segments use the configured velocity and
+acceleration limits without globally stretching the path for one short corner.
+Local Cartesian contact, lift, release and retreat keep their existing timing.
 Prepare evidence stores lossless gzip CDR files; `boundaries.jsonl` records raw
 and stored sizes/hashes. Decompress before deserialization; the budget counts
 stored bytes and still refuses when full.

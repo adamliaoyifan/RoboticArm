@@ -171,14 +171,17 @@ private:
     if (expired())
       return false;
     ++ik_;
-    auto cb = [this](State *s, const moveit::core::JointModelGroup *g,
+    std::vector<double> reference;
+    state.copyJointGroupPositions(group_,reference);
+    auto cb = [this,&reference](State *s, const moveit::core::JointModelGroup *g,
                      const double *values) {
       s->setJointGroupPositions(g, values);
-      return valid(*s);
+      return luggage_planning::selectNearestIKWinding(*s,g,reference) && valid(*s);
     };
     if (!state.setFromIK(group_, target, tcp_->getName(),
                          std::min(.05, req_.budget_s - elapsed()), cb))
       return false;
+    if (!luggage_planning::selectNearestIKWinding(state,group_,reference)) return false;
     state.update();
     auto actual = state.getGlobalLinkTransform(tcp_);
     return !expired() &&
