@@ -165,12 +165,16 @@ def _legacy_view_of_surface_contract(record, inner_size,
     legacy_state = []
     legacy_confidence = []
     inverse = {"sensor": "sensor", "verified_geometry": "geometry",
+               "initial_empty": "initial_empty",
                "unknown": "none"}
     for ix in range(nx):
         h_row, s_row, c_row = [], [], []
         for iy in range(ny):
             top = surface_z[ix][iy]
             cell_state = str(state[ix][iy])
+            if confidence[ix][iy] == "initial_empty" and cell_state != "free":
+                raise OccupancyMismatch(
+                    "%s: initial_empty only authorizes free cells" % PLACE_PATH_INFEASIBLE)
             source = inverse.get(str(confidence[ix][iy]))
             if source is None:
                 raise OccupancyMismatch(

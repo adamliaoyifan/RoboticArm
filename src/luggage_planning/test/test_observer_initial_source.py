@@ -51,3 +51,16 @@ def test_common_placement_uses_initial_free_volume_and_preserves_label(tmp_path)
         params={'clearance_margin':0.,'same_layer_clearance':0.,'min_clearance_above':0.},
         volume_verifier=lambda c:'volume_unknown')
     assert not any(c['feasible'] for c in refused)
+
+
+def test_actual_operation_enumerator_consumes_typed_initial_surface(tmp_path):
+    from luggage_planning.placement_prior.requests import enumerate_placements
+    config,_,_=configuration(tmp_path)
+    source=identity(config)
+    source.update(observed_revision=0,last_integrated_stamp_ns=0,initialization_id='session',
+                  declared_by='operator',initialization_stamp_ns=10)
+    captured=assemble_snapshot(config,source,2,columns_for(config,[1]*64),[1]*64,
+                              scene_revision='scene',request_id='init')
+    placements=enumerate_placements(captured.surface,(.1,.1,.1),8,volume=captured.volume,margin=.02)
+    assert placements
+    assert all(p.container_from_box.translation[2]==pytest.approx(.65) for p in placements)
