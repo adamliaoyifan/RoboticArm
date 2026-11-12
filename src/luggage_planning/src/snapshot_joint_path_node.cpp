@@ -74,6 +74,22 @@ public:
     if (!std::isfinite(step_) || step_ <= 0 || step_ > .01 ||
         point_limit_ < 2 || point_limit_ > 50000)
       throw std::invalid_argument("invalid collision-check resolution or state cap");
+    // The standalone pipeline must search at least as finely as its returned
+    // path is certified. Without a group config OMPL defaults to a much larger
+    // fraction of the full joint-space extent and finds paths that tunnel
+    // through geometry, only to be rejected by the dense check below.
+    auto manager = pipeline_->getPlannerManager();
+    auto configs = manager->getPlannerConfigurations();
+    const auto group_name = group_->getName();
+    auto config = configs.at(group_name);
+    std::ostringstream fraction;
+    fraction << std::setprecision(17) << step_ / group_->getMaximumExtent();
+    config.config["longest_valid_segment_fraction"] = fraction.str();
+    configs[group_name] = config;
+    config.name = group_name + "[RRTConnectkConfigDefault]";
+    config.config["type"] = "geometric::RRTConnect";
+    configs[config.name] = config;
+    manager->setPlannerConfigurations(configs);
   }
 
   void handle(const Service::Request &req, Service::Response &res) {

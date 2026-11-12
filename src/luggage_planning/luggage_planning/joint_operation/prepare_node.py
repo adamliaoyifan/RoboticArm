@@ -1,4 +1,5 @@
 """Independent plan-only ROS entry; owned observations, read-only native ports."""
+import gzip
 import hashlib
 import json
 import math
@@ -208,13 +209,19 @@ class JointOperationPrepareNode(Node):
 
     def _record_owned(self,boundary,value):
         raw = value if isinstance(value,bytes) else serialize_message(value)
-        if self._evidence_bytes+len(raw) > 256*1024*1024:
+        # Full private scenes repeat at native boundaries. Lossless compression
+        # keeps those exact replay inputs without spending the budget on copies
+        # of the same mesh. Budget counts bytes actually retained on disk.
+        stored = gzip.compress(raw,compresslevel=1,mtime=0)
+        if self._evidence_bytes+len(stored) > 256*1024*1024:
             raise RuntimeError('OPERATION_EVIDENCE_BUDGET_EXHAUSTED')
-        self._evidence_seq += 1;self._evidence_bytes += len(raw)
-        name = '%05d.cdr'%self._evidence_seq
-        (Path(self._evidence)/name).write_bytes(raw)
+        self._evidence_seq += 1;self._evidence_bytes += len(stored)
+        name = '%05d.cdr.gz'%self._evidence_seq
+        (Path(self._evidence)/name).write_bytes(stored)
         with (Path(self._evidence)/'boundaries.jsonl').open('a') as stream:
             stream.write(json.dumps(dict(file=name,boundary=boundary,bytes=len(raw),
+                encoding='gzip',stored_bytes=len(stored),
+                stored_sha256=hashlib.sha256(stored).hexdigest(),
                 monotonic_ns=time.monotonic_ns(),sha256=hashlib.sha256(raw).hexdigest()))+'\n')
 
     def _surface(self,message):
