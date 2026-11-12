@@ -39,3 +39,10 @@ def test_caps_preserve_bounded_recent_data_and_report_disk_gaps(tmp_path):
     summary = json.loads((capture.folder/'summary.json').read_text())
     assert summary['stored_bytes'] <= 30
     assert not summary['complete'] and summary['dropped_records'] == 1
+
+
+def test_closed_untriggered_capture_cannot_restart_from_late_feedback(tmp_path):
+    from luggage_gazebo.observer_failure_capture import ObserverFailureCapture
+    capture=ObserverFailureCapture(tmp_path/'closed')
+    capture.close();capture.trigger()
+    assert not (tmp_path/'closed').exists()

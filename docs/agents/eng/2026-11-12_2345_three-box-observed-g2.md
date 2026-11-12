@@ -449,3 +449,37 @@ satisfy these product gates.
 - Evidence: diagnostic_24/{latest_suffix37b,self_mask39,
   self_mask_contact_review.json,carried_voxel_review.json,
   observer_window_review.json}; source replay scripts retain exact inputs.
+
+## Diagnostic 25 -- 2026-11-13T03:45+08:00
+
+- Actual grasp/lift/carry completed again; carry retained duration141.68s,
+  preparation27.52s, execution215.05s. Descent not submitted. Three source
+  checks converge, then SETTLED_BOX_ADMISSION_REFUSED. This run is incomplete.
+- Latest target volume contains121 occupied voxels, all first Z layer
+  [.53,.55]m. Nominal target bottom is.53m. Native suffix countercheck ALSO
+  fails: link3 vs O at descent start and link2 vs O at retreat start. Thus
+  settled admission is not the only remaining gate.
+- Exact collision-convex halfspace replay finds33 remaining LiDAR own-surface
+  endpoints with positive distance <1mm, while optical has none within5cm.
+  Actual MoveIt replay with5mm mask removes all33; other10845 finite LiDAR
+  points and all6091 optical points retain original frame/stamp/fields.
+- Recommended simulation error bound: half the declared GPU LiDAR .01m range
+  bin, .005m. Derived from current URDF sensor declaration, not O margin,
+  hand-fitted arm regions or a real-sensor calibration. Default adapter bound
+  remains0; explicit Gazebo composition derives and records its value/source.
+  Bad nonfinite/nonpositive range metadata refuses composition.
+- Floor cause remains unproven. Mesh vertical intersections on225 target XYs
+  show highest floor visual/collision/physics Z~.529007m, below configured.53m.
+  There are no target-floor in-hull hits anywhere in the saved35.7s window,
+  so a floor-erasing rule or another planner tolerance change is not justified.
+- Before the next live case, extend bounded evidence capture from carry-start
+  feedback (768MiB cap, original prewindow10s), preserving both raw/filtered
+  input streams, TF, joints and receipts through terminal refusal/hold. This
+  captures the earlier views that may have written those121 floor cells.
+  No source behavior or admission relaxation follows from that hypothesis.
+- Also retain terminal driver outcome across late lease-release evidence
+  flushes, and forbid late feedback reopening a closed capture. These repair
+  diagnostic integrity; they do not change motion authority.
+- Evidence: diagnostic_25/{target_voxel_review.json,latest_suffix41,
+  self_surface_residual.json,self_mask42_5mm,floor_mesh_review.json,
+  floor_hit_window_review.json}. All stacks/native processes stopped cleanly.

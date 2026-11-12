@@ -181,7 +181,7 @@ def test_pickup_view_does_not_require_an_unrelated_uld_hit(tmp_path,monkeypatch,
 @pytest.mark.parametrize('reason,expected',[
     ('EXECUTE:CARRY_FAULT:CURRENT_SOURCE_REFUSED',['trigger',25.,'close']),
     ('EXECUTE:STOPPED:BOUND_NATIVE_ADMISSION_REQUIRED',['trigger',25.,'close']),
-    ('EXECUTE:STOPPED:CONTROLLER_TIMEOUT',[])])
+    ('EXECUTE:STOPPED:CONTROLLER_TIMEOUT',['close'])])
 def test_terminal_refusal_capture_runs_at_outer_operation_boundary(monkeypatch,reason,expected):
     module=driver_module();events=[]
     monkeypatch.setattr(module.time,'sleep',events.append)
@@ -192,3 +192,32 @@ def test_terminal_refusal_capture_runs_at_outer_operation_boundary(monkeypatch,r
         sensor_diagnostics={},domain=None,images={},joint=None,flush=lambda **kwargs:None)
     assert module.OperationSimDriver.run(probe)==1
     assert events==expected
+
+
+def test_late_evidence_flush_preserves_terminal_outcome(tmp_path):
+    import threading
+    module=driver_module()
+    owner=SimpleNamespace(_record_lock=threading.RLock(),folder=tmp_path,records=[],stages=[])
+    module.OperationSimDriver.flush(owner,outcome='INCOMPLETE',reason='captured_failure')
+    owner.records.append(dict(file='late_lease_release',bytes=12))
+    module.OperationSimDriver.flush(owner)
+    result=json.loads((tmp_path/'manifest.json').read_text())
+    assert result['outcome']=='INCOMPLETE' and result['reason']=='captured_failure'
+    assert result['records'][0]['file']=='late_lease_release'
+
+
+def test_carry_source_capture_starts_at_retained_carry_boundary_only():
+    module=driver_module();events=[]
+    handle=SimpleNamespace(accepted=True,get_result_async=lambda:'terminal')
+    def send(goal,**options):
+        callback=options['feedback_callback']
+        callback(SimpleNamespace(feedback=SimpleNamespace(next_leg_index=2)))
+        assert not events
+        callback(SimpleNamespace(feedback=SimpleNamespace(next_leg_index=3)))
+        return handle
+    probe=SimpleNamespace(args=SimpleNamespace(capture_carry=True),
+        failure_capture=SimpleNamespace(trigger=lambda:events.append('carry_capture')),
+        record=lambda *a:None,future=lambda value,*a:value)
+    client=SimpleNamespace(wait_for_server=lambda **k:True,send_goal_async=send)
+    assert module.OperationSimDriver.action(probe,client,object(),'execute',10.)=='terminal'
+    assert events==['carry_capture']

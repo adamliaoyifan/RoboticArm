@@ -5,7 +5,9 @@ move_group. This module owns the O map and new plan-only native services.
 """
 import hashlib
 import json
+import math
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 from ament_index_python.packages import get_package_share_directory
 from launch_ros.actions import Node
@@ -17,6 +19,20 @@ from luggage_description.runtime_identity import scene_revision_from_path
 from luggage_description.scene_tf_config_utils import load_scene_tf_config, world_transform
 from luggage_mapping.configuration import owner_configuration
 from luggage_planning.atlas.runtime import load_atlas_runtime_for_scene, resolve_atlas_files
+
+
+def simulated_self_mask_error_bound(robot_xml):
+    """Half a configured simulator range bin, never a real-sensor calibration.
+
+    The current GPU LiDAR declares a 1cm bin. Captured own-surface residuals
+    below 1mm still evade exact containment. This bounded simulation source
+    uncertainty is separate from the planner's 2cm O collision margin.
+    """
+    bins = [float(item.text) for item in ET.fromstring(robot_xml).findall(
+        './/sensor/lidar/range/resolution')]
+    if any(not math.isfinite(value) or value <= 0. for value in bins):
+        raise ValueError('INVALID_SIMULATED_RANGE_RESOLUTION')
+    return max(bins,default=0.) / 2.
 
 
 def operation_atlas_config(config):
@@ -57,6 +73,7 @@ def operation_composition(config, robot_xml, semantic_xml):
         observer_config=str(Path(get_package_share_directory('uld_occ_observer'))/'config/observer.yaml'),
         artifact_root=folder/'map_owner')
     revision = scene_revision_from_path(scene)
+    self_mask_error = simulated_self_mask_error_bound(robot_xml)
     # Never mint a replacement qualification when model bytes differ.
     atlas_files = resolve_atlas_files(load_atlas_runtime_for_scene(scene,
         operation_atlas_config(config)))
@@ -104,6 +121,7 @@ def operation_composition(config, robot_xml, semantic_xml):
                          '/luggage/observation/lidar_points_unmasked')]),
         Node(package='luggage_perception', executable='observer_self_mask_node', name='observer_self_mask',
             output='screen', parameters=[dict(use_sim_time=True,
+                self_mask_padding_m=self_mask_error,
                 robot_description=common['robot_description'],
                 robot_description_semantic=common['robot_description_semantic'])]),
         Node(package='luggage_packing', executable='placement_planner_node.py', name='placement_planner',
@@ -136,7 +154,8 @@ def operation_composition(config, robot_xml, semantic_xml):
         startup_authorizes_motion=False)
     manifest['operation_atlas'] = dict(status=atlas_status, parameters=atlas_parameters)
     manifest['observer_self_mask'] = dict(geometry='actual_urdf_collision_shapes',
-        scale=1.,padding_m=0.,transform_time='cloud_acquisition',
+        scale=1.,padding_m=self_mask_error,padding_source='half_simulator_range_resolution',
+        transform_time='cloud_acquisition',
         missing_transform='refuse_whole_cloud',removed_endpoint='discard_whole_ray')
     manifest['collision_policy'] = {key:common[key] for key in
         ('collision_margin_m','vertical_collision_margin_m')}

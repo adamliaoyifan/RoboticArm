@@ -47,7 +47,7 @@ class ObserverFailureCapture:
 
     def trigger(self):
         with self.lock:
-            if self.stream is not None:return
+            if self.closed or self.stream is not None:return
             self.folder.mkdir(exist_ok=False)
             self.stream = (self.folder/'cdr.gzblocks').open('wb')
             self.index = (self.folder/'index.jsonl').open('w')
@@ -69,8 +69,8 @@ class ObserverFailureCapture:
 
     def close(self):
         with self.lock:
-            if self.stream is None:return
             self.closed = True
+            if self.stream is None:return
             self.stream.close();self.index.close()
             (self.folder/'summary.json').write_text(json.dumps(dict(
                 stored_bytes=self.written, dropped_records=self.dropped,

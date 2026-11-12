@@ -2,6 +2,22 @@ import pytest
 from luggage_gazebo.operation_launch import validate_operation_selection
 
 
+@pytest.mark.parametrize('resolution,expected', [('0.01',.005),('0.002',.001)])
+def test_simulated_self_mask_uses_declared_range_quantization(resolution,expected):
+    from luggage_gazebo.operation_launch import simulated_self_mask_error_bound
+    xml='<robot><gazebo><sensor><lidar><range><resolution>'+resolution+'</resolution></range></lidar></sensor></gazebo></robot>'
+    assert simulated_self_mask_error_bound(xml)==expected
+    assert simulated_self_mask_error_bound('<robot/>')==0.
+
+
+@pytest.mark.parametrize('resolution',['nan','inf','0','-0.1'])
+def test_invalid_simulated_range_bound_refuses(resolution):
+    from luggage_gazebo.operation_launch import simulated_self_mask_error_bound
+    with pytest.raises(ValueError):
+        simulated_self_mask_error_bound('<robot><sensor><lidar><range><resolution>'+resolution+
+            '</resolution></range></lidar></sensor></robot>')
+
+
 def test_every_default_can_actually_resolve_from_declared_launch_arguments():
     import importlib.util
     from pathlib import Path

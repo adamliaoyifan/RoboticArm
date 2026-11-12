@@ -226,8 +226,13 @@ and LiDAR endpoints through `observer_self_mask_node` before the sole O owner.
 This C++ node is an adapter to MoveIt's existing `ShapeMask`; it introduces no
 custom geometric classifier. It loads the identical expanded URDF/SRDF used by
 planning, including every collision shape and its collision-origin transform.
-Scale is 1 and additional padding is 0. Mesh containment follows MoveIt's body
-representation; this is not a measured sensor-error calibration.
+Scale is 1; additional padding defaults to 0. The explicit Gazebo composition
+derives a simulation-only bound from half the URDF sensor's declared range
+resolution (currently5mm for a1cm bin), records its source and rejects invalid
+metadata. Saved full-model replay shows sub-mm positive own-surface residuals
+that exact containment misses. Mesh containment follows MoveIt's body
+representation; neither this bound nor that representation is a measured
+real-sensor error calibration.
 
 Every body transform must resolve at the cloud's original acquisition stamp in
 the original physical cloud frame before invoking the mask. Missing/invalid TF

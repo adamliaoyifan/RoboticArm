@@ -96,7 +96,8 @@ class OperationSimDriver(Node):
         self.clock_count = 0
         self.failure_capture = None
         if getattr(args, 'failure_hold_s', 0.) > 0:
-            self.failure_capture = ObserverFailureCapture(self.folder/'observer_failure')
+            self.failure_capture = ObserverFailureCapture(self.folder/'observer_failure',
+                disk_limit=(768 if getattr(args,'capture_carry',False) else 256)*1024*1024)
             for topic,cls in [('/joint_states',JointState),('/tf',TFMessage),
                     ('/tf_static',TFMessage),('/uld_occ_observer/receipts',UpdateReceipt),
                     ('/luggage/observation/optical_points',PointCloud2),
@@ -165,8 +166,11 @@ class OperationSimDriver(Node):
 
     def flush(self, **result):
         with self._record_lock:
+            # A late lease-release callback may append evidence after the
+            # terminal result. Keep that result when refreshing the index.
+            self._final_status={**getattr(self,'_final_status',{}),**result}
             (self.folder/'manifest.json').write_text(json.dumps(dict(records=self.records,
-                stages=self.stages, **result),indent=2)+'\n')
+                stages=self.stages, **self._final_status),indent=2)+'\n')
 
     def wait(self, predicate, timeout, reason):
         deadline = time.monotonic()+timeout
@@ -191,7 +195,12 @@ class OperationSimDriver(Node):
     def action(self, client, goal, name, timeout):
         if not client.wait_for_server(timeout_sec=10.):raise TimeoutError(name+'_UNAVAILABLE')
         self.record(name+'_goal',goal)
-        handle = self.future(client.send_goal_async(goal),10.,name+'_ADMISSION_TIMEOUT')
+        options={}
+        if name.startswith('execute') and getattr(self.args,'capture_carry',False):
+            def capture_carry(message):
+                if message.feedback.next_leg_index>=3:self.failure_capture.trigger()
+            options['feedback_callback']=capture_carry
+        handle = self.future(client.send_goal_async(goal,**options),10.,name+'_ADMISSION_TIMEOUT')
         if not handle.accepted:raise RuntimeError(name+'_REJECTED')
         try:
             wrapped = self.future(handle.get_result_async(),timeout,name+'_RESULT_TIMEOUT')
@@ -392,6 +401,7 @@ class OperationSimDriver(Node):
                     ExecuteJointOperationV2.Goal(plan=plan,detection=detection,top_domain=domain,budget_s=300.),
                     'execute_retry_'+str(attempt+1),310.))
             if not result.result.success:raise RuntimeError('EXECUTE:'+result.result.outcome+':'+result.result.reason)
+            if getattr(self,'failure_capture',None) is not None:self.failure_capture.close()
             self.flush(outcome='FULL_CYCLE_PASS',capture_complete=True,replay_possible=True)
             return 0
         except Exception as error:
@@ -399,6 +409,8 @@ class OperationSimDriver(Node):
                     and str(error).endswith(('CURRENT_SOURCE_REFUSED','BOUND_NATIVE_ADMISSION_REQUIRED'))):
                 self.failure_capture.trigger()
                 self.stage('failure_stationary_capture',lambda:time.sleep(self.args.failure_hold_s))
+                self.failure_capture.close()
+            elif getattr(self,'failure_capture',None) is not None:
                 self.failure_capture.close()
             for name,msg in self.sensor_diagnostics.items():self.record('failure_'+name,msg)
             if self.domain is not None:self.record('failure_top_domain',self.domain)
@@ -421,9 +433,12 @@ def main():
         help='Diagnostic stationary observer capture after a terminal source refusal (0..60 s)')
     parser.add_argument('--prepick-replans',type=int,default=0,
         help='Explicit bounded new complete plans after terminal pre-pick map/native refusal (0..2)')
+    parser.add_argument('--capture-carry',action='store_true',
+        help='Persist source clouds/TF from carry start, bounded to768MiB; requires failure hold')
     args = parser.parse_args()
     if not 0 <= args.failure_hold_s <= 60:parser.error('failure hold must be within 0..60 seconds')
     if not 0 <= args.prepick_replans <= 2:parser.error('prepick replans must be within 0..2')
+    if args.capture_carry and args.failure_hold_s<=0:parser.error('carry capture requires failure hold')
     rclpy.init()
     node = OperationSimDriver(args)
     executor = MultiThreadedExecutor(num_threads=4);executor.add_node(node)

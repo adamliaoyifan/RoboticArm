@@ -50,12 +50,16 @@ public:
     if (!semantic->initString(*urdf, semantic_xml))
       throw std::runtime_error("actual semantic description required");
     model_ = std::make_shared<moveit::core::RobotModel>(urdf, semantic);
+    padding_ = declare_parameter<double>("self_mask_padding_m", 0.);
+    if (!std::isfinite(padding_) || padding_ < 0.)
+      throw std::runtime_error("finite nonnegative self-mask error bound required");
     for (const auto* link : model_->getLinkModelsWithCollisionGeometry()) {
       const auto& shapes = link->getShapes();
       const auto& origins = link->getCollisionOriginTransforms();
       for (size_t i = 0; i < shapes.size(); ++i) {
-        // No hand-fitted volumes, guessed scale or unmeasured padding.
-        auto handle = mask_.addShape(shapes[i], 1., 0.);
+        // No hand-fitted volumes or scale. Nonzero padding requires an
+        // explicit source error bound; Gazebo derives it from range resolution.
+        auto handle = mask_.addShape(shapes[i], 1., padding_);
         bodies_.emplace(handle, Body{link->getName(), origins.at(i)});
       }
     }
@@ -120,6 +124,7 @@ private:
     report << "sensor=" << sensor << " stamp=" << input.header.stamp.sec << '.'
            << input.header.stamp.nanosec << " input=" << input.width * input.height
            << " robot_removed=" << removed << " clipped=" << clipped << " bodies=" << bodies_.size()
+           << " padding_m=" << padding_
            << " model_sha256=" << model_sha_ << " reason=" << reason;
     std_msgs::msg::String status; status.data = report.str(); status_->publish(status);
   }
@@ -130,6 +135,7 @@ private:
   std::map<Handle, Body> bodies_;
   std::map<Handle, Eigen::Isometry3d> poses_;
   std::string model_sha_;
+  double padding_ = 0.;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_;
   std::vector<rclcpp::Subscription<Cloud>::SharedPtr> subscriptions_;
 };
