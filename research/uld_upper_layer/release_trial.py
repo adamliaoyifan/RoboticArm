@@ -29,6 +29,12 @@ from release_trajectory import make_release_withdrawal
 from planning_types import UpperConfig
 
 
+def record_event(trace, event_type, **values):
+    """Keep the event type distinct from a motion's name payload."""
+    trace.write(json.dumps(dict(event=event_type, wall=time.monotonic(), **values), allow_nan=False)+'\n')
+    trace.flush()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scene-dir', type=Path, required=True)
@@ -98,8 +104,6 @@ def main():
         runtime.env, out, carriage, policy)
     trace = (out/'decisions.jsonl').open('w'); monitor = None; latest = None; service = None
     started = time.monotonic(); failure = None; result = None; last_command_stamp = None
-    def event(name, **values):
-        trace.write(json.dumps(dict(event=name, wall=time.monotonic(), **values), allow_nan=False)+'\n'); trace.flush()
     def next_sample():
         nonlocal latest
         if time.monotonic()-started > policy.wall_budget_s:
@@ -122,7 +126,7 @@ def main():
             if sample.tool_contacts:
                 raise RuntimeError('RELEASE_TOOL_CONTACT_DURING_READINESS')
             decision = gate.observe(sample)
-            event(name, stamp_s=sample.stamp_s, decision=decision)
+            record_event(trace, name, stamp_s=sample.stamp_s, decision=decision)
             if decision.get('calibration_ready'):
                 return sample, decision
         raise TimeoutError('RELEASE_SETTLED_READINESS_TIMEOUT')
@@ -161,7 +165,7 @@ def main():
         save(out/'pre_detach_check.json', current_check)
         monitor = ReleaseExecutionMonitor(initial, size, config, policy, motion_policy, scene)
         runtime.arm()
-        service = runtime.detach(); event('detach_requested', stamp_s=current.stamp_s)
+        service = runtime.detach(); record_event(trace, 'detach_requested', stamp_s=current.stamp_s)
         deadline = time.monotonic()+policy.condition_wait_budget_s
         detached_sample = None
         while time.monotonic() < deadline:
@@ -180,10 +184,10 @@ def main():
                 detached_sample = sample; break
         if detached_sample is None:
             raise TimeoutError('RELEASE_NATIVE_DETACH_NOT_CONFIRMED')
-        event('detach_confirmed', stamp_s=detached_sample.stamp_s)
+        record_event(trace, 'detach_confirmed', stamp_s=detached_sample.stamp_s)
         for index, motion in enumerate(motions):
             stage_start = latest.stamp_s; endpoint_deadline = None
-            event('motion_started', name=motion.name, stamp_s=stage_start)
+            record_event(trace, 'motion_started', name=motion.name, stamp_s=stage_start)
             while True:
                 sample = next_sample()
                 if sample is None:
@@ -195,7 +199,7 @@ def main():
                     raise RuntimeError(error['reason'])
                 if last_command_stamp is None or sample.stamp_s-last_command_stamp >= policy.monitor_period_s-1e-9:
                     commands.publish(q, sample.stamp_s); last_command_stamp = sample.stamp_s
-                    event('motion_feedback', stamp_s=sample.stamp_s, name=motion.name, metrics=monitor.metrics())
+                    record_event(trace, 'motion_feedback', stamp_s=sample.stamp_s, name=motion.name, metrics=monitor.metrics())
                 if elapsed >= motion.time_from_start_s[-1]:
                     if np.max(np.abs(np.array(sample.joint_displacements_xz_m)-q)) <= motion_policy.endpoint_joint_error_m:
                         break
@@ -203,9 +207,9 @@ def main():
                         endpoint_deadline = time.monotonic()+policy.condition_wait_budget_s
                     if time.monotonic() > endpoint_deadline:
                         raise TimeoutError('RELEASE_ENDPOINT_NOT_REACHED')
-            event('motion_completed', name=motion.name, stamp_s=sample.stamp_s)
+            record_event(trace, 'motion_completed', name=motion.name, stamp_s=sample.stamp_s)
         stable_start = latest.stamp_s
-        event('independent_stability_started', stamp_s=stable_start)
+        record_event(trace, 'independent_stability_started', stamp_s=stable_start)
         q, tool = motion_reference(motions[-1], motions[-1].time_from_start_s[-1])
         while latest.stamp_s-stable_start < policy.stability_dwell_s:
             sample = next_sample()
@@ -227,9 +231,9 @@ def main():
             save(out/'failed_sample.json', asdict(latest))
             try:
                 commands.publish(latest.joint_displacements_xz_m, latest.stamp_s)
-                event('stop_hold_requested', stamp_s=latest.stamp_s)
+                record_event(trace, 'stop_hold_requested', stamp_s=latest.stamp_s)
             except Exception as stop_error:
-                event('stop_hold_failed', error=str(stop_error))
+                record_event(trace, 'stop_hold_failed', error=str(stop_error))
         # Continue observation-only capture for the configured failure postwindow.
         if runtime.process is not None and runtime.process.poll() is None:
             wall_end = time.monotonic()+policy.condition_wait_budget_s
@@ -256,7 +260,7 @@ def main():
         try:
             commands.close()
         except Exception as close_error:
-            event('command_close_failed', error=str(close_error))
+            record_event(trace, 'command_close_failed', error=str(close_error))
         capture = runtime.stop_capture(); save(out/'capture_metrics.json', capture)
         if result:
             save(out/'result.json', result)

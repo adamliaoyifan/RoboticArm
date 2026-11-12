@@ -2119,3 +2119,21 @@ release_execution_wiring_g12_01重放既有full-tool hold的3.3..5.3s共
 下次仍用相同scene03、两轴控制/物理与所有门槛，仅修复时钟域；输出
 release_controlled_trial_g12_02。先冻结修复/回归与第一次失败完整hash清单
 再运行，不覆盖01。该预演仍不计正式C或完成54单元，完整目标保持open。
+
+### 19.35 原生解除确认与阶段日志入口修复（撤出仍待预演）
+
+冻结d9742383执行trial02，完整native8154/clock8154帧，
+每步连续1ms、观测处理最大积压19ms；采集/owned teardown通过。
+7.154s原生解除及服务回复均确认，没有复现旧墙钟守卫；但在
+motion_started日志调用处因event(name, **values)与载荷name冲突抛TypeError，
+尚未发出down/out轨迹。失败和停止保持后1s完整采集，不计稳定样本。
+
+独立audit9项通过，稳定基线后4468个严格有效支撑点、工具接触0、
+箱体和下层稳定；原始source/native/二进制/输入均归档。修复将阶段记录器
+改为显式record_event(trace,event_type,**payload)，运动name独立传入。
+使用trial02冻结源码抽取旧函数复现TypeError，再用真实新记录器验证同一
+调用成功写入阶段/运动名称；全量189项行为回归通过。该测试验证记录接口，
+不替代完整物理运动测试。
+
+下一非计分预演沿用scene03和全部门槛，输出release_controlled_trial_g12_03；
+必须实际下放、撤出及独立3s观察才能记物理释放样本。全链/54/C5仍open。
