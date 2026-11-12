@@ -117,7 +117,13 @@ class RequestContracts(unittest.TestCase):
         request=self.request(snapshot=replace(self.snapshot,surfaces=surfaces))
         actions,report=self.generate(request)
         self.assertTrue(actions,report)
-        for a in actions:np.testing.assert_allclose(a.placement.final_box_pose,self.target.ravel(),atol=1e-12)
+        from push_seam_events import trace_push_seams
+        for a in actions:
+            np.testing.assert_allclose(a.placement.final_box_pose,self.target.ravel(),atol=1e-12)
+            handoff=np.array(a.handoff_box_pose).reshape(4,4)
+            self.assertEqual(handoff[2,3],self.target[2,3])
+            trace_push_seams(a.handoff_box_pose,a.placement.final_box_pose,
+                             request.box.dimensions,request.snapshot.surfaces)
 
     def test_runtime_com_margin_changes_real_candidate_admission(self):
         actions,_=self.generate(self.request());self.assertTrue(actions)

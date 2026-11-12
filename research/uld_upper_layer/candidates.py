@@ -88,6 +88,9 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
             if abs(requested[2,3]-(top+size[2]/2))>config.contact_tolerance_m:
                 reasons['TARGET_NOT_ON_SUPPORT']+=1;continue
             final_xs=(float(requested[0,3]),)
+            # Exact target orientation and height define the whole straight push;
+            # measured coplanar support heights may differ by sub-tolerance noise.
+            box_rotation=requested[:3,:3].copy()
         for tool_yaw in tool_yaw_values:
             rt = Rotation.from_euler('z', tool_yaw, degrees=True).as_matrix()
             footprint_x = np.abs(rt[0,:2]) @ contact_width
@@ -106,7 +109,9 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
             for y in (lateral,):
                 for depth in depth_values:
                     front = xmin+depth
-                    handoff = pose([front-length/2,y,top+size[2]/2], box_rotation)
+                    handoff_z=top+size[2]/2 if final_pose is None else requested[2,3]
+                    bottom_z=handoff_z-size[2]/2
+                    handoff = pose([front-length/2,y,handoff_z], box_rotation)
                     failure = boundary_failure(Box('payload', handoff[:3,3], box_rotation, size/2),assets,config.collision_margin_m)
                     if failure:
                         reasons['HANDOFF_APERTURE']+=1;continue
@@ -115,7 +120,7 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
                         reasons[metrics.reason]+=1;continue
                     for b in grasp_values:
                         if deadline is not None and time.monotonic()>=deadline:return
-                        tcp = (pose([front-b,y,top],rt) if fixed_grasp is None
+                        tcp = (pose([front-b,y,bottom_z],rt) if fixed_grasp is None
                                else handoff@matrix(fixed_grasp))
                         failure = tool_collision(assets,snapshot,tcp,config.collision_margin_m)
                         # Verify the actual withdrawal legs including downward
@@ -161,8 +166,8 @@ def _action_stream(assets, snapshot, state, config, yaw_values, tool_yaw_values,
                                 rotated=polygon@push_r.T
                                 if np.ptp(rotated[:,1])+2*edge>width:
                                     reasons['PUSH_FACE_TOO_WIDE']+=1;continue
-                                low=top-float(rotated[:,2].min())+edge
-                                high=top+size[2]-float(rotated[:,2].max())-edge
+                                low=bottom_z-float(rotated[:,2].min())+edge
+                                high=bottom_z+size[2]-float(rotated[:,2].max())-edge
                                 for z in interior_samples(low,high,config.push_height_step_m):
                                     push_start=pose([front-length,y,z],push_r)@surface_T_tool
                                     distance=final_x-handoff[0,3]
