@@ -141,6 +141,14 @@ class WithdrawalCertificates(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'POSE_NOT_RIGID'):
             self.scene(sample=replace(self.sample, container_T_box=tuple(box.ravel())))
 
+    def test_observed_geometry_checks_actual_pose_then_restores_certificate(self):
+        scene = self.scene()
+        box = np.array(self.sample.container_T_box).reshape(4, 4); box[2, 3] -= .01
+        observed = replace(self.sample, container_T_box=tuple(box.ravel()))
+        result = scene.evaluate_observation(observed, separating_interface=True)
+        self.assertEqual(result['failure'], 'RELEASE_INTERFACE_NOT_SEPARATED')
+        self.assertTrue(scene.certify(self.motions, time.monotonic()+10)['valid'])
+
 
 if __name__ == '__main__':
     unittest.main()

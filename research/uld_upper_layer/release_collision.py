@@ -91,7 +91,7 @@ class ReleaseCollisionScene:
         self.config = config; self.sample = sample; self.dimensions = tuple(dimensions)
         self.model_hashes = {}; self.world_hash = sha256(world_path)
         self.assets_hashes = dict(assets['hashes'])
-        self._tool = []; self._world = []; self._planes = []
+        self._tool = []; self._world = []; self._planes = []; self._lower_parts = {}
         root = ET.parse(world_path).getroot(); world = root.find('world')
         if world is None or world.findall('include') or world.findall('model/model'):
             raise ValueError('UNSUPPORTED_RELEASE_WORLD_STRUCTURE')
@@ -175,7 +175,10 @@ class ReleaseCollisionScene:
                             raise ValueError('RELEASE_PLANE_NORMAL_INVALID')
                         self._planes.append((key, frame[:3, :3] @ normal, frame[:3, 3]))
                     else:
-                        self._world.append(_Shape(key, geometry, frame, self.model_hashes))
+                        part = _Shape(key, geometry, frame, self.model_hashes)
+                        self._world.append(part)
+                        if name in lower:
+                            self._lower_parts[name] = part
         if seen_lower != set(lower):
             raise ValueError('RELEASE_OBSERVED_LOWER_SET_CHANGED')
         payload = world.find("model[@name='upper_layer_payload']/link")
@@ -274,6 +277,33 @@ class ReleaseCollisionScene:
                 if distance < minimum:
                     minimum = distance; witness = [part.name, name]
         return dict(minimum_m=minimum, witness=witness, interface_separation_m=interface)
+
+    def evaluate_observation(self, sample, *, separating_interface):
+        """Check actual same-step poses without altering certificate inputs.
+
+        Source lower/payload collisions have identity link/collision frames,
+        established by the constructor. Restore the frozen scene after each
+        observation so a later certificate cannot silently use changed poses.
+        """
+        lower = {body.name: body for body in sample.lower}
+        if set(lower) != set(self._lower_parts):
+            raise ValueError('RELEASE_OBSERVED_LOWER_SET_CHANGED')
+        before_up = self._box_up.copy(); before_bottom = self._box_bottom.copy()
+        moving = [self._payload, *self._lower_parts.values()]
+        try:
+            for name, part in self._lower_parts.items():
+                frame = _rigid(lower[name].container_T_body)
+                part.object.setTransform(fcl.Transform(frame[:3, :3], frame[:3, 3]))
+            box = _rigid(sample.container_T_box)
+            self._payload.object.setTransform(fcl.Transform(box[:3, :3], box[:3, 3]))
+            sign = -1 if box[2, 2] >= 0 else 1
+            self._box_up = -sign * box[:3, 2]
+            self._box_bottom = box[:3, 3] + sign*self.dimensions[2]/2*box[:3, 2]
+            return self.evaluate(_rigid(sample.container_T_tool), separating_interface=separating_interface)
+        finally:
+            self._box_up = before_up; self._box_bottom = before_bottom
+            for part in moving:
+                part.object.setTransform(fcl.Transform(part.local[:3, :3], part.local[:3, 3]))
 
     def certify(self, motions, deadline):
         motions = tuple(motions)

@@ -74,6 +74,23 @@ class ReleaseWorldContracts(unittest.TestCase):
                     replace(self.case, requested_support_ratio=.55), self.policy, self.source, self.plugin, out)
             self.assertFalse(out.exists())
 
+    def test_scheduling_factor_changes_only_wall_clock_pacing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            out = Path(temporary)/'paced'
+            spec = write_release_scene(self.assets, self.snapshot, self.state, self.config,
+                self.case, self.policy, self.source, self.plugin, out, scheduling_real_time_factor=.25)
+            original = ET.parse(self.source/'standalone.sdf').find('world/physics')
+            result = ET.parse(out/'release.sdf').find('world/physics')
+            self.assertEqual(float(result.findtext('real_time_factor')), .25)
+            self.assertEqual(spec['scheduling_real_time_factor'], .25)
+            result.find('real_time_factor').text = original.findtext('real_time_factor')
+            self.assertEqual(content(result), content(original))
+            for value in (0., float('nan'), 2., True):
+                with self.assertRaisesRegex(ValueError, 'INVALID_RELEASE_SCHEDULING_FACTOR'):
+                    write_release_scene(self.assets, self.snapshot, self.state, self.config,
+                        self.case, self.policy, self.source, self.plugin, Path(temporary)/'invalid',
+                        scheduling_real_time_factor=value)
+
 
 if __name__ == '__main__':
     unittest.main()

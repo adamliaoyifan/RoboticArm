@@ -1,0 +1,5 @@
+# Independent carriage calibration, never production/arm trajectory admission.
+tracking_translation_m: 0.002
+tracking_rotation_deg: 0.1
+endpoint_joint_error_m: 0.002
+native_max_gap_s: 0.001000001

@@ -2054,3 +2054,44 @@ release_collision_g12_01从既有3.221s calibration-ready快照重放，6个中�
 最终173项行为回归全通过（含8项撤出连续检查用例）；初次障碍测试虽正确
 拒绝但命中down阶段，新增阶段断言暴露测试布局问题，已保留失败日志并将
 合成探针隔离到outward路径，端点通过而中段拒绝。未启动新Gazebo。
+
+### 19.33 独立释放的实际控制器预演入口（未运行，非正式C）
+
+release_execution_wiring_g12_01重放既有full-tool hold的3.3..5.3s共
+2000个native步：检查耗时3.739736s，8000个严格有效支撑点、100个
+完整实际几何检查，无失败。由此显式将下一预演的scheduling_real_time_factor
+设为0.25，仅改变墙钟调度，保留1ms物理步、原模型/材质/摩擦/质量。
+新场景/tmp/uld_upper_release_scene_g12_03，世界SHA256
+35b7e5adb06c099ee140c964273306b538b7d3eaafc79b0d4281a460dd1b61ee；
+原fixture05及独立插件release-g12_02不覆盖。case与scene02的序列化输入
+逐项一致（含0.60/yaw0/repetition0），仅调度倍率是显式新profile。
+
+入口：source /opt/ros/humble/setup.bash 后，以现有venv及research PYTHONPATH
+运行release_trial.py --scene-dir /tmp/uld_upper_release_scene_g12_03
+--policy /tmp/upper_monitor_50hz_g12.yaml
+--joint-bridge /tmp/uld-upper-vacuum-release-g12_02/uld_carriage_joint_command
+--evidence <primary>/docs/status/evidence/uld_upper_layer_v1/release_controlled_trial_g12_01。
+这是非计分单次预演，目标验证实际保持→解除→分离/撤出→独立稳定的链路；
+不是全臂可达、连续误差管准入、正式C或54单元完成。planning/physics阈值
+保持不变；不因观测比例略低于0.60而篡改数值，policy失败显式保留。
+
+新的外部release_motion_policy.yaml仅指定夹具跟踪监测：工具平移2mm、
+旋转0.1deg、端点两轴最大误差2mm、native gap<=1.000001ms。它不改变
+5mm碰撞、接触或支撑阈值，不作为已证明跟踪包络。完整实际几何50Hz检查，
+每个native步检查有符号接触、完整工具contact组件、箱体2mm/.5deg、
+下层3mm/.5deg、解除约束及实际工具跟踪。没有电流/力矩反馈和箱体命令。
+
+保持/释放顺序：原附着稳定3s→发送实测q保持→重新稳定3s→冻结并认证
+名义路径→复查当前物理前提→请求解除并等待native约束消失及detach计数1→
+按native时间推进真实两轴down/out轨迹→完整工具撤出后独立3s稳定窗。
+最后参考命令到达不是运动完成，端点必须以实际q和工具反馈通过；服务成功
+也不等于解除。观测过期、缺帧、任一工具接触或门槛失败立即请求实测q保持，
+继续采集原失败后1s窗口。仍保存失败前整个单位，不重复消耗正式seed。
+
+预算600sim/1800wall。初始条件等待为原10s条件预算加3s稳定窗按显式
+实时倍率折算的墙钟；不把低倍率下12wall秒稳定窗误判成超时。采集native
+与独立clock完整gzip，各90MB，加20MB预留；源文件/输入/配置/原始网格
+和实际二进制在启动前归档，失败必须保留原始输入/阶段事件/命令/接触，
+持久化后owned teardown。启动前检查全机唯一Gazebo且clock/state各1publisher。
+全部检查AND仅说明本次独立物理实验通过，不认证可靠性；无效/缺失数据不得
+算释放样本。当前187项离线行为回归通过，实机/D555/完整C仍未评估。

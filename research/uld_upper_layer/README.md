@@ -438,3 +438,28 @@ A result binds observation, motions, model/world/config hashes and always keeps
 `execution_admitted=false`: moving-body feedback, controller tracking, detach
 confirmation, error envelopes and post-withdrawal stability remain independent
 requirements. This is not a six-joint arm or production collision certificate.
+
+`release_trial.py` runs one non-scored independent carriage calibration.
+`ReleaseRuntime` owns the only Gazebo process, a separate clock stream, full
+native capture and a bounded ordered queue. It checks stale streams even when
+the queue is empty. `ReleaseExecutionMonitor` checks every delivered native
+step for signed bottom/top support contacts, unexpected tool contact, box and
+lower motion, attachment state and actual tool tracking. Full observed geometry
+and support are checked at the execution policy period; nominal continuous
+checking remains a separate prerequisite. `release_motion_policy.yaml` exposes
+the fixture tracking/endpoint tolerances without recompilation. These observed
+checks do not certify a continuous tracking error envelope or arm admission.
+
+The runner first establishes a settled attached state, publishes a hold at the
+measured joint position, requires another full stable dwell, freezes inputs and
+checks nominal withdrawal, confirms native detach and then sends the sampled
+down/out references. This measured hold avoids jumping toward the old zero
+target after unloading. Complete tool withdrawal precedes the independent
+stability window. Failures request a measured-position hold and preserve the
+postwindow before owned teardown. Pressure/load sharing is never inferred.
+
+`write_release_scene(..., scheduling_real_time_factor=...)` can change wall-clock
+pacing while preserving the physics step and every source collider/material.
+This optional explicit profile field is recorded in scene metadata; default
+construction preserves source pacing. The first trial uses0.25 because the
+measured 2000-step observation replay requires3.74s of wall time for2s simulated.

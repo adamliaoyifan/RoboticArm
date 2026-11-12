@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import xml.etree.ElementTree as ET
 
+import numpy as np
 from scipy.spatial.transform import Rotation
 
 from assets import sha256
@@ -15,7 +16,7 @@ from scene import text
 
 
 def write_release_scene(assets, snapshot, state, config, case, policy,
-                        source_scene, vacuum_plugin, output):
+                        source_scene, vacuum_plugin, output, *, scheduling_real_time_factor=None):
     """Place the initial fixture using source geometry, never command a live box.
 
     All original lower bodies, ULD collision meshes and material remain intact.
@@ -44,6 +45,14 @@ def write_release_scene(assets, snapshot, state, config, case, policy,
     model, ledger = release_carriage_model(assets, case, policy)
     root = ET.parse(source_scene / 'standalone.sdf').getroot()
     world = root.find('world')
+    if scheduling_real_time_factor is not None:
+        if (isinstance(scheduling_real_time_factor, bool) or not np.isfinite(scheduling_real_time_factor)
+                or not 0 < scheduling_real_time_factor <= 1):
+            raise ValueError('INVALID_RELEASE_SCHEDULING_FACTOR')
+        factor = world.find('physics/real_time_factor')
+        if factor is None:
+            raise ValueError('RELEASE_SOURCE_SCHEDULING_FACTOR_MISSING')
+        factor.text = format(scheduling_real_time_factor, '.17g')
     payload = world.find("model[@name='upper_layer_payload']")
     if payload is None or world.find("model[@name='release_carriage']") is not None:
         raise ValueError('INVALID_RELEASE_SOURCE_WORLD')
@@ -79,6 +88,7 @@ def write_release_scene(assets, snapshot, state, config, case, policy,
     ET.ElementTree(root).write(output / 'release.sdf', encoding='utf-8', xml_declaration=True)
     shutil.copyfile(source_scene / 'fixture.json', output / 'source_fixture.json')
     manifest = dict(profile='independent_release_fixture', case=asdict(case), tool=ledger,
+        scheduling_real_time_factor=scheduling_real_time_factor,
         tool_collision_names=collision_names,
         fixture_policy=asdict(policy), configuration=asdict(config),
         source_world_sha256=sha256(source_scene / 'standalone.sdf'),

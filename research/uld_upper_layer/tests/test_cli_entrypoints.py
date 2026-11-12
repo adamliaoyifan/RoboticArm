@@ -10,7 +10,7 @@ class CommandEntryContracts(unittest.TestCase):
         directory = Path(__file__).resolve().parents[1]
         for name in ('scene.py', 'check_scene.py', 'run.py', 'feasibility.py',
                      'motion_feasibility.py', 'physical_probe.py', 'wiring_rehearsal.py',
-                     'release_rehearsal.py'):
+                     'release_rehearsal.py', 'release_trial.py'):
             with self.subTest(command=name):
                 result = subprocess.run([sys.executable, str(directory / name), '--help'],
                                         capture_output=True, text=True, timeout=20)
