@@ -216,21 +216,15 @@ def main():
             monitor.fail_execution(str(exc) or type(exc).__name__,exception_type=type(exc).__name__)
             runtime.begin_failure_capture(monitor.failure_stamp_s)
         (out/'error.txt').write_text(traceback.format_exc())
-        tail=[];wall_deadline=time.monotonic()+policy.condition_wait_budget_s
         first=runtime.snapshot().get('vacuum');stamp=first['sim_time_s'] if first else None
-        if stamp is not None:
-            if monitor is None:runtime.begin_failure_capture(stamp)
-            import rclpy
-            while time.monotonic()<wall_deadline:
-                rclpy.spin_once(runtime.node,timeout_sec=policy.monitor_period_s)
-                row=runtime.snapshot();native=row.get('vacuum')
-                if native:
-                    tail.append((native['sim_time_s'],row))
-                    if native['sim_time_s']-stamp>=policy.trigger_post_s:break
+        if stamp is not None and monitor is None:runtime.begin_failure_capture(stamp)
+        from failure_tail import collect_failure_tail
+        tail,tail_error=collect_failure_tail(runtime,policy,stamp)
         if monitor:monitor.save_trigger(out/'trigger_window.jsonl.gz',tail)
         save(out/'summary.json',dict(status='failed',monitor=monitor.metrics() if monitor else None,
                                     stream=observe.metrics() if observe else None,
                                     controller_tracking=runtime.controller_trace.metrics() if runtime.controller_trace else None,
+                                    failure_tail_error=tail_error,
                                     post_window_captured=bool(tail and tail[-1][0]-stamp>=policy.trigger_post_s)))
         manifest['capture_complete']=bool(tail and tail[-1][0]-stamp>=policy.trigger_post_s)
         manifest['replay_possible']=manifest['capture_complete']

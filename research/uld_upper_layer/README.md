@@ -1,650 +1,128 @@
-# Independent upper-layer placement study
+# Upper-layer placement research implementation
 
-This is an offline prototype for upward suction-panel carry, transfer onto a
-filled support surface under a ULD ceiling, withdrawal, and rear-face push.
-It has no production imports of downward-pick gates or atlas queries and
-keeps planning offline; the explicit wiring rehearsal sends a robot hold command. Its geometry comes from the source worktree.
+This independent action takes a box already held by the suction panel, plans
+upward insertion under the ULD ceiling, transfers the box onto declared lower
+cargo, withdraws the panel, and pushes with its actual rigid plane. It does
+not change ordinary pick/offset-pick selection. It is an ideal-input simulation
+prototype; D555 input, irregular supports and hardware qualification remain open.
 
-The current design is [ULD upper-layer V1](../../docs/plans/ULD_UPPER_LAYER_V1.md).
-Historical results remain in Git history and the primary workspace; no evidence
-is retained in this worktree. This prototype is not the V1 implementation.
+The single normative plan is [ULD upper-layer V1](../../docs/plans/ULD_UPPER_LAYER_V1.md).
+Evidence and cross-agent coordination live in the primary workspace, never this
+worktree. A nominal plan is not an execution success or a reliability certificate.
 
-Run in a shell with ROS Humble Python dependencies available:
+## Request and result
 
-```bash
-source /opt/ros/humble/setup.bash
-python3 -m unittest discover -s research/uld_upper_layer/tests -v
-python3 research/uld_upper_layer/run.py --repo . --output /absolute/new/evidence-directory
-```
+`placement_request.PlacementRequest` is an immutable value object. All poses are
+row-major 4x4 transforms in `container_link`, with **absolute container Z**. The
+box reference is its geometric centre, never the suction TCP. Sizes are metres;
+joints are radians. Base/world/container transforms come from the active scene.
+The current action inserts container +X, corresponding to base -Y in this cell;
+the box's long edge must align with insertion.
 
-`assets.py` expands source xacro and maps source meshes explicitly.
-`geometry.py` owns conservative oriented-box collision primitives.
-`action.py` generates contact-mode states and checks fixed-tool geometry.
-`run.py` captures the fixed 864-case matrix, bounded stage IK and diagrams.
+| Input | Meaning and consumer |
+|---|---|
+| `box` | Dimensions, current geometric-centre pose, COM assumption, optional measured mass. Geometry and payload effort screen consume it. |
+| `snapshot` | Occupied geometry, horizontal support rectangles/absolute heights, floor/ceiling and identity. All obstacles remain in the collision scene. A support point alone cannot describe support area. |
+| `start_q` | Actual six joints at the planning boundary; the executor rechecks them. |
+| `final_box_poses` | One or more permitted final box-centre transforms. The planner does not silently shift an exact goal. The caller supplies allowed small adjustments. |
+| `support_source_ids` | Allowed support rectangles in this snapshot. This selects support without removing other collision objects. |
+| `start_attached`, `confirmed_box_T_tool` | Existing measured grasp, preserved exactly throughout carry; no hidden regrasp. |
 
-The historical G1 scope and thresholds are recorded in commit `45a50252`. A geometry candidate means only
-that the modeled fixed end-effector passes sampled geometric checks. Stage
-IK omits full-arm collision checks; a set of IK solutions is not a connected
-path. Pickup/inversion outside the container, transition rotation during
-reposition, unknown actual COM, suction peeling, support compliance, friction,
-force control, sensor occlusion and live performance remain not_evaluated.
+`request_planner.UpperPlacementPlanner.plan(request, evidence_directory, seed)`
+returns `valid`, a reason, complete-plan count, `plans`, `selection` and input
+revision. `valid` means at least the configured minimum of complete **nominal**
+plans passed certificates and scoring. Each plan contains the final box pose,
+handoff, suction/push transforms, stage paths, timed controller trajectories,
+clearance witnesses and bound input/model/configuration identities. Physical
+execution remains `not_evaluated` until a separate actual-controller run passes.
 
-The support is a declared synthetic prism, not measured occupancy. Catalog
-dimensions are legal experiment inputs only and must never replace live
-perception in a later production action. The eventual caller must establish
-a measured upper slot and action-specific feasibility; generic BIN_FULL is
-not evidence that such a slot exists.
+Each request owns private collision scenes and bounded planning workers. Input
+values are copied/frozen; scenes/workers are not public mutable shared context.
+Persisted results remain auditable, but a changed snapshot, attachment, start,
+configuration, model or certified source invalidates their use for execution.
 
-## Aligned dense lower-box scene
+## Planning and execution
 
-The fixture uses the original ceiling, opening, chamfered ULD mesh and scene
-transforms. Twenty-four **dynamic** cuboids form four aligned layers. The top
-is at container Z=1.73 m; 0.28 m remains to the ceiling. A blue 0.55 x 0.40 x
-0.25 m carryon is on the normal pickup platform. Lower boxes are synthetic
-fixture geometry, not detected real luggage. They fill about 91% of the
-canonical hull volume below the support plane. There is no elevated support shelf or joint locking them together.
-A declared planar contact at the canonical ULD floor (Z=0.53 m) sits above the
-slightly uneven decimated floor mesh; the original ULD mesh remains intact.
-Source mesh rails/jambs require positive Y <=0.920 m and X between
--0.730 and 0.720 m. An exact initial box/triangle check rejects mesh
-intersections; semantic hull containment alone misses those protrusions. All contacts retain collision geometry.
-The declared research physics step is 0.001 s; contact tests at other step
-sizes need separate validation.
+1. Generate alternative handoffs, grasps (unless already fixed) and CAD-derived
+   panel push contacts for every permitted target. Check whole-panel fit in the
+   unsupported area, geometric support coverage and COM margin.
+2. Jointly choose connected IK branches and collision-free transitions. The
+   already-attached chain has nine stages: inversion/approach, upward insertion,
+   lower to support, release clearance, withdrawal, push reposition, contact
+   acquisition, push and retreat. Cartesian contact stages and free joint-space
+   routes use their appropriate planners; isolated IK endpoints are insufficient.
+3. Certify interpolated paths and timed trajectories against source geometry,
+   limits and configured clearance. Repair free-box repositioning against the
+   box uncertainty envelope. Optional mass-based gravity screening is necessary
+   actuator screening, not measured torque or full contact dynamics.
+4. Reject incomplete/unsafe plans before scoring. Rank robot clearance first,
+   then support within the configured collision tie band. Keep distinct complete
+   schemes; target 3, minimum 1 by default. Bounded search may return fewer than 3.
+5. Execute real joint-controller commands. Establish actual native lower contact
+   and support dwell before native suction release. Confirm constraint removal,
+   panel separation and 3s box stability before repositioning. Establish actual
+   panel-plane contact before pushing. Check support, lower movement, progress,
+   aligned controller feedback, final pose and final stable dwell.
 
-Only 0.03 m remains above the inserted test box. The source panel alone extends
-about 0.286 m behind its contact face (0.326 m for the whole fixed assembly),
-so the usual downward-panel placement cannot enter that slot. Upward carry,
-handoff, withdrawal and rear push still require a new complete motion plan;
-this scene does not execute those motions or prove full-arm reachability.
-The normal observe/pick posture outside the ULD may still point downward.
-This aligned fixture is the requested first experiment; irregular luggage
-support remains part of the wider V1 goal.
+The nominal box-push model is fixed-orientation straight translation along the
+insertion direction. Actual motion comes from native physics after release;
+there are no detached cargo pose commands. Native lower/panel contact is checked
+at each 1ms physics step; the full observed scene is checked every 10ms in the
+engineering profile. These checks do not establish a continuous hardware error
+tube or force safety.
 
-Build the small isolated overlay once from this worktree (do not build into
-or overwrite the shared primary install):
+`upper_config.yaml`, `selection_policy.yaml` and `execution_policy.yaml` define
+runtime settings. Each planning call reloads YAML. In particular
+`support_com_margin_m: 0.020` changes actual candidate admission without compiling;
+`support_area_ratio_min: 0.60` is geometric near-contact coverage, not pressure
+area. Current geometric COM is an explicit assumption. The panel push frame is
+derived from CAD rather than an invented tool centre.
 
-```bash
-source /opt/ros/humble/setup.bash
-source /home/adamliao/work/elfin_humble_ws/install/setup.bash
-colcon --log-base /tmp/uld-upper-build/log build \
-  --base-paths src/luggage_description src/luggage_gazebo \
-  --build-base /tmp/uld-upper-build/build \
-  --install-base /tmp/elfin_uld_upper_layer_g1/install --symlink-install \
-  --cmake-args -DBUILD_TESTING=OFF
-```
+The separately enabled E-EDGE1 mode permits bounded source-planned leading-bottom
+edge / support-entry-top edge traversal only during detached push. It requires
+independent strict native top/bottom support, 100um material-edge proximity,
+50um penetration, both normal cones within 1deg, a 10mm source-event progress
+band and a 1s nonresetting episode limit. All settings are external execution
+policy fields. The default stays strict. No side-wall or arm collision exemption
+is introduced; this experimental mode is not a force/robustness certificate.
 
-Start the scene, S20 controllers and MoveIt from a terminal:
+## Running
 
-```bash
-cd /tmp/elfin_uld_upper_layer_g1
-bash research/uld_upper_layer/launch_scene.sh
-# Or: bash research/uld_upper_layer/launch_scene.sh --headless
-```
-
-The script checks sim exclusivity, generates `/tmp/uld_upper_layer_scene_v1_aligned` if
-absent, and stops only its own process group on Ctrl+C. It sends no automatic
-pick/place commands. `ULD_UPPER_SCENE` overrides the generated scene directory;
-use a new/empty directory when regenerating. `ULD_UPPER_INSTALL` overrides
-the isolated install. Camera publishing comes from the existing simulator;
-perception algorithms and production packing/motion executors stay disabled
-for this scene-only launch.
-
-Geometry and gravity checks (evidence must be outside this worktree):
-
-```bash
-source /opt/ros/humble/setup.bash
-python3 -m unittest discover -s research/uld_upper_layer/tests -v
-python3 research/uld_upper_layer/scene.py --output /tmp/another_new_upper_scene
-python3 research/uld_upper_layer/check_scene.py \
-  --scene-dir /tmp/another_new_upper_scene \
-  --evidence /home/adamliao/work/elfin_humble_ws/docs/status/evidence/uld_upper_layer_scene/NEW_RUN
-```
-
-`overlay.sdf` contains the fixture and payload; `sim_world.launch.py` supplies
-the original static environment and controlled robot. `standalone.sdf` also
-contains that static environment, for a bounded gravity check without a robot.
-`fixture.json` describes inputs and source hashes; it is not online perception.
-The standalone check preserves the full short pose trace and stops its own
-Gazebo before returning. Its tolerances measure setup settling, not the V1
-requirement that supports remain stationary during actual pushing.
-
-Use the standard `<worktree>/install` layout: the existing GPU gate locates
-its helper in `<worktree>/scripts`. Lower-box collision geometry is present
-in Gazebo; scene-only startup does not inject fixture truth into MoveIt.
-Future placement planning must obtain those obstacles from the measured map.
-
-
-## V1 ideal-input geometry contracts
-
-`upper_config.yaml` is the single default configuration. `planning_types.py`
-contains immutable boundary records, `ideal_snapshot.py` is explicitly fixture
-sourced, and `support_geometry.py` separates actual overlap area from the static
-rigid-box support polygon. `candidates.py` jointly enumerates final placements,
-offset grasps, handoff and panel pushing poses. Candidate records explicitly
-state that full-arm collision/path/physics have not yet been evaluated.
-
-Run the source-bound geometry experiment (new evidence directory required):
+Use ROS Humble plus NumPy, SciPy, Shapely, trimesh, python-fcl and OMPL. Planning
+can run offline; the live simulation adapter pauses its owned world while offline
+planning, rechecks actual held state, then resumes before sending trajectories.
+This is simulation clock management, not a hardware holding-time claim.
 
 ```bash
 source /opt/ros/humble/setup.bash
-python3 research/uld_upper_layer/feasibility.py \
-  --scene-dir /tmp/uld_upper_layer_scene_v1_aligned \
-  --evidence /home/adamliao/work/elfin_humble_ws/docs/status/evidence/uld_upper_layer_v1/NEW_GEOMETRY_RUN
+python3 -m unittest discover -s research/uld_upper_layer/tests
+python3 research/uld_upper_layer/request_planner.py \
+  --request "$REQUEST_JSON" --scene-config "$SCENE_YAML" \
+  --config "$UPPER_YAML" --execution-policy "$EXECUTION_YAML" \
+  --evidence "$PRIMARY_EVIDENCE_NEW_DIRECTORY"
 ```
 
-This does not drive ROS or change simulation objects. The sparse ideal snapshot
-represents dynamic lower-cargo occupancy; static hull/platform/robot collision
-models remain mandatory additional inputs for whole-arm planning. A reported
-geometry candidate is not an executable plan.
-
-## Whole-arm and physical integration (in progress)
-
-The single plan remains `docs/plans/ULD_UPPER_LAYER_V1.md`. All new evidence goes
-into the primary workspace, never this worktree. Install native dependencies in
-an isolated environment, retaining the ROS Python packages:
-
-```bash
-python3 -m venv --system-site-packages /tmp/uld-upper-python
-/tmp/uld-upper-python/bin/pip install -r research/uld_upper_layer/research_requirements.txt
-source /opt/ros/humble/setup.bash
-/tmp/uld-upper-python/bin/python -m unittest discover -s research/uld_upper_layer/tests -q
-/tmp/uld-upper-python/bin/python research/uld_upper_layer/motion_feasibility.py \
-  --scene-dir /tmp/uld_upper_layer_scene_v1_aligned --capture-only \
-  --evidence /home/adamliao/work/elfin_humble_ws/docs/status/evidence/uld_upper_layer_v1/NEW_CAPTURE
-```
-
-Capture launches the existing headless controlled robot, observes settled cargo
-and actual joints, and tears down its own launch. `--observation <observation.json>`
-replays that ideal input offline; add `--plan-paths` for connected stage search.
-`--config <yaml>` reads runtime configuration. Geometry proposals may be reused
-with `--candidates <candidates.json>` only when snapshot, configuration and
-geometry source hashes match; full-arm paths are always recomputed.
-
-The private FCL scene uses the original source robot/tool and physical ULD
-meshes, actual platform collision geometry and observed lower cargo. Historical
-SRDF `Never` pairs do not exempt sensors from moving-arm checks. Only adjacent
-links and fixed assemblies are excluded. Mesh queries use conservative AABB
-bounds for distant pairs, then exact FCL checks near the margin. Recorded lower
-bounds are not exact minimum-clearance scores. Free joint intervals can be
-certified by conservative Lipschitz bounds; Cartesian controller interpolation
-is checked at the configured point-travel bound. Watchdog failures preserve the
-native query, input, seed and stage trajectory, and never count as solutions.
-
-`controller_io.py` provides the actual FollowJointTrajectory boundary but is not
-yet invoked by the feasibility entry. Connected nominal plans, contact/release
-calibration and physical pushing are separate evidence gates. No current stage
-result establishes complete physical feasibility or real-camera performance.
-
-For the native contact diagnostics, build a separate copy of the official 6.18
-Physics system, with only its contact-message conversion augmented:
-
-```bash
-python3 research/uld_upper_layer/native/build_observed_physics.py \
-  --output /tmp/NEW_observed_physics_build
-python3 research/uld_upper_layer/scene.py --output /tmp/NEW_contact_scene \
-  --physics-plugin /tmp/NEW_observed_physics_build/build/libuld_upper_observed_physics.so
-```
-
-The builder pins the upstream release commit and verifies all source hashes. It
-writes a patch/build manifest and never installs into the system. Default Gazebo
-contact messages lack normal/depth here; an absent field must remain unverified.
-Both observed poses and contacts are compressed JSONL. The source and fixture
-are explicit ideal-input diagnostics, not real camera output. Reusing geometry
-while changing only search/path time budgets explicitly rebinds configuration
-and candidate IDs; every other configuration mismatch rejects cache reuse.
-
-
-The ideal-vacuum adapter is a separate research plugin. It creates a native
-detachable fixed joint at the observed wrist-to-box relation. The physics engine
-carries the mass; this plugin never commands payload poses, velocities or forces.
-Attachment requires the caller to verify the ideal cup seal-frame gap/footprint.
-The source CAD rigid p04 face lies behind that seal frame and is independently
-derived for pushing. Detachment removes the joint, changes no collision masks or
-gravity, and acknowledges a processed command rather than only a queued request.
-It does not validate real suction holding force. Build and rehearse explicitly:
-
-```bash
-cmake -S research/uld_upper_layer/native -B /tmp/NEW_vacuum_build
-cmake --build /tmp/NEW_vacuum_build -j2
-python3 research/uld_upper_layer/scene.py --output /tmp/NEW_vacuum_scene \
-  --physics-plugin /tmp/NEW_observed_physics_build/build/libuld_upper_observed_physics.so \
-  --vacuum-plugin /tmp/NEW_vacuum_build/libuld_upper_vacuum.so
-/tmp/uld-upper-python/bin/python research/uld_upper_layer/wiring_rehearsal.py \
-  --scene-dir /tmp/NEW_vacuum_scene \
-  --evidence /home/adamliao/work/elfin_humble_ws/docs/status/evidence/uld_upper_layer_v1/NEW_WIRING
-```
-
-The rehearsal verifies two distinct processed detach acknowledgements, zero
-payload pose commands and a real controller hold within 1mrad. This is unscored
-wiring evidence, not a pick, release stability or physical push result. The
-fixture verifies source/binary hashes before launch and owns stack teardown.
-`ompl_range_rad` controls free-motion RRT expansion in runtime YAML. Sampled
-push endpoint screening precedes the expensive pick/carry prefix; only identical
-snapshot, box, push poses, configuration and ordered IK seeds reuse a negative
-screen. A failed sampled screen is not a proof of unreachable geometry.
-
-
-Whole-action search backtracks sampled pick joint branches after downstream
-failure, instead of freezing the first reachable pick posture. Each attempt
-starts from the same observed home state and shares the action deadline;
-accepted pickup endpoints alone never count as complete plans. Geometry search
-flushes candidate/subsearch inputs incrementally and checks its deadline inside
-subsearches. The occupancy broadphase proves distant AABB separation before
-running the unchanged OBB SAT on near objects.
-
-
-`motion_bounds.py` derives each body's joint point-travel radii from downstream
-source origin translations and actual collision vertices. Attached payload
-radii include the TCP-to-box offset. Relative pair bounds cancel shared ancestors;
-unknown bodies reject instead of silently receiving static zero motion. These
-bounds certify whole intervals without changing the required collision margin.
-
-
-RRT solutions retain a Python copy of the original, fully certified path before
-native simplification. An edited path replaces it only if every returned edge
-has a valid interval proof; otherwise the original certified path is retained.
-Pre/post path states and edge-proof status are stage diagnostics. Runtime
-`path_simplification_budget_s` defaults to0.5s (0 disables it); certificate queries
-honor that same phase deadline. Geometry and connected-path search share the
-outer deadline, and a timed-out worker's late result never counts as a solution.
-
-
-The native ideal-vacuum state now also exports actual post-physics joint
-positions and payload/wrist world poses for failure replay. It remains
-observational after detachment. The wiring rehearsal compares native wrist FK
-against the source world transform and rejects missing joint observations.
-`sim_model_contract.py` reads the actual spawned SDF and records the exact panel
-collision identity/mask; a model-definition pass does not prove real contact.
-Per-entity pose timestamps are retained separately for later freshness checks.
-The single plan's G12 section calibrates the physical existence experiment to
-600 simulation seconds/1800 wall seconds after measuring a309.3s nominal plan;
-all collision, support and stability requirements remain mandatory.
-
-`physical_probe.py` performs an unscored real-controller hold, or selects a
-complete scored nominal plan from a `motion_feasibility.py --plan-paths` evidence run:
-
-```bash
-/tmp/uld-upper-python/bin/python research/uld_upper_layer/physical_probe.py \
-  --scene-dir /tmp/NEW_vacuum_scene \
-  --planning-run /home/adamliao/work/elfin_humble_ws/docs/status/evidence/uld_upper_layer_v1/NEW_SEARCH \
-  --evidence /home/adamliao/work/elfin_humble_ws/docs/status/evidence/uld_upper_layer_v1/NEW_PHYSICAL_PROBE
-```
-
-Omit `--planning-run` for the monitor hold. Reuse requires source/model equality
-and fresh initial-state revalidation, never blind replay. Runtime thresholds load
-from `execution_policy.yaml` (override with `--policy`) without compilation.
-The observer records near-contact geometric overlap, anti-tip hull and native
-contact points separately; pressure-bearing area is unavailable. Native joint,
-payload and contact-component observations share a physics-step stamp, including
-empty contacts. A bounded history supplies ordered monitor samples; stale streams
-and real native gaps still reject. ROS clock capture has its own observation-only
-executor, independently of action feedback. Failures preserve stage/window data
-and always tear down the owned stack. Complete nominal path scoring and
-collision-first selection are implemented; robust tube, release calibration
-and five-seed campaign remain separate unfinished acceptance gates.
-
-`push_seam_events.py` locates continuous footprint-overlap entry/exit progress
-for each rectangular source surface using translating-polygon SAT. Scoring
-records these events, source IDs, actual source heights and nominal bottom/top
-gaps. Events are diagnostics for contact-model/tube development, not a new
-contact exemption or stability proof; raised patches are retained too.
-
-`payload_envelope.py` encloses all box-vertex projections for an SO(3) error
-ball about the box centre and a bounded translation. It returns separation
-lower bounds; overlapping projections mean unproved, never observed collision.
-`payload_tube.certify_payload_noncontact_tube` combines those bounds with the
-existing source joint-motion bounds over complete interpolation intervals.
-Push translations lie perpendicular to travel; other released-box stages use
-a full 3D ball. Bounds come from the immutable execution policy, including
-roll/pitch/yaw rotation error. Results identify the translation model, error
-frame, numeric enclosure and input/model/policy/plan identities. Missing
-undeclared pairs, stale inputs, deadline or an insufficient bound fail closed.
-Declared support/panel pairs are inventoried and explicitly not evaluated for
-uncertainty; the result always has `execution_admitted=false`.
-
-`envelope_planning.FreeBoxEnvelopeScene` feeds the tightened noncontact distance
-rows into the existing OMPL joint-motion interval validator for fixed free-box
-routing. It rejects attached boxes or mutation of the fixed box during a route.
-The independent validator uses a plain `FullArmScene` afterwards. This is a
-research route-repair component used by the joint-search preparation below;
-contact-conditioned whole-tube admission remains unfinished. It neither moves
-the simulated box nor changes a source mesh/contact exception.
-
-The joint-search worker now runs `free_box_validation.prepare_free_box_motion`
-before full-path scoring. Producer stage records declare motion kind, fixed or
-moving box model and the fixed box pose; those fields participate in the plan
-digest. Only a declared fixed-world, no-contact joint route can be rerouted,
-once per failed stage, without changing endpoints. Cartesian stage semantics
-are retained. Repaired paths are independently rechecked in a plain source
-scene before scoring. Original nominal paths, preparation results and route
-boundaries remain durable if any later phase fails.
-
-`motion_feasibility.py --execution-policy <yaml>` loads and archives the same
-immutable policy used for uncertainty bounds. Selection requires a complete,
-current noncontact certificate as well as a score; `physical_probe --policy`
-must match that policy revision and archive hash. Missing, stale, partial or
-undersized envelopes cannot be counted as solutions. This integration still
-provides no intended-contact uncertainty or whole-action execution admission.
-
-Native physical probes archive contacts once in vacuum_state.jsonl.gz; legacy
-contact topic capture is used only without the native fixture. Failure trigger
-windows are lossless trigger_window.jsonl.gz (historical cases may be plaintext).
-The external execution policy reserves failure_capture_reserve_bytes within
-max_case_bytes; the runtime checks the sum of all case files before consuming
-the reserve. Intended push/support normal tolerance comes from UpperConfig;
-native checks also enforce the execution policy's stricter normal limit.
-
-For physical probes, native callbacks remain full rate. Every native physics
-step validates the declared lower/panel contact rules through the shared
-`contact_validation.py`; missing steps/history fail closed. Complete FCL,
-support and motion checks retain the configured monitor period. This is not
-a full-arm/full-world check at every physics step. Native contact coverage,
-initial cursor and step gaps are counted separately; failure windows use the
-actual offending raw stamp. `monitor.jsonl.gz`
-includes each accepted decision's exact `input_observation`; the native archive
-baseline uses the monitor period and `_trigger.jsonl.gz` retains the complete
-raw pre/post failure window. `native_capture_metrics.json` reports coverage and
-gaps. `--capture-rehearsal` deliberately fails after a hold to verify this path;
-it cannot execute a nominal plan and never represents upper-action success.
-
-`scene.py --contact-profile <yaml>` configures generated boxes/floor material.
-The default `fixture_material.yaml` preserves the original null friction
-direction. An explicit unit vector is in each collision's material frame,
-independent of a target trajectory; the fixture archives the parsed material
-and profile hash. It changes simulation contact properties, never box poses
-or controller feedback. Controlled comparisons must state the material profile.
-
-`edge_contact_diagnostic.diagnose_support_edge` describes contact near a box's
-bottom leading edge and a lower box's top approach edge, for horizontal rigid
-cuboids with face-aligned travel. Inputs are material bounds, container-absolute
-poses/point/normal/direction and existing tolerances. Output retains the unchanged
-strict point-predicate result, material edge distances and both edge normal-cone
-checks. A geometric transition candidate can still jam; this offline diagnostic
-always returns `execution_admitted=false` and is not connected to selection or
-execution. It neither introduces a contact exception nor proves a contact tube.
-
-`release_fixture.source_tool_link` exports every source rigid-tool collision at
-its original material transform and welds source inertials by the parallel-axis
-theorem. `release_carriage_model` mounts this link on two force-controlled
-prismatic joints, whose positive axes are container +X/+Z regardless of tool
-yaw. `release_fixture.yaml` supplies carriage mass/inertia, controller gains and
-joint limits without recompilation. The fixture is for independent release
-calibration; it proves neither arm reachability nor physical release stability.
-Native attachment, observation/capture wiring and live calibration are pending.
-Public-command help smoke tests load each CLI without starting simulation.
-
-`release_scene.write_release_scene` binds one release case to the original
-standalone world and an independently built native-vacuum library. It preserves
-source lower boxes, ULD and physics; it only places the initial payload and adds
-the carriage. Explicit native joint names and same-step observed-model poses
-serve the two-axis fixture. Optional initial native attachment prevents IPC
-discovery delay from becoming an accidental pre-test fall. Existing arm scenes
-retain their original default joint list and explicit attachment requests.
-`release_rehearsal.py` checks a short attached hold with lossless native capture
-and owned teardown. It requests neither joint motion nor release and supplies no
-release-stability, arm-reachability or full-action verdict.
-
-`ReleaseObservationReader` consumes one native carriage frame and emits an
-immutable `ReleaseObservation`: box geometric-centre/tool poses are container
-absolute; joint displacement is two metres-valued X/Z entries, never six arm
-angles. Lower poses and contacts share the native stamp. It rejects missing
-state/contact geometry, changed lower identities, malformed poses and payload
-commands. The arm and carriage readers share signed payload-contact decoding.
-The transport owner must separately check stream continuity and clock age.
-
-`inspect_release_start` combines the existing observed-support geometry and
-strict material-face/normal/depth rule. `ReleaseReadyWindow` owns one immutable
-baseline per fresh case/stream and requires an uninterrupted configured dwell.
-`CalibrationReadyWindow` is explicitly for the independent below-policy
-workload: it preserves failed area/COM policy checks, always returns
-`ready=false` and exposes `calibration_ready` separately. Contact, attachment,
-lower-motion and stable-dwell limits remain enforced. Neither grants execution
-admission or reports pressure/weight distribution.
-
-`make_release_withdrawal` consumes the measured carriage start and runtime
-planning/execution/fixture policies. It returns immutable downward/outward
-quintic joint-reference stages, source-frame tool endpoints, sampled positions/
-velocities and analytic speed/acceleration bounds. Geometry distances, timing,
-rail limits and sampling derive from those policies. Collision certification,
-native detach acknowledgement, actual tracking and post-withdraw stability
-remain required consumers; generated references are never executable arm plans.
-
-Release worlds add a contact sensor for each source tool collision. Optional
-native `observed_parent_collision` rows export same-step component availability
-and complete contacts, including empty values. Supplying that full list to
-`ReleaseObservationReader` makes missing components fail closed and produces
-immutable tool contacts with signed normals toward the observed collision.
-Without the list, old recordings explicitly have incomplete tool coverage.
-
-`native/uld_carriage_joint_command` is a persistent two-Double publisher. Its
-stdin protocol is `sequence x z`; it waits for both subscribers, validates the
-message and acknowledges publication. `CarriageCommandPublisher` owns one
-process per fixture run, checks configured rail bounds and records requests/
-responses with their observation stamps. Acknowledgements always leave tracking
-unconfirmed. Actual controller feedback and certified trajectories remain the
-consumer's responsibility; neither adapter can command a payload or attachment.
-
-`release_collision.ReleaseCollisionScene` certifies only the nominal two-stage
-carriage withdrawal against the observed frozen payload/lower poses and every
-static source collider. It verifies the original tool part set and transforms,
-carriage joint axes, lower SDF sizes (including the original `.9g` serialization),
-and the sampled monotone joint path's binding to the measured start and tool
-endpoints. FCL distances use a 1um research numerical enclosure. Adaptive
-interval subdivision bounds translation between checks, so clear endpoints
-alone cannot pass an intervening obstacle. The original p04 seal interface
-during downward separation uses strict whole-part separation below the box
-bottom; other pairs and the outward stage retain the configured 5mm margin.
-A result binds observation, motions, model/world/config hashes and always keeps
-`execution_admitted=false`: moving-body feedback, controller tracking, detach
-confirmation, error envelopes and post-withdrawal stability remain independent
-requirements. This is not a six-joint arm or production collision certificate.
-
-`release_trial.py` runs one non-scored independent carriage calibration.
-`ReleaseRuntime` owns the only Gazebo process, a separate clock stream, full
-native capture and a bounded ordered queue. It checks stale streams even when
-the queue is empty. `ReleaseExecutionMonitor` checks every delivered native
-step for signed bottom/top support contacts, unexpected tool contact, box and
-lower motion, attachment state and actual tool tracking. Full observed geometry
-and support are checked at the execution policy period; nominal continuous
-checking remains a separate prerequisite. `release_motion_policy.yaml` exposes
-the fixture tracking/endpoint tolerances without recompilation. These observed
-checks do not certify a continuous tracking error envelope or arm admission.
-
-The runner first establishes a settled attached state, publishes a hold at the
-measured joint position, requires another full stable dwell, freezes inputs and
-checks nominal withdrawal, confirms native detach and then sends the sampled
-down/out references. This measured hold avoids jumping toward the old zero
-target after unloading. Complete tool withdrawal precedes the independent
-stability window. Failures request a measured-position hold and preserve the
-postwindow before owned teardown. Pressure/load sharing is never inferred.
-
-`write_release_scene(..., scheduling_real_time_factor=...)` can change wall-clock
-pacing while preserving the physics step and every source collider/material.
-This optional explicit profile field is recorded in scene metadata; default
-construction preserves source pacing. The first trial uses0.25 because the
-measured 2000-step observation replay requires3.74s of wall time for2s simulated.
-
-Clock domains are explicit: `observation_max_age_s` limits simulation-stamp
-backlog against the independently received clock/latest native stamp. It is
-not a wall silence limit. A halted clock/native stream uses the existing
-`condition_wait_budget_s` wall budget, and failure snapshots retain both ages,
-simulation stamps and queue depth. A physics pause advances no cargo or
-simulation age; it must not fail solely because wall time exceeds100ms.
-
-`release_calibration` owns the configurable54-unit workload and frozen outcome
-values, not a controller or ROS session. Its catalog uses the original snapshot/
-assets/config to enumerate each support ratio, orientation and repetition.
-`CalibrationEnrollment` explicitly binds campaign/workload/case/attempt/world
-identities; `release_trial.py --calibration-enrollment <json>` validates this
-before constructing a simulator and retains it in the run manifest. A pilot
-without this binding cannot be counted as a matrix repetition.
-
-`assess_attempt` consumes a case plus durable evidence and expected campaign/
-workload IDs. It verifies artifact hashes and complete capture/teardown before
-reading the verdict. Stable requires actual detach, both completed motions and
-the independent stability replay. Unstable requires an independently replayed
-first detached, tool-contact-free instability witness; an error message alone
-is insufficient. Geometrically unavailable, pending and unmeasured failures
-remain distinct; all outputs keep `execution_admitted=false`. Assessment values
-are immutable; the campaign owner owns the case-to-attempt ledger and must not
-count two attempts of one repetition as two independent samples.
-
-## Request-driven planner
-
-`placement_request.PlacementRequest` is the ROS-free request owned by the caller.
-It binds box dimensions and geometric-centre pose, current six joint angles,
-immutable OCC/surface snapshot, explicit final box poses and allowed support IDs.
-All poses use **container_link absolute coordinates**; height is not floor-relative.
-`confirmed_box_T_tool` is mandatory only for `start_attached=True`. That mode
-fixes the actual grasp and starts at the provided current joints; it never repicks.
-The current family accepts inverted axis-aligned boxes on coplanar rectangular
-support patches, with +container-X insertion. Under the configured container yaw
-this puts the long edge along base Y and insertion along base -Y for yaw=0/180.
-Other orientations return an explicit unsupported-family reason.
-
-`request_planner.UpperPlacementPlanner.plan(request, evidence, seed)` owns a private
-scene and bounded workers. It generates multiple exact-target handoff/grasp/push
-candidates, plans connected joint/Cartesian stages, time-parameterizes them,
-certifies swept collision geometry, validates free-box noncontact envelopes and
-ranks complete plans by collision clearance before support. It reads YAML anew
-per call, including the 20mm COM support margin; no rebuild is needed.
-It stops at target3 or budget exhaustion, with minimum1. `valid` means complete
-scored nominal plans; real contact uncertainty and physical success remain separate.
-No path or simulator object pose is injected from previous successful experiments.
-
-The request is serializable with `dataclasses.asdict`; reconstruct with
-`request_planner.request_from_record`. The result directory contains request,
-inputs, candidates, per-action stage traces and certificates, plans and selection.
-Plans are immutable after scoring: changing trajectories invalidates their digest.
-The caller consumes the selected trajectory; `PhysicalExecutor` supports either
-the full12-stage chain or the already-attached9-stage suffix and requires live
-attachment for the latter. The standalone `physical_probe.py` starts a new scene and rejects an unattached
-state for an attached plan. Its explicit `--initialize-pick` experiment option
-starts at a source-IK seal pose on the pickup platform, performs actual vacuum
-attachment and a certified controller lift, and captures the resulting state.
-It does not validate the home-to-pick route or command a cargo pose. A live
-production caller supplies its already-attached runtime directly.
-
-```bash
-source /opt/ros/humble/setup.bash
-OPENBLAS_NUM_THREADS=1 /tmp/uld-upper-python/bin/python \
-  research/uld_upper_layer/request_planner.py \
-  --request /absolute/request.json \
-  --scene-config src/luggage_description/config/scene_tf_deploy_update.yaml \
-  --evidence /home/adamliao/work/elfin_humble_ws/docs/status/evidence/uld_upper_layer_v1/NEW_RUN
-```
-
-Scene configuration is explicit and included in the model identity. The physical
-consumer rechecks its hash and passes the same configuration to scene launch.
-Request lifetime ends when its snapshot, grasp, current joints or policy changes;
-request a new plan rather than editing a scored result. Failure output retains
-all rejected boundaries; no result is admitted on a worker timeout.
-
-Measured attachments retain their complete transform, including small lateral
-and angular deviations. Sampling orientations only organize candidate search;
-all handoff/pick tool poses and whole-tool collision checks use the confirmed
-transform exactly. The measured seal footprint must fit the box with the source
-edge allowance minus the existing contact-pose tolerance. Long-edge alignment
-with insertion is enforced by the target family.
-
-`action_screen.screen_handoff` screens full attached endpoints before expensive
-pick routing. `free_transfer.outside_reorientation` derives an exterior turn
-location from the actual aperture and full-tool bounding radius. Its retreat,
-rotation and approach legs are IK/collision checked and included in the same
-timed trajectory and interval certificate; no additional cargo contact is added.
-The final executor checks current joints/box against the scored start and
-requires actual support/contact plus stable separation at completion.
-
-Constrained pushes are back-seeded from collision-screened final joint branches.
-The hypothetical world-box pose moves backwards with the TCP during that search.
-Only a branch connected through the complete push and contact approach is exposed
-as an entry goal for free motion. Whole-path integer-turn shifts select a source
-joint-limit-valid winding near the withdrawal state; individual samples are never
-wrapped. The actual forward cubic trajectory and moving-box sweep are still
-certified before admission.
-
-| Boundary | Input | Output / consumer |
-| --- | --- | --- |
-| `PlacementRequest` | geometric-centre box transform/size/COM, immutable snapshot, current joints, optional confirmed grasp, exact final transforms, support IDs | validated frozen request for `UpperPlacementPlanner` |
-| `target_actions` | request, source assets, runtime policy | multiple coupled grasp/handoff/push actions and geometric rejection counts |
-| `plan_action` | one action, measured start, private collision scene | connected timed stages plus certificates, or preserved stage failure |
-| `rank_nominal_plans` | complete certified plans and current model/policy identities | collision-first selection, target/minimum counts and rejected-plan reasons |
-| `PhysicalExecutor` | selected immutable plan and live observation/controller/attachment | monitored physical completion or explicit abort; never moves a cargo pose directly |
-
-`UpperPlacementPlanner` stores only dependency paths; scenes, search seeds and
-worker state are private to one call. `plan()` returns `plans` and `selection`
-as well as bounded summary metadata. Public configuration is runtime YAML; a
-request captures a single revision so a mid-request edit cannot silently change
-its certificate. A new observation, grasp or start state requires a new request.
-
-Units at this boundary are metres for box sizes, COM offsets and transform
-translations, and radians for `start_q`. A transform maps the named local frame
-into its parent: `container_T_box` maps the geometric-centre box frame into
-`container_link`; `box_T_tool` maps `suction_contact_frame` into the box frame.
-Neither a final box goal nor a support patch is a TCP goal. TCP poses are derived
-from the box transform and grasp relation inside candidate planning. Surface
-patch `bounds_xy` is `(xmin,ymin,xmax,ymax)` and `surface_z_container` is absolute;
-selected support IDs do not remove unselected OCC obstacles from collision checks.
-
-`physical_probe.py --planning-run RUN --initialize-pick INITIALIZER --replan-live`
-uses RUN's request as the target/support template, initializes the actual grasp,
-and recomputes its start snapshot, joints and measured grasp in the same running
-simulator. `live_planning.plan_while_held` runs the planner in an owned subprocess
-while the parent keeps native contact/lower-cargo monitoring active. It sends no
-hold or cargo pose command, and rejects drift using the existing initial-state
-thresholds. The newly scored action is rebound only at an attached planning hold.
-`plan_artifact.load_scored_plan` validates both offline and live scored artifacts;
-the online plan, not its template, is the executed trajectory. This experiment
-entry point avoids assuming that restarting a loaded robot reproduces the exact
-joint state of an earlier snapshot.
-
-Physical feasibility also needs payload mass. `BoxState.mass_kg` is optional for
-geometric studies and required when `payload_effort_screen_enabled` is true.
-The ideal fixture adapter reads its actual configured mass. `payload_dynamics`
-uses source URDF masses/COMs, joint axes, effort limits, friction and damping;
-it rejects sampled quasistatic gravity demand beyond the remaining effort
-budget. `payload_effort_reserve_nm` and `payload_effort_joint_step_rad` are runtime
-parameters. Timing bounds damping demand by that reserve. This is not full
-inverse dynamics or a claim about unmeasured real actuator torques.
-
-`carry_collision_margin_m` adds configurable clearance to free attached carry;
-the effective value is at least `collision_margin_m`. Intended support/contact
-stages keep their original contact contracts. Whole constrained-chain winding
-variants preserve source joint limits and geometry; free carry can select a
-different route for each variant rather than assuming endpoint reachability.
-
-The standalone `--live-request REQUEST.json` entry point needs `--scene-config`,
-`--config` and `--initialize-pick`. It uses the requested target/support geometry,
-then captures the actual box and grasp in the same simulator. Offline computation
-runs with the owned physics clock paused and restores it before any trajectory
-submission, including on failures. No pose/controller target is changed by clock
-control. `planning_clock_control.jsonl` records every request/response.
-Before a complete placement experiment, `--planning-pause-rehearsal` exercises
-the real clock service, held attachment and resumed native stream without a
-placement trajectory. Native observation publication occurs only on unpaused
-physics steps: Gazebo also calls `PostUpdate` while paused, when cached poses
-can refresh without a new physics timestamp. Clock-service waits continue
-draining observations; missing native steps and conflicting states still fail.
-
-Controller commands and aligned reference/feedback are archived separately.
-Feedback subscriptions retain the newest sample; native contact capture remains
-at every physics step. `controller_tracking_error_rad` in execution policy adds
-a position-tracking stop without joint current, torque or tactile feedback.
-Feedback has a dedicated read-only ROS executor, independent of the command
-thread's collision/contact checks. `--feedback-hold-seconds 60` rehearses that
-wiring with an initialized pick and no placement input. Summary tracking metrics
-record the number of checks, maximum feedback age and maximum position error.
-Tune `joint_speed_scaling` to measured tracking capability; source speed limits
-alone do not establish the controller's tracking accuracy. A longer engineering
-time/capture budget is separate from collision, support and tracking thresholds.
-Likewise, pace offline physics to the measured mesh-check throughput; preserve
-the native integration step and simulated trajectory timing. This is a compute
-profile, not evidence of real-time hardware readiness. The diagnostic
-`failure_capture_lag_s` retains raw states beyond the pre-window independently of
-`observation_max_age_s`. A monitor failure triggers raw capture before controller
-cancellation; delayed or invalid observations still need durable failure data.
-`monitor_timing.jsonl.gz` and its metrics distinguish slow collision checks,
-observation writes, total callback wall/thread CPU time and cyclic-GC pauses.
-These bounded diagnostics do not change collection policy or physics.
-Source actuator parameters, collision thresholds and material properties are
-not changed to accommodate a failed motion.
+`physical_probe.py --live-request` uses the same request schema and controller
+execution. Its simulation pick initializer starts at a fixture seal pose and
+performs a real lift; it does not claim home-to-pick planning. Test scenes, native
+plugin builds, the actual experimental profile, source hashes, failed windows
+and execution reports are linked from the sole plan and primary role note.
+
+Legacy `run.py` / `action.py` are the original geometry-only workspace study;
+the request-driven public chain is `placement_request.py` -> `request_planner.py`
+-> `plan_artifact.py` -> `physical_executor.py`. They must not be confused.
+
+The checked single-case settings are `profiles/nominal_physics_planning.yaml`
+and `profiles/nominal_physics_execution.yaml`. They explicitly request one
+complete plan, enable source-mass screening and E-EDGE1, use slow controller
+motion, and reserve 750MB for actual traces. This is an experimental profile,
+not a replacement for production configuration. Default configuration still
+requests up to three complete schemes and keeps strict support contact.
+
+Case10 at source `14e6f73a` completed all nine controller stages in native
+physics and the final stable dwell. Independent final error was about 1.22 mm;
+maximum observed lower-body translation 1.39 mm (policy 3 mm). Thus "lower stationary"
+means no commanded lower movement and drift within the declared tolerance,
+not mathematically zero physical movement. One ideal-input case establishes no
+success rate. Formal release calibration, contact error tubes and reliability
+campaign remain open; hardware execution is not qualified by this result.

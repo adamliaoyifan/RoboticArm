@@ -6,7 +6,7 @@ This monitor neither changes cargo poses nor supplies force/torque feedback.
 """
 from collections import deque
 from contextlib import nullcontext
-from dataclasses import asdict,is_dataclass
+from dataclasses import asdict,is_dataclass,replace
 import json
 import time
 import numpy as np
@@ -104,7 +104,8 @@ class ExecutionMonitor:
                 raise ValueError('EDGE_LIMITS_EXCEED_SUPPORT_LIMITS')
             from push_edge_transition import PushEdgeTransition
             self._edge_transition=PushEdgeTransition(self._action,self._state.dimensions,
-                self._scene.snapshot.surfaces,self._policy)
+                self._scene.snapshot.surfaces,replace(self._policy,contact_normal_alignment_deg=
+                    min(self._policy.contact_normal_alignment_deg,self._config.contact_normal_alignment_deg)))
         self._scene.support_edge_validator=(self._fcl_edge_contact if name=='push' and self._edge_transition else None)
         self._phase=name;self._contact_mode=contact_mode
         self._expected_attached=attached;self._allow_support=allow_support

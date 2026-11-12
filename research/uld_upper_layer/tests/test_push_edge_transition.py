@@ -60,6 +60,23 @@ class PushEdgeContracts(unittest.TestCase):
                          'NATIVE_CONTACT_OUTSIDE_DECLARED_SUPPORT')
         self.assertFalse(ExecutionPolicy.load().push_edge_transition_enabled)
 
+    def test_monitor_uses_stricter_config_normal_limit(self):
+        import io
+        from collections import deque
+        from execution_monitor import ExecutionMonitor
+        normal=(-float(np.cos(np.deg2rad(.75))),float(np.sin(np.deg2rad(.75))),0.)
+        self.assertTrue(self.classify(normal=normal))
+        monitor=ExecutionMonitor.__new__(ExecutionMonitor)
+        monitor._policy=self.policy
+        monitor._config=replace(UpperConfig.load(),contact_normal_alignment_deg=.5)
+        monitor._action=self.action;monitor._state=SimpleNamespace(dimensions=(1,1,.25))
+        monitor._scene=SimpleNamespace(snapshot=SimpleNamespace(surfaces=(
+            SurfacePatch('next',(.7,-.5,1.7,.5),1.),)))
+        monitor._sample=self.sample;monitor._trace=io.StringIO();monitor._push_history=deque()
+        monitor.begin_phase('push','push_plate',False,True)
+        self.edge=monitor._edge_transition
+        self.assertFalse(self.classify(normal=normal))
+
     def test_recurrent_contact_cannot_reset_timeout(self):
         self.assertIsNone(self.edge.observe(1., [('next',.00001)]))
         self.assertIsNone(self.edge.observe(1.8, []))
