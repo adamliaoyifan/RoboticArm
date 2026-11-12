@@ -901,3 +901,20 @@ tradeoff explicitly recorded. Unit tests exercise exact resource bound and
 legacy retention. Source of observed normal mismatch in diagnostic ranking is
 not yet changed; ranking remains only a proposal, native actual-envelope checks
 remain final authority.
+
+## Diagnostic44 full-pool ordering regression -- 2026-11-13T07:00+08:00
+
+Build64/install192 and101 offline cases pass. Readiness7.49s. First prepare
+SEARCH_INCOMPLETE70.11s, no product motion; all carry aperture IK attempts fail
+within the bounded8 branch pairs. Preserved request shows first targets moved
+to hull centre, contrary to intended deep preference. Source cause: the SAME
+retention helper also runs on untruncated full finite queries. Adding interior
+reservations reordered that whole pool before subsequent payload-clearance
+ranking; a centre falsely became the first clear packing goal. This was a
+regression in our64 repair, not evidence against the previous working deep route.
+
+Minimum correction: when limit>=candidate count, return the original order;
+only a genuinely truncating call diversifies. Add explicit full-capacity order
+check. All original failed raw/native inputs retained; teardown0. No blind
+repeat or geometry exemption. Freeze65 after the same focused tests and first
+verify the saved43 snapshot still chooses deep targets before interior reserve.

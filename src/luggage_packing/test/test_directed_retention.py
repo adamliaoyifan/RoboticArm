@@ -10,6 +10,7 @@ def test_each_heading_keeps_packing_preference_then_interior_then_shallow():
             rows.append(dict(candidate_id=f'{heading}-{name}',heading_theta=heading*math.pi/2,
                 center_container=[x,.01,.65],support_layer_z=0.,depth_m=x+.745))
     original=list(rows)
+    assert retain_directed_candidates(rows,len(rows))==original
     limited=retain_directed_candidates(rows,8)
     assert [r['candidate_id'] for r in limited]==[f'{h}-deep' for h in range(4)]+[f'{h}-interior' for h in range(4)]
     extended=retain_directed_candidates(rows,12)

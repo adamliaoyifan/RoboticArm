@@ -806,6 +806,10 @@ def retain_directed_candidates(candidates, limit):
     No new target or heading is invented here.
     """
     limit = max(0, int(limit))
+    # A full finite query must preserve packing order for downstream geometric
+    # ranking. Diversification is relevant only when this call truncates it.
+    if limit >= len(candidates):
+        return list(candidates)
     groups = {}
     for candidate in candidates:
         heading = round(float(candidate['heading_theta']) % (2 * math.pi), 8)
