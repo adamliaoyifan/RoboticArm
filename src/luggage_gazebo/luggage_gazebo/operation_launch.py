@@ -29,6 +29,23 @@ def server_render_engine(config):
     return engine
 
 
+def operation_perception_parameters(config):
+    """Retain the same acquisition for the composed, bounded operation window.
+
+    This is storage lifetime, not physical freshness or timestamp renewal.
+    Identity/model changes still revoke the owner's frozen evidence.
+    """
+    if config.get('planning_pipeline') != 'joint_operation':
+        return {}
+    from luggage_planning.joint_operation.preparation_profile import execution_observation_age_limit_ns
+    preparation = float(config['operation_prepare_budget_s'])
+    execution = float(config.get('operation_execution_budget_s', 600.))
+    if not math.isfinite(execution) or execution <= 0:
+        raise ValueError('FINITE_OPERATION_EXECUTION_BUDGET_REQUIRED')
+    return {'frozen_suction_lifetime_s':
+            execution_observation_age_limit_ns(preparation) / 1e9 + execution}
+
+
 def simulated_self_mask_error_bound(robot_xml):
     """Half a configured simulator range bin, never a real-sensor calibration.
 
@@ -161,6 +178,7 @@ def operation_composition(config, robot_xml, semantic_xml):
                         ('luggage_gazebo','luggage_planning','luggage_perception','luggage_description')},
         startup_authorizes_motion=False)
     manifest['operation_atlas'] = dict(status=atlas_status, parameters=atlas_parameters)
+    manifest['perception_policy'] = operation_perception_parameters(config)
     manifest['observer_self_mask'] = dict(geometry='actual_urdf_collision_shapes',
         scale=1.,padding_m=self_mask_error,padding_source='half_simulator_range_resolution',
         transform_time='cloud_acquisition',

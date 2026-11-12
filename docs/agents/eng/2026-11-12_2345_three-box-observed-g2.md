@@ -614,3 +614,26 @@ satisfy these product gates.
   map_changes.json,self_surface_residual.json,carried_voxel_review.json,
   latest_suffix47}. Raw source archive complete/no drops and failed-boundary
   O/full scene preserved; owned teardown0. Three-box gate remains open.
+
+## Diagnostic33 -- 2026-11-13T04:49+08:00
+
+- Explicit OGRE/8 refresh attempts startup8.04s; prepare111.02s;
+  actual seal/lift/carry pass, execution211.73s, but descent not submitted.
+  Boundary retain response refuses CURRENT_MEASURED_ACQUISITION_MISMATCH.
+- Direct cause: same frozen acquisition retained at preparation start expired
+  at the perception owner's300s storage lifetime before the post-carry check.
+  This occurred before reading latest O; eight refresh attempts remain untested.
+  Slow native search (27 checked connections/12 five-second deadlines) and
+ 148.4s carry consumed the formerly inconsistent lifetime, not proven collision.
+- Recommended repair: explicit joint composition derives storage lifetime from
+  its existing observation admission window plus execution budget:360+600=960s.
+  Original acquisition timestamp, physical freshness checks, identity/model
+  revocation and hard expiry remain; lookup/duplicate retain never renew time.
+  Legacy composition retains its existing default. Launch manifest records value.
+  Missing expected binding now names FROZEN_BINDING_UNAVAILABLE_OR_EXPIRED.
+- Focused behavioural checks:84 passed,16 environment-dependent skips, including
+  owner service lookup at310s for old/new lifetimes and strict final expiry.
+  Build49 passed; manifest-only change requires build50 before next live run.
+- Evidence: diagnostic33/{run/prepare/boundaries.jsonl,run/execution,reference,
+  run_manifest.json}; actual failure capture durable before owned teardown0.
+  Release, retreat, adoption and three-box gate still unachieved.

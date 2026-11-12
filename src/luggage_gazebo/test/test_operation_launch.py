@@ -2,6 +2,19 @@ import pytest
 from luggage_gazebo.operation_launch import validate_operation_selection
 
 
+@pytest.mark.parametrize('preparation,execution',[(300.,600.),(100.,540.)])
+def test_frozen_observation_storage_covers_composed_action_window(preparation,execution):
+    from luggage_gazebo.operation_launch import operation_perception_parameters
+    from luggage_planning.joint_operation.preparation_profile import execution_observation_age_limit_ns
+    config=dict(planning_pipeline='joint_operation',operation_prepare_budget_s=preparation,
+                operation_execution_budget_s=execution)
+    assert operation_perception_parameters(config)=={'frozen_suction_lifetime_s':
+        execution_observation_age_limit_ns(preparation)/1e9+execution}
+    assert operation_perception_parameters({'planning_pipeline':'legacy_segments'})=={}
+    with pytest.raises(ValueError):
+        operation_perception_parameters(dict(config,operation_execution_budget_s=float('nan')))
+
+
 @pytest.mark.parametrize('value',['ogre','ogre2','unknown','ogre --bad',''])
 def test_server_render_engine_selection_is_explicit_and_bounded(value):
     from luggage_gazebo.operation_launch import server_render_engine

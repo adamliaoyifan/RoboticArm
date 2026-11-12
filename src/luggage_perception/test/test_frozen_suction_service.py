@@ -99,6 +99,26 @@ def test_existing_binding_check_uses_frozen_owner_and_never_recreates_revoked_re
     assert not missing.retained,'must not recreate the revoked token from the current frame'
 
 
+@pytest.mark.parametrize('lifetime',[300.,960.])
+def test_bound_retention_window_expires_without_renewing_acquisition(handler_case,lifetime):
+    f=handler_case;now=[0.]
+    f.handler.store.clock=lambda:now[0]
+    f.handler.store.lifetime_s=lifetime
+    saved=f.call('retain',f.retain_request);assert saved.retained
+    request=copy.deepcopy(f.retain_request);request.expected_binding=saved.binding
+    f.current.context=None
+    now[0]=310.
+    result=f.call('retain',request)
+    assert result.retained is (lifetime>310.)
+    if result.retained:
+        assert result.binding==saved.binding
+    else:
+        assert 'FROZEN_BINDING_UNAVAILABLE_OR_EXPIRED' in result.reason
+    now[0]=lifetime
+    expired=f.call('retain',request)
+    assert not expired.retained and 'FROZEN_BINDING_UNAVAILABLE_OR_EXPIRED' in expired.reason
+
+
 def test_directed_queries_use_exact_frozen_samples_after_current_frame_disappears(handler_case):
     f=handler_case;saved=f.call('retain',f.retain_request);assert saved.retained
     f.current.context=None

@@ -794,7 +794,7 @@ def _launch_setup(context):
     _check_renderer()
     cfg = _resolved_launch_config(context)
     scene_tf_config = cfg["scene_tf_config"]
-    from luggage_gazebo.operation_launch import validate_operation_selection, operation_composition, operation_atlas_config, server_render_engine
+    from luggage_gazebo.operation_launch import validate_operation_selection, operation_composition, operation_atlas_config, server_render_engine, operation_perception_parameters
     render_engine = server_render_engine(cfg)
     complete_operation = validate_operation_selection(cfg)
     if complete_operation:
@@ -986,6 +986,7 @@ def _launch_setup(context):
             "use_semantic": use_semantic,
             "top_surface_mode": cfg["top_surface_mode"],
             "publish_suction_top_domain": complete_operation,
+            **operation_perception_parameters(cfg),
             "use_sim_time": True,
             "depth_topic": "/luggage/preprocessed/camera/depth/image",
             # The semantic chain (preprocessor 4-6 Hz + YOLO + point filter)

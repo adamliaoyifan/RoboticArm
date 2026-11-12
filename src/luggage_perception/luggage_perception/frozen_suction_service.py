@@ -43,6 +43,8 @@ class FrozenSuctionService:
             expected = (binding_from_message(request.expected_binding)
                         if request.expected_binding.binding_sha256 else None)
             context = self.store.lookup(expected) if expected else self.context_provider()
+            if expected is not None and context is None:
+                raise ValueError('FROZEN_BINDING_UNAVAILABLE_OR_EXPIRED')
             if context is None or request.domain_sha256 != context.domain_sha256:
                 raise ValueError('CURRENT_MEASURED_ACQUISITION_MISMATCH')
             require_matching_detection(context.domain,request.detection,generation=int(request.generation),
