@@ -1,0 +1,13 @@
+# Retained provenance only; not current motion permission.
+luggage_msgs/PickupViewPlanV2 plan
+float64 budget_s
+---
+bool current
+string reason
+luggage_msgs/DetectedLuggage detection
+luggage_msgs/SuctionTopDomainV2 top_domain
+luggage_msgs/FrozenSuctionObservationV2 frozen_observation
+luggage_msgs/SuctionSupportProbeV2 probe
+# Exact originally certified full private scene; CDR is immutable evidence.
+uint8[] checked_scene_cdr
+string baseline_scene_sha256

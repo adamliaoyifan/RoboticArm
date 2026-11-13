@@ -17,7 +17,7 @@ class ViewMotionCertificate:
 
 
 class NativeViewCertificationPort:
-    def __init__(self,node,model,*,velocity_limits,acceleration_limits,max_samples,recorder):
+    def __init__(self,node,model,*,velocity_limits,acceleration_limits,max_samples,recorder,rpc=None):
         from luggage_msgs.srv import ValidateRouteV2
         for limits in (velocity_limits,acceleration_limits):
             if len(limits)!=6 or any(not math.isfinite(v) or v<=0 for v in limits):
@@ -29,22 +29,31 @@ class NativeViewCertificationPort:
         self.service = ValidateRouteV2
         self.client = node.create_client(self.service,'/validate_route_v2')
         self.recorder = recorder
-        self.rpc = OperationRpc(self._record_message)
+        self.rpc = rpc if rpc is not None else OperationRpc(self._record_message)
 
     def _record_message(self,name,message):
         from rclpy.serialization import serialize_message
         if self.recorder:self.recorder(name,message if isinstance(message,bytes) else serialize_message(message))
 
     def certify(self,snapshot,leg,route_digest,*,deadline,cancelled):
+        from rclpy.serialization import serialize_message
+        try:
+            request,response=self.validate(snapshot,leg,route_digest,deadline=deadline,cancelled=cancelled)
+        except (ValueError,RuntimeError,TimeoutError) as error:
+            return ViewMotionCertificate(False,str(error))
+        return ViewMotionCertificate(True,'NATIVE_VIEW_PATH_CHECKED',
+            hashlib.sha256(serialize_message(request)+serialize_message(response)).hexdigest())
+
+    def validate(self,snapshot,leg,route_digest,*,deadline,cancelled):
+        """Return the exact independent request/response for the dispatch gate."""
         from moveit_msgs.msg import PlanningScene
-        from rclpy.serialization import deserialize_message, serialize_message
-        def refused(reason):return ViewMotionCertificate(False,reason)
-        if cancelled() or time.monotonic()>=deadline:return refused('CANCELLED_OR_DEADLINE')
-        if snapshot.model_hash!=self.model.model_sha256:return refused('VIEW_FK_MODEL_MISMATCH')
+        from rclpy.serialization import deserialize_message
+        if cancelled() or time.monotonic()>=deadline:raise ValueError('CANCELLED_OR_DEADLINE')
+        if snapshot.model_hash!=self.model.model_sha256:raise ValueError('VIEW_FK_MODEL_MISMATCH')
         # Bound interpolation work before allocating wire samples.
         count=sum(max(1,(b.time_from_start_ns-a.time_from_start_ns+MAX_CERT_SAMPLE_DT_NS-1)
             //MAX_CERT_SAMPLE_DT_NS)+1 for a,b in zip(leg.knots,leg.knots[1:]))
-        if count>self.max_samples:return refused('VIEW_CERTIFICATION_SAMPLE_CAP')
+        if count>self.max_samples:raise ValueError('VIEW_CERTIFICATION_SAMPLE_CAP')
         request=self.service.Request(request_id=leg.trajectory_request_id,
             scene_revision=snapshot.scene_revision,route_digest=route_digest,
             scene_digest=hashlib.sha256(snapshot.scene_cdr).hexdigest(),
@@ -53,12 +62,7 @@ class NativeViewCertificationPort:
             joint_velocity_limits=list(self.velocity_limits),joint_acceleration_limits=list(self.acceleration_limits),
             distance_stride=2**30,budget_s=max(0.,deadline-time.monotonic()),legs=[_wire_leg(leg)])
         self.rpc.cancelled=cancelled
-        try:
-            response=self.rpc.call(self.client,request,deadline,'view_certification')
-        except (RuntimeError,TimeoutError) as error:
-            return refused(str(error))
+        response=self.rpc.call(self.client,request,deadline,'view_certification')
         error=_valid_response(response,request,self.model.model_sha256)
-        if error:return refused(error)
-        # Native budget completion and exact request/response bytes bind the ID.
-        return ViewMotionCertificate(True,'NATIVE_VIEW_PATH_CHECKED',
-            hashlib.sha256(serialize_message(request)+serialize_message(response)).hexdigest())
+        if error:raise ValueError(error)
+        return request,response

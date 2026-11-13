@@ -27,6 +27,13 @@ def _joint_context(identity):
                            "", "", "robot_state")
 
 
+def operation_leg_from_message(message,context):
+    """Decode the dictionary-valued joint boundary into one immutable leg."""
+    record=joints_from_message(message.trajectory,context)
+    return OperationLeg(message.name,message.phase,record['request_id'],record['scene_revision'],
+        record['stamp_ns'],tuple(record['joint_names']),tuple(JointKnot(**point) for point in record['points']))
+
+
 def _pose_to_message(transform):
     message = Pose()
     for name, value in zip(("x", "y", "z"), transform.translation):
@@ -87,11 +94,7 @@ def operation_plan_from_message(message, expected_identity, expected_digest):
                                     for name in OperationIdentity.__dataclass_fields__})
     legs = []
     for leg in message.legs:
-        record = joints_from_message(leg.trajectory, _joint_context(expected_identity))
-        legs.append(OperationLeg(leg.name, leg.phase, record["request_id"],
-                                 record["scene_revision"], record["stamp_ns"],
-                                 tuple(record["joint_names"]),
-                                 tuple(JointKnot(**point) for point in record["points"])))
+        legs.append(operation_leg_from_message(leg,_joint_context(expected_identity)))
     plan = JointOperationPlan(
         identity, message.candidate_id, message.certificate_id,
         *(_transform_from_message(getattr(message, name)) for name in (

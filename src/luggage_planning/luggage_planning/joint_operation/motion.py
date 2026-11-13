@@ -197,6 +197,23 @@ class StrictOperationMotionPort:
         Exact native request/response, original timed knots, empty attachment and
         current source are required before the shared controller transport.
         """
+        if leg.name!='post_place_explore' or leg.phase!='retreat':
+            return MotionOutcome(False,True,False,'UNLOADED_POST_RELEASE_VIEW_REQUIRED')
+        return self._execute_empty_view(leg,model_sha256=model_sha256,
+            validate_current=validate_current,source_current=source_current,
+            read_joints=read_joints,deadline=deadline,cancelled=cancelled,on_dispatch=lambda:None)
+
+    def execute_pickup_view(self,leg,*,model_sha256,validate_current,source_current,
+                            read_joints,deadline,cancelled,on_dispatch):
+        """Separate pre-seal admission; use the same terminal-owned transport."""
+        if leg.name!='align' or leg.phase!='pick' or not callable(on_dispatch):
+            return MotionOutcome(False,True,False,'EMPTY_PRE_PICK_VIEW_REQUIRED')
+        return self._execute_empty_view(leg,model_sha256=model_sha256,
+            validate_current=validate_current,source_current=source_current,
+            read_joints=read_joints,deadline=deadline,cancelled=cancelled,on_dispatch=on_dispatch)
+
+    def _execute_empty_view(self,leg,*,model_sha256,validate_current,source_current,
+                            read_joints,deadline,cancelled,on_dispatch):
         from rclpy.serialization import serialize_message
         from luggage_description.frame_sequence_contracts import validate_joint_trajectory
         from luggage_planning.joint_operation.certification import _wire_leg,_valid_response
@@ -208,8 +225,8 @@ class StrictOperationMotionPort:
             return MotionOutcome(False,True,False,'SHARED_MOTION_BUSY')
         submitted=False
         try:
-            if leg.name!='post_place_explore' or leg.phase!='retreat' or leg.joint_names!=OPERATION_JOINTS:
-                raise ValueError('UNLOADED_POST_RELEASE_VIEW_REQUIRED')
+            if leg.joint_names!=OPERATION_JOINTS:
+                raise ValueError('CANONICAL_EMPTY_VIEW_JOINTS_REQUIRED')
             validate_joint_trajectory(leg.trajectory_record(),leg.trajectory_scene_revision)
             if not math.isfinite(deadline) or cancelled() or time.monotonic()>=deadline:
                 raise ValueError('CANCELLED_OR_DEADLINE')
@@ -232,6 +249,7 @@ class StrictOperationMotionPort:
             self._joints(read_joints,leg.knots[0].positions,self.start_tolerance_rad)
             if cancelled() or time.monotonic()>=deadline:raise ValueError('CANCELLED_OR_DEADLINE')
             if not self.client.server_is_ready():raise ValueError('CONTROLLER_NOT_READY')
+            on_dispatch()
             submitted=True
             return self._send_checked_goal(goal,leg,read_joints,deadline,cancelled)
         except Exception as error:

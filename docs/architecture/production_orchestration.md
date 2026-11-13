@@ -270,6 +270,29 @@ Unavailable, revoked, expired or changed-model evidence cannot issue PLAN_READY.
 `/joint_operation/prepare_pickup_view` is the read-only O adapter for this
 prerequisite. It accepts only the exact request/domain/query retained from this
 owner's `SEARCH_INCOMPLETE` response, under explicit non-renewing resource limits.
+
+The dedicated `/joint_operation/execute_pickup_view` Action is an empty pre-pick
+motion, composed with the same runtime/motion owner as complete operations. It
+internally prepares from actual joints, checks independently retained provenance
+through `/joint_operation/check_pickup_view`, and revalidates the exact path in
+the current full O/static/pickup scene. It must not write vacuum, attachments,
+maps or support. Fresh post-admission `/vacuum/state` receipt must report off and
+detached; the headerless transport signal does not certify physical contact.
+Timeout/cancel acknowledgement does not free motion ownership until the actual
+terminal controller/RPC result is consumed. Restart with unresolved journal holds.
+An unexpected vacuum-on or attachment signal after dispatch cancels the empty
+motion and retains task ownership for operator reconciliation, even after the
+controller terminates; no automatic loaded recovery or vacuum release follows.
+
+Each caller supplies a stable pickup task key and explicit count/total-time
+limits. A durable ledger starts time on first attempt, preserves limits and
+dispatch count through retries/restart, and forbids renaming the same acquisition
+to renew the budget. Planning consumes recovery time but not a motion unit;
+every controller dispatch attempt consumes a unit, even if rejected or cancelled.
+Zero disables; no measured production default is implied. A successful Action
+proves terminal empty motion and fresh joint settling only. The returned settling
+stamp is a lower bound for a later acquisition, never proof of new support,
+same-box identity, useful information gain or complete recovery.
 It reads the exact raw acquisition, checks a localized decision-relevant gap,
 re-admits the original placement on latest O content in the same epoch, and uses
 the same full static-world admission and collision-margin policy as whole-plan

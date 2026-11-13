@@ -186,13 +186,13 @@ class OperationRuntimePorts:
             deadline=self.deadline,cancelled=self.cancelled)
         return retained.retained is True
 
-    def scene(self):
+    def scene(self, *, deadline=None):
         from moveit_msgs.msg import PlanningSceneComponents as C
         request = self.scene_type.Request()
         request.components.components = (C.SCENE_SETTINGS|C.ROBOT_STATE|C.ROBOT_STATE_ATTACHED_OBJECTS|
             C.WORLD_OBJECT_NAMES|C.WORLD_OBJECT_GEOMETRY|C.OCTOMAP|C.TRANSFORMS|
             C.ALLOWED_COLLISION_MATRIX|C.LINK_PADDING_AND_SCALING)
-        scene = self.rpc.call(self.scene_client,request,self.deadline,'current_scene').scene
+        scene = self.rpc.call(self.scene_client,request,self.deadline if deadline is None else deadline,'current_scene').scene
         if scene.is_diff or scene.robot_state.is_diff:raise ValueError('FULL_OPERATION_SCENE_REQUIRED')
         return scene
 

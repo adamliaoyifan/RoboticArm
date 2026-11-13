@@ -128,6 +128,8 @@ class JointOperationRuntime:
             goal_callback=accept,cancel_callback=cancel,execute_callback=self.execute,
             callback_group=node._group)
         self.timer=node.create_timer(.05,self.poll_terminal,callback_group=node._group)
+        from luggage_planning.joint_operation.view_execution import PickupViewExecution
+        self.pickup_view=PickupViewExecution(self)
 
     def record(self,name,value):
         from rclpy.serialization import serialize_message
@@ -142,7 +144,10 @@ class JointOperationRuntime:
                 encoding='gzip',stored_bytes=len(stored),stored_sha256=hashlib.sha256(stored).hexdigest()))
             self.bytes+=len(stored)
             (self.directory/'manifest.json').write_text(json.dumps(dict(records=self.records,
-                bytes=self.bytes,phase=self.machine.state,may_have_payload=self.machine.may_have_payload,
+                bytes=self.bytes,phase=(self.pickup_view.phase if getattr(self,'pickup_view',None)
+                    and self.pickup_view.owns_session else self.machine.state),
+                may_have_payload=(self.pickup_view.unexpected_load if getattr(self,'pickup_view',None)
+                    and self.pickup_view.owns_session else self.machine.may_have_payload),
                 motion_owned=self.owner.motion_lock.locked()),sort_keys=True))
 
     def checkpoint(self,stage):
@@ -351,6 +356,8 @@ class JointOperationRuntime:
         try:
             if (self.session is None or not self._uncertain
                     or self._restored_unresolved):return
+            if getattr(self,'pickup_view',None) and self.pickup_view.owns_session:
+                self.pickup_view.poll_terminal();return
             terminal=self.motion.poll_terminal()
             if terminal is not None:
                 self.record('late_motion_terminal.json',json.dumps(dict(success=terminal.success,
@@ -377,5 +384,6 @@ class JointOperationRuntime:
         self.motion.cancel()
         if self.session is not None:
             self.journal.write(dict(stage='SHUTDOWN_UNRESOLVED',
-                may_have_payload=self.machine.may_have_payload,
+                kind='pickup_view' if self.pickup_view.owns_session else 'joint_operation',
+                may_have_payload=self.pickup_view.unexpected_load if self.pickup_view.owns_session else self.machine.may_have_payload,
                 motion_owned=self.owner.motion_lock.locked()))

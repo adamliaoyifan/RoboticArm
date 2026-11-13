@@ -46,7 +46,7 @@ def pickup_view_plan_to_message(plan,task_request_id,source,model_sha256):
 class PickupViewPrepareOwner:
     def __init__(self,node,*,param,connections,velocity_scale,acceleration_scale,
                  velocity_limits,acceleration_limits,max_samples):
-        from luggage_msgs.srv import GetPickupViewEvidenceV2,PreparePickupViewV2
+        from luggage_msgs.srv import GetPickupViewEvidenceV2,PreparePickupViewV2,CheckPreparedPickupViewV2
         self.node=node
         self.contexts=PickupViewContextStore(
             max_contexts=param('pickup_view_context_limit',16),
@@ -65,6 +65,53 @@ class PickupViewPrepareOwner:
             connections,certifier,velocity_scale=velocity_scale,acceleration_scale=acceleration_scale)
         self.service=node.create_service(PreparePickupViewV2,'/joint_operation/prepare_pickup_view',
             self.prepare,callback_group=ReentrantCallbackGroup())
+        self.check_service=node.create_service(CheckPreparedPickupViewV2,'/joint_operation/check_pickup_view',
+            self.check,callback_group=ReentrantCallbackGroup())
+
+    def check(self,request,response):
+        """Independent exact receipt and still-retained physical observation.
+
+        No motion or renewed retention. Current full-scene/native/start checks
+        remain the execution owner's responsibility.
+        """
+        from luggage_msgs.msg import PickupViewPlanV2
+        from rclpy.serialization import deserialize_message
+        from luggage_perception.frozen_suction_service import binding_to_message
+        from luggage_perception.ros_suction_domain import domain_to_message
+        response.current=False
+        if not self.node._active.acquire(blocking=False):
+            response.reason='OPERATION_PREPARATION_BUSY';return response
+        try:
+            if not self.node.budget.admits(request.budget_s):
+                raise ValueError('PICKUP_VIEW_CHECK_BUDGET_INVALID')
+            deadline=time.monotonic()+request.budget_s
+            message=request.plan
+            context=self.contexts.lookup(message.task_request_id,message.domain_sha256)
+            receipt=self.contexts.issued(message.task_request_id,message.route_digest)
+            if (context is None or receipt is None
+                    or deserialize_message(receipt.message_cdr,PickupViewPlanV2)!=message):
+                raise ValueError('EXACT_RETAINED_VIEW_REQUIRED')
+            original=context.request()
+            retained=self.node.observed_contacts.retain(context.domain,original.detection,
+                request_id=original.request_id,observation_id=original.observation_id,
+                expected_observation=context.observation,deadline=deadline,cancelled=lambda:False)
+            if (not retained.retained or retained.observation.binding!=context.observation.binding
+                    or self._acquisition(context,deadline).digest()!=receipt.view.digest()):
+                raise ValueError('PICKUP_VIEW_OBSERVATION_REVOKED')
+            response.detection=original.detection
+            response.top_domain=domain_to_message(context.domain)
+            response.frozen_observation=binding_to_message(context.observation.binding)
+            response.probe=context.probe(message.query_id)
+            response.checked_scene_cdr=list(receipt.snapshot.scene_cdr)
+            response.baseline_scene_sha256=receipt.baseline_sha256
+            if (self.contexts.lookup(message.task_request_id,message.domain_sha256) is not context
+                    or self.contexts.issued(message.task_request_id,message.route_digest) is not receipt):
+                raise ValueError('PICKUP_VIEW_CONTEXT_CHANGED_OR_EXPIRED')
+            response.current=True;response.reason='RETAINED_PICKUP_VIEW_CURRENT'
+        except Exception as error:
+            response.reason='PICKUP_VIEW_CHECK_REFUSED:'+str(error)
+        finally:self.node._active.release()
+        return response
 
     def remember(self,request,response,domain,observation):
         """Called only after the ordinary prepare response has been captured."""

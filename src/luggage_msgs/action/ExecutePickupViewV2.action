@@ -1,0 +1,23 @@
+# Empty pre-pick view only; never attach or authorize suction from this result.
+# Stable per-box task key survives failed prepare request IDs and retries.
+string pickup_task_id
+luggage_msgs/PreparePickupViewRequestV2 preparation
+uint32 max_extra_view_motions
+float64 total_recovery_budget_s
+float64 budget_s
+---
+bool success
+string reason
+bool submitted
+bool motion_terminal
+# Unexpected vacuum/attachment after dispatch requires operator reconciliation.
+bool may_have_payload
+bool settled_stamp_valid
+uint64 settled_stamp_ns
+uint32 dispatched_motions
+float64 recovery_elapsed_s
+luggage_msgs/PickupViewPlanV2 plan
+---
+string pickup_task_id
+string stage
+uint32 dispatched_motions
