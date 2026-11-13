@@ -180,6 +180,14 @@ stand in for actual-contact approval after an attachment change. Each must
 return literal true; absent, stale, exceptional or incomplete answers refuse.
 Certificate and source liveness are checked again after native validation.
 
+Selected settled-target admission emits a bounded `settled_box_admission_v1`
+record with the actual map source, attachment geometry digest and the same
+predicate's concrete verdict. Reached support checks include area/ratio, support
+height span, tilt limit and native resolution; missing fields mean that an earlier
+gate refused. This diagnostic does not grant permission or change the support
+policy. Raw retained map pages remain the replay authority. Evidence capture
+failures propagate; they cannot silently authorize motion.
+
 The native request retains original knots and controller-interpolated samples
 of every remaining leg in full private phase scenes, including the released
 world obstacle. Compatible changed geometry can pass without global replanning;

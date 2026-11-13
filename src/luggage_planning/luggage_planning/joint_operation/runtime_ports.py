@@ -3,7 +3,7 @@
 Only owned payload scene diffs are written. O remains the observed-map owner;
 this module has no O write, global planning or controller API.
 """
-from dataclasses import replace
+from dataclasses import asdict, replace
 import copy
 import hashlib
 import json
@@ -242,13 +242,20 @@ class OperationRuntimePorts:
         return source_admitted and map_equal and world_equal
 
     def settled_admission(self,snapshot,geometry,settled,**kwargs):
+        def record_verdict(verdict):
+            self.record('settled_box_admission.json', json.dumps(dict(
+                schema='settled_box_admission_v1', map_source=asdict(self.last_map.source),
+                geometry_digest=geometry.digest(), verdict=verdict), sort_keys=True).encode())
         if self.released:
             # Release follows the successful pre-release check. Native retreat
             # still includes both current O obstacles and the released world box.
-            return self.released_target==settled
+            accepted = self.released_target==settled
+            record_verdict(dict(accepted=accepted, reason=None if accepted else 'released_target_mismatch',
+                                policy='bound_released_target'))
+            return accepted
         target = self.container.inverse().compose(settled)
         return admit_placement_targets(self.last_map.surface,geometry.measured_dimensions_wdh,
-            (target,),volume=self.last_map.volume)[0]
+            (target,),volume=self.last_map.volume,on_verdict=record_verdict)[0]
 
     def validate(self,index):
         self.retryable_change=False

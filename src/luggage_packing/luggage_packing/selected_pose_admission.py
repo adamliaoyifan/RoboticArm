@@ -74,10 +74,33 @@ class SelectedPoseAdmission:
                     heading_theta=yaw, box_yaw=yaw, detail={})
 
     def __call__(self, candidate):
+        return self._check(candidate)
+
+    def explain(self, candidate):
+        """Bounded diagnostics from the same checks; missing fields were not reached.
+
+        Heights and coordinates explicitly state their datum. No grid arrays or
+        observations are copied; the caller retains the authoritative snapshot.
+        """
+        detail = dict(schema='selected_pose_admission_v1',
+            center_container=list(candidate['center_container']),
+            nominal_dimensions_wdh=list(candidate['size']),
+            heading_container_rad=candidate['heading_theta'],
+            resolution_m=float(self.surface['resolution']),
+            support_band_m=self.cfg['support_tol'],
+            min_support_ratio=self.cfg['min_support_ratio'],
+            max_support_tilt_ratio=self.cfg['max_support_tilt_ratio'])
+        reason = self._check(candidate, detail)
+        detail.update(accepted=reason is None, reason=reason)
+        return detail
+
+    def _check(self, candidate, detail=None):
         cfg, surface = self.cfg, self.surface
         center = candidate['center_container']
         footprint, height = candidate['footprint'], candidate['size'][2]
         bottom = center[2] - height/2 - self.hull.floor_z
+        if detail is not None:
+            detail['bottom_z_floor_relative_container_m'] = bottom
         if not _hull_legal(center, footprint, height, self.hull, cfg['hull_margin'])[0]:
             return 'outside_hull'
         if self.hull.ceiling_z - (center[2]+height/2) < cfg['clearance_margin'] - 1e-9:
@@ -92,20 +115,35 @@ class SelectedPoseAdmission:
         if any(first[a] < 0 or stop[a] > (nx,ny)[a] for a in range(2)):
             return 'outside_hull'
         contact, support_prefix, penetration_prefix=self._layer(bottom)
-        if self._count(penetration_prefix,first,stop)>0:
+        penetration_count = self._count(penetration_prefix,first,stop)
+        if detail is not None:
+            detail['penetration_columns'] = int(penetration_count)
+        if penetration_count>0:
             return 'edge_occupied_overlap'
-        if abs(bottom)>1e-9 and self._count(self.unknown_prefix,first,stop)>0:
-            return 'unknown_above_floor'
+        if abs(bottom)>1e-9:
+            unknown_count = self._count(self.unknown_prefix,first,stop)
+            if detail is not None:
+                detail['unknown_columns'] = int(unknown_count)
+            if unknown_count>0:
+                return 'unknown_above_floor'
         lower=[(lo[a]-origin[a])/resolution for a in range(2)]
         upper=[(hi[a]-origin[a])/resolution for a in range(2)]
         total=math.prod(upper[a]-lower[a] for a in range(2))
         support=self._area(support_prefix,lower,upper)
+        if detail is not None:
+            detail.update(footprint_area_m2=total*resolution**2,
+                          supported_area_m2=support*resolution**2,
+                          support_ratio=support/total if total>0 else None)
         if total<=0 or support/total < cfg['min_support_ratio']-1e-9:
             return 'insufficient_support'
         region=(slice(first[0],stop[0]),slice(first[1],stop[1]))
         contact_heights=self.heights[region][contact[region]]
-        if (contact_heights.size and np.ptp(contact_heights)/max(footprint)
-                > cfg['max_support_tilt_ratio']+1e-9):
+        span = float(np.ptp(contact_heights)) if contact_heights.size else 0.
+        tilt_ratio = span/max(footprint)
+        if detail is not None:
+            detail.update(support_height_span_m=span, support_tilt_ratio=tilt_ratio,
+                          support_band_columns=int(contact_heights.size))
+        if (contact_heights.size and tilt_ratio > cfg['max_support_tilt_ratio']+1e-9):
             return 'support_tilt_unsupported'
         reason, _ = placement_constraint_verdict(candidate, surface['inner_size'][2],
             placed_aabbs=self.placed, inner_size=surface['inner_size'],
@@ -115,6 +153,8 @@ class SelectedPoseAdmission:
         if reason: return reason
         if self.volume is None: return 'volume_evidence_unavailable'
         try:
+            if detail is not None:
+                detail['volume_checked'] = True
             return self.volume(candidate)
         except Exception:
             return 'volume_evidence_unavailable'

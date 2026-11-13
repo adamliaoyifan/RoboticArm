@@ -48,24 +48,42 @@ def _placement_surface(confirmed):
     return surface, descriptor
 
 
-def admit_placement_targets(confirmed, box_wdh, targets, *, volume):
-    """Admit actual poses without regenerating or snapping search candidates."""
+def admit_placement_targets(confirmed, box_wdh, targets, *, volume, on_verdict=None):
+    """Admit actual poses; optionally emit the same predicate's bounded verdict.
+
+    ``on_verdict`` is synchronous evidence capture, never another permission.
+    Capture failures propagate. The existing bool tuple remains the authority.
+    """
     from luggage_packing.selected_pose_admission import SelectedPoseAdmission
     from luggage_packing.placement_volume_query import KnownFreeVolume, evidence_from_volume
     surface, _ = _placement_surface(confirmed)
     admission = SelectedPoseAdmission(surface, box_wdh,
         volume_verifier=KnownFreeVolume(evidence_from_volume(volume)))
     accepted = []
-    for target in targets:
+    for index, target in enumerate(targets):
+        detail = dict(schema='selected_pose_admission_v1', target_index=index,
+            center_container=list(target.translation),
+            nominal_dimensions_wdh=list(box_wdh),
+            quaternion_xyzw_container=list(target.quaternion_xyzw)) if on_verdict is not None else None
         x,y,z,w = target.quaternion_xyzw
         if abs(x) > 1e-8 or abs(y) > 1e-8:
-            accepted.append(False)
-            continue
-        try:
-            candidate = admission.candidate(target.translation, 2*math.atan2(z,w))
-            accepted.append(admission(candidate) is None)
-        except (ValueError, TypeError):
-            accepted.append(False)
+            reason = 'nonhorizontal_placement_target'
+        else:
+            try:
+                candidate = admission.candidate(target.translation, 2*math.atan2(z,w))
+                if detail is not None:
+                    detail.update(admission.explain(candidate))
+                    reason = detail['reason']
+                else:
+                    reason = admission(candidate)
+            except (ValueError, TypeError) as error:
+                reason = 'invalid_placement_target'
+                if detail is not None:
+                    detail['error_type'] = type(error).__name__
+        accepted.append(reason is None)
+        if detail is not None:
+            detail.update(accepted=reason is None, reason=reason)
+            on_verdict(detail)
     return tuple(accepted)
 
 
