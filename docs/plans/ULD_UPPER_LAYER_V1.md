@@ -3093,3 +3093,33 @@ capture_complete/replay_possible均true；缺失则该单位incomplete，不得�
 成功与失败证据及遗留项。最终检查：worktree只有本计划且无evidence文件，历史
 清理删除未被提交；没有本任务自有Gazebo/bridge残留，正式G12仍open。主邮箱只
 投影当前待办，不重写旧Claim。发布任务不等于Claude已开始执行。
+
+## 21. UPPER-PRIOR 关闭记录（2026-11-13，eng/claude）
+
+实现提交`c4effd09`（基线`577fda2d`+计划提交`94fdcfc1`之后）。交付只读
+ROS-free`UpperPlacementPrior.query(request, goals, budget) -> PriorHints`与
+`UpperPlacementPlanner`接线：`prior_enabled`默认false，关闭时搜索路径与原先
+逐字节一致；开启时仅做候选排序、确认吸附且整体处于顶板覆盖内的必要碰撞
+拒绝、逐action种子注入（start_q优先、先验种子次之、随机补足）。
+
+- 几何窗口每进程从当前源模型重算：四轴对齐模式相对归档607.803/405/255/405mm
+  必需净高差值0.000mm；改变箱高/抓取/工具几何阈值真实移动（箱高+50mm→up
+  +50mm、down+25mm；翻转抓取交换up/down族；工具下移50mm→down窗口+50mm量级）。
+- 入口/倾斜候选（含归档X=-.398终态、组件伸至X=-.818出顶板覆盖）一律
+  EXACT_MESH_CHECK_REQUIRED，不被全局高度阈值误杀；未附着请求只有
+  archived_representative/none权限，永不必要拒绝。
+- 归档模板恒为seed_only：snapshot/attachment身份变化标记stale；交接支撑与
+  纯运动时长按运行时配置重判——归档65.0mm裕量在20mm准入、80mm拒绝
+  （YAML运行时改、无编译）；1267.337s记录1200s拒绝、1400s仅时长行翻转，
+  支撑重判与身份两次查询逐字节一致。
+- atlas种子仅在关节XML签名匹配后按位置100mm/旋转15°邻域给出，落于网格点、
+  距精确目标>0.1mm，消费者必须refine；无索引/不可读/无解/1e-9s预算耗尽
+  均不崩溃，普通搜索输入保持原序不丢候选；逐目标公平预算切片，首目标
+  耗尽不影响后续目标。
+- 行为验证：`tests/test_upper_prior.py`18用例全过（每项独立行为运行一次，
+  不作可靠性估计）；全量研究单测260/260绿（242既有+18新增，零回归）。
+  命令与证据：主工作区`docs/status/evidence/uld_upper_layer_v1/claude_prior_size_g1/core/`
+  （REPORT.md/prior_query_live_request.json/test_suite_full.log）。
+- 遗留：UPPER-SIZE-EVAL、UPPER-PRIOR-PHYSICS按第20.4/20.5节继续；正式
+  MOTION-PHYSICS G12 generation2不受影响仍open；worktree历史清理删除保持
+  未暂存未提交。
