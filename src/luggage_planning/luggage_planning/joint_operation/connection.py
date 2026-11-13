@@ -3,8 +3,9 @@
 Geometric results are endpoint/scene-bound seeds for the whole-chain certifier.
 They have no timing, no execution authorization and no actual-attachment claim.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
+import json
 import math
 import threading
 import time
@@ -22,6 +23,14 @@ class GeometricConnection:
     checked_states: int = 0
     # Exact checked opening rows that timing must retain as public knots.
     required_positions: tuple = ()
+
+
+@dataclass
+class _ConnectionCompletion:
+    """One transport completion; its evidence survives the waiting caller."""
+    ready: threading.Event = field(default_factory=threading.Event)
+    response: object = None
+    error: object = None
 
 
 def validate_connection_response(response, *, request_id, snapshot_id,
@@ -72,6 +81,33 @@ class NativeSnapshotConnectionPort:
         self.recorder = recorder
         self.max_edge_s = float(max_edge_s)
         self.inflight = None
+        self.logger = node.get_logger()
+
+    def _receive(self, future, completion, request_id):
+        """Record once on terminal delivery, including after caller expiry.
+
+        Preparation's recorder owns its evidence lock. This callback neither
+        validates/adopts a path nor sends another request. Keep all state local
+        to this future so a later call cannot relabel its terminal evidence.
+        """
+        try:
+            if future.cancelled():
+                raise RuntimeError('CONNECTION_RPC_CANCELLED')
+            completion.response = future.result()
+            if self.recorder:
+                self.recorder('response', completion.response)
+        except Exception as error:
+            completion.error = error
+            detail = dict(request_id=request_id, exception=type(error).__name__,
+                          detail=str(error)[:1024])
+            if self.recorder:
+                try:
+                    self.recorder('error.json', json.dumps(detail).encode())
+                except Exception as capture_error:
+                    detail['capture_error'] = str(capture_error)[:1024]
+            self.logger.error('CONNECTION_COMPLETION_FAILED:'+json.dumps(detail))
+        finally:
+            completion.ready.set()
 
     def connect(self, snapshot, start, goal, *, request_id, deadline, cancelled, path_constraints=None):
         start = vector(start, 6, "connection_start")
@@ -98,17 +134,18 @@ class NativeSnapshotConnectionPort:
             return GeometricConnection(False, False, "CANCELLED_OR_DEADLINE")
         if self.recorder:
             self.recorder("request", request)
-        ready = threading.Event()
-        self.inflight = self.client.call_async(request)
-        self.inflight.add_done_callback(lambda future: ready.set())
-        while not ready.wait(min(.01, max(0., deadline-time.monotonic()))):
+        completion = _ConnectionCompletion()
+        future = self.client.call_async(request)
+        self.inflight = future
+        future.add_done_callback(lambda finished: self._receive(finished, completion, request_id))
+        while not completion.ready.wait(min(.01, max(0., deadline-time.monotonic()))):
             if cancelled() or time.monotonic() >= deadline:
                 return GeometricConnection(False, False, "CANCELLED_OR_DEADLINE")
-        response = self.inflight.result()
-        if self.recorder:
-            self.recorder("response", response)
         if cancelled() or time.monotonic() >= deadline:
             return GeometricConnection(False, False, "CANCELLED_OR_DEADLINE")
+        if completion.error is not None:
+            raise completion.error
+        response = completion.response
         return validate_connection_response(response, request_id=request_id,
             snapshot_id=request.snapshot_id, model_sha256=request.model_sha256,
             scene_sha256=request.scene_sha256, start=start, goal=goal)

@@ -89,6 +89,11 @@ The simulation profile exposes per-edge connection time and global/per-candidate
 branch limits. Its diagnostic search uses 5s per edge and 8 total branches,
 at most 2 per coupled candidate, within the existing 300s preparation watchdog.
 These are search budgets, not reachability decisions or a production latency SLA.
+Native connection replies are recorded by their own completion callback even
+when the parent search has stopped waiting. Such late evidence never promotes
+the stopped call into a plan or sends another request. Pending transport still
+blocks a second request; every returned path retains its exact endpoint/scene
+binding and must pass whole-chain certification.
 Runtime phase diffs replace the owned world payload directly and send remove or
 detach operations only for objects actually present in the captured live scene.
 Owned box comparison composes object and primitive poses, so MoveIt's equivalent
