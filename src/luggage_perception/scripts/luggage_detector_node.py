@@ -740,6 +740,12 @@ class LuggageDetector(Node):
                 context_provider=self._current_directed_suction_context,
                 context_lookup=self._current_directed_suction_context,
                 model_provider=lambda:self._suction_evaluator.contact_model)
+            from luggage_msgs.srv import GetPickupViewEvidenceV2
+            from luggage_perception.pickup_view_service import PickupViewService
+            self._pickup_view_service=PickupViewService(context_lookup=self._current_directed_suction_context)
+            self._pickup_view_ros_service=self.create_service(GetPickupViewEvidenceV2,
+                '/luggage/get_pickup_view_evidence_v2',self._pickup_view_service.get,
+                callback_group=self._group)
         # ST03: v2 pose-contract publishers exist only when an explicit
         # scene revision enables the boundary; a rejected conversion warns
         # with its diagnostic and never disturbs the v1 stream.
@@ -1116,7 +1122,10 @@ class LuggageDetector(Node):
             instance_id=str(getattr(yolo_msg, "instance_id", "") or ""),
             generation=int(getattr(yolo_msg, "generation", 0) or 0),
             timing=self._timing,
-            capture_observed_domain=getattr(self, '_publish_observed_suction_domain', False))
+            capture_observed_domain=getattr(self, '_publish_observed_suction_domain', False),
+            acquisition_stamp_ns=int(depth_msg.header.stamp.sec)*10**9+int(depth_msg.header.stamp.nanosec),
+            optical_frame_id=depth_msg.header.frame_id,
+            region_source='instance_mask' if mask is not None else 'detection_bbox')
         suction = self._suction_evaluator.copy_output()
         capture_root = os.environ.get('ELFIN_SUCTION_INPUT_CAPTURE', '').strip()
         if capture_root:

@@ -1,0 +1,8 @@
+# Read-only exact acquisition lookup; no latest-frame fallback or retention renewal.
+string domain_sha256
+luggage_msgs/DetectedLuggage detection
+uint64 generation
+---
+bool success
+string reason
+luggage_msgs/PickupViewEvidenceV2 view

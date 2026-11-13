@@ -384,7 +384,8 @@ class SuctionPatchEvaluator(object):
     def update(self, depth_mm, intrinsics, optical_to_world, top,
                instance_region=None, stamp=0.0, frame_id="world",
                instance_id="", generation=0, timing=None,
-               capture_observed_domain=False):
+               capture_observed_domain=False, acquisition_stamp_ns=None,
+               optical_frame_id='', region_source=''):
         """Evaluate one acquisition; state is replaced, never fused.
 
         Every input belongs to the same acquisition identity (the caller
@@ -436,7 +437,18 @@ class SuctionPatchEvaluator(object):
         if domain is not None:
             # One reference binds support/output and samples atomically. A
             # concurrent query must never combine two acquisition generations.
-            self._directed_acquisition = (self._output, height_map)
+            view,view_reason=None,'PICKUP_VIEW_ACQUISITION_METADATA_UNAVAILABLE'
+            if acquisition_stamp_ns is not None and optical_frame_id:
+                from luggage_perception.pickup_view_evidence import PickupViewAcquisition
+                try:
+                    view=PickupViewAcquisition.capture(depth_mm,instance_region,intrinsics,optical_to_world,
+                        stamp_ns=acquisition_stamp_ns,optical_frame_id=optical_frame_id,
+                        instance_id=instance_id,generation=generation,region_source=region_source)
+                    view_reason='PICKUP_VIEW_CAPTURED'
+                except (TypeError,ValueError,AttributeError) as error:
+                    # Optional evidence cannot change existing quality admission.
+                    view_reason='PICKUP_VIEW_CAPTURE_REFUSED:'+str(error)
+            self._directed_acquisition = (self._output,height_map,view,view_reason)
 
     def copy_output(self):
         """Independent copy; caller mutation cannot corrupt state."""
@@ -449,9 +461,14 @@ class SuctionPatchEvaluator(object):
         acquisition = self._directed_acquisition
         if acquisition is None:
             raise ValueError('captured observed acquisition required')
-        evaluation, height_map = acquisition
+        evaluation,height_map,view_acquisition,view_reason = acquisition
         domain = observed_domain_for_detection(detection, evaluation)
-        return DirectedSuctionContext(domain, height_map, self._model)
+        view=None
+        if view_acquisition is not None:
+            try:view=view_acquisition.bind(domain)
+            except ValueError as error:view_reason='PICKUP_VIEW_BINDING_REFUSED:'+str(error)
+        return DirectedSuctionContext(domain,height_map,self._model,
+            pickup_view=view,pickup_view_reason=view_reason)
 
     # -- candidate scan ----------------------------------------------------
 

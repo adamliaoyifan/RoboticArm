@@ -100,5 +100,5 @@ def test_prepare_selects_requested_acquisition_despite_newer_topic_and_still_che
         JointOperationPrepareNode._current(node,prepare_request)
     now[0]=newer.domain.stamp_ns
     history.clear()
-    with pytest.raises(ValueError,match='OBSERVATION_OR_JOINTS_UNAVAILABLE'):
+    with pytest.raises(ValueError,match='OBSERVED_DOMAIN_UNAVAILABLE'):
         JointOperationPrepareNode._current(node,prepare_request)

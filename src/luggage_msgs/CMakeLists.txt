@@ -19,6 +19,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/RetainSuctionObservationV2.srv"
   "srv/CheckFrozenSuctionContactV2.srv"
   "srv/EvaluateFrozenSuctionV2.srv"
+  "msg/PickupViewEvidenceV2.msg"
+  "srv/GetPickupViewEvidenceV2.srv"
   "msg/CargoMapQueryIdentityV2.msg"
   "msg/CargoMapQueryGridV2.msg"
   "msg/CargoMapQueryRequestV2.msg"

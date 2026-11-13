@@ -79,8 +79,11 @@ class DirectedSuctionContext:
     samples_sha256: str
     _model: object
     _height_map: object
+    pickup_view: object
+    pickup_view_reason: str
 
-    def __init__(self, domain, height_map, contact_model):
+    def __init__(self, domain, height_map, contact_model, *, pickup_view=None,
+                 pickup_view_reason='PICKUP_VIEW_NOT_CAPTURED'):
         if (height_map is None or height_map.shape != domain.shape
                 or (height_map.origin_u, height_map.origin_v) != domain.origin_uv_top_m
                 or height_map.cell_size_m != domain.cell_size_m
@@ -94,6 +97,14 @@ class DirectedSuctionContext:
             raise ValueError('same-acquisition grid, basis and physical model required')
         object.__setattr__(self, 'domain', domain)
         object.__setattr__(self, 'domain_sha256', domain.digest())
+        if pickup_view is not None:
+            from luggage_perception.pickup_view_evidence import PickupViewEvidence
+            if (type(pickup_view) is not PickupViewEvidence or pickup_view.domain_sha256!=domain.digest()
+                    or pickup_view.box_id!=domain.box_id):
+                raise ValueError('PICKUP_VIEW_DOMAIN_BINDING_MISMATCH')
+        object.__setattr__(self,'pickup_view',pickup_view)
+        object.__setattr__(self,'pickup_view_reason',
+            'PICKUP_VIEW_AVAILABLE' if pickup_view is not None else pickup_view_reason)
         object.__setattr__(self, '_model', copy.deepcopy(contact_model))
         object.__setattr__(self, 'policy_sha256', _digest(self._model.as_dict()))
         object.__setattr__(self, '_height_map', copy.copy(height_map))
@@ -108,6 +119,13 @@ class DirectedSuctionContext:
                 samples_hash.update(str(value.shape).encode()+value.tobytes())
         samples_hash.update(self.domain_sha256.encode())
         object.__setattr__(self, 'samples_sha256', samples_hash.hexdigest())
+
+    def without_pickup_view(self, reason):
+        """Drop only optional camera inputs; immutable quality bytes stay shared."""
+        result=copy.copy(self)
+        object.__setattr__(result,'pickup_view',None)
+        object.__setattr__(result,'pickup_view_reason',reason)
+        return result
 
     def evaluate(self, uv, yaw_rad, *, deadline, max_refinements, clock=time.monotonic):
         """Fit a directed contact without changing requested top-plane UV.

@@ -103,6 +103,38 @@ Context capture cost is recorded as `suction_directed_context_ms`. This optional
 service issues no robot, vacuum, scene or OCC writes and does not alter legacy
 candidate acceptance.
 
+## Acquisition-bound pickup view evidence
+
+The same detector export additionally captures optional immutable camera inputs
+for pre-pick observation recovery. `GetPickupViewEvidenceV2` at
+`/luggage/get_pickup_view_evidence_v2` queries an explicitly named domain digest,
+detection and generation from the existing short handoff owner. It never reads
+the latest CameraInfo/TF, polls diagnostic files, renews retention or substitutes
+a different acquisition. Source revocation during payload copying refuses.
+
+`PickupViewEvidenceV2` preserves integer acquisition time, actual optical frame,
+lossless source depth samples in millimetres (16UC1/32FC1/64FC1), effective
+rectified-pinhole intrinsics, actual acquisition-time world-from-optical matrix
+and the consumed boolean instance region. `region_source` distinguishes a true
+instance mask from a detection bbox; neither establishes unobserved face support.
+The digest covers all metadata and image bytes. Zero/NaN depth remains unchanged.
+This is not a generated CameraInfo calibration, suction permit or motion permit.
+
+Per-view input bytes are capped at8MiB. The handoff history separately bounds
+optional view retention (16MiB default resource allowance), dropping camera inputs
+without evicting ordinary quality rows solely for camera pressure. Long-lived
+frozen quality retention does not copy these optional raw images. Missing metadata,
+view eviction or failed view binding leaves ordinary quality checks unchanged.
+Contradictory view bytes/metadata for an otherwise identical domain and quality
+acquisition invalidate that acquisition's optional view only; matching ordinary
+quality evidence remains retained. Existing domain/quality conflicts still revoke
+the inconsistent quality handoff as before.
+These are memory/transport limits, distinct from configurable extra-motion counts,
+sensor accuracy or production latency targets. No depth filling, observation
+motion, generic estimation/quality thresholds or hardware error bounds are
+introduced by this interface. Active views require a separate decision-relevant
+gap and complete robot motion validation.
+
 The detector also registers `/luggage/retain_suction_observation_v2` and
 `/luggage/check_frozen_suction_contact_v2` when observed suction export is enabled.
 Retention must match the exact current measured detection, domain and effective

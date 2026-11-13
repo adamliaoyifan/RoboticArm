@@ -150,7 +150,9 @@ def test_real_depth_evaluator_export_preserves_quality_and_measured_holes():
     top=estimate_dynamic_top_surface(depth,component.mask,intrinsics,transform,stamp=12.,
         frame='world',instance_region=region)
     assert top.reason=='ok'
-    evaluator=SuctionPatchEvaluator(make_model(.18))
+    model=make_model(.18)
+    model.identity_hash='offline-rendered-contact-model'
+    evaluator=SuctionPatchEvaluator(model)
     kwargs=dict(instance_region=region,stamp=12.,frame_id='world',instance_id='instance',generation=3)
     evaluator.update(depth,intrinsics,transform,top,**kwargs)
     baseline=evaluator.copy_output()
@@ -159,6 +161,36 @@ def test_real_depth_evaluator_export_preserves_quality_and_measured_holes():
     assert output.accepted==baseline.accepted and output.accepted
     assert output.observed_top_domain.valid_cells.any()
     assert baseline.observed_top_domain is None
+    # Actual evaluator path exports optional inputs from this same acquisition;
+    # this adds no surface acceptance or new quality thresholds.
+    from luggage_msgs.msg import DetectedLuggage
+    detection=DetectedLuggage()
+    detection.id='box';detection.header.frame_id='world';detection.header.stamp.sec=12
+    detection.pose.position.x=-1.;detection.pose.position.z=z-.125
+    detection.pose.orientation.w=1.
+    detection.width,detection.depth,detection.height=.55,.4,.25
+    detection.top_surface_valid=detection.height_valid=True
+    detection.height_source=detection.HEIGHT_SOURCE_MEASURED_SUPPORT
+    missing=evaluator.directed_quality_context(detection)
+    assert missing.pickup_view is None
+    evaluator.update(depth,intrinsics,transform,top,capture_observed_domain=True,
+        acquisition_stamp_ns=12_000_000_000,optical_frame_id='source_optical',
+        region_source='detection_bbox',**kwargs)
+    exported=evaluator.directed_quality_context(detection)
+    assert evaluator.copy_output().accepted==baseline.accepted
+    assert exported.samples_sha256==missing.samples_sha256
+    assert exported.pickup_view.domain_sha256==exported.domain_sha256
+    assert exported.pickup_view.acquisition.depth_mm==depth.tobytes()
+    assert exported.pickup_view.acquisition.instance_region==region.astype(np.uint8).tobytes()
+    assert exported.pickup_view.acquisition.world_from_optical==tuple(transform.ravel())
+    assert exported.pickup_view.acquisition.region_source=='detection_bbox'
+    # Incorrect optional acquisition time makes only view evidence unavailable.
+    evaluator.update(depth,intrinsics,transform,top,capture_observed_domain=True,
+        acquisition_stamp_ns=12_000_000_001,optical_frame_id='source_optical',
+        region_source='detection_bbox',**kwargs)
+    wrong_time=evaluator.directed_quality_context(detection)
+    assert wrong_time.pickup_view is None and 'BINDING_REFUSED' in wrong_time.pickup_view_reason
+    assert wrong_time.samples_sha256==missing.samples_sha256
     # A newly missing depth pixel remains missing even though the fitted plane
     # and box dimensions are unchanged; it cannot be converted into support.
     altered=depth.copy()
