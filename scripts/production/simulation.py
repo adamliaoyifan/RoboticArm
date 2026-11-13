@@ -178,14 +178,6 @@ def main():
                 time.sleep(.1)
             manifest['configuration_ready']=config_ready;write()
             if not config_ready:raise RuntimeError('LAUNCH_CONFIGURATION_NOT_READY')
-            if args.capture_physics:
-                physics_command=['/usr/bin/python3',str(ROOT/'scripts/production/physics_reference.py'),
-                    '--run-dir',str(folder/'runtime'),'--output',str(folder/'reference'),
-                    '--contact-topic',env['ELFIN_BOX_CONTACT_TOPIC']]
-                manifest['physics_command']=physics_command;write()
-                with (folder/'physics.log').open('w') as physics_log:
-                    physics=subprocess.Popen(physics_command,env=env,stdout=physics_log,
-                        stderr=subprocess.STDOUT,start_new_session=True)
             topics=['/camera/color/image_raw','/camera/depth/image_raw','/camera/depth/camera_info',
                 '/luggage/preprocessed/camera/color/image','/luggage/preprocessed/camera/depth/image',
                 '/luggage/preprocessed/camera/depth/camera_info','/tf','/tf_static','/joint_states',
@@ -212,6 +204,17 @@ def main():
                     row.update(exit_code=client.returncode,elapsed_s=time.monotonic()-row['begin'])
                     write();return client.returncode
                 result=run_client('readiness')
+                # World/reference topics must exist before the first bounded
+                # pose read. Readiness authorizes no cargo operation; capture
+                # still starts before any spawn or execution client.
+                if result==0 and args.capture_physics:
+                    physics_command=['/usr/bin/python3',str(ROOT/'scripts/production/physics_reference.py'),
+                        '--run-dir',str(folder/'runtime'),'--output',str(folder/'reference'),
+                        '--contact-topic',env['ELFIN_BOX_CONTACT_TOPIC']]
+                    manifest['physics_command']=physics_command;write()
+                    with (folder/'physics.log').open('w') as physics_log:
+                        physics=subprocess.Popen(physics_command,env=env,stdout=physics_log,
+                            stderr=subprocess.STDOUT,start_new_session=True)
                 if result==0 and args.start:result=run_client('driver',True)
                 manifest['launch_exit_code']=launch.poll()
                 # Flush the bounded pre-trigger cache before stopping sensors.

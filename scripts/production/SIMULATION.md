@@ -99,7 +99,10 @@ the existing task budgets and a bounded 25s failure capture. It does not select
 another planner. `--prepick-replans` explicitly enables up to two existing
 pre-pick retries; default is zero. Readiness never forwards motion/cycle flags.
 `--capture-physics` enables a separate eval-only Gazebo pose/contact recorder;
-its examples retain original acquisition stamps and execution phases. That
-reference is never a sensor/geometry input. Report functional execution and
+its examples retain original acquisition stamps and execution phases. The
+recorder starts after world readiness and before the first spawn, so an early
+missing world topic cannot consume its first measurement timeout. The original
+failed startup capture remains evidence; its summary is never rewritten.
+The reference is never a sensor/geometry input. Report functional execution and
 sampled physical model coverage separately; capture absence is not proof of no
 physical contact. Recorder failures stay visible in its reference summary.
