@@ -1,0 +1,60 @@
+{
+  "scope": "Offline analysis of recorded Prepare trace; hints are not a collision certificate.",
+  "full_local_trace": "atlas_consumption_trace.json",
+  "boxes": [
+    {
+      "plan_digest": "8f16497ce6ba017f6d6bb7ad62a135c580fc4ff711e2f1e98621684f1ee19365",
+      "qualified": true,
+      "atlas_trace_counts": {
+        "atlas": 1,
+        "atlas_contact": 1,
+        "atlas_release": 1,
+        "atlas_budget": 1,
+        "atlas_ik": 3,
+        "atlas_pairs": 1
+      },
+      "pair_outcomes": {
+        "CANCELLED_OR_DEADLINE": 1
+      },
+      "selected_aperture_branch": "gazebo-1794531014779838024:observed-0:observed-0:1:c16fc81992132448:pick:generic-0:place:generic-1:carry:aperture:1:2:current-carry",
+      "selected_endpoint_uses_atlas_contact": false,
+      "scope": "Labels establish accepted seed provenance; no controlled timing benefit is inferred."
+    },
+    {
+      "plan_digest": "31fbe341aaf2801d89c3f211221be9a341a7db04d8b47fc0f9212def93cd5b68",
+      "qualified": true,
+      "atlas_trace_counts": {
+        "atlas": 1,
+        "atlas_contact": 5,
+        "atlas_release": 5,
+        "atlas_budget": 5,
+        "atlas_ik": 10,
+        "atlas_pairs": 5
+      },
+      "pair_outcomes": {
+        "ONLINE_FALLBACK_REQUIRED": 5
+      },
+      "selected_aperture_branch": "gazebo-1794531368261657941:observed-2:observed-2:5:34a7412651a5e6bd:pick:generic-0:place:hint:atlas-contact:d2012d8ad64273662386c7f8b7e03ebcc39840698c23ba98f9dc7e45ee91a971:7:7:2:2:1:carry:aperture:0:5:current-carry",
+      "selected_endpoint_uses_atlas_contact": true,
+      "scope": "Labels establish accepted seed provenance; no controlled timing benefit is inferred."
+    },
+    {
+      "plan_digest": "184eb994bd026d642e395af81c2aec79a468573b4fae880621eec089e6847e8f",
+      "qualified": true,
+      "atlas_trace_counts": {
+        "atlas": 1,
+        "atlas_contact": 5,
+        "atlas_release": 5,
+        "atlas_budget": 5,
+        "atlas_ik": 13,
+        "atlas_pairs": 5
+      },
+      "pair_outcomes": {
+        "ONLINE_FALLBACK_REQUIRED": 5
+      },
+      "selected_aperture_branch": "gazebo-1794531656929873732:observed-2:observed-2:5:8b9dc282beda5662:pick:generic-0:place:hint:atlas-contact:d2012d8ad64273662386c7f8b7e03ebcc39840698c23ba98f9dc7e45ee91a971:7:2:3:2:0:carry:aperture:0:1:place-entry",
+      "selected_endpoint_uses_atlas_contact": true,
+      "scope": "Labels establish accepted seed provenance; no controlled timing benefit is inferred."
+    }
+  ]
+}

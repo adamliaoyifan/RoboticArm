@@ -1,0 +1,87 @@
+{
+  "scope": "Actual retained sensor/O receipts; repeated ray counts are not coverage proof.",
+  "windows": [
+    {
+      "folder": "observer_box2",
+      "capture_health": {
+        "stored_bytes": 72278276,
+        "dropped_records": 0,
+        "complete": true,
+        "window_s": 10.0
+      },
+      "receipts": [
+        {
+          "sensor_id": "d555",
+          "status": "INTEGRATED",
+          "messages": 72,
+          "raw_points": 3937907,
+          "accepted_points": 2753539,
+          "free_keys": 1560031,
+          "hit_keys": 21347,
+          "occupancy_changed_keys": 18209,
+          "first_stamp_ns": 601524000000,
+          "epochs": [
+            2
+          ],
+          "last_stamp_ns": 619740000000,
+          "distinct_observations": 72
+        }
+      ]
+    },
+    {
+      "folder": "observer_box3",
+      "capture_health": {
+        "stored_bytes": 109899585,
+        "dropped_records": 0,
+        "complete": true,
+        "window_s": 10.0
+      },
+      "receipts": [
+        {
+          "sensor_id": "d555",
+          "status": "INTEGRATED",
+          "messages": 87,
+          "raw_points": 5011200,
+          "accepted_points": 3795623,
+          "free_keys": 3813528,
+          "hit_keys": 59492,
+          "occupancy_changed_keys": 10772,
+          "first_stamp_ns": 928356000000,
+          "epochs": [
+            2
+          ],
+          "last_stamp_ns": 961158000000,
+          "distinct_observations": 87
+        }
+      ]
+    },
+    {
+      "folder": "observer_failure",
+      "capture_health": {
+        "stored_bytes": 73601146,
+        "dropped_records": 0,
+        "complete": true,
+        "window_s": 10.0
+      },
+      "receipts": [
+        {
+          "sensor_id": "d555",
+          "status": "INTEGRATED",
+          "messages": 67,
+          "raw_points": 3791764,
+          "accepted_points": 2673850,
+          "free_keys": 1846638,
+          "hit_keys": 18013,
+          "occupancy_changed_keys": 23221,
+          "first_stamp_ns": 280764000000,
+          "epochs": [
+            2
+          ],
+          "last_stamp_ns": 300367000000,
+          "distinct_observations": 67
+        }
+      ]
+    }
+  ],
+  "status": []
+}

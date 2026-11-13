@@ -205,3 +205,37 @@ ordered outside/plane/inside witnesses; full-model IK, edges, independent FK and
 whole-chain certification remain hard gates. No extra planner or direct bypass.
 73 focused behavioral tests pass; frozen72 install192/192. Same three-box
 acceptance and separate actual physical support evidence remain required.
+
+## Measured source and sequencing repairs -- 2026-11-13T00:52Z
+
+Diagnostic52 complete endpoint ledger isolates the second target's single
+occupied floor-layer cell to8 LiDAR returns at z.530022..530034m. It invalidates
+the bound slot after carry; no box2 collision or release occurred. Use explicit
+RGB-D-only O subscription for the next witness, retaining physical LiDAR and raw
+outputs. No floor hit exemption, cell deletion or geometric gate relaxation.
+The user permits camera OR LiDAR closure; this does not qualify LiDAR as an O
+source. Default bare composition remains both; selected profile records rgbd.
+
+Diagnostic53: 32/32 slot refusal reproduces stale footprint-grid parity after
+client measurement refresh. 2a69b454 moves the unchanged observed floor/stack
+selector to planning ownership, adding optional placement_task_mode to prepare;
+freeze observation before enumerating. Explicit slots remain strictly admitted,
+and cannot combine with task intent.73 behavioral tests pass including isolated
+XY parity and actual wire request encoding for default/floor/stack; frozen75
+build/install192 pass. Recorded historical schemas are preserved; replay old CDR
+with matching generated definitions. All original three-box/physical gates stay.
+
+
+## Final execution result -- 2026-11-13T09:12+08:00
+
+Frozen c3d20e85/build75/install192 completes diagnostic54: THREE_BOX_PASS,
+floor/floor/stack, all actions terminal with no payload; persistent epoch2,
+revisions79/159/260. Independent acceptance audit PASS verifies6750 typed hashes,
+18 original controller leg successes, actual observed adoption, actual physical
+box3-on-box1 support and20.216s settled reference sample span, native certificates,
+sampled containment19/10/14 with0 outside, final O epoch2/rev266, teardown0.
+One dependent three-unit functional witness only; no statistical or hardware claim.
+Exact staged timings, source-quarantine decision, parameter lineage, cache/atlas
+limitations, explicit-profile/default-entry distinction and next priorities are
+recorded in docs/status/evidence/three_box_observed/g2/REVIEW_10H.md. Effective dirty
+input archive plus source hashes remain part of the frozen identity.

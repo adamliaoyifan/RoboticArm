@@ -1136,3 +1136,69 @@ Frozen74 interface build passes50.79s unchanged inputs. Refine parity regression
 to keep old/fresh heights identical, isolating XY parity rather than merely Z;
 exercise real client request encoding for default/floor/stack with lease release
 on both success and refusal. Freeze75 includes these focused test improvements.
+
+
+## Final witness and independent audit -- 2026-11-13T09:12+08:00
+
+Diagnostic54 frozen c3d20e85, build75 inputs unchanged, install192/192, complete
+same-world three-box PASS. Driver THREE_BOX_PASS; floor/floor/stack all actual
+OBSERVED_OPERATION_COMPLETE, motion_terminal=true, may_have_payload=false.
+Persistent O epoch2, action revisions79/159/260, no map reset between boxes.
+Prepare17.823/49.398/35.388s, execute273.105/209.836/304.688s (includes event,
+certification and observed explore); actual pickup returns58.583/26.253s.
+Startup9.039s and whole driver988.319s; no production latency or success-rate claim.
+
+Third physical dynamic release rests on FIRST cargo's four rim collisions,
+contact examples worldZ .778998895..779005496. Last3 reference samples span20.216s,
+all placed boxes stable, maximum axis span below1nm in ideal simulation. Three
+sampled actual centre errors versus requested centre are approximately
+[9.49,-4.43,.43], [9.70,5.43,.43], [4.41,10.95,-9.56]mm; these are evaluation
+observations, not calibrated hardware tolerances. Actual physical truth remains
+outside perception/placement/planning. No arm/load contact pair in captured full
+stream; error empty. This is bounded instrumented evidence, not universal proof.
+
+Actual postplace observation ratios .953684/.688889/.898947. Third first view
+.484211 twice, then another actual view reaches.898947: explore's observed
+improvement is demonstrated on this case, not an assumed FOV score. Actual view
+motions1/1/2, observed assessments1/1/3. Shared support/unknown/collision gates
+unchanged. All eighteen original operation legs have controller success receipts;
+source updates caused pre-submission holds1/2/2 before descent, then recertification.
+First/third retreat suffix also rejected old source once and recovered by native
+recertification; no stale motion bypass, reset or hidden world restart.
+
+Correct offline containment v4 uses each box's own ROS-stamped loaded interval;
+v3 could compare already-released box1 against arm carrying box2. Retain original
+reports; v4 final19/10/14 synchronous samples, zero corners outside conservative
+attachment envelope. This is sampled evidence, not continuous certification.
+Final latest O export considers166 complete snapshots, epoch2/rev266, native2cm,
+75x99x74. Free space includes the authorized one-time initial-empty declaration,
+not a claim of fully scanned free volume. Export source/pages remain actual O.
+
+Atlas final54: all3 responses QUALIFIED_PROPOSALS;3/10/13 native atlas refinement
+calls. Box2 and box3 winning endpoint trace contains place:hint:atlas-contact;
+paired transit refinement still missing/fails, with current-carry/place-entry
+opening connections. Thus latest actual route does consume refined atlas contact
+seeds; no controlled latency improvement or full transit coverage is claimed.
+
+Final certify_three_box.py verifies6750 driver/prepare/execution typed record
+hashes, three functional units, all6 controller successes/unit, actual observed
+adoption, native certificate records, sampled envelope, actual older-cargo support,
+map continuity/latest export, teardown0. PASS, missing/failing items empty. Capture
+sources copied and SHA-bound; final audit and concise O plot are retained.
+New RGB-D-only profile is explicit; physical LiDAR remains present/outputting but
+unqualified for O. Bare launch still legacy; no silent global-default migration.
+No real-hardware, multi-workload reliability, trajectory-cache or atlas speed claim.
+
+Effective inputs are dirty shared workspace: c3d20e85 PLUS run source hashes and
+archived effective_sources.zip/base archive. Commit alone is not independently
+reproducible. Next work should first consolidate owned deployment input lineage,
+then separate timing/atlas/trajectory-seed and LiDAR-source qualification campaigns.
+Do not modify this witness under a claimed frozen rerun budget. Full Chinese
+problem/cause/recommendation and numeric-parameter audit is REVIEW_10H.md.
+
+Evidence:
+- docs/status/evidence/three_box_observed/g2/diagnostic_54/acceptance_audit.json
+- docs/status/evidence/three_box_observed/g2/diagnostic_54/three_box_review.json
+- docs/status/evidence/three_box_observed/g2/diagnostic_54/final_o_native.png
+- docs/status/evidence/three_box_observed/g2/diagnostic_54/payload_containment_eval_v4.json
+- docs/status/evidence/three_box_observed/g2/REVIEW_10H.md
