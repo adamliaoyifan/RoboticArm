@@ -267,6 +267,25 @@ Instance ID equality alone cannot establish association; ambiguous acquisitions
 remain separate. This pure proposal layer does not implement those execution
 and association gates.
 
+The ROS-free continuation core compares calibrated world-point depth and paired
+RGB from the original observed region against every newly reported candidate,
+including held and duplicate entries. Its caller supplies the entire named
+matching policy and provenance; there are no default sensor accuracy constants.
+It requires an explicitly stationary box, exact domain/acquisition bindings and
+a new acquisition strictly after actual view settling. Only one compatible
+candidate, no unresolved competitor, and agreement with the selected candidate
+permit conditional association. Changed IDs do not invalidate a measured match;
+equal IDs do not establish one. Missing evidence remains unresolved.
+
+Information gain samples the same ORIGINAL world contact footprint in both raw
+acquisitions. It records each target's measured/not-measured status and gain/loss,
+without fusing support or replacing independent directed contact quality. The
+durable view ledger can adopt that matched acquisition under the original task;
+adoption retains count, opening time and limits, including after the last allowed
+motion. Identical proof retries never renew budgets; another task cannot reuse
+an adopted acquisition. These core operations alone do not dispatch views,
+reprepare from actual joints or complete recovery in the production cycle.
+
 Native pickup-view preparation derives the optical/tool mount from the captured
 URDF's same six-joint rigid sensor branch. It uses a full private copy of the
 caller-admitted O/static scene and a measured stationary pickup box, forbidding

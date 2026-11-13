@@ -48,6 +48,8 @@ MODULES = (
     'luggage_perception.pickup_view_service',
     'luggage_perception.pickup_view_association',
     'luggage_perception.ros_pickup_association',
+    'luggage_perception.stationary_pickup_association',
+    'luggage_planning.joint_operation.view_information',
     'luggage_perception.observer_depth',
     'luggage_perception.observer_lidar',
     'luggage_gazebo.operation_launch',
