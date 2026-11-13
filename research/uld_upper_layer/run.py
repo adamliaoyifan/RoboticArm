@@ -25,7 +25,7 @@ def git(repo, *args):
 
 
 def stage_ik(assets, candidate, path):
-    from luggage_planning.offline_ik import refine_to_pose
+    from luggage_planning.motion.offline_ik import refine_to_pose
     urdf=assets['urdf']; limits=np.array(urdf.joint_limits())
     rng=np.random.default_rng(61110)
     seeds=[np.clip(np.zeros(6),limits[:,0],limits[:,1])]

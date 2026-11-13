@@ -401,7 +401,7 @@ class FullArmScene:
 
     def endpoint_solutions(self,target_container,seeds,margin,budget_s):
         import time
-        from luggage_planning.offline_ik import refine_to_pose
+        from luggage_planning.motion.offline_ik import refine_to_pose
         start=time.monotonic();target=self.world_container@np.asarray(target_container).reshape(4,4)
         path=self.urdf.path_to('suction_contact_frame')
         solutions=[];attempts=[]

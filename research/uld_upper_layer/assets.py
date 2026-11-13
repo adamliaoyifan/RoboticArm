@@ -45,7 +45,7 @@ def load(repo, scene_path=None):
     sys.path[:0] = [str(repo/'src/luggage_planning'), str(repo/'src/luggage_description')]
     import xacro
     import xacro.substitution_args
-    from luggage_planning.offline_ik import Urdf
+    from luggage_planning.motion.offline_ik import Urdf
     from luggage_description.scene_tf_config_utils import urdf_world_base_pose
     from luggage_description.xacro_robot_with_scene_base import patch_world_base
     from luggage_description.container_geometry import descriptor_from_scene_config

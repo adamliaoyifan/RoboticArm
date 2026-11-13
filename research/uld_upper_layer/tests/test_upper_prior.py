@@ -377,7 +377,7 @@ class ArchiveBackedContracts(unittest.TestCase):
         urdf = self.assets['urdf']
         path = urdf.path_to('suction_contact_frame')
         target = self.prior._base_container @ np.array(row.target_container).reshape(4, 4)
-        from luggage_planning.offline_ik import refine_to_pose
+        from luggage_planning.motion.offline_ik import refine_to_pose
         refined_any = False
         for q in row.joints:
             actual = urdf.tcp(list(q), path)
