@@ -7,6 +7,7 @@ unsupported payloads are dropped (fail closed).
 
 from __future__ import division
 
+import os
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -39,6 +40,14 @@ class DepthImageRepublisher(Node):
         }
         self._pub = self.create_publisher(
             Image, self.get_parameter("output_topic").value, qos)
+        self._fixture = None
+        fixture_config = os.environ.get('ELFIN_SIM_DEPTH_DROPOUT_CONFIG')
+        if fixture_config:
+            from luggage_gazebo.depth_dropout_port import DepthDropoutPort
+            self._fixture = DepthDropoutPort(self, fixture_config,
+                os.environ['ELFIN_SIM_DEPTH_DROPOUT_EVIDENCE'],
+                os.path.join(os.environ['ELFIN_SUCTION_INPUT_CAPTURE'], 'selection_events.jsonl'),
+                self._pub.publish)
         self.create_subscription(
             Image, self.get_parameter("input_topic").value, self._on_depth, qos)
 
@@ -57,7 +66,18 @@ class DepthImageRepublisher(Node):
         out.is_bigendian = 0
         out.step = msg.width * 2
         out.data = mm_bytes
-        self._pub.publish(out)
+        if self._fixture is None:
+            self._pub.publish(out)
+        else:
+            self._fixture.submit(out)
+
+    def destroy_node(self):
+        try:
+            if self._fixture is not None:
+                self._fixture.close()
+        finally:
+            result = super().destroy_node()
+        return result
 
 
 def main():

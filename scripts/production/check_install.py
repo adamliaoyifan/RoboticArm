@@ -66,6 +66,9 @@ MODULES = (
     'luggage_gazebo.operation_launch',
     'luggage_gazebo.operation_readiness',
     'luggage_gazebo.startup_admission',
+    'luggage_gazebo.depth_dropout_fixture',
+    'luggage_gazebo.depth_dropout_port',
+    'luggage_gazebo.depth_dropout_evidence',
     'luggage_planning.planning_contract',
     'luggage_msgs.srv._prepare_joint_operation_v2',
     'luggage_msgs.srv._get_pickup_view_evidence_v2',
@@ -85,7 +88,7 @@ EXECUTABLES = {
     'luggage_packing': ('placement_planner_node.py',),
     'luggage_perception': ('cargo_volume_mapper_node.py','observer_depth_node.py','observer_lidar_node.py',
                            'observer_self_mask_node'),
-    'luggage_gazebo': ('joint_operation_sim_driver.py','wait_controller_manager.py'),
+    'luggage_gazebo': ('joint_operation_sim_driver.py','wait_controller_manager.py','depth_image_republisher.py'),
     'uld_occ_observer': ('observer_node',),
 }
 

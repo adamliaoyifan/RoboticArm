@@ -17,6 +17,8 @@ import time
 
 from ament_index_python.packages import get_package_share_directory
 from suction_input_evidence import configure_capture, audit_selected_inputs
+from depth_dropout_diagnostic import (configure_fixture, validate_fixture_options,
+    validate_fixture_binding, record_fixture_audit)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -75,9 +77,11 @@ def freeze_pickup_recovery_config(source, folder):
         total_recovery_budget_s=settings.total_recovery_budget_s)
 
 
-def client_timeout_s(*, start=False, three_box=False, prepick_replans=0):
+def client_timeout_s(*, start=False, three_box=False, prepick_replans=0, recovery_receipt=None):
     # Diagnostic action budgets, not a production latency requirement.
-    return (3 if three_box else 1)*(900.+650.*prepick_replans) if start else 180.
+    recovery = (recovery_receipt['total_recovery_budget_s'] if recovery_receipt and
+                recovery_receipt['max_extra_view_motions'] > 0 else 0.)
+    return (3 if three_box else 1)*(900.+650.*prepick_replans+recovery) if start else 180.
 
 
 def final_result(manifest, client_result, *, start, three_box):
@@ -86,6 +90,20 @@ def final_result(manifest, client_result, *, start, three_box):
     if manifest['residuals_after']:return 'TEARDOWN_INCOMPLETE',result or 1
     success=('THREE_BOX_PASS' if three_box else 'FULL_CYCLE_PASS') if start else 'STARTUP_READY'
     return (success if result==0 else 'INCOMPLETE'),result
+
+
+def finish_owned_launch(launch, pidfile, folder, manifest):
+    """Finalize sensor evidence only after its launch owner has terminated."""
+    try:
+        if launch is not None:
+            teardown=subprocess.run([str(ROOT/'scripts/stop_sim.sh'),'--owned-pgid',str(launch.pid),
+                '--pidfile',str(pidfile)],capture_output=True,text=True,timeout=45.)
+            (folder/'teardown.log').write_text(teardown.stdout+teardown.stderr)
+            manifest['teardown_exit_code']=teardown.returncode
+            try:launch.wait(timeout=5.)
+            except subprocess.TimeoutExpired:manifest['missing'].append('launch terminal result')
+    finally:
+        record_fixture_audit(manifest, folder)
 
 
 def flush_sensor_snapshot(node, *, timeout_s=15.):
@@ -126,9 +144,16 @@ def main():
     parser.add_argument('--view-poses',type=Path,help='Explicit model/scene-bound diagnostic observation goals')
     parser.add_argument('--pickup-recovery-config',type=Path,
         help='Explicit count/time/sampling/association policy; archived and forwarded only to started driver')
+    parser.add_argument('--depth-dropout-fixture',type=Path,
+        help='Explicit model-bound simulated depth fault; requires --start and --capture-suction-inputs')
     parser.add_argument('--domain',default=7,type=int)
     args = parser.parse_args()
     if args.three_box and not args.start:parser.error('--three-box requires --start')
+    try:
+        validate_fixture_options(enabled=args.depth_dropout_fixture is not None,
+            start=args.start, capture_suction_inputs=args.capture_suction_inputs)
+    except ValueError as error:
+        parser.error(str(error))
     if not 0 < args.failure_hold_s <= 60:parser.error('failure hold must be within (0,60] seconds')
     folder = args.evidence.resolve();folder.mkdir(parents=True,exist_ok=False)
     env = dict(os.environ,ROS_DOMAIN_ID=str(args.domain),ROS_LOCALHOST_ONLY='1',
@@ -145,6 +170,12 @@ def main():
     def write():
         (folder/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     write()
+    try:
+        manifest['depth_dropout_fixture'] = configure_fixture(env, folder, args.depth_dropout_fixture)
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        manifest.update(outcome='INVALID_DEPTH_DROPOUT_CONFIG',nodes_started=0,
+            exception=type(error).__name__+':'+str(error),capture_complete=True,replay_possible=True)
+        write();return 2
     recovery_input=None
     if args.pickup_recovery_config:
         try:
@@ -233,6 +264,8 @@ def main():
                 time.sleep(.1)
             manifest['configuration_ready']=config_ready;write()
             if not config_ready:raise RuntimeError('LAUNCH_CONFIGURATION_NOT_READY')
+            if manifest['depth_dropout_fixture'] is not None:
+                validate_fixture_binding(manifest['depth_dropout_fixture'], resolved)
             topics=['/camera/color/image_raw','/camera/depth/image_raw','/camera/depth/camera_info',
                 '/luggage/preprocessed/camera/color/image','/luggage/preprocessed/camera/depth/image',
                 '/luggage/preprocessed/camera/depth/camera_info','/tf','/tf_static','/joint_states',
@@ -252,7 +285,8 @@ def main():
                     with (folder/(name+'.log')).open('w') as output:
                         client=subprocess.Popen(command,env=env,stdout=output,stderr=subprocess.STDOUT,start_new_session=True)
                         deadline=time.monotonic()+client_timeout_s(start=start,
-                            three_box=args.three_box,prepick_replans=args.prepick_replans)
+                            three_box=args.three_box,prepick_replans=args.prepick_replans,
+                            recovery_receipt=manifest.get('pickup_recovery_config'))
                         if not start:deadline=min(deadline,startup_deadline)
                         while client.poll() is None and launch.poll() is None and time.monotonic()<deadline:
                             time.sleep(.2)
@@ -319,13 +353,7 @@ def main():
                 manifest['suction_input_capture']['audit_error'] = type(error).__name__+':'+str(error)
                 manifest['capture_complete'] = False
                 manifest['missing'].append('selected suction input audit')
-        if launch is not None:
-            teardown=subprocess.run([str(ROOT/'scripts/stop_sim.sh'),'--owned-pgid',str(launch.pid),
-                '--pidfile',str(pidfile)],capture_output=True,text=True,timeout=45.)
-            (folder/'teardown.log').write_text(teardown.stdout+teardown.stderr)
-            manifest['teardown_exit_code']=teardown.returncode
-            try:launch.wait(timeout=5.)
-            except subprocess.TimeoutExpired:manifest['missing'].append('launch terminal result')
+        finish_owned_launch(launch, pidfile, folder, manifest)
         manifest['residuals_after']=residuals()
         manifest['replay_possible']=manifest['capture_complete']
         manifest['outcome'],result=final_result(manifest,result,start=args.start,three_box=args.three_box)

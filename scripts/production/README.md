@@ -44,3 +44,24 @@ remains separately retained. Startup without a selected pickup is
 Raw selected windows are recorded for every explicitly started observed cycle,
 including single-box runs. The audit also reads actual selected-domain receipts:
 a missing window is incomplete evidence even if no window directory exists.
+
+For an explicit simulated sensor-loss experiment, add `--depth-dropout-fixture
+CONFIG.json` together with `--start --capture-suction-inputs`. The runner freezes
+the exact configuration, checks its model hash and scene revision against the
+actual launch, and binds only the Gazebo depth adapter. Configuration schema
+`simulation_depth_dropout_v1` requires model/scene identities, reference
+observation and input SHA256, world/optical frames, unit `reference_axis_world`,
+`pitch_pixels`, `square_side_pixels` and `active_axis_cone_rad`. These are experiment
+parameters, with no production defaults or hardware calibration claim.
+
+Within that optical-axis cone the adapter changes only periodic pixel squares
+to unknown depth0. Outside it, actual rendered depth passes unchanged; optical
+roll alone cannot clear the cone. Exact stamped TF is required. Its bounded
+nonblocking TF wait forwards the original frame on timeout/overflow and records
+why no fault was injected. `depth_dropout/` owns a bounded original/output ring,
+pins exact frames selected by suction capture, and flushes its summary on owned
+teardown. Missing/truncated selected evidence makes the diagnostic incomplete;
+it does not rewrite operation results. With the flag absent the normal callback
+has no fixture TF subscription, timer or queue. This capture is not a latency
+benchmark. The diagnostic caller includes any explicitly enabled recovery time
+budget once per box; producer planning and recovery deadlines remain unchanged.
