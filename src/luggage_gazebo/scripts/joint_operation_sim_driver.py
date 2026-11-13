@@ -380,37 +380,13 @@ class OperationSimDriver(Node):
         if not lease.handle:raise RuntimeError('MAP_SNAPSHOT:'+lease.status)
         try:
             admit_response(lease,identity_record(lease.identity),lease.validity.generation)
-            slots=()
-            if task_mode is not None:
-                from luggage_gazebo.observed_task_slots import observed_task_slots
-                from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy
-                captured=self.observer.capture(scene_revision=self.launch['scene_revision'],
-                    request_id='explicit-'+task_mode,expected_epoch=lease.identity.epoch,
-                    expected_revision=lease.identity.map_revision,deadline=time.monotonic()+15.,require_latest=False)
-                slots,report=observed_task_slots(captured,tuple(domain.box_wdh),task_mode,
-                    limits=load_attachment_geometry_policy(self.launch['resolved'].get('attachment_geometry_config','')),
-                    margin=self.launch['collision_policy']['collision_margin_m'],
-                    vertical_margin=self.launch['collision_policy']['vertical_collision_margin_m'])
-                self.record('explicit_task_candidates',json.dumps(report,sort_keys=True).encode())
-                if not slots:raise RuntimeError('NO_OBSERVED_'+task_mode.upper()+'_PLACEMENT')
-                # Enumeration proposals are not frozen contact evidence. Join a
-                # fresh acquisition just before the service pins it. Preserve the
-                # observed support height; server rechecks every pose with NEW
-                # measured dimensions, observed volume and complete native route.
-                proposal_height=domain.box_wdh[2]
-                detection,domain=wait_observed_detection(
-                    lambda remaining:self.call(self.detect,DetectLuggage.Request(),'submit_detect',timeout=remaining),
-                    lambda:self.domain,deadline=time.monotonic()+30.)
-                height_shift=(domain.box_wdh[2]-proposal_height)/2
-                slots=tuple(Transform((slot.translation[0],slot.translation[1],slot.translation[2]+height_shift),
-                    slot.quaternion_xyzw) for slot in slots)
-                self.record('submit_top_domain',domain)
-                for key,message in self.images.items():self.record('submit_detection_'+key,message)
-            return self.prepare_from_observation(detection,domain,lease.identity,slots=slots)
+            # Placement and contacts share one frozen measured geometry inside
+            # prepare. Do not enumerate on an older acquisition then refresh size.
+            return self.prepare_from_observation(detection,domain,lease.identity,task_mode=task_mode)
         finally:
             self.call(self.release_snapshot,ReleaseSnapshot.Request(handle=lease.handle),'release_prepare_snapshot')
 
-    def prepare_from_observation(self,detection,domain,identity,*,slots=()):
+    def prepare_from_observation(self,detection,domain,identity,*,slots=(),task_mode=None):
         joint = self.joint;self.record('prepare_joints',joint)
         positions = dict(zip(joint.name,joint.position))
         request = PrepareJointOperationV2.Request(request_id='gazebo-'+str(time.time_ns()),
@@ -420,6 +396,7 @@ class OperationSimDriver(Node):
             robot_state_stamp_valid=True,
             robot_state_stamp_ns=joint.header.stamp.sec*10**9+joint.header.stamp.nanosec,
             start_joints=[positions[name] for name in JOINTS],candidate_limit=8,
+            placement_task_mode=task_mode or '',
             budget_s=float(self.launch['resolved']['operation_prepare_budget_s']))
         from luggage_planning.place_service import pose_message
         request.slots=[pose_message(dict(contract_version=2,kind='pose',frame_id='container_link',length_unit='m',

@@ -1094,7 +1094,7 @@ from route construction, retain ordered outside/plane/inside and FK witness.
 
 Projection repair27248965:73 focused behavioral tests pass0.82s; frozen72 build7.10s unchanged inputs, installed192/192. Diagnostic52 uses same three-box workload. First prepare now passes70.281s; no latency improvement is inferred from heterogeneous runs.
 
-00:40UTC diagnostic52 frozen72: first cycle COMPLETE225.766s, return40.636s;
+00:38UTC diagnostic52 frozen72: first cycle COMPLETE225.766s, return40.636s;
 second prepare PLAN_READY182.734s, candidate requested4/contact9, six-leg full
 native certificate. Second actual pick/lift/carry completes, then pre-descent
 revalidation stops CARRY_FAULT/BOUND_NATIVE_ADMISSION_REQUIRED with payload held.
@@ -1116,3 +1116,18 @@ closure. No floor exemption, O deletion, unsupported tolerance or GT correction.
 New operation_o_sources selection rgbd/rgbd_lidar uses existing optional observer
 subscription. Bare launch keeps both; explicit joint profile rgbd. Source provenance
 records selected inputs; full model and all unknown/collision gates unchanged.
+
+00:47UTC diagnostic53 RGB-D-only O rehearsal: startup8.94s, first prepare refuses
+REQUESTED_SLOT_NOT_GEOMETRICALLY_ADMITTED6.94s, no product motion. Exact request
+and pinned O replay reject32/32 slots. Their centres include x.495 and-.005;
+fresh measurement(.494964,.361470,.247177) changes footprint-grid parity from the
+older measurement used for enumeration, but client refresh changes only Z.
+This is interface sequencing, not O collision or physical failure. Recommended
+minimum repair: move EXISTING floor/stack selector into planning-owned shared
+module, optional placement_task_mode in the plan-only request; owner retains
+contact acquisition first, then generates all positions from that same measured
+geometry and pinned observed O. Client transmits intent, not stale dimension-bound
+slots. Explicit supplied slots retain strict compatibility admission and cannot
+be combined with task mode. No new placement policy, planner or perception prior.
+Initial source tests37pass/2fail because old installed generated interface lacks
+new field; rebuild interfaces before evaluating the updated client behavior.

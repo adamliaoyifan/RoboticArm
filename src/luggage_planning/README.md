@@ -33,6 +33,13 @@ joint_operation_prepare_node.py
 motion_planner_node.py → joint_operation.runtime → execution / runtime_ports
 ```
 
+PrepareJointOperationV2 accepts optional `placement_task_mode` (`floor`/`stack`),
+exclusive with explicit slots. The owner enumerates through the same shared
+observed placement kernel after retaining the measured contact acquisition. This
+binds candidate-grid parity, box dimensions, support height and native planning
+to one geometry; clients do not regenerate dimensions after selecting slots.
+Regenerate ROS interfaces when updating this field.
+
 The aperture generator belongs to this route and retains its ordered waypoints
 inside the carry leg. ComputePlacement provides geometric slots. Actual attachment
 geometry, current occupancy, configured ULD and native complete-model collision

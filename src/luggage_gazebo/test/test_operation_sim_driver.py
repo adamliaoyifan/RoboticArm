@@ -305,14 +305,13 @@ def test_three_cycles_keep_observed_map_and_finalize_before_next_spawn(tmp_path,
         assert events[-1][1]['outcome']=='THREE_BOX_PASS'
 
 
-def test_explicit_task_refreshes_contact_after_enumeration_and_rechecks_new_size(monkeypatch,tmp_path):
+def test_task_intent_uses_one_observation_and_server_placement_ownership(monkeypatch,tmp_path):
     module=driver_module()
-    import luggage_gazebo.observed_task_slots as selector
     from luggage_planning.placement_prior.contracts import Transform
-    old_domain=SuctionTopDomainV2(box_wdh=[.2,.1,.1]);new_domain=SuctionTopDomainV2(box_wdh=[.21,.11,.12])
-    observations=iter([(DetectedLuggage(id='old'),old_domain),(DetectedLuggage(id='fresh'),new_domain)])
-    monkeypatch.setattr(module,'wait_observed_detection',lambda *a,**kw:next(observations))
-    monkeypatch.setattr(selector,'observed_task_slots',lambda *a,**kw:((Transform((0.,0.,.58),(0.,0.,0.,1.)),),{}))
+    domain=SuctionTopDomainV2(box_wdh=[.21,.11,.12]);detection=DetectedLuggage(id='measured')
+    acquisitions=[]
+    def observe(*a,**kw):acquisitions.append(1);return detection,domain
+    monkeypatch.setattr(module,'wait_observed_detection',observe)
     lease=GetSnapshot.Response(status='OK',handle='pinned');lease.identity.epoch=2;lease.identity.map_revision=5
     lease.validity.epoch=2;lease.validity.generation=4;lease.validity.state='VALID'
     requests=[]
@@ -321,14 +320,11 @@ def test_explicit_task_refreshes_contact_after_enumeration_and_rechecks_new_size
         if client=='snapshot':return lease
         if client=='release':requests.append('released');return ReleaseSnapshot.Response(status='OK')
         raise AssertionError(client)
-    def prepare(detection,domain,identity,*,slots):
-        assert detection.id=='fresh' and domain is new_domain
-        assert slots[0].translation[2]-.12/2==pytest.approx(.53)
-        assert identity.map_revision==5
-        return 'exact_new_measured_submission'
-    probe=SimpleNamespace(detect='detect',domain=new_domain,images={},validity='validity',snapshot='snapshot',
-        release_snapshot='release',record=lambda *a:None,call=call,
-        launch={'scene_revision':'scene','resolved':{},'collision_policy':{'collision_margin_m':.02,'vertical_collision_margin_m':0.}},
-        observer=SimpleNamespace(capture=lambda **kw:SimpleNamespace()),prepare_from_observation=prepare)
-    assert module.OperationSimDriver.plan(probe,task_mode='floor')=='exact_new_measured_submission'
-    assert requests==['released']
+    def prepare(actual,observed,identity,*,task_mode):
+        assert actual is detection and observed is domain
+        assert task_mode=='stack' and identity.map_revision==5
+        return 'single_measured_submission'
+    probe=SimpleNamespace(detect='detect',domain=domain,images={},validity='validity',snapshot='snapshot',
+        release_snapshot='release',record=lambda *a:None,call=call,prepare_from_observation=prepare)
+    assert module.OperationSimDriver.plan(probe,task_mode='stack')=='single_measured_submission'
+    assert acquisitions==[1] and requests==['released']

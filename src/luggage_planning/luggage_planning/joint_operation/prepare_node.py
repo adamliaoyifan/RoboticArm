@@ -349,6 +349,16 @@ class JointOperationPrepareNode(Node):
     def _placements(self,request,confirmed,volume,*,ranking_geometry=None):
         from st09_contracts.attachment_geometry import freeze_geometry
         dimensions=(request.detection.width,request.detection.depth,request.detection.height)
+        mode=getattr(request,'placement_task_mode','')
+        if mode not in ('','floor','stack') or (mode and request.slots):
+            raise ValueError('AMBIGUOUS_OR_UNKNOWN_PLACEMENT_TASK')
+        if mode:
+            from luggage_planning.placement_prior.task_slots import observed_placement_slots
+            slots,report=observed_placement_slots(confirmed,volume,dimensions,mode,
+                limits=self.limits,margin=self.margin,vertical_margin=self.vertical_margin)
+            self._record('placement_task_candidates.json',json.dumps(report,sort_keys=True).encode())
+            if not slots:raise ValueError('NO_OBSERVED_'+mode.upper()+'_PLACEMENT')
+            return tuple(PlacementCandidate('observed-'+str(index),slot) for index,slot in enumerate(slots))
         if request.slots:
             result = []
             for index,slot in enumerate(request.slots):

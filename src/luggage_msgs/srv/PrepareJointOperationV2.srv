@@ -12,6 +12,10 @@ string expected_model_sha256
 bool robot_state_stamp_valid
 uint64 robot_state_stamp_ns
 float64[6] start_joints
+# Optional task intent: empty = existing default, floor or stack.
+# Enumerated inside preparation after the measured observation is retained.
+# Must not be combined with caller-provided slots.
+string placement_task_mode
 # Empty slots asks the placement solver to enumerate on the pinned snapshot.
 luggage_msgs/PoseContractV2[] slots
 # Number of placement proposals, 1..8; each asks at most two directed contacts.
