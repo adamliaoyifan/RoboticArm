@@ -49,6 +49,14 @@ Hard rules:
 `generate_candidates` slides an axis-aligned footprint over the
 container-local 2.5D height map:
 
+Native grid coordinates use the producer's declared XY origin, retained as
+`origin_local` by the typed-surface adapter. Grid shape is a cell count, not a
+new origin: ceil(extent/resolution) can extend the final cell beyond a hull face.
+Selected-target support, generated centres and scalar/vector boundary scans
+must consume that same origin without recentering or resampling. Historical v1
+dictionaries without an origin retain their documented consumer fallbacks;
+these derived values must not be presented as native producer provenance.
+
 - Production accepts directed quarter turns `{0, π/2, π, 3π/2}`. Footprint
   calculations reuse two rectangle classes, but all requested physical
   headings survive candidate generation, retention and slot serialization.

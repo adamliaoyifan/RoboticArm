@@ -13,6 +13,7 @@ from luggage_packing.placement_solver import (
     placement_constraint_verdict,
 )
 from luggage_description.container_geometry import normalize_descriptor
+from luggage_packing.surface_grid import surface_origin_xy_container
 
 
 class SelectedPoseAdmission:
@@ -28,6 +29,10 @@ class SelectedPoseAdmission:
         self.heights=np.asarray(surface['height'],dtype=float)
         self.unknown=np.asarray(surface['state']) == 'unknown'
         self.unknown_prefix=self._prefix(self.unknown)
+        resolution = float(surface['resolution'])
+        self.origin_xy_container = surface_origin_xy_container(surface,
+            legacy_origin_xy_container=(-int(surface['nx'])*resolution/2,
+                                        -int(surface['ny'])*resolution/2))
         self.layers=OrderedDict()
 
     @staticmethod
@@ -87,6 +92,8 @@ class SelectedPoseAdmission:
             nominal_dimensions_wdh=list(candidate['size']),
             heading_container_rad=candidate['heading_theta'],
             resolution_m=float(self.surface['resolution']),
+            grid_origin_xy_container=list(self.origin_xy_container),
+            grid_origin_source='declared' if 'origin_local' in self.surface else 'legacy_grid_centre',
             support_band_m=self.cfg['support_tol'],
             min_support_ratio=self.cfg['min_support_ratio'],
             max_support_tilt_ratio=self.cfg['max_support_tilt_ratio'])
@@ -107,7 +114,7 @@ class SelectedPoseAdmission:
             return 'insufficient_clearance'
         resolution = float(surface['resolution'])
         nx, ny = int(surface['nx']), int(surface['ny'])
-        origin = (-nx*resolution/2, -ny*resolution/2)
+        origin = self.origin_xy_container
         lo = [center[a]-footprint[a]/2 for a in range(2)]
         hi = [center[a]+footprint[a]/2 for a in range(2)]
         first = [math.floor((lo[a]-origin[a])/resolution+1e-9) for a in range(2)]

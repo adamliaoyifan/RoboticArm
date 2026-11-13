@@ -23,6 +23,7 @@ import math
 import numpy as np
 
 from luggage_packing.placement_legacy_v1 import v1_candidate_view
+from luggage_packing.surface_grid import surface_origin_xy_container
 
 
 REASON_OVERLAP = "overlap"
@@ -907,11 +908,12 @@ def _rel_cells(edge, span, cells, resolution):
 
 def _edge_scan_grid(arrays, peak, nx, ny, resolution, half_l, half_w,
                     footprint_l, footprint_w, cells_x, cells_y, stride,
-                    occ_tol):
+                    occ_tol, *, grid_origin_xy_container=None,
+                    candidate_origin_xy_container=None):
     """Vectorized _footprint_edge_state over ALL window positions of one
     yaw — exact parity with the per-window scalar scan.
 
-    Geometry identity: lx = -half_l + (ix0 + cells_x/2)*res, so as ix0
+    Geometry identity: lx = candidate_origin.x + (ix0 + cells_x/2)*res, so as ix0
     advances by one the footprint shifts by exactly one cell — its
     position relative to the grid lines is CONSTANT per yaw. The cells
     the continuous footprint overlaps (unknown judgment) and the cells
@@ -925,10 +927,13 @@ def _edge_scan_grid(arrays, peak, nx, ny, resolution, half_l, half_w,
     ``peak`` is the per-window peak array (strided window grid). Returns
     (pen_any, unknown_any) boolean arrays on the same grid."""
     from numpy.lib.stride_tricks import sliding_window_view
-    ox, oy = -nx * resolution * 0.5, -ny * resolution * 0.5
+    ox, oy = (grid_origin_xy_container if grid_origin_xy_container is not None
+              else (-nx*resolution/2,-ny*resolution/2))
+    candidate_ox,candidate_oy = (candidate_origin_xy_container
+        if candidate_origin_xy_container is not None else (-half_l,-half_w))
     # footprint left edges relative to the window's first grid line
-    a_x = (-half_l - ox) + (cells_x * resolution - footprint_l) * 0.5
-    a_y = (-half_w - oy) + (cells_y * resolution - footprint_w) * 0.5
+    a_x = (candidate_ox - ox) + (cells_x * resolution - footprint_l) * 0.5
+    a_y = (candidate_oy - oy) + (cells_y * resolution - footprint_w) * 0.5
     tol_x = min(occ_tol, footprint_l * 0.5)
     tol_y = min(occ_tol, footprint_w * 0.5)
 
@@ -1004,10 +1009,8 @@ def _footprint_edge_state(surface_map, cx, cy, footprint_l, footprint_w,
     """Footprint-coverage occupancy/unknown scan (adjudication
     2026-11-08).
 
-    The ceil-sized window cells are anchored to the HULL edge while the
-    map grid is anchored at -(nx/2)*resolution — on a grid wider than
-    the hull (75 cells * 0.02 = 1.50 m vs inner 1.49 m) the box's real
-    extent spills past the last window cell into the adjacent column.
+    Use the declared native origin, including for ceil-sized grids. Legacy v1
+    inputs with no origin retain their old centred-cell coverage convention.
     This scans every grid cell the CONTINUOUS footprint overlaps with
     positive area:
 
@@ -1026,8 +1029,8 @@ def _footprint_edge_state(surface_map, cx, cy, footprint_l, footprint_w,
     ny = int(surface_map["ny"])
     heights = surface_map["height"]
     states = surface_map["state"]
-    origin_x = -nx * resolution * 0.5
-    origin_y = -ny * resolution * 0.5
+    origin_x,origin_y = surface_origin_xy_container(surface_map,
+        legacy_origin_xy_container=(-nx*resolution/2,-ny*resolution/2))
     x0, x1 = cx - footprint_l * 0.5, cx + footprint_l * 0.5
     y0, y1 = cy - footprint_w * 0.5, cy + footprint_w * 0.5
     tol = resolution if overlap_tol is None else float(overlap_tol)
@@ -1287,6 +1290,10 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
     map_yaw = float(surface_map["yaw"])
     half_l = inner_l * 0.5
     half_w = inner_w * 0.5
+    grid_origin_xy = surface_origin_xy_container(surface_map,
+        legacy_origin_xy_container=(-nx*resolution/2,-ny*resolution/2))
+    candidate_origin_xy = surface_origin_xy_container(surface_map,
+        legacy_origin_xy_container=(-half_l,-half_w))
     half_h = inner_h * 0.5
     stride = max(1, int(cfg["stride_cells"]))
 
@@ -1322,7 +1329,8 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
         pen_g, spill_unknown_g = _edge_scan_grid(
             arrays, peak_g, nx, ny, resolution, half_l, half_w,
             footprint_l, footprint_w, cells_x, cells_y, stride,
-            float(cfg["occ_overlap_tolerance"]))
+            float(cfg["occ_overlap_tolerance"]),grid_origin_xy_container=grid_origin_xy,
+            candidate_origin_xy_container=candidate_origin_xy)
         for i in range(peak_g.shape[0]):
             ix0 = i * stride
             for j in range(peak_g.shape[1]):
@@ -1334,8 +1342,8 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                 top_of_box = peak + box_h
                 clearance_top = inner_h - top_of_box
 
-                lx = -half_l + (ix0 + cells_x * 0.5) * resolution
-                ly = -half_w + (iy0 + cells_y * 0.5) * resolution
+                lx = candidate_origin_xy[0] + (ix0 + cells_x * 0.5) * resolution
+                ly = candidate_origin_xy[1] + (iy0 + cells_y * 0.5) * resolution
                 # ST05 F07: the slot truth is the container box center with
                 # z = floor + support + h/2; the historical volume-centered
                 # fields are derived by the single legacy decoder below.
