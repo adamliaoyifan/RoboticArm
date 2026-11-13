@@ -1,5 +1,6 @@
 """Typed retention/actual-footprint ports owned by the perception process."""
 import json
+import logging
 import math
 import time
 
@@ -33,9 +34,11 @@ def binding_from_message(message):
 
 class FrozenSuctionService:
     def __init__(self, store, *, context_provider, model_provider,
-                 context_lookup=None, clock=time.monotonic):
+                 context_lookup=None, clock=time.monotonic, on_retained=None):
         self.store,self.context_provider,self.model_provider,self.clock = store,context_provider,model_provider,clock
         self.context_lookup = context_lookup
+        # Diagnostic selection follows adoption, not read-only detection queries.
+        self.on_retained = on_retained
 
     def retain(self, request, response):
         from luggage_msgs.msg import FrozenSuctionObservationV2
@@ -86,6 +89,12 @@ class FrozenSuctionService:
             response.retained,response.reason = True,'MEASURED_OBSERVATION_RETAINED'
         except Exception as error:
             response.reason = 'FROZEN_OBSERVATION_REFUSED:'+type(error).__name__+':'+str(error)
+        if response.retained and self.on_retained is not None:
+            try:
+                self.on_retained(context.domain)
+            except Exception as error:
+                # Optional evidence I/O cannot change an already valid retention.
+                logging.getLogger(__name__).warning('retained suction input capture failed: %s', error)
         return response
 
     def pickup_context(self, binding):
@@ -165,7 +174,8 @@ class FrozenSuctionService:
         return response
 
 
-def register_frozen_suction_services(node, *, context_provider, model_provider, context_lookup=None):
+def register_frozen_suction_services(node, *, context_provider, model_provider, context_lookup=None,
+                                    on_retained=None):
     """Same registration used by the detector and isolated behavioral tests."""
     from luggage_msgs.srv import RetainSuctionObservationV2, CheckFrozenSuctionContactV2, EvaluateFrozenSuctionV2
     store = FrozenSuctionObservations(
@@ -173,7 +183,7 @@ def register_frozen_suction_services(node, *, context_provider, model_provider, 
         max_bytes=node.declare_parameter('frozen_suction_byte_limit',64*1024*1024).value,
         lifetime_s=node.declare_parameter('frozen_suction_lifetime_s',300.).value)
     handler = FrozenSuctionService(store,context_provider=context_provider,
-        model_provider=model_provider,context_lookup=context_lookup)
+        model_provider=model_provider,context_lookup=context_lookup,on_retained=on_retained)
     # Keep service objects with their owner. These callbacks never execute motion.
     handler.services = (
         node.create_service(RetainSuctionObservationV2,'/luggage/retain_suction_observation_v2',handler.retain),

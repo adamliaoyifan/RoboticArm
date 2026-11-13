@@ -739,7 +739,8 @@ class LuggageDetector(Node):
             self._frozen_suction_service = register_frozen_suction_services(self,
                 context_provider=self._current_directed_suction_context,
                 context_lookup=self._current_directed_suction_context,
-                model_provider=lambda:self._suction_evaluator.contact_model)
+                model_provider=lambda:self._suction_evaluator.contact_model,
+                on_retained=self._capture_retained_suction_input)
             from luggage_msgs.srv import GetPickupViewEvidenceV2
             from luggage_perception.pickup_view_service import PickupViewService
             self._pickup_view_service=PickupViewService(
@@ -2335,16 +2336,18 @@ class LuggageDetector(Node):
             self._last_failure_reason = "geometry_not_settled"
             return None, float(frame.pca_confidence)
         self._last_failure_reason = "ok"
+        return frame.box, float(frame.pca_confidence)
+
+    def _capture_retained_suction_input(self, domain):
+        """Pin exact evaluator inputs only when planning adopts this acquisition."""
         capture = getattr(self, '_suction_input_capture', None)
         if capture is not None:
             try:
-                outcome = capture.pin(frame.instance_id, frame.generation,
-                    int(frame.header.stamp.sec)*1000000000+int(frame.header.stamp.nanosec))
+                outcome = capture.pin(domain.instance_id, domain.generation, domain.stamp_ns)
                 if outcome['status'] not in ('saved', 'already_saved'):
                     self._warn_throttled('selected suction input capture: %s' % outcome['status'])
             except Exception as error:
                 self._warn_throttled('selected suction input capture failed: %s' % error)
-        return frame.box, float(frame.pca_confidence)
 
     def _detect_from_window_with_retries(self):
         attempts = 1 + int(self._estimate_retry_count)

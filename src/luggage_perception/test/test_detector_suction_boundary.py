@@ -6,7 +6,9 @@ import numpy as np
 
 
 def test_detector_keeps_empty_evaluation_instead_of_minting_center(monkeypatch):
-    path=Path(__file__).parents[1]/'scripts/luggage_detector_node.py'
+    import os
+    path=Path(os.environ.get('ELFIN_TEST_DETECTOR_SCRIPT',
+        Path(__file__).parents[1]/'scripts/luggage_detector_node.py'))
     spec=importlib.util.spec_from_file_location('detector_suction_boundary',path)
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     depth=np.ones((4,4));transform=np.eye(4);mask=np.ones((4,4),dtype=bool)
@@ -36,8 +38,10 @@ def test_detector_keeps_empty_evaluation_instead_of_minting_center(monkeypatch):
     assert fake._timing['suction_mode']=='validated_footprint'
 
 
-def test_selected_frame_pins_its_exact_stamp_without_changing_detection():
-    path=Path(__file__).parents[1]/'scripts/luggage_detector_node.py'
+def test_detection_reads_do_not_select_diagnostic_frames():
+    import os
+    path=Path(os.environ.get('ELFIN_TEST_DETECTOR_SCRIPT',
+        Path(__file__).parents[1]/'scripts/luggage_detector_node.py'))
     spec=importlib.util.spec_from_file_location('detector_capture_selection',path)
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     calls=[]
@@ -53,7 +57,11 @@ def test_selected_frame_pins_its_exact_stamp_without_changing_detection():
     frame=SimpleNamespace(header=SimpleNamespace(stamp=SimpleNamespace(sec=123,nanosec=456789123)),
         instance_id='selected-box',generation=7,pca_valid=True,pca_reason='ok',
         pca_confidence=.9,box=box)
-    result,confidence=module.LuggageDetector._frame_to_detect(fake,frame)
-    assert result is box and confidence==.9
+    for _ in range(16):
+        result,confidence=module.LuggageDetector._frame_to_detect(fake,frame)
+        assert result is box and confidence==.9
+    assert calls==[] and warnings==[]
+    domain=SimpleNamespace(instance_id='selected-box',generation=7,stamp_ns=123456789123)
+    module.LuggageDetector._capture_retained_suction_input(fake,domain)
     assert calls==[('selected-box',7,123456789123)]
     assert warnings and 'exact_input_missing' in warnings[0]

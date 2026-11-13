@@ -145,6 +145,14 @@ motion, generic estimation/quality thresholds or hardware error bounds are
 introduced by this interface. Active views require a separate decision-relevant
 gap and complete robot motion validation.
 
+Optional exact evaluator-input diagnostics stage a bounded frame ring. Successful
+frozen-observation retention pins the adopted domain's instance, generation and
+integer acquisition stamp. Read-only detection queries do not spend capture
+slots. Retention checks deduplicate the same stamp; they do not renew or select
+a newer acquisition. Missing exact staged inputs or exhausted diagnostic capacity
+are reported without substituting frames or changing ordinary retention,
+quality or planning results. Diagnostic I/O failures remain evidence failures.
+
 The detector also registers `/luggage/retain_suction_observation_v2` and
 `/luggage/check_frozen_suction_contact_v2` when observed suction export is enabled.
 Retention must match the exact current measured detection, domain and effective
