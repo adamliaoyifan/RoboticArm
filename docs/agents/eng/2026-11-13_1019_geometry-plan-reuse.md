@@ -65,6 +65,21 @@ Final behavioural tests and retained integration audit are committed at
 - docs/status/evidence/geometry_plan_reuse/20261113/REPORT.md
 - docs/status/evidence/geometry_plan_reuse/20261113/simulation_01/integration_audit.json
 - docs/agents/discuss/2026-11-13_1019_geometry-plan-reuse.md
+- docs/agents/reviews/2026-11-13_1222_tolerant-geometry-go-review.md
+- docs/plans/ATLAS_ROUTE_TOLERANCE_EVALUATION_20261113.md
+
+### 2026-11-13 — Follow-up documentation and commit ownership
+
+User requested an owned-change summary and commits. Functional code/evidence
+remain in `4e9b9622`/`25a10b0c`; no duplicate implementation commit is created.
+Follow-up source audit, evaluation design and eight passing scripted G snapshot
+tests are committed at `1c239f48`. Updated context entry and evidence report
+to distinguish completed development, functional witness, physical containment
+failure, unmeasured hardware relevance and planned independent evaluation.
+The follow-up changes no production policy or perception algorithm. Existing
+sampled containment failure stays recorded; complete operation and tolerance
+mechanisms take priority over simulator-specific tuning. Only explicitly owned
+documentation/evidence paths are committed; unrelated concurrent work is retained.
 
 ### 2026-11-13T10:58:00+08:00 — Implementation freeze before integration
 
