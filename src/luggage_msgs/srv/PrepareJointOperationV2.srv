@@ -18,7 +18,8 @@ float64[6] start_joints
 string placement_task_mode
 # Empty slots asks the placement solver to enumerate on the pinned snapshot.
 luggage_msgs/PoseContractV2[] slots
-# Number of placement proposals, 1..8; each asks at most two directed contacts.
+# Number of admitted placement proposals, 1..8; each tries two directed headings.
+# Contact alternatives per heading are separately bounded by the prepare owner.
 # The shared time budget still bounds native planning across all proposals.
 uint32 candidate_limit
 float64 budget_s

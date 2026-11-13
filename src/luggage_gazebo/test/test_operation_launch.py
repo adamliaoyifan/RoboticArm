@@ -104,7 +104,7 @@ def test_composition_binds_one_owner_and_identical_native_model(tmp_path,monkeyp
     settings.update(scene_tf_config=str(Path(get_package_share_directory('luggage_description'))/
         'config/scene_tf_deploy_update.yaml'),cargo_map_resolution_m='',
         operation_connection_max_edge_s='5.0',operation_max_branch_attempts='8',
-        operation_max_branch_attempts_per_candidate='2')
+        operation_max_branch_attempts_per_candidate='2',operation_max_contact_proposals_per_direction='3')
     settings['operation_o_sources']=sources
     settings['operation_source_refresh_attempts']='3'
     settings['operation_execution_budget_s']='540.0'
@@ -137,6 +137,11 @@ def test_composition_binds_one_owner_and_identical_native_model(tmp_path,monkeyp
     assert runtime['collision_margin_m'] == .02
     assert runtime['operation_source_refresh_attempts'] == 3
     assert runtime['operation_max_budget_s'] == 540.
+    prepare=next(node for node in consumers if node['executable']=='joint_operation_prepare_node.py')
+    prepare_parameters={key:value
+        for block in evaluate_parameters(LaunchContext(),normalize_parameters(prepare['parameters']))
+        for key,value in block.items()}
+    assert prepare_parameters['max_contact_proposals_per_direction']==3
     prepare=next(node for node in consumers if node['executable']=='joint_operation_prepare_node.py')
     prepare_parameters={}
     for group in evaluate_parameters(LaunchContext(),normalize_parameters(prepare['parameters'])):

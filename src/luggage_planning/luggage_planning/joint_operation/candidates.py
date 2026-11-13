@@ -64,6 +64,51 @@ def centered_ranking_geometry(domain, limits):
 
 def propose_contact(domain, model, *, query_id, world_from_place_box,
                     desired_world_from_tool, max_center_checks):
+    """Return the original target-guided primary proposal."""
+    return _propose_contact(domain,model,query_id=query_id,
+        world_from_place_box=world_from_place_box,desired_world_from_tool=desired_world_from_tool,
+        max_center_checks=max_center_checks)
+
+
+def propose_contacts(domain, model, *, query_id, world_from_place_box,
+                     desired_world_from_tool, max_center_checks, max_proposals):
+    """Lazily try distinct observed contacts under one geometric work budget.
+
+    The primary retains the target hint. Alternatives maximize separation from
+    selected centres using only the measured grid; separation is a search order,
+    not a permitted offset, error bound or substitute for full-footprint quality.
+    """
+    if type(max_center_checks) is not int or not 1 <= max_center_checks <= 4096:
+        raise ValueError('bounded geometric centre checks required')
+    if type(max_proposals) is not int or not 1 <= max_proposals <= 4:
+        raise ValueError('one to four directed contact proposals required')
+    previous,checked = [],0
+    for index in range(max_proposals):
+        remaining = max_center_checks-checked
+        if remaining <= 0:return
+        proposal = _propose_contact(domain,model,query_id=query_id+':'+str(index),
+            world_from_place_box=world_from_place_box,desired_world_from_tool=desired_world_from_tool,
+            max_center_checks=remaining,previous_centres=previous)
+        checked += proposal.checked_centres
+        yield proposal
+        if proposal.reason != 'OBSERVED_FOOTPRINT_PROPOSAL':return
+        previous.append(proposal.center_uv_top_m)
+
+
+def group_placement_positions(placements):
+    """Preserve position priority; try its already-admitted headings together.
+
+    Exact coordinates are keys. No snapping, yaw synthesis or geometry admission
+    happens here, and the original PlacementCandidate/Transform objects survive.
+    """
+    positions = {}
+    for placement in placements:
+        positions.setdefault(placement.container_from_box.translation,[]).append(placement)
+    return tuple(placement for group in positions.values() for placement in group)
+
+
+def _propose_contact(domain, model, *, query_id, world_from_place_box,
+                     desired_world_from_tool, max_center_checks, previous_centres=()):
     """Back-project a target-side tool hint into an actual observed pick face.
 
     max_center_checks bounds geometric work, not permitted missing depth.
@@ -97,14 +142,19 @@ def propose_contact(domain, model, *, query_id, world_from_place_box,
     # footprint cannot fit even the observed grid bounds. The exact observed
     # cell gate below still rejects holes and irregular boundaries.
     uv = uv[np.all((uv >= lower) & (uv <= upper), axis=1)]
-    distance = np.sum((uv-desired_uv)**2,axis=1)
+    if previous_centres:
+        separation = np.min(np.sum((uv[:,None,:]-np.asarray(previous_centres))**2,axis=2),axis=1)
+        uv,separation = uv[separation>0],separation[separation>0]
+        distance = -separation  # Farthest first; no physical threshold added.
+    else:
+        distance = np.sum((uv-desired_uv)**2,axis=1)
     count = min(len(uv),max_center_checks)
     if count:
         nearest = np.argpartition(distance,count-1)[:count]
         nearest = nearest[np.argsort(distance[nearest],kind='stable')]
-        proposals = [preferred]+list(uv[nearest])
+        proposals = list(uv[nearest]) if previous_centres else [preferred]+list(uv[nearest])
     else:
-        proposals = [preferred]
+        proposals = [] if previous_centres else [preferred]
     checked = 0
     for point in proposals[:max_center_checks]:
         checked += 1

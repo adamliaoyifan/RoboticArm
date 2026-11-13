@@ -162,7 +162,8 @@ class JointOperationPrepareNode(Node):
             except (OSError,TypeError,ValueError,KeyError) as error:
                 atlas_reason = 'ATLAS_REFUSED_ONLINE_IK:'+type(error).__name__+':'+str(error)
         self.preparation = JointOperationPreparation(contacts,planner,contact_model,self.limits,
-            max_center_checks=int(param('max_center_checks',256)),atlas=atlas,
+            max_center_checks=int(param('max_center_checks',256)),
+            max_contact_proposals_per_direction=param('max_contact_proposals_per_direction',2),atlas=atlas,
             atlas_unavailable_reason=atlas_reason,budget=self.budget)
         self.scene_client = self.create_client(GetPlanningScene,'/get_planning_scene')
         self.map_backend = str(param('map_backend','observer'))

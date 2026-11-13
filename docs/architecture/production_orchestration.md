@@ -200,6 +200,14 @@ requested acquisition, individual availability and history clear provenance.
 
 Candidate quality queries use the independent
 `EvaluateFrozenSuctionV2` service; the existing current-frame service is unchanged.
+Pre-pick candidate recovery preserves the admitted target while trying distinct
+observed contact centres and native IK/opening branches. Primary directed
+contacts are evaluated first; alternative quality queries are deferred until
+their candidates are needed. Per-heading geometric/contact work limits and the
+global native candidate/branch/deadline limits remain explicit. Already-admitted
+headings at exactly one position are tried together without changing targets or
+inventing rotations. An exhausted budget is incomplete search, not proof of
+unreachability. No part of this search permits changing an attached grasp.
 Later camera frames cannot substitute samples or replace the retained acquisition
 identity. After certification and the final full-scene read, preparation checks
 the same non-renewing owner token, live six-joint start and pinned confirmed OCC.

@@ -185,6 +185,7 @@ def operation_composition(config, robot_xml, semantic_xml):
             connection_max_edge_s=float(config.get('operation_connection_max_edge_s',2.)),
             max_branch_attempts=int(config.get('operation_max_branch_attempts',3)),
             max_branch_attempts_per_candidate=int(config.get('operation_max_branch_attempts_per_candidate',2)),
+            max_contact_proposals_per_direction=int(config.get('operation_max_contact_proposals_per_direction',2)),
             issued_plan_lifetime_s=operation_evidence_lifetime_s(config),
             max_preparation_budget_s=float(config['operation_prepare_budget_s'])),atlas_parameters]))
     (folder/'robot.urdf').write_text(robot_xml)

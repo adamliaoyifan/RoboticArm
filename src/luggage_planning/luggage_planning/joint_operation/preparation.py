@@ -7,7 +7,9 @@ import time
 
 from luggage_perception.ros_suction_domain import require_matching_detection
 from luggage_planning.joint_operation.adapters import operation_plan_to_message
-from luggage_planning.joint_operation.candidates import candidate_for_contact, propose_contact
+from luggage_planning.joint_operation.candidates import (
+    candidate_for_contact, group_placement_positions, propose_contacts,
+)
 from luggage_planning.joint_operation.contracts import OperationIdentity, MAX_PLACEMENT_CANDIDATES, DIRECTED_CONTACT_REVERSALS
 from luggage_perception.observed_suction_domain import ObservedSuctionDomain
 from luggage_planning.placement_prior.contracts import PlacementCandidate, Snapshot, Transform
@@ -37,13 +39,18 @@ class PreparationInputs:
 
 class JointOperationPreparation:
     def __init__(self, contacts, planner, contact_model, envelope_limits, *,
-                 max_center_checks, atlas=None, atlas_unavailable_reason='ATLAS_UNAVAILABLE_ONLINE_IK',
+                 max_center_checks, max_contact_proposals_per_direction=2,
+                 atlas=None, atlas_unavailable_reason='ATLAS_UNAVAILABLE_ONLINE_IK',
                  budget=None, clock=time.monotonic):
         if type(max_center_checks) is not int or not 1 <= max_center_checks <= 4096:
             raise ValueError('bounded geometric centre checks required')
+        if (type(max_contact_proposals_per_direction) is not int
+                or not 1 <= max_contact_proposals_per_direction <= 4):
+            raise ValueError('one to four directed contact proposals required')
         self.contacts,self.planner = contacts,planner
         self.model,self.limits = contact_model,envelope_limits
         self.max_center_checks,self.clock = max_center_checks,clock
+        self.max_contact_proposals_per_direction = max_contact_proposals_per_direction
         self.atlas = atlas
         self.atlas_unavailable_reason = atlas_unavailable_reason
         self.budget = budget if budget is not None else PreparationBudget()
@@ -82,41 +89,50 @@ class JointOperationPreparation:
             def candidates():
                 nonlocal selected
                 groups = 0
-                for placement in inputs.placements:
+                for placement in group_placement_positions(inputs.placements):
                     timing.unit = placement.slot_id
                     if stopped() or self.clock() >= planning_deadline or groups >= request.candidate_limit:
                         return
                     groups += 1
                     target_box = snapshot.world_from_container.compose(placement.container_from_box)
-                    proposed = []
+                    streams = []
                     for contact_index,opposite in enumerate(DIRECTED_CONTACT_REVERSALS):
                         hint = inputs.world_from_reference_tool
                         if opposite:
                             hint = hint.compose(Transform((0.,0.,0.),(0.,0.,1.,0.)))
-                        proposal = timing.call('contact_proposal',propose_contact,domain,self.model,
-                            query_id=placement.slot_id+':'+str(len(DIRECTED_CONTACT_REVERSALS)*(groups-1)+contact_index+1),
+                        streams.append(propose_contacts(domain,self.model,
+                            query_id=placement.slot_id+':heading-'+str(contact_index),
                             world_from_place_box=target_box,desired_world_from_tool=hint,
-                            max_center_checks=self.max_center_checks)
-                        trace.append((proposal.query_id,proposal.reason,proposal.checked_centres))
-                        if proposal.reason == 'OBSERVED_FOOTPRINT_PROPOSAL': proposed.append(proposal)
-                    if not proposed: continue
-                    evidence = timing.call('contact_quality',self.contacts.evaluate,domain,request.detection,
-                        [p.to_message() for p in proposed],self.model,deadline=planning_deadline,cancelled=cancelled,
-                        retained_observation=inputs.retained_observation)
-                    trace.append((placement.slot_id,evidence.reason,evidence.verdicts))
-                    if not evidence.complete: continue
-                    for rank,contact in enumerate(evidence.contacts):
-                        if stopped() or self.clock() >= planning_deadline: return
-                        candidate = timing.call('bound_candidate',candidate_for_contact,
-                            snapshot,domain,contact,placement,self.limits,
-                            pickup_object_id=inputs.pickup_object_id,observation_id=request.observation_id,rank=rank)
-                        if self.atlas is not None:
-                            candidate,atlas_trace = timing.call('atlas_augmentation',self.atlas.augment,
-                                candidate,request_id=request.request_id,
-                                deadline=planning_deadline,cancelled=cancelled,clock=self.clock)
-                            trace.extend(atlas_trace)
-                        selected = candidate
-                        yield candidate
+                            max_center_checks=self.max_center_checks,
+                            max_proposals=self.max_contact_proposals_per_direction))
+                    for contact_round in range(self.max_contact_proposals_per_direction):
+                        if stopped() or self.clock() >= planning_deadline:return
+                        proposed = []
+                        for stream in streams:
+                            proposal = timing.call('contact_proposal',next,stream,None)
+                            if proposal is None:continue
+                            trace.append((proposal.query_id,proposal.reason,proposal.checked_centres))
+                            if proposal.reason == 'OBSERVED_FOOTPRINT_PROPOSAL':proposed.append(proposal)
+                        if not proposed:break
+                        trace.append(('contact_round',placement.slot_id,contact_round,
+                            placement.container_from_box.translation))
+                        evidence = timing.call('contact_quality',self.contacts.evaluate,domain,request.detection,
+                            [p.to_message() for p in proposed],self.model,deadline=planning_deadline,cancelled=cancelled,
+                            retained_observation=inputs.retained_observation)
+                        trace.append((placement.slot_id,evidence.reason,evidence.verdicts))
+                        if not evidence.complete:continue
+                        for rank,contact in enumerate(evidence.contacts):
+                            if stopped() or self.clock() >= planning_deadline:return
+                            candidate = timing.call('bound_candidate',candidate_for_contact,
+                                snapshot,domain,contact,placement,self.limits,
+                                pickup_object_id=inputs.pickup_object_id,observation_id=request.observation_id,rank=rank)
+                            if self.atlas is not None:
+                                candidate,atlas_trace = timing.call('atlas_augmentation',self.atlas.augment,
+                                    candidate,request_id=request.request_id,
+                                    deadline=planning_deadline,cancelled=cancelled,clock=self.clock)
+                                trace.extend(atlas_trace)
+                            selected = candidate
+                            yield candidate
             if stopped(): return finish('CANCELLED_OR_DEADLINE')
             result = self.planner.prepare(identity,tuple(float(v) for v in request.start_joints),candidates(),
                 budget_s=max(1e-9,deadline-self.clock()),absolute_deadline=deadline,cancelled=cancelled)

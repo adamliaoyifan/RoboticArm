@@ -40,6 +40,17 @@ binds candidate-grid parity, box dimensions, support height and native planning
 to one geometry; clients do not regenerate dimensions after selecting slots.
 Regenerate ROS interfaces when updating this field.
 
+Preparation keeps the existing position priority and groups already-admitted
+headings with exactly the same XYZ. At each target it tries the primary measured
+contact for both directed tool headings before requesting alternate centres.
+`max_contact_proposals_per_direction` (1..4, default2) controls that search; the
+simulation option is `operation_max_contact_proposals_per_direction`. Alternatives
+spread across the measured feasible support rather than shifting the placement.
+Each heading shares the existing `max_center_checks` geometric budget, and native
+candidate/branch caps and the global deadline remain unchanged. These are work
+bounds, not error tolerances or reachability boundaries. All contacts require
+the full observed footprint and frozen quality; prepare never moves the robot.
+
 The aperture generator belongs to this route and retains its ordered waypoints
 inside the carry leg. ComputePlacement provides geometric slots. Actual attachment
 geometry, current occupancy, configured ULD and native complete-model collision

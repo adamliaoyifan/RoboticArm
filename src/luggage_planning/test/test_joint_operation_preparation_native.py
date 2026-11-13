@@ -212,6 +212,8 @@ def test_generated_prepare_rpc_returns_whole_certified_plan(prepare_stack):
     assert result.success,result.reason+' '+result.trace_json
     assert result.reason=='PLAN_READY' and len(result.plan.legs)==6 and len(result.plan.barriers)==2
     assert result.elapsed_s<=prepare_stack.request.budget_s
+    rounds=[row for row in json.loads(result.trace_json) if row[0]=='contact_round']
+    assert rounds and all(row[2]==0 for row in rounds)
     (prepare_stack.directory/'result.json').write_text(json.dumps(dict(reason=result.reason,
         elapsed_s=result.elapsed_s,trace=json.loads(result.trace_json)),indent=2))
 
@@ -291,6 +293,54 @@ def test_prepare_refuses_empty_static_world_before_native_motion_search(prepare_
         assert 'STATIC_CONTAINER_MISSING_OR_DUPLICATE' in result.reason
     finally:
         prepare_stack.state.scene=saved
+
+
+@pytest.mark.parametrize('allow_alternates',[False,True])
+def test_both_primary_contacts_refused_recover_same_target_with_native_alternate(prepare_stack,allow_alternates):
+    """Constructed endpoint failure; the alternate still needs real full planning."""
+    f=prepare_stack
+    endpoint=f.root.preparation.planner.endpoints
+    solve=endpoint.solve
+    original_limit=f.root.preparation.max_contact_proposals_per_direction
+    f.root.preparation.max_contact_proposals_per_direction=2 if allow_alternates else 1
+    tried=[]
+    def refuse_primary(candidate,**kwargs):
+        tried.append(candidate)
+        result=solve(candidate,**kwargs)
+        if len(tried)<=2:
+            f.root._record('test_endpoint_refusal',json.dumps(dict(
+                candidate_id=candidate.candidate_id,actual_native_reason=result.reason,
+                injected_reason='TEST_PRIMARY_CONTACT_REFUSED')).encode())
+            return replace(result,complete=False,reason='TEST_PRIMARY_CONTACT_REFUSED',
+                pick_branches=(),place_branches=())
+        return result
+    endpoint.solve=refuse_primary
+    try:
+        result=f.call(copy.deepcopy(f.request))
+        if not allow_alternates:
+            assert not result.success and result.reason=='SEARCH_INCOMPLETE'
+            assert not result.plan.legs and len(tried)==2
+            (f.directory/'prepick_contact_recovery_disabled.json').write_text(json.dumps(dict(
+                reason=result.reason,trace=json.loads(result.trace_json)),indent=2))
+            return
+        assert result.success,result.reason+' '+result.trace_json
+        assert len(tried)>=3
+        assert len({c.world_from_settled_box for c in tried})==1
+        assert np.allclose(tried[0].world_from_pick_tool.translation,
+            tried[1].world_from_pick_tool.translation,atol=1e-8,rtol=0)
+        assert not np.allclose(tried[2].world_from_pick_tool.translation,
+            tried[0].world_from_pick_tool.translation,atol=1e-8,rtol=0)
+        assert result.plan.candidate_id==tried[-1].candidate_id
+        assert len(result.plan.legs)==6 and len(result.plan.barriers)==2
+        rounds=[row for row in json.loads(result.trace_json) if row[0]=='contact_round']
+        assert rounds[0][2]==0 and rounds[1][2]==1
+        (f.directory/'prepick_contact_recovery.json').write_text(json.dumps(dict(
+            reason=result.reason,tried=[dict(candidate_id=c.candidate_id,
+            contact=c.world_from_pick_tool.translation,target=c.world_from_settled_box.translation)
+            for c in tried],trace=json.loads(result.trace_json)),indent=2))
+    finally:
+        endpoint.solve=solve
+        f.root.preparation.max_contact_proposals_per_direction=original_limit
 
 
 @pytest.mark.parametrize('damage',['model','generation','map','size','start','budget','no_quality'])
