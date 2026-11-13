@@ -253,7 +253,11 @@ prove that its O/ULD contents are complete or current.
 
 A view path requires exact-target native IK, private-scene connection, timing
 that retains checked polyline corners, and independent native certification of
-the controller-interpolated path. Explicit search/time/sample/velocity limits
+the controller-interpolated path. Native certification checks velocity and
+acceleration extrema inside each controller interpolation interval, as well as
+knots; rest at knots does not prove an interval is within limits. Linear, cubic
+and quintic selection follows the installed controller's lowest-common endpoint
+derivative fields. Positive request limits apply unchanged. Explicit search/time/sample/velocity limits
 apply. Refused, partial, cancelled or source-revoked work returns no plan. Its
 certificate binds the original source, derived scene, measured acquisition,
 camera/tool target and starting joints. This is plan-only evidence: dispatch

@@ -121,3 +121,27 @@ def test_source_changed_after_native_certificate_discards_the_complete_view_path
     assert result.plan is None and result.reason=='VIEW_SOURCE_CHANGED',result
     assert any(row[0]=='certification' and row[-1]=='NATIVE_VIEW_PATH_CHECKED' for row in result.trace)
     assert len(reads)==2
+
+
+@pytest.mark.parametrize('derivative',['velocity','acceleration'])
+def test_native_derivative_limit_refusal_cannot_issue_a_view_plan(view_stack,derivative):
+    stack,owner=view_stack;f,directory=scenario(stack,derivative+'_refused')
+    original=owner.certifier
+    # A deliberately incompatible certification policy tests the real native
+    # timing gate; it is a fixture fault, not a proposed robot limit/default.
+    port=NativeViewCertificationPort(stack.node,stack.model,
+        velocity_limits=(.0001 if derivative=='velocity' else .314,)*6,
+        acceleration_limits=(.0001 if derivative=='acceleration' else .314,)*6,max_samples=50000,
+        recorder=lambda kind,raw:stack.record('view_limits',kind,raw))
+    assert port.client.wait_for_service(timeout_sec=5.)
+    owner.certifier=port
+    try:
+        result=run_case(stack,owner,f,directory)
+        assert result.plan is None and result.reason=='VIEW_SEARCH_INCOMPLETE',result
+        assert any(row[0]=='certification' and row[-1].startswith('NATIVE_CERTIFICATION_REFUSED:')
+            for row in result.trace),result.trace
+        from luggage_msgs.srv import ValidateRouteV2
+        responses=[r for r in stack.records if r['port']=='view_limits' and r['kind'].endswith('response')]
+        response=deserialize_message((stack.directory/responses[-1]['file']).read_bytes(),ValidateRouteV2.Response)
+        assert any(leg.reason==derivative.upper()+'_LIMIT' for leg in response.leg_results)
+    finally:owner.certifier=original

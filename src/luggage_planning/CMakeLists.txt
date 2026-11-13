@@ -16,6 +16,7 @@ find_package(srdfdom REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(luggage_msgs REQUIRED)
 add_executable(validate_route_node src/validate_route_node.cpp)
+target_include_directories(validate_route_node PRIVATE include)
 ament_target_dependencies(validate_route_node
   rclcpp moveit_core moveit_msgs geometry_msgs urdf srdfdom luggage_msgs)
 target_link_libraries(validate_route_node OpenSSL::Crypto)

@@ -7,7 +7,7 @@
 //
 // Per leg it verifies the frozen sampling discipline (knots included,
 // temporal and spatial spacing bounds), per-sample joint limits, the
-// original knots' velocity/acceleration bounds and time monotonicity,
+// continuous controller velocity/acceleration bounds and time monotonicity,
 // then checks every sample for collision (contacts reported, designated
 // support-pair contacts reported separately for certifier legality
 // judgement) and measures the per-sample minimum distance with the
@@ -39,6 +39,7 @@
 #include "luggage_msgs/msg/route_leg_result_v2.hpp"
 #include "luggage_msgs/msg/route_leg_v2.hpp"
 #include "luggage_msgs/srv/validate_route_v2.hpp"
+#include "luggage_planning/trajectory_derivative_bounds.hpp"
 
 namespace {
 
@@ -417,6 +418,46 @@ private:
               static_cast<uint32_t>(sample_cursor);
           result.leg_time_ns = elapsed_ns(leg_start);
           return finish_leg();
+        }
+      }
+    }
+
+    // ---- continuous controller derivative bounds -----------------
+    for (size_t k=1; k<leg.knots.points.size(); ++k) {
+      if (elapsed_s(start)>budget_s) {
+        budget_exceeded=true;result.reason="BUDGET_EXCEEDED";
+        result.detail="continuous derivative checks";return finish_leg();
+      }
+      const auto &left=leg.knots.points[k-1];
+      const auto &right=leg.knots.points[k];
+      const auto shape_ok=[n_joints](const std::vector<double> &v) {
+        return v.empty() || v.size()==n_joints;
+      };
+      if (left.positions.size()!=n_joints || right.positions.size()!=n_joints ||
+          !shape_ok(left.velocities) || !shape_ok(right.velocities) ||
+          !shape_ok(left.accelerations) || !shape_ok(right.accelerations)) {
+        result.reason="SAMPLING_DISCIPLINE";result.detail="invalid interpolation knot arrays";
+        return finish_leg();
+      }
+      const bool has_v=left.velocities.size()==n_joints && right.velocities.size()==n_joints;
+      const bool has_a=has_v && left.accelerations.size()==n_joints && right.accelerations.size()==n_joints;
+      const int order=has_a ? 5 : has_v ? 3 : 1;
+      const double dt=(duration_ns(right.time_from_start)-duration_ns(left.time_from_start))*1e-9;
+      for (size_t j=0; j<n_joints; ++j) {
+        try {
+          const auto bounds=luggage_planning::trajectory_bounds::interval(dt,left.positions[j],right.positions[j],
+              has_v ? left.velocities[j] : 0.,has_v ? right.velocities[j] : 0.,
+              has_a ? left.accelerations[j] : 0.,has_a ? right.accelerations[j] : 0.,order);
+          if ((velocity_limits[j]>0. && bounds.first>velocity_limits[j]*(1.+1e-9)) ||
+              (acceleration_limits[j]>0. && bounds.second>acceleration_limits[j]*(1.+1e-9))) {
+            result.reason=velocity_limits[j]>0. && bounds.first>velocity_limits[j]*(1.+1e-9) ?
+                "VELOCITY_LIMIT" : "ACCELERATION_LIMIT";
+            result.detail=names[j]+" continuous interval "+std::to_string(k-1)+
+                " max_v="+std::to_string(bounds.first)+" max_a="+std::to_string(bounds.second);
+            return finish_leg();
+          }
+        } catch (const std::invalid_argument &error) {
+          result.reason="SAMPLING_DISCIPLINE";result.detail=error.what();return finish_leg();
         }
       }
     }
