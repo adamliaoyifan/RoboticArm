@@ -10,6 +10,7 @@ import json
 import math
 
 import numpy as np
+from luggage_perception.pickup_view_association import PickupAssociationInputs
 
 
 MAX_VIEW_BYTES = 8*1024*1024  # Transport resource limit, not sensor accuracy.
@@ -29,6 +30,8 @@ class PickupViewAcquisition:
     region_source: str
     intrinsics_fx_fy_cx_cy: tuple
     world_from_optical: tuple
+    association_inputs: PickupAssociationInputs | None = None
+    association_reason: str = 'PICKUP_ASSOCIATION_NOT_CAPTURED'
 
     def __post_init__(self):
         if (type(self.stamp_ns) is not int or not 0 <= self.stamp_ns < 2**63
@@ -63,10 +66,21 @@ class PickupViewAcquisition:
                            ('instance_region',region),('intrinsics_fx_fy_cx_cy',intrinsics),
                            ('world_from_optical',tuple(float(v) for v in matrix.ravel()))):
             object.__setattr__(self,name,value)
+        inputs = self.association_inputs
+        if inputs is not None:
+            if (type(inputs) is not PickupAssociationInputs
+                    or (inputs.rgb.stamp_ns, inputs.rgb.optical_frame_id, inputs.rgb.shape[:2],
+                        inputs.instance_id, inputs.generation) !=
+                       (self.stamp_ns, self.optical_frame_id, shape, self.instance_id, self.generation)):
+                raise ValueError('PICKUP_ASSOCIATION_ACQUISITION_MISMATCH')
+            object.__setattr__(self, 'association_reason', 'PICKUP_ASSOCIATION_INPUTS_AVAILABLE')
+        elif not isinstance(self.association_reason, str) or not self.association_reason:
+            raise ValueError('PICKUP_ASSOCIATION_UNAVAILABLE_REASON_REQUIRED')
 
     @classmethod
     def capture(cls, depth_mm, instance_region, intrinsics, world_from_optical, *,
-                stamp_ns, optical_frame_id, instance_id, generation, region_source):
+                stamp_ns, optical_frame_id, instance_id, generation, region_source,
+                association_inputs=None, association_reason='PICKUP_ASSOCIATION_NOT_CAPTURED'):
         depth,region=np.asarray(depth_mm),np.asarray(instance_region)
         if depth.ndim!=2 or region.shape!=depth.shape or region.dtype!=np.bool_:
             raise ValueError('PICKUP_VIEW_SAME_IMAGE_BOOLEAN_REGION_REQUIRED')
@@ -76,15 +90,18 @@ class PickupViewAcquisition:
         return cls(stamp_ns,optical_frame_id,instance_id,generation,tuple(depth.shape),
             depth.dtype.str,depth.tobytes(),region.astype(np.uint8,copy=False).tobytes(),region_source,
             tuple(float(getattr(intrinsics,name)) for name in ('fx','fy','cx','cy')),
-            tuple(np.asarray(world_from_optical,dtype=float).ravel()))
+            tuple(np.asarray(world_from_optical,dtype=float).ravel()),association_inputs,association_reason)
 
     @property
     def size_bytes(self):
-        return len(self.depth_mm)+len(self.instance_region)+1024
+        return len(self.depth_mm)+len(self.instance_region)+1024+(
+            self.association_inputs.size_bytes if self.association_inputs is not None else 0)
 
     def metadata(self):
-        return {name:getattr(self,name) for name in self.__dataclass_fields__
-                if name not in ('depth_mm','instance_region')}
+        result = {name:getattr(self,name) for name in self.__dataclass_fields__
+                  if name not in ('depth_mm','instance_region','association_inputs')}
+        result['association_inputs'] = self.association_inputs.metadata() if self.association_inputs else None
+        return result
 
     def bind(self, domain):
         if ((self.stamp_ns,self.instance_id,self.generation) !=
@@ -112,8 +129,9 @@ class PickupViewEvidence:
 
     def digest(self):
         a=self.acquisition
-        metadata=dict(schema='pickup_view_evidence_v2',domain_sha256=self.domain_sha256,
+        metadata=dict(schema='pickup_view_evidence_v3',domain_sha256=self.domain_sha256,
                       box_id=self.box_id,acquisition=a.metadata())
         encoded=json.dumps(metadata,sort_keys=True,separators=(',',':'),allow_nan=False).encode()
-        return hashlib.sha256(b'pickup-view-evidence-v2\0'+encoded+b'\0'
-            +a.depth_mm+b'\0'+a.instance_region).hexdigest()
+        return hashlib.sha256(b'pickup-view-evidence-v3\0'+encoded+b'\0'
+            +a.depth_mm+b'\0'+a.instance_region+b'\0'
+            +(a.association_inputs.rgb.rgb8 if a.association_inputs else b'')).hexdigest()

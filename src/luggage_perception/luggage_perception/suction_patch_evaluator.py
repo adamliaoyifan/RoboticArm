@@ -385,7 +385,8 @@ class SuctionPatchEvaluator(object):
                instance_region=None, stamp=0.0, frame_id="world",
                instance_id="", generation=0, timing=None,
                capture_observed_domain=False, acquisition_stamp_ns=None,
-               optical_frame_id='', region_source=''):
+               optical_frame_id='', region_source='', association_inputs=None,
+               association_reason='PICKUP_ASSOCIATION_NOT_CAPTURED'):
         """Evaluate one acquisition; state is replaced, never fused.
 
         Every input belongs to the same acquisition identity (the caller
@@ -443,7 +444,8 @@ class SuctionPatchEvaluator(object):
                 try:
                     view=PickupViewAcquisition.capture(depth_mm,instance_region,intrinsics,optical_to_world,
                         stamp_ns=acquisition_stamp_ns,optical_frame_id=optical_frame_id,
-                        instance_id=instance_id,generation=generation,region_source=region_source)
+                        instance_id=instance_id,generation=generation,region_source=region_source,
+                        association_inputs=association_inputs,association_reason=association_reason)
                     view_reason='PICKUP_VIEW_CAPTURED'
                 except (TypeError,ValueError,AttributeError) as error:
                     # Optional evidence cannot change existing quality admission.

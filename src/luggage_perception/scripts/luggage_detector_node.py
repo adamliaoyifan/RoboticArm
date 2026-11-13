@@ -1116,6 +1116,15 @@ class LuggageDetector(Node):
             return result.reason, None
         # Evaluate real seal patches from this exact depth acquisition. A
         # fitted top centre alone is not a validated suction footprint.
+        association_inputs, association_reason = None, 'PICKUP_ASSOCIATION_NOT_CAPTURED'
+        if getattr(self, '_publish_observed_suction_domain', False):
+            from luggage_perception.ros_pickup_association import association_inputs_from_detection
+            with self._view_lock:
+                rgb = (getattr(self, '_rgb_by_stamp', None) or {}).get(key)
+            association_inputs, association_reason = association_inputs_from_detection(
+                yolo_msg, rgb,
+                stamp_ns=int(depth_msg.header.stamp.sec)*10**9+int(depth_msg.header.stamp.nanosec),
+                optical_frame_id=depth_msg.header.frame_id, image_shape=depth.shape, selected_bbox=bbox)
         self._suction_evaluator.update(
             depth, intr, mat4, result, instance_region=instance_region,
             stamp=cloud_stamp_sec, frame_id=self._world_frame,
@@ -1125,7 +1134,8 @@ class LuggageDetector(Node):
             capture_observed_domain=getattr(self, '_publish_observed_suction_domain', False),
             acquisition_stamp_ns=int(depth_msg.header.stamp.sec)*10**9+int(depth_msg.header.stamp.nanosec),
             optical_frame_id=depth_msg.header.frame_id,
-            region_source='instance_mask' if mask is not None else 'detection_bbox')
+            region_source='instance_mask' if mask is not None else 'detection_bbox',
+            association_inputs=association_inputs, association_reason=association_reason)
         suction = self._suction_evaluator.copy_output()
         capture_root = os.environ.get('ELFIN_SUCTION_INPUT_CAPTURE', '').strip()
         if capture_root:
@@ -1315,9 +1325,6 @@ class LuggageDetector(Node):
         if image is None:
             return
         key = stamp_key(msg.header.stamp)
-        rgb = np.array(image, copy=True)
-        if getattr(msg, "encoding", "") == "bgr8":
-            rgb = np.ascontiguousarray(rgb[:, :, ::-1])
         with self._view_lock:
             self._latest_rgb = image
             if key is None:
@@ -1326,7 +1333,16 @@ class LuggageDetector(Node):
             if store is None:
                 store = {}
                 self._rgb_by_stamp = store
-            store[key] = rgb
+            from luggage_perception.pickup_view_association import BufferedPickupRgb
+            try:
+                # Keep the actual RGB source frame/stamp in the existing bounded
+                # history. Decoding depth with the same stamp alone is not proof
+                # that a later/other camera's image belongs to this acquisition.
+                store[key] = BufferedPickupRgb.capture(image,
+                    stamp_ns=int(key[0])*10**9+int(key[1]),
+                    optical_frame_id=msg.header.frame_id, encoding=msg.encoding)
+            except (TypeError, ValueError, AttributeError):
+                store.pop(key, None)
             while len(store) > 8:
                 del store[min(store)]
 
@@ -2024,7 +2040,7 @@ class LuggageDetector(Node):
             with self._view_lock:
                 rgb = (getattr(self, "_rgb_by_stamp", None) or {}).get(cloud_key)
                 if rgb is not None:
-                    rgb = np.array(rgb, copy=True)
+                    rgb = np.array(rgb.array(), copy=True)
             if rgb is None:
                 missing["rgb"] = "not_buffered_at_stamp"
             else:

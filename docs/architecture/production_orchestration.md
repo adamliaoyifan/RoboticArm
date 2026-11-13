@@ -318,6 +318,18 @@ Zero disables; no measured production default is implied. A successful Action
 proves terminal empty motion and fresh joint settling only. The returned settling
 stamp is a lower bound for a later acquisition, never proof of new support,
 same-box identity, useful information gain or complete recovery.
+The exact-domain pickup-view evidence port optionally retains the original RGB
+image and every candidate reported by that acquisition's detector message,
+including competing and duplicate boxes, plus the selected ROI index. RGB,
+depth and detector metadata must share the actual stamp, optical frame and
+image dimensions. The detector reuses its existing bounded RGB history; no
+latest-frame substitution is permitted. Reported-list completeness does not
+assert complete physical-scene detection. Missing or over-budget optional
+association inputs retain the independently valid depth and contact evidence
+with an explicit unavailable reason. These bytes authorize no cross-view
+identity, support fusion or recovery. The extended PickupViewEvidenceV2 wire
+requires a coordinated interface/consumer rebuild; mixing older generated
+interfaces or native binaries is not supported.
 It reads the exact raw acquisition, checks a localized decision-relevant gap,
 re-admits the original placement on latest O content in the same epoch, and uses
 the same full static-world admission and collision-margin policy as whole-plan

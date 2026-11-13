@@ -15,3 +15,10 @@ sensor_msgs/Image depth_mm
 sensor_msgs/Image instance_region
 # instance_mask or detection_bbox
 string region_source
+# Optional exact inputs for later cross-view association; no identity permission.
+# Complete means the entire received reported list, not all physical boxes.
+bool association_inputs_available
+string association_inputs_reason
+sensor_msgs/Image rgb
+YoloDetections candidate_pool
+int32 selected_candidate_index
