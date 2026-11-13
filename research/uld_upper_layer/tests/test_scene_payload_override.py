@@ -36,6 +36,21 @@ class PickupOverrideContracts(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     write_scene(REPO, Path(tmp) / 'bad', pickup_override=bad)
 
+    def test_real_time_factor_paces_world_and_records_clock(self):
+        import xml.etree.ElementTree as ET
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / 'paced'
+            write_scene(REPO, out, real_time_factor=.4)
+            spec = json.loads((out / 'fixture.json').read_text())
+            factor = ET.parse(out / 'overlay.sdf').getroot().find('world/physics/real_time_factor')
+        self.assertEqual(spec['validation_clock']['real_time_factor'], .4)
+        self.assertIn('CPU pacing only', spec['validation_clock']['scope'])
+        self.assertAlmostEqual(float(factor.text), .4, delta=1e-12)
+        with tempfile.TemporaryDirectory() as tmp:
+            for bad in (0., 1.5, True):
+                with self.assertRaises(ValueError):
+                    write_scene(REPO, Path(tmp) / 'bad', real_time_factor=bad)
+
 
 if __name__ == '__main__':
     unittest.main()

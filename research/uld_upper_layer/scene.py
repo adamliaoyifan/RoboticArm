@@ -187,7 +187,7 @@ def intersecting_triangles(center, half, triangles):
     return hits
 
 
-def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None,contact_profile=None,scene_path=None,pickup_override=None):
+def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None,contact_profile=None,scene_path=None,pickup_override=None,real_time_factor=None):
     if output.exists() and any(output.iterdir()):
         raise ValueError('output must be new or empty; do not overwrite a previous scene')
     assets = load(repo,scene_path)
@@ -238,6 +238,18 @@ def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None,contact_pr
         spec['source_hashes'][str(vacuum_plugin)]=sha256(vacuum_plugin)
     # Preserve collision physics; use a declared 1 ms research stepping profile.
     world.find('physics/max_step_size').text = str(spec['physics_step_s'])
+    if real_time_factor is not None:
+        if isinstance(real_time_factor, bool) or not 0 < real_time_factor <= 1:
+            raise ValueError('real_time_factor must be in (0, 1]')
+        # CPU pacing only: physical integration and trajectory simulation
+        # times are unchanged; slower pacing leaves monitor headroom.
+        factor = world.find('physics/real_time_factor')
+        if factor is None:
+            factor = ET.SubElement(world.find('physics'), 'real_time_factor')
+        factor.text = format(real_time_factor, '.17g')
+        spec['validation_clock'] = dict(real_time_factor=real_time_factor,
+            max_step_size_s=spec['physics_step_s'],
+            scope='CPU pacing only; unchanged physical integration and trajectory simulation times')
     # The default world contains off-scene mesh-cache preloads; omit them.
     for include in list(world.findall('include')):
         world.remove(include)
@@ -301,13 +313,15 @@ def main():
         help='Override only the placed payload box (x y z metres); lower layers keep the catalog box')
     parser.add_argument('--pickup-mass',type=float,
         help='Override payload mass kg; required with --pickup-size')
+    parser.add_argument('--real-time-factor',type=float,
+        help='CPU pacing for the world physics clock in (0,1]; physical integration unchanged')
     args = parser.parse_args()
     pickup_override = None
     if args.pickup_size or args.pickup_mass is not None:
         if not args.pickup_size or args.pickup_mass is None:
             parser.error('--pickup-size and --pickup-mass are required together')
         pickup_override = dict(size_m=args.pickup_size, mass_kg=args.pickup_mass)
-    spec = write_scene(args.repo.resolve(), args.output.resolve(),args.physics_plugin,args.vacuum_plugin,args.contact_profile,args.scene_config,pickup_override)
+    spec = write_scene(args.repo.resolve(), args.output.resolve(),args.physics_plugin,args.vacuum_plugin,args.contact_profile,args.scene_config,pickup_override,args.real_time_factor)
     print(json.dumps({k:spec[k] for k in ('support_z_m','upper_headroom_m','lower_fill_fraction',
                                           'payload_ceiling_gap_m','suction_panel_depth_from_contact_m')}, indent=2))
     print(f"Scene: {args.output.resolve()} (24 dynamic support boxes; no action commands)")
