@@ -1,0 +1,62 @@
+# One source of defaults for the independent ideal-input experiment. SI units.
+support_area_ratio_min: 0.60
+support_com_margin_m: 0.020
+collision_margin_m: 0.005
+contact_tolerance_m: 0.001
+grid_resolution_m: 0.010
+placement_step_m: 0.020
+handoff_step_m: 0.005
+grasp_step_m: 0.010
+push_height_step_m: 0.010
+withdraw_m: 0.150
+release_drop_m: 0.060
+placement_lift_m: 0.005
+box_yaws_deg: [0, 90, 180, 270]
+tool_yaws_deg: [0, 90, 180, 270]
+solution_count_target: 3
+minimum_executable_solutions: 1
+max_action_candidates: 2000
+search_budget_s: 600.0
+path_attempt_budget_s: 5.0
+path_simplification_budget_s: 0.5
+contact_penetration_m: 0.0005
+# Preplanned contact establishment; native contact is still mandatory before release.
+support_contact_stroke_m: 0.00005
+push_contact_stroke_m: 0.00005
+# Shared bounded push/support normal contract; seal remains face aligned.
+contact_normal_alignment_deg: 1.0
+sweep_step_m: 0.001
+cartesian_step_m: 0.005
+push_speed_mps: 0.010
+push_acceleration_mps2: 0.020
+contact_speed_mps: 0.002
+joint_speed_scaling: 0.20
+joint_acceleration_radps2: 0.50
+ik_seed_count: 24
+precontact_distance_m: 0.050
+pick_lift_m: 0.100
+outside_aperture_margin_m: 0.050
+ompl_range_rad: 0.35
+ompl_resolution_fraction: 0.002
+distance_query_timeout_s: 2.0
+
+# In-plane rotations of the actual rigid push face; normal remains insertion.
+push_face_spins_deg: [0, 90, 180, 270]
+
+# Free attached carry keeps extra planning clearance; execution still enforces
+# collision_margin_m. This does not replace tracking or actuator validation.
+carry_collision_margin_m: 0.010
+# Enable only with explicit payload mass and validated source actuator parameters.
+payload_effort_screen_enabled: false
+payload_effort_reserve_nm: 5.0
+payload_effort_joint_step_rad: 0.02
+gravity_world_mps2: [0.0, 0.0, -9.8]
+
+# Read-only upper-placement prior; default off, explicit profiles enable.
+# Empty index path means geometry-window-only operation with no archived seeds.
+prior_enabled: false
+prior_index_path: ""
+prior_query_radius_m: 0.100
+prior_query_radius_deg: 15.0
+prior_branches_per_stage: 8
+prior_query_budget_s: 5.0

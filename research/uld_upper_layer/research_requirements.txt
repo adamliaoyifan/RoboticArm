@@ -1,0 +1,3 @@
+# Optional native geometry/planning backends, isolated from the ROS install.
+python-fcl==0.7.0.11
+ompl==2.0.1

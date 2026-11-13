@@ -93,6 +93,7 @@ def _default_launch_values():
             "config",
             "scene_tf.yaml.example",
         ),
+        "world_sdf": "",
         "use_moveit": "true",
         "gui": "true",
         "server_render_engine": "ogre2",
@@ -824,9 +825,11 @@ def _launch_setup(context):
             _gazebo_semantic_description()['robot_description_semantic'])
         frame_params = {'frame_scene_revision': operation_runtime['frame_scene_revision']}
 
-    world_path = os.path.join(
+    world_path = cfg["world_sdf"] or os.path.join(
         get_package_share_directory("luggage_gazebo"), "worlds", "airport_loading.sdf"
     )
+    if not os.path.isfile(world_path):
+        raise ValueError(f"world_sdf does not exist: {world_path}")
     # Must start running (-r). gz_ros2_control SwitchController needs a
     # nonzero sim period; a paused world times out JSB/arm activation.
     # Moving-link gravity is off in the URDF so observe does not collapse
@@ -1390,6 +1393,7 @@ def generate_launch_description():
                 "scene_tf_config",
                 "Scene TF YAML path.",
             ),
+            profile_arg("world_sdf", "Optional airport_loading world SDF fixture."),
             profile_arg(
                 "use_moveit",
                 "Start move_group after the arm controller (needed for IK / pose targets).",

@@ -1,0 +1,10 @@
+# Immutable per-request policy; metres. Score uncertainty is below the tie band.
+clearance_precision_m: 0.00025
+collision_tie_m: 0.001
+# Explicit numerical enclosure, subtracted from all distance lower bounds.
+distance_numeric_error_m: 0.000001
+placement_dedup_translation_m: 0.020
+grasp_dedup_translation_m: 0.010
+handoff_dedup_translation_m: 0.010
+push_dedup_translation_m: 0.010
+pose_dedup_rotation_deg: 5.0

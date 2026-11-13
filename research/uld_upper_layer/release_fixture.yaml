@@ -1,0 +1,9 @@
+# Independent calibration hardware parameters, not source-tool modifications.
+# Commands remain bounded by the existing planning contact/withdraw speeds.
+carriage_mass_kg: 0.1
+carriage_inertia_kg_m2: 0.001
+travel_limit_m: 0.5
+velocity_limit_mps: 0.02
+effort_limit_n: 2000.0
+position_p_gain: 10000.0
+position_d_gain: 200.0

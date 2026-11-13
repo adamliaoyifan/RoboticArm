@@ -82,3 +82,15 @@ How candidates are enumerated, stacked on known support, and scored is
 specified in [placement.md](placement.md). What may fill occupancy and box
 size is [real_scenario.md](real_scenario.md): live perception plus hull/floor
 priors, not catalog, Gazebo, or an unverified planned slot.
+
+## Configured static box models
+
+`pedestal.size` and `pickup_platform.size` are local XYZ dimensions of their
+static boxes; origin is bottom centre. Source SDF files supply materials and
+visual structure. Gazebo scene spawning binds those dimensions through
+`luggage_gazebo.platform_model.platform_sdf`; upper-layer private collision scenes
+use `luggage_description.configured_scene_models.configured_model`. Both preserve
+bottom-centred visual and collision dimensions. They must not
+load a template's obsolete dimensions while reporting configured dimensions.
+Container meshes and their poses remain governed by the existing hull contract.
+A model/helper/config change invalidates prior motion evidence.
