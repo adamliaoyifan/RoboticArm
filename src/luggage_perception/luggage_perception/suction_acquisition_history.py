@@ -34,9 +34,12 @@ class SuctionAcquisitionHistory:
         self._rows = OrderedDict()
         self._identity, self._bytes = None, 0
         self._lock = threading.RLock()
+        self._last_clear = None
 
-    def clear(self):
+    def clear(self, reason='EXPLICIT_REVOCATION'):
         with self._lock:
+            self._last_clear = dict(reason=reason,monotonic=self.clock(),
+                discarded=[self.acquisition_key(row.domain) for row in self._rows.values()])
             self._rows.clear()
             self._identity, self._bytes = None, 0
 
@@ -69,13 +72,13 @@ class SuctionAcquisitionHistory:
             now = self.clock()
             self._expire(now)
             if identity != self._identity:
-                self.clear()
+                self.clear('INSTANCE_OR_MODEL_CHANGED')
                 self._identity = identity
             for old_key, row in self._rows.items():
                 if self.acquisition_key(row.domain) == self.acquisition_key(domain):
                     if old_key != digest or (context is not None and row.context is not None
                             and context.samples_sha256 != row.context.samples_sha256):
-                        self.clear()
+                        self.clear('CONFLICTING_ACQUISITION')
                         raise ValueError('CONFLICTING_SUCTION_ACQUISITION')
                     return  # Duplicate publication does not renew retention.
             if size > self.max_bytes:
@@ -97,3 +100,9 @@ class SuctionAcquisitionHistory:
             self._expire(self.clock())
             row = self._rows.get(digest)
             return row.context if row is not None else None
+
+    def diagnostics(self):
+        """Metadata only, for an unavailable-handoff boundary dump."""
+        with self._lock:
+            return dict(records=[dict(key=self.acquisition_key(row.domain),digest=digest)
+                for digest,row in self._rows.items()],bytes=self._bytes,last_clear=self._last_clear)

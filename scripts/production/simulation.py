@@ -72,6 +72,29 @@ def final_result(manifest, client_result, *, start, three_box):
     return (success if result==0 else 'INCOMPLETE'),result
 
 
+def flush_sensor_snapshot(node, *, timeout_s=15.):
+    """Flush through the existing discovery participant, not a short-lived CLI."""
+    from rclpy.executors import SingleThreadedExecutor
+    from rosbag2_interfaces.srv import Snapshot
+    client=node.create_client(Snapshot,'/rosbag2_recorder/snapshot')
+    executor=SingleThreadedExecutor(context=node.context)
+    executor.add_node(node)
+    started=time.monotonic()
+    try:
+        if not client.wait_for_service(timeout_sec=min(5.,timeout_s)):
+            return dict(success=False,reason='SNAPSHOT_SERVICE_UNAVAILABLE')
+        future=client.call_async(Snapshot.Request())
+        while not future.done() and time.monotonic()-started < timeout_s:
+            executor.spin_once(timeout_sec=min(.1,max(0.,timeout_s-(time.monotonic()-started))))
+        if not future.done():return dict(success=False,reason='SNAPSHOT_RESPONSE_TIMEOUT')
+        return dict(success=bool(future.result().success),reason='SNAPSHOT_RESPONSE',
+                    elapsed_s=time.monotonic()-started)
+    finally:
+        executor.remove_node(node)
+        executor.shutdown(timeout_sec=1.)
+        node.destroy_client(client)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--evidence',required=True,type=Path)
@@ -147,10 +170,9 @@ def main():
     until=time.monotonic()+2.
     while time.monotonic()<until:rclpy.spin_once(probe,timeout_sec=.1)
     prior_clock=probe.count_publishers('/clock')
-    probe.destroy_node();rclpy.shutdown()
     if prior_clock:
         manifest.update(outcome='PRIOR_CLOCK_PUBLISHER',prior_clock_publishers=prior_clock)
-        write();return 75
+        write();probe.destroy_node();rclpy.shutdown();return 75
     profile=Path(get_package_share_directory('luggage_gazebo'))/'config/joint_operation.profile.yaml'
     command=['ros2','launch','luggage_gazebo','sim_world.launch.py',
              'profile_config:='+str(profile),'operation_run_dir:='+str(folder/'runtime'),
@@ -218,13 +240,13 @@ def main():
                 if result==0 and args.start:result=run_client('driver',True)
                 manifest['launch_exit_code']=launch.poll()
                 # Flush the bounded pre-trigger cache before stopping sensors.
-                snapshot=subprocess.run(['ros2','service','call','/rosbag2_recorder/snapshot',
-                    'rosbag2_interfaces/srv/Snapshot','{}'],env=env,capture_output=True,text=True,timeout=15.)
-                (folder/'snapshot.log').write_text(snapshot.stdout+snapshot.stderr)
-                manifest['snapshot_exit_code']=snapshot.returncode
+                snapshot=flush_sensor_snapshot(probe)
+                (folder/'snapshot.json').write_text(json.dumps(snapshot,indent=2)+'\n')
+                manifest['snapshot_exit_code']=0 if snapshot['success'] else 1
+                if not snapshot['success']:manifest['missing'].append(snapshot['reason'])
                 stop(bag);bag=None
                 metadata=folder/'sensor_window/metadata.yaml'
-                manifest['capture_complete']=metadata.is_file()
+                manifest['capture_complete']=metadata.is_file() and snapshot['success']
                 if metadata.is_file():
                     import yaml
                     bag_info=yaml.safe_load(metadata.read_text())['rosbag2_bagfile_information']
@@ -255,6 +277,7 @@ def main():
         manifest['replay_possible']=manifest['capture_complete']
         manifest['outcome'],result=final_result(manifest,result,start=args.start,three_box=args.three_box)
         manifest['finished_at']=datetime.now().astimezone().isoformat();write()
+        probe.destroy_node();rclpy.shutdown()
     print(json.dumps({key:manifest[key] for key in ('outcome','capture_complete','residuals_after')}))
     return result or (1 if manifest['residuals_after'] else 0)
 

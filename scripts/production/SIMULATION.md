@@ -106,3 +106,9 @@ failed startup capture remains evidence; its summary is never rewritten.
 The reference is never a sensor/geometry input. Report functional execution and
 sampled physical model coverage separately; capture absence is not proof of no
 physical contact. Recorder failures stay visible in its reference summary.
+
+Sensor-window flush uses a typed Snapshot RPC from the runner's existing ROS
+discovery node. A missing or negative response stays an evidence failure even
+if a partial bag exists. Startup and snapshot teardown retain separate outcomes.
+Unavailable acquisition handoffs dump the requested key, live-joint availability,
+bounded history keys and the last explicit invalidation cause before refusal.

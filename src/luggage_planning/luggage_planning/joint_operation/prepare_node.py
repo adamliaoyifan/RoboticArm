@@ -248,7 +248,7 @@ class JointOperationPrepareNode(Node):
         try: domain = domain_from_message(message)
         except (TypeError,ValueError): domain = None
         with self._state_lock:
-            if domain is None:self.domain_history.clear()
+            if domain is None:self.domain_history.clear('INVALID_DOMAIN:'+message.reason)
             else:self.domain_history.remember(domain)
             self.domain = domain
 
@@ -275,7 +275,13 @@ class JointOperationPrepareNode(Node):
                 domain = self.domain_history.domain_for_acquisition((detection.id,
                     int(request.generation),int(stamp.sec)*10**9+int(stamp.nanosec),
                     detection.header.frame_id,self.preparation.model.identity_hash))
-        if domain is None or joints is None: raise ValueError('OBSERVATION_OR_JOINTS_UNAVAILABLE')
+        if domain is None or joints is None:
+            stamp=request.detection.header.stamp
+            self._record('domain_handoff_unavailable',json.dumps(dict(
+                requested_box_id=request.detection.id,requested_generation=int(request.generation),
+                requested_stamp_ns=int(stamp.sec)*10**9+int(stamp.nanosec),
+                joints_available=joints is not None,history=self.domain_history.diagnostics())).encode())
+            raise ValueError('OBSERVATION_OR_JOINTS_UNAVAILABLE')
         if frozen_domain is None:
             self._record('domain_admission_input',domain_to_message(domain))
             from luggage_planning.planning_contract.attachment import ATTACHMENT_MAX_AGE_NS

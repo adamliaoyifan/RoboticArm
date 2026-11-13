@@ -2,6 +2,7 @@
 import gzip
 import importlib.util
 from pathlib import Path
+import threading
 
 
 def module(name):
@@ -65,3 +66,31 @@ def test_capture_exception_after_successful_client_is_not_success():
     assert runner.final_result(manifest,0,start=True,three_box=True)==('INCOMPLETE',1)
     manifest.update(capture_complete=True,residuals_after=['foreign-looking residual'])
     assert runner.final_result(manifest,0,start=True,three_box=True)==('TEARDOWN_INCOMPLETE',1)
+
+
+def test_existing_discovery_node_receives_real_snapshot_response():
+    import rclpy
+    from rclpy.context import Context
+    from rclpy.executors import SingleThreadedExecutor
+    from rosbag2_interfaces.srv import Snapshot
+    runner=module('simulation')
+    context=Context();rclpy.init(context=context,domain_id=177)
+    server=rclpy.create_node('snapshot_owner_fixture',context=context)
+    client=rclpy.create_node('existing_snapshot_discovery_probe',context=context)
+    calls=[]
+    accepted=[True]
+    def capture(request,response):
+        calls.append(request);response.success=accepted[0];return response
+    service=server.create_service(Snapshot,'/rosbag2_recorder/snapshot',capture)
+    executor=SingleThreadedExecutor(context=context);executor.add_node(server)
+    worker=threading.Thread(target=executor.spin,daemon=True);worker.start()
+    try:
+        assert runner.flush_sensor_snapshot(client,timeout_s=3.)['success']
+        assert len(calls)==1
+        accepted[0]=False
+        assert not runner.flush_sensor_snapshot(client,timeout_s=3.)['success']
+        assert len(calls)==2
+    finally:
+        executor.shutdown(timeout_sec=2.);worker.join(timeout=2.)
+        server.destroy_service(service);server.destroy_node();client.destroy_node();rclpy.shutdown(context=context)
+    assert not worker.is_alive()

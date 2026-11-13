@@ -70,6 +70,9 @@ def test_same_acquisition_with_conflicting_geometry_invalidates_handoff():
     with pytest.raises(ValueError,match='CONFLICTING_SUCTION_ACQUISITION'):
         history.remember(replace(old.domain,box_wdh=(.8,.5,.2)))
     assert history.domain_for_acquisition(history.acquisition_key(old.domain)) is None
+    diagnostic=history.diagnostics()
+    assert diagnostic['records']==[] and diagnostic['last_clear']['reason']=='CONFLICTING_ACQUISITION'
+    assert diagnostic['last_clear']['discarded']==[history.acquisition_key(old.domain)]
 
 
 def test_prepare_selects_requested_acquisition_despite_newer_topic_and_still_checks_geometry():
