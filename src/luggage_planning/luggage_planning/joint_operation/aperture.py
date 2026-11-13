@@ -37,13 +37,12 @@ def passage_constraints(aperture, region, world_from_container, tolerance):
 
 
 class ApertureRouter:
-    def __init__(self, aperture, model, ik, connections, *, rigid_vertices,
+    def __init__(self, aperture, model, ik, connections, *,
                  max_points, max_seeds, atlas=None, hull=None, clock=time.monotonic):
         if (type(max_points) is not int or not 1 <= max_points <= 32
                 or type(max_seeds) is not int or not 1 <= max_seeds <= 8):
             raise ValueError('bounded opening points and IK seeds required')
         self.aperture, self.model, self.ik, self.connections = aperture, model, ik, connections
-        self.rigid_vertices = np.asarray(rigid_vertices)
         self.max_points, self.max_seeds, self.atlas, self.clock = max_points, max_seeds, atlas, clock
         self.hull = hull
 
@@ -107,13 +106,11 @@ class ApertureRouter:
             rotation = Rotation.from_rotvec(self.aperture.axes[:, 2]*(heading*math.pi/2))
             quat = tuple((rotation*Rotation.from_quat(reference.quaternion_xyzw)).as_quat())
             target = Transform(reference.translation, quat)
-            region = self.aperture.region(candidate.predicted_attachment, target,
-                                          rigid_vertices=self.rigid_vertices)
-            if region.empty:
-                # Whole fixed-tool projection is sufficient but may exclude a
-                # head that need not enter fully. Native geometry still applies.
-                trace.append(('aperture', heading, 'FIXED_TOOL_PROJECTION_EMPTY_TRY_PAYLOAD'))
-                region = self.aperture.region(candidate.predicted_attachment, target)
+            # Only the payload must fit the aperture cross-section. Projecting
+            # the whole fixed head here incorrectly requires cameras/forearm to
+            # enter completely, even when they remain outside the opening.
+            # Every IK state and connecting edge still uses the full-arm scene.
+            region = self.aperture.region(candidate.predicted_attachment, target)
             points = self.aperture.proposals(region, end.translation, self.max_points)
             trace.append(('aperture_region', heading, region.proposal_kind,
                           region.lower_uv, region.upper_uv, len(points)))

@@ -41,7 +41,6 @@ from luggage_planning.joint_operation.observer import ObserverConfiguration, Obs
 from luggage_planning.joint_operation.endpoints import NativeOperationEndpointPort
 from luggage_planning.joint_operation.ik import NativeSnapshotIKPort
 from luggage_planning.joint_operation.aperture_geometry import ApertureGeometry
-from luggage_planning.joint_operation.aperture_tool_geometry import fixed_tool_vertices
 from luggage_planning.joint_operation.aperture import ApertureRouter
 from luggage_planning.joint_operation.scene_admission import StaticWorldAdmission
 from luggage_planning.joint_operation.atlas import AtlasOperationHints, load_operation_atlas
@@ -121,7 +120,6 @@ class JointOperationPrepareNode(Node):
             max_edge_s=float(param('connection_max_edge_s',2.)))
         aperture_router = ApertureRouter(aperture,self.model,
             NativeSnapshotIKPort(self,self.model,recorder=recorder('aperture_ik')),connections,
-            rigid_vertices=fixed_tool_vertices(self.model),
             hull=descriptor_from_scene_config(scene_config),
             max_points=param('aperture_max_points_per_heading',6),
             max_seeds=param('aperture_max_ik_seeds',3))

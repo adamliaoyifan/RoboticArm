@@ -1071,3 +1071,23 @@ regression exercises actual planner reaching9th and16th contacts before sealing;
 Offline replay first attempt inspected slots0/8 then stopped on a heading guard
 at10; preserved incomplete result, no product run consumed. Corrected replay
 restricts same-heading slots0/4/8/12, exact saved grasp/model/observed O only.
+
+00:20UTC diagnostic51 frozen71: first floor observed operation COMPLETE161.094s,
+return18.349s. Second prepare reaches13 coupled contacts including actual central
+placements, then SEARCH_INCOMPLETE103.576s before any pick. Exact last-contact
+summaries:288 failed IK proposals report attached pickup_box/robot_pedestal,
+80 link1/load,55 link2/load, only3 observed-O/arm; last contacts summarize attempted
+solutions, not an exhaustive impossibility proof. 540 native IK request/replies
+preserved, teardown0. First central contact also had two ALIGN_CONNECTION_MISS;
+contact10 enters aperture search. No box2 physical motion/collision.
+Measured competing cause: whole fixed tool projection imposes upper vertical
+aperture bound0.353m versus payload-only0.676m relative to opening centre. It
+requires all cameras/head parts to fit as though entering fully. On exact same
+saved contact10, carry scene, start/goal branches, native full URDF/O/ULD retained,
+payload-only proposals produce ORDERED_APERTURE_CONNECTION11.288s including all
+four native edges, unchanged5s/edge. Artifact diagnostic51/router_payload_only
+retains every typed request/reply and source copy. This is local crossing proof,
+not a whole-operation or physical success. Recommended repair: payload bounds
+candidate cross-section; native full-arm geometry remains authoritative for all
+IK, edges, final certificate and execution. Remove redundant fixed-tool projection
+from route construction, retain ordered outside/plane/inside and FK witness.

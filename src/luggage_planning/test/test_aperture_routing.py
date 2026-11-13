@@ -105,7 +105,7 @@ def fixture():
     candidate=SimpleNamespace(scenes=SimpleNamespace(carry=scene),predicted_attachment=geometry(),
         world_from_release_tool=Transform((.2,0.,1.),(0.,0.,0.,1.)))
     ik,connections=IK(),Connections()
-    router=ApertureRouter(aperture(),Model(),ik,connections,rigid_vertices=(),
+    router=ApertureRouter(aperture(),Model(),ik,connections,
         max_points=2,max_seeds=2)
     return candidate,ik,connections,router
 
@@ -190,3 +190,29 @@ def test_atlas_cannot_starve_two_endpoint_seed_fallbacks_at_bounded_cap():
     router.atlas=SimpleNamespace(query=lambda *args:SimpleNamespace(branches=branches))
     seeds=router._seeds(Transform((0.,0.,1.),(0.,0.,0.,1.)),start,goal)
     assert seeds==(('current-carry',start),('place-entry',goal),('atlas:near',branches[1].contact_joints))
+
+
+def test_payload_plane_candidates_above_whole_head_projection_use_full_scene_ports():
+    candidate,ik,connections,router=fixture()
+    # A fixed camera may stay outside the ULD while its payload crosses below it.
+    # A whole-head orthographic fit would exclude every accepted plane here.
+    rigid_region=router.aperture.region(candidate.predicted_attachment,
+        Transform((0.,0.,1.),(0.,0.,0.,1.)),rigid_vertices=((0.,0.,.35),))
+    head_ceiling=router.aperture.origin[2]+rigid_region.upper_uv[1]
+    original=ik.refine
+    def refine(scene,target,seed,**kwargs):
+        if target.translation[2] <= head_ceiling+.01:
+            ik.calls.append((scene,target,seed,kwargs))
+            return SnapshotIKResult(True,False,'FULL_SCENE_COLLISION')
+        return original(scene,target,seed,**kwargs)
+    ik.refine=refine
+    router.max_points=32
+    router.clock=lambda:0.
+    trace=[]
+    result=router.connect(candidate,(-1.5,0.,1.,0.,0.,6.4),(.2,0.,1.,0.,0.,6.5),
+        request_id='higher-payload-passage',deadline=10.,cancelled=lambda:False,trace=trace)
+    assert result.success
+    selected=next(row for row in trace if row[0]=='aperture_selected')
+    assert selected[2][1]['position_world'][2] > head_ceiling+.01
+    assert all(call[0] is candidate.scenes.carry for call in ik.calls+connections.calls)
+    assert len(connections.calls)==4

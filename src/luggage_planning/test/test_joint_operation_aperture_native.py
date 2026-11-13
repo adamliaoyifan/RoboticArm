@@ -14,7 +14,6 @@ from moveit_msgs.msg import PlanningScene
 
 from test_joint_operation_endpoints_native import native_stack,candidate_for
 from luggage_planning.joint_operation.aperture_geometry import ApertureGeometry
-from luggage_planning.joint_operation.aperture_tool_geometry import fixed_tool_vertices
 from luggage_planning.joint_operation.aperture import ApertureRouter
 from luggage_planning.joint_operation.ik import NativeSnapshotIKPort
 from luggage_planning.placement_prior.contracts import Transform
@@ -46,7 +45,7 @@ def passage(stack):
         recorder=lambda kind,value:stack.record('opening_ik',kind,serialize_message(value)))
     assert ik.client.wait_for_service(timeout_sec=5.)
     router=ApertureRouter(opening,stack.model,ik,stack.connections,
-        rigid_vertices=fixed_tool_vertices(stack.model),max_points=3,max_seeds=2)
+        max_points=3,max_seeds=2)
     return identity,planning_start,candidate,router,start,goal
 
 

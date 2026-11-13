@@ -37,6 +37,10 @@ The aperture generator belongs to this route and retains its ordered waypoints
 inside the carry leg. ComputePlacement provides geometric slots. Actual attachment
 geometry, current occupancy, configured ULD and native complete-model collision
 checks decide whether a candidate has a valid complete trajectory.
+The opening cross-section bounds the conservative payload, not an orthographic
+projection of every fixed camera/head part. Those parts may remain outside the
+ULD; full-model IK, edge checks and whole-chain certification still check them.
+The outside/plane/inside witnesses and ordered carry connection remain required.
 
 The standalone native connector derives OMPL's segment fraction from its own
 joint-check step and the loaded group's extent. Search and returned-path checks
