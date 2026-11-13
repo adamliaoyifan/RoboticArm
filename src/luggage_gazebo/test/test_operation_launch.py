@@ -90,7 +90,8 @@ def test_explicit_old_pipeline_retains_compatibility(tmp_path):
     assert validate_operation_selection(settings) is False
 
 
-def test_composition_binds_one_owner_and_identical_native_model(tmp_path,monkeypatch):
+@pytest.mark.parametrize('sources',['rgbd','rgbd_lidar'])
+def test_composition_binds_one_owner_and_identical_native_model(tmp_path,monkeypatch,sources):
     import hashlib
     import json
     from pathlib import Path
@@ -104,6 +105,7 @@ def test_composition_binds_one_owner_and_identical_native_model(tmp_path,monkeyp
         'config/scene_tf_deploy_update.yaml'),cargo_map_resolution_m='',
         operation_connection_max_edge_s='5.0',operation_max_branch_attempts='8',
         operation_max_branch_attempts_per_candidate='2')
+    settings['operation_o_sources']=sources
     settings['operation_source_refresh_attempts']='3'
     settings['operation_execution_budget_s']='540.0'
     xml,semantic='<robot name="test"><link name="world"/></robot>','<robot name="test"/>'
@@ -122,6 +124,12 @@ def test_composition_binds_one_owner_and_identical_native_model(tmp_path,monkeyp
     manifest=json.loads((Path(settings['operation_run_dir'])/'launch.json').read_text())
     assert manifest['model_sha256']==hashlib.sha256((xml+semantic).encode()).hexdigest()
     assert manifest['startup_authorizes_motion'] is False
+    observer=next(node for node in nodes if node['package']=='uld_occ_observer')
+    inputs=evaluate_parameters(LaunchContext(),normalize_parameters(observer['parameters']))[0]
+    assert inputs['cloud_topic']=='/luggage/observation/optical_points'
+    assert inputs['lidar_cloud_topic']==('/luggage/observation/lidar_points' if sources=='rgbd_lidar' else '')
+    assert manifest['observer_inputs']['selected']==sources
+    assert any(node['executable']=='observer_lidar_node.py' for node in nodes)
     depth=next(node for node in nodes if node['executable']=='observer_depth_node.py')
     depth_parameters=evaluate_parameters(LaunchContext(),normalize_parameters(depth['parameters']))[0]
     assert depth_parameters['pixel_stride']==manifest['observer_depth']['pixel_stride']==4
@@ -174,3 +182,10 @@ def test_installed_gazebo_atlas_exact_model_is_admitted():
         scene_revision=hashlib.md5(scene.read_bytes()).hexdigest(),
         world_from_container=Transform(tuple(xyz),tuple(Rotation.from_euler('xyz',rpy).as_quat())))
     assert reader.reason=='QUALIFIED' and reader.atlas is not None
+
+
+def test_unknown_o_input_selection_refuses_before_launch():
+    from luggage_gazebo.operation_launch import operation_o_sources
+    assert operation_o_sources({})=='rgbd_lidar'
+    with pytest.raises(ValueError,match='UNSUPPORTED_OPERATION_O_SOURCES'):
+        operation_o_sources({'operation_o_sources':'disabled'})

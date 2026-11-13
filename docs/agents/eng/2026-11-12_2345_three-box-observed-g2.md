@@ -1072,7 +1072,7 @@ Offline replay first attempt inspected slots0/8 then stopped on a heading guard
 at10; preserved incomplete result, no product run consumed. Corrected replay
 restricts same-heading slots0/4/8/12, exact saved grasp/model/observed O only.
 
-00:20UTC diagnostic51 frozen71: first floor observed operation COMPLETE161.094s,
+00:18UTC diagnostic51 frozen71: first floor observed operation COMPLETE161.094s,
 return18.349s. Second prepare reaches13 coupled contacts including actual central
 placements, then SEARCH_INCOMPLETE103.576s before any pick. Exact last-contact
 summaries:288 failed IK proposals report attached pickup_box/robot_pedestal,
@@ -1091,3 +1091,28 @@ not a whole-operation or physical success. Recommended repair: payload bounds
 candidate cross-section; native full-arm geometry remains authoritative for all
 IK, edges, final certificate and execution. Remove redundant fixed-tool projection
 from route construction, retain ordered outside/plane/inside and FK witness.
+
+Projection repair27248965:73 focused behavioral tests pass0.82s; frozen72 build7.10s unchanged inputs, installed192/192. Diagnostic52 uses same three-box workload. First prepare now passes70.281s; no latency improvement is inferred from heterogeneous runs.
+
+00:40UTC diagnostic52 frozen72: first cycle COMPLETE225.766s, return40.636s;
+second prepare PLAN_READY182.734s, candidate requested4/contact9, six-leg full
+native certificate. Second actual pick/lift/carry completes, then pre-descent
+revalidation stops CARRY_FAULT/BOUND_NATIVE_ADMISSION_REQUIRED with payload held.
+Nested reason SETTLED_BOX_ADMISSION_REFUSED; no second release or box2/arm/ULD
+physical contact pair. Complete boundary capture/replay, teardown0. Driver's
+box2_execute stage pass means RPC returned, not task success; actual action result
+is failure and completed_boxes remains1. This distinction is retained.
+Exact full-run endpoint backtrace identifies one target cell[40,53,0],8 LiDAR
+points at container z.530021887..530033552 versus configured floor.53. This
+quantizes to.55 support, shifting regenerated target Z by2cm and invalidating
+bound original slot. Predicted/actual measured dimensions are byte-identical.
+Unlike45, full early-to-late source evidence exists; no RGB-D endpoint enters
+this cell. Recorded GPU plane tests already show nonzero floor residuals at
+other poses, so prior single-pose OGRE comparison did not qualify all motion views.
+Recommended under delegated decisions: explicit RGB-D-only O input for next
+functional witness, retain full physical LiDAR and all point outputs, quarantine
+its O subscription until sensor-source calibration. User allows camera OR LiDAR
+closure. No floor exemption, O deletion, unsupported tolerance or GT correction.
+New operation_o_sources selection rgbd/rgbd_lidar uses existing optional observer
+subscription. Bare launch keeps both; explicit joint profile rgbd. Source provenance
+records selected inputs; full model and all unknown/collision gates unchanged.

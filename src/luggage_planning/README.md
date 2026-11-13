@@ -95,6 +95,11 @@ The grouped [joint-operation profile](../luggage_gazebo/config/joint_operation.p
 selects `joint_operation`. The bare simulation launch still defaults to
 `legacy_segments`; this directory migration does not change that default.
 `frame_runtime` is a separate compatibility setting, not the route selector.
+The explicit profile currently integrates RGB-D only (`operation_o_sources=rgbd`)
+after measured simulated LiDAR floor returns generated a false support cell.
+The full LiDAR model and point outputs remain available; `rgbd_lidar` explicitly
+restores both measured inputs after source qualification. No O cells are erased
+and all native collision/unknown-space gates remain unchanged.
 See [production orchestration](../../docs/architecture/production_orchestration.md)
 for authorization and map-owner rules.
 

@@ -192,3 +192,16 @@ proposal/quality/binding test must visit8 placements with2 unique contacts each
 and stop before placement9. All focused placement/profile/refresh cases pass.
 Then freeze/build/install and run the same three-box procedure, preserving the
 first failed boundary. No support, tilt, padding, release or trajectory gate change.
+
+## Measured aperture proposal correction -- 2026-11-13T00:21Z
+
+Diagnostic51 second preparation reaches central contacts but all selected
+whole-head projected crossings fail before native connection. Retained exact
+contact10 replay with conservative-payload cross-section and unchanged full
+robot/ULD/O native scenes succeeds in11.288s, four checked edges. Therefore
+27248965 removes the extra requirement that every fixed camera/head part fit
+orthographically inside the opening simultaneously. Payload must pass through
+ordered outside/plane/inside witnesses; full-model IK, edges, independent FK and
+whole-chain certification remain hard gates. No extra planner or direct bypass.
+73 focused behavioral tests pass; frozen72 install192/192. Same three-box
+acceptance and separate actual physical support evidence remain required.

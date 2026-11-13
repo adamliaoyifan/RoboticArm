@@ -6,6 +6,10 @@ runtime:
   # Known-plane replay at actual pickup pose: OGRE2 places17/40 floor rays
   # above .53m (max +7.9mm); OGRE places0/41 (max +0.42mm). Simulation-only.
   server_render_engine: ogre
+  # Diagnostic52:8 LiDAR floor returns at z=.530022-.530034 produce a
+  # false2cm support cell. Quarantine O integration until source calibration;
+  # retain full physical LiDAR and raw/filtered outputs for diagnosis.
+  operation_o_sources: rgbd
   use_rviz: false
   use_moveit: true
   frame_runtime: false

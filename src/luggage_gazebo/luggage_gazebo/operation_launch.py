@@ -90,7 +90,16 @@ def validate_operation_selection(config):
     return True
 
 
+def operation_o_sources(config):
+    """Select measured O inputs explicitly; physical sensors remain present."""
+    selected=str(config.get('operation_o_sources','rgbd_lidar'))
+    if selected not in ('rgbd','rgbd_lidar'):
+        raise ValueError('UNSUPPORTED_OPERATION_O_SOURCES')
+    return selected
+
+
 def operation_composition(config, robot_xml, semantic_xml):
+    sources=operation_o_sources(config)
     folder = Path(config['operation_run_dir'])
     folder.mkdir(parents=True, exist_ok=False)
     scene = config['scene_tf_config']
@@ -135,7 +144,7 @@ def operation_composition(config, robot_xml, semantic_xml):
         output='screen', parameters=[dict(use_sim_time=True, geometry_file=owner.geometry_file,
             config_file=owner.observer_config_file, input_mode='subscription',
             cloud_topic='/luggage/observation/optical_points', optical_frame='camera_depth_optical_frame',
-            lidar_cloud_topic='/luggage/observation/lidar_points',
+            lidar_cloud_topic='/luggage/observation/lidar_points' if sources=='rgbd_lidar' else '',
             lidar_frame=config.get('operation_lidar_frame','livox_frame'))]),
         Node(package='luggage_perception', executable='observer_depth_node.py', name='observer_depth',
             output='screen', parameters=[dict(use_sim_time=True,
@@ -193,6 +202,9 @@ def operation_composition(config, robot_xml, semantic_xml):
         scale=1.,padding_m=self_mask_error,padding_source='half_simulator_range_resolution',
         transform_time='cloud_acquisition',
         missing_transform='refuse_whole_cloud',removed_endpoint='discard_whole_ray')
+    manifest['observer_inputs'] = dict(selected=sources,
+        integrated_sensors=['rgbd','lidar'] if sources=='rgbd_lidar' else ['rgbd'],
+        physical_lidar_present=True, lidar_filtered_topic='/luggage/observation/lidar_points')
     manifest['observer_depth'] = dict(pixel_stride=int(config.get('operation_depth_pixel_stride',4)),
         source='direct_measured_pixels_no_interpolation')
     manifest['collision_policy'] = {key:common[key] for key in
