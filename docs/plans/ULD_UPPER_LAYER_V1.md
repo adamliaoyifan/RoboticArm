@@ -3145,3 +3145,30 @@ ROS-free`UpperPlacementPrior.query(request, goals, budget) -> PriorHints`与
 - 执行纪律：revision 1c61b898的4个完整单位+1个部分单位保留于
   `eval_r1_target3_static/`（证据不删，不与新矩阵混版本）；新revision
   重跑42单位于`eval/`。配对门、五分类、审计规则全部不变。
+
+## 23. UPPER-SIZE-EVAL 关闭记录（2026-11-13，eng/claude）
+
+r2矩阵（revision `a9d007d7`，§22修订后）42/42单位完成，审计PASS(0 issue)，
+证据`docs/status/evidence/uld_upper_layer_v1/claude_prior_size_g1/eval/`。
+
+- 配对门全过：21对零回归（baseline成功⇒prior成功）、基准尺寸3/3配对成功、
+  12个双成功对。速度如实：双成功对单位中位数baseline 413.0s vs prior 403.5s，
+  首个可行action中位数12.2 vs 12.1s——共享族调度下prior无单位级净加速，
+  不宣称加速；此前静态顺序轮(r1, 4单位, 全部1200s饱和)保留于
+  `eval_r1_target3_static/`。
+- 尺寸能力（生成器级见证，"放不下"≠"没搜到"）：可行=550×400×250(基准)、
+  600×400×250、550×350×250、550×450×250（各6/6 VALID）；不可行=500×400×250
+  (HANDOFF_WINDOW_EMPTY×4 yaw)、550×400×200(HANDOFF_WINDOW_EMPTY)、
+  550×400×300(HANDOFF_WINDOW_EMPTY+HANDOFF_APERTURE×60)。
+- §20.5物理后续的新尺寸依序取**600×400×250**（200mm首序即几何拒绝）。
+- 披露：13:15–18:07按用户指示暂停；暂停期间evaluate_prior.py有一处未提交
+  续跑目录处理修改（中断单位目录移aside），单位13–42的manifest带该dirty
+  项（HEAD仍a9d007d7），跑后已补提交`7600d5cc`；该修改仅影响中断目录处理，
+  规划/候选/调度/评代码42单位一致。lifecycle.json留暂停/恢复事件。
+- 输入纪律：逐尺寸请求配对前冻结（目标由支撑多边形+箱尺寸+净空推导，基准
+  尺寸精确复现已证归档目标）；双模式config仅差prior块；未附着合成夹具
+  （synthetic标注，不复制physical10抓取）；同OCC(6e5a1ee6)同start；
+  顺序尺寸→seed→baseline/prior严格串行；总搜索2.79h。
+- 遗留：UPPER-PRIOR-PHYSICS（原尺寸+600×400×250两案例闭环）待领取；
+  用户已同意的GEN2（碰撞感知预演表+候选区间化+枚举vs预演对照）在物理任务
+  之后排期；正式MOTION-PHYSICS G12 gen2仍open。
