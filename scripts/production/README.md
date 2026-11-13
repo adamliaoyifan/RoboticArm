@@ -31,3 +31,13 @@ builder removes only the obsolete Python modules explicitly mapped in
 replacement source and installed file to exist. The checker imports all relocated
 modules and requires their old paths to be unimportable; stale installed files
 cannot silently preserve an obsolete route implementation.
+
+For a simulation diagnostic that needs exact suction-input replay, add
+`--capture-suction-inputs` to `simulation.py`. This enables the detector's existing
+bounded input capture under that run's `suction_inputs/`; it records the actual
+consumed acquisition transform instead of reconstructing it from a truncated TF
+window. It adds no observation or motion. At teardown the runner audits selected
+instance/generation/stamp and original depth bytes. Missing or mismatched selected
+inputs make the diagnostic capture incomplete; an operation's own Action result
+remains separately retained. Startup without a selected pickup is
+`NOT_EVALUATED`. This optional capture has overhead and is not a timing benchmark.

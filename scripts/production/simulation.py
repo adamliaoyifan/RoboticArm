@@ -16,6 +16,7 @@ import tarfile
 import time
 
 from ament_index_python.packages import get_package_share_directory
+from suction_input_evidence import configure_capture, audit_selected_inputs
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -120,6 +121,8 @@ def main():
     parser.add_argument('--failure-hold-s',default=25.,type=float)
     parser.add_argument('--prepick-replans',default=0,type=int,choices=(0,1,2))
     parser.add_argument('--capture-physics',action='store_true',help='Separate offline poses/contact ledger')
+    parser.add_argument('--capture-suction-inputs',action='store_true',
+        help='Optional exact selected depth/TF/top inputs for offline perception replay')
     parser.add_argument('--view-poses',type=Path,help='Explicit model/scene-bound diagnostic observation goals')
     parser.add_argument('--pickup-recovery-config',type=Path,
         help='Explicit count/time/sampling/association policy; archived and forwarded only to started driver')
@@ -132,11 +135,13 @@ def main():
                ELFIN_STARTUP_EVIDENCE_DIR=str(folder/'startup'),
                IGN_PARTITION='loading_'+str(os.getpid())+'_'+str(time.time_ns()))
     if args.capture_physics:env['ELFIN_BOX_CONTACT_TOPIC']='/loading/eval_contacts'
+    suction_capture = configure_capture(env, folder, enabled=args.capture_suction_inputs)
     manifest = dict(started_at=datetime.now().astimezone().isoformat(),start_authorized=args.start,
         revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
         dirty=subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).splitlines(),
         environment={key:env.get(key) for key in ('ROS_DOMAIN_ID','AMENT_PREFIX_PATH','PYTHONPATH')},
-        capture_complete=False,replay_possible=False,stages=[],missing=[])
+        capture_complete=False,replay_possible=False,stages=[],missing=[],
+        suction_input_capture=suction_capture)
     def write():
         (folder/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     write()
@@ -304,6 +309,16 @@ def main():
         stop(client);stop(bag);stop(physics)
         if physics is not None:
             manifest['physics_exit_code']=physics.returncode
+        if args.capture_suction_inputs:
+            try:
+                manifest['suction_input_capture']['audit'] = audit_selected_inputs(folder)
+                if not manifest['suction_input_capture']['audit']['complete']:
+                    manifest['capture_complete'] = False
+                    manifest['missing'].append('exact selected suction inputs')
+            except Exception as error:
+                manifest['suction_input_capture']['audit_error'] = type(error).__name__+':'+str(error)
+                manifest['capture_complete'] = False
+                manifest['missing'].append('selected suction input audit')
         if launch is not None:
             teardown=subprocess.run([str(ROOT/'scripts/stop_sim.sh'),'--owned-pgid',str(launch.pid),
                 '--pidfile',str(pidfile)],capture_output=True,text=True,timeout=45.)
