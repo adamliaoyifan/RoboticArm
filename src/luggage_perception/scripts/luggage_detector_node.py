@@ -738,6 +738,7 @@ class LuggageDetector(Node):
             from luggage_perception.frozen_suction_service import register_frozen_suction_services
             self._frozen_suction_service = register_frozen_suction_services(self,
                 context_provider=self._current_directed_suction_context,
+                context_lookup=self._current_directed_suction_context,
                 model_provider=lambda:self._suction_evaluator.contact_model)
         # ST03: v2 pose-contract publishers exist only when an explicit
         # scene revision enables the boundary; a rejected conversion warns
@@ -1369,8 +1370,8 @@ class LuggageDetector(Node):
                 "luggage_detector: waiting for suitcase RGB update (%s)"
                 % box_id)
 
-    def _current_directed_suction_context(self):
-        context = self._directed_suction_service.context_snapshot()
+    def _current_directed_suction_context(self, domain_sha256=''):
+        context = self._directed_suction_service.context_snapshot(domain_sha256)
         if (context is not None and getattr(self,'_box_epoch_seen',False)
                 and (context.domain.generation != int(self._box_generation)
                      or context.domain.instance_id != str(self._box_id))):

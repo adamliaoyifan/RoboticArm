@@ -4,6 +4,7 @@ import math
 import time
 
 from luggage_perception.ros_suction_domain import require_matching_detection
+from luggage_perception.suction_acquisition_history import SuctionAcquisitionHistory
 
 
 # Batch/iteration resource caps, not geometric inference thresholds. Eight
@@ -13,17 +14,24 @@ MAX_REFINEMENTS = 8
 
 
 class DirectedSuctionService:
-    def __init__(self, clock=time.monotonic):
+    def __init__(self, clock=time.monotonic, *, acquisition_history=None):
         self._context = None
         self._clock = clock
+        self._history = (acquisition_history if acquisition_history is not None
+                         else SuctionAcquisitionHistory(clock=clock))
 
     def replace_context(self, context):
         """One reference swap; an in-flight handler retains its own snapshot."""
+        if context is None:
+            self._history.clear()
+        else:
+            self._history.remember(context.domain, context=context)
         self._context = context
 
-    def context_snapshot(self):
-        """Current immutable acquisition for explicit owner retention."""
-        return self._context
+    def context_snapshot(self, domain_sha256=''):
+        """Current context, or one explicitly named published acquisition."""
+        return (self._history.context_for_digest(domain_sha256)
+                if domain_sha256 else self._context)
 
     def handle(self, request, response):
         from luggage_msgs.msg import DirectedSuctionContactV2

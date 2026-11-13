@@ -25,6 +25,7 @@ from luggage_description.ros_frame_bindings.poses import pose_from_message
 from luggage_description.ros_frame_bindings.surfaces import surface_from_message
 from luggage_description.suction_contact_model import load_suction_contact_model
 from luggage_perception.ros_suction_domain import domain_from_message, domain_to_message, require_matching_detection
+from luggage_perception.suction_acquisition_history import SuctionAcquisitionHistory
 from luggage_description.container_geometry import descriptor_from_scene_config
 from luggage_description.scene_tf_config_utils import load_scene_tf_config
 from luggage_planning.attachment.attachment_geometry_policy import load_attachment_geometry_policy
@@ -101,6 +102,10 @@ class JointOperationPrepareNode(Node):
             raise ValueError('finite nonnegative margins and bounded geometry pool required')
         self.pickup_id = str(param('pickup_object_id',BOX_OBJECT_ID))
         self.store,self.domain,self.joints = ConfirmedSurfaceStore(),None,None
+        self.domain_history = SuctionAcquisitionHistory(
+            max_records=param('observed_domain_record_limit',16),
+            max_bytes=param('observed_domain_byte_limit',16*1024*1024),
+            lifetime_s=param('observed_domain_lifetime_s',60.))
         self._active,self._state_lock = threading.Lock(),threading.Lock()
         self.issued = IssuedOperationRegistry(
             max_plans=param('issued_plan_limit',16),
@@ -242,7 +247,10 @@ class JointOperationPrepareNode(Node):
     def _domain(self,message):
         try: domain = domain_from_message(message)
         except (TypeError,ValueError): domain = None
-        with self._state_lock: self.domain = domain
+        with self._state_lock:
+            if domain is None:self.domain_history.clear()
+            else:self.domain_history.remember(domain)
+            self.domain = domain
 
     def _joints(self,message):
         try:
@@ -257,8 +265,16 @@ class JointOperationPrepareNode(Node):
         with self._state_lock: self.joints = current
 
     def _current(self,request,*,frozen_domain=None):
-        with self._state_lock: domain,joints = self.domain,self.joints
-        if frozen_domain is not None:domain = frozen_domain
+        with self._state_lock:
+            joints = self.joints
+            if frozen_domain is not None:
+                domain = frozen_domain
+            else:
+                detection = request.detection
+                stamp = detection.header.stamp
+                domain = self.domain_history.domain_for_acquisition((detection.id,
+                    int(request.generation),int(stamp.sec)*10**9+int(stamp.nanosec),
+                    detection.header.frame_id,self.preparation.model.identity_hash))
         if domain is None or joints is None: raise ValueError('OBSERVATION_OR_JOINTS_UNAVAILABLE')
         if frozen_domain is None:
             self._record('domain_admission_input',domain_to_message(domain))

@@ -27,6 +27,7 @@ MODULES = (
     'luggage_packing.placement_volume_query',
     'luggage_packing.placement_recheck',
     'luggage_perception.suction_patch_evaluator',
+    'luggage_perception.suction_acquisition_history',
     'luggage_perception.observer_depth',
     'luggage_perception.observer_lidar',
     'luggage_gazebo.operation_launch',

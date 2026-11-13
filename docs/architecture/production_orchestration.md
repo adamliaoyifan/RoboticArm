@@ -185,7 +185,15 @@ observation thresholds. A liveness success still requires every current-source,
 actual-contact, occupancy and native suffix gate before controller submission.
 
 Production preparation first retains its exact measured acquisition through the
-perception owner. Candidate quality queries use the independent
+perception-owned frozen observation service. The initial domain is selected by
+the request's exact box/generation/acquisition/frame/model key from a bounded
+published-domain history, rather than whichever stream message arrived last.
+This preserves an already-selected observation across map RPC latency; it does
+not substitute geometry, renew timestamps or exempt freshness/quality checks.
+Perception resolves that domain's digest to the exact original quality samples.
+Unavailable, invalidated or conflicting handoff inputs refuse preparation.
+
+Candidate quality queries use the independent
 `EvaluateFrozenSuctionV2` service; the existing current-frame service is unchanged.
 Later camera frames cannot substitute samples or replace the retained acquisition
 identity. After certification and the final full-scene read, preparation checks

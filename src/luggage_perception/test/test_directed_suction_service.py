@@ -124,7 +124,10 @@ def test_detector_pins_matching_context_and_invalid_current_frame_clears_it():
     detection, evaluation = detection_and_evaluation()
     from luggage_perception.ros_suction_domain import observed_domain_for_detection
     domain = observed_domain_for_detection(detection, evaluation)
-    context = SimpleNamespace(domain_sha256=domain.digest())
+    _, samples = request_and_context()
+    context = SimpleNamespace(domain=domain,domain_sha256=domain.digest(),
+        _height_map=samples._height_map,_model=samples._model,
+        samples_sha256=samples.samples_sha256)
     path = Path(__file__).parents[1]/'scripts/luggage_detector_node.py'
     spec = importlib.util.spec_from_file_location('detector_directed_quality', path)
     module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)

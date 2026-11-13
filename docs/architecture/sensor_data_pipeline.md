@@ -88,7 +88,17 @@ original pinned snapshot. Caller freshness and scene admission remain required.
 Building the next sampling context must not clear the last published immutable
 context before the replacement is complete. A valid frame swaps in its matching
 samples before publication; an invalid frame explicitly clears availability.
-This publication handoff adds neither context history nor a freshness exemption.
+The direct quality service still evaluates the current context. Initial frozen
+retention can instead name an exact recently published domain digest. A separate
+bounded handoff history retains original domains/samples (defaults:16 records,
+64MiB,60s monotonic lifetime); reads/duplicates do not renew that lifetime. These
+are transport resource bounds, not physical error or freshness tolerances.
+Invalid publication or a changed instance/generation/model identity clears the
+handoff history. Conflicting data for one acquisition invalidates it; missing or
+evicted acquisitions refuse rather than borrowing current samples. Current
+instance/policy and consumer acquisition-age checks still apply. Long-lived
+issued-operation retention has its own ownership and cannot be evicted by this
+short handoff cache.
 Context capture cost is recorded as `suction_directed_context_ms`. This optional
 service issues no robot, vacuum, scene or OCC writes and does not alter legacy
 candidate acceptance.

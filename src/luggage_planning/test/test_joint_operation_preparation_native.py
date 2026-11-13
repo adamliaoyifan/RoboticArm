@@ -105,6 +105,7 @@ def prepare_stack(native_stack,request):
     scene.robot_state.joint_state.position=list(q)
     owner = stack.node
     frozen = register_frozen_suction_services(owner,context_provider=quality.context_snapshot,
+        context_lookup=quality.context_snapshot,
         model_provider=lambda:quality_context._model)
     state = SimpleNamespace(scene=scene,volume=volume,scene_calls=0,on_scene=None)
     def serve_scene(request,response):
@@ -213,6 +214,28 @@ def test_generated_prepare_rpc_returns_whole_certified_plan(prepare_stack):
     assert result.elapsed_s<=prepare_stack.request.budget_s
     (prepare_stack.directory/'result.json').write_text(json.dumps(dict(reason=result.reason,
         elapsed_s=result.elapsed_s,trace=json.loads(result.trace_json)),indent=2))
+
+
+def test_prepare_keeps_requested_acquisition_when_newer_topic_precedes_rpc(prepare_stack):
+    """Real ROS + native planning reproduction of the saved198ms handoff race."""
+    from luggage_perception.directed_suction_quality import DirectedSuctionContext
+    from luggage_perception.ros_suction_domain import domain_to_message
+    f=prepare_stack
+    newer=DirectedSuctionContext(replace(f.domain,stamp_ns=f.domain.stamp_ns+198_000_000),
+        f.quality_context._height_map,f.quality_context._model)
+    f.quality.replace_context(newer)
+    f.publishers[2].publish(domain_to_message(newer.domain))
+    deadline=time.monotonic()+2.
+    while time.monotonic()<deadline and f.root.domain.stamp_ns!=newer.domain.stamp_ns:
+        time.sleep(.01)
+    assert f.root.domain.stamp_ns==newer.domain.stamp_ns
+    try:
+        result=f.call(copy.deepcopy(f.request))
+        assert result.success,result.reason
+        assert result.plan.observation_stamp_ns==f.domain.stamp_ns
+    finally:
+        f.quality.replace_context(f.quality_context)
+        f.publishers[2].publish(f.messages[2])
 
 
 def test_prepare_refuses_empty_static_world_before_native_motion_search(prepare_stack):
