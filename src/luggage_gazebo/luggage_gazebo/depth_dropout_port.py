@@ -1,6 +1,7 @@
 """ROS adapter for an explicit simulation fixture, outside perception owners."""
 from collections import deque
 import json
+import os
 import time
 
 import numpy as np
@@ -18,6 +19,11 @@ class DepthDropoutPort:
         with open(config_path) as stream:
             self.config = DepthDropoutConfig.from_record(json.load(stream))
         self.evidence = DepthDropoutEvidence(evidence_root, selection_file)
+        self.detector_events = None
+        detector_root = os.environ.get('ELFIN_AMBIGUITY_CAPTURE')
+        if detector_root:
+            from luggage_gazebo.detector_anomaly_events import DetectorAnomalyEvents
+            self.detector_events = DetectorAnomalyEvents(detector_root, self.evidence)
         self.publish = publish
         self.buffer = Buffer(node=node)
         self.listener = TransformListener(self.buffer, node)
@@ -64,6 +70,8 @@ class DepthDropoutPort:
             self._emit(message, transform, None)
         try:
             self.evidence.poll_selections()
+            if self.detector_events is not None:
+                self.detector_events.poll()
         except Exception as error:
             self._capture_error(error)
 
@@ -102,4 +110,6 @@ class DepthDropoutPort:
             self._emit(self.pending.popleft()[0], None, 'TEARDOWN_PENDING_TF', publish=False)
         if self.errors:
             self.evidence.missing.extend(self.errors[:16])
+        if self.detector_events is not None:
+            self.detector_events.close()
         self.evidence.close()

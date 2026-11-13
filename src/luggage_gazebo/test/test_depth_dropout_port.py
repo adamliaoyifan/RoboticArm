@@ -35,12 +35,14 @@ def actual_node(case_archive,monkeypatch):
     def create(enabled=True):
         root=case_archive.directory
         config=root/'config.json';config.write_text(json.dumps(config_record()))
-        for key in ('ELFIN_SIM_DEPTH_DROPOUT_CONFIG','ELFIN_SIM_DEPTH_DROPOUT_EVIDENCE','ELFIN_SUCTION_INPUT_CAPTURE'):
+        for key in ('ELFIN_SIM_DEPTH_DROPOUT_CONFIG','ELFIN_SIM_DEPTH_DROPOUT_EVIDENCE',
+                    'ELFIN_SUCTION_INPUT_CAPTURE','ELFIN_AMBIGUITY_CAPTURE'):
             monkeypatch.delenv(key,raising=False)
         if enabled:
             monkeypatch.setenv('ELFIN_SIM_DEPTH_DROPOUT_CONFIG',str(config))
             monkeypatch.setenv('ELFIN_SIM_DEPTH_DROPOUT_EVIDENCE',str(root/'fixture'))
             monkeypatch.setenv('ELFIN_SUCTION_INPUT_CAPTURE',str(root/'suction_inputs'))
+            monkeypatch.setenv('ELFIN_AMBIGUITY_CAPTURE',str(root/'detector_inputs'))
         node=module.DepthImageRepublisher();nodes.append(node)
         published=[];publish=node._pub.publish
         def observe(message):
@@ -139,3 +141,21 @@ def test_pending_teardown_after_context_shutdown_writes_summary_without_publishi
     trace=[json.loads(line) for line in (case_archive.directory/'fixture/trace.jsonl').read_text().splitlines()]
     assert not published and summary['counts']['TEARDOWN_PENDING_TF']==1
     assert len(trace)==1 and not trace[0]['published']
+
+
+def test_actual_adapter_pins_existing_detector_anomaly_without_selecting_a_pick(actual_node,case_archive):
+    from luggage_perception.ambiguity_capture import FrameCapture
+    node,callback,published,_=actual_node();port=node._fixture
+    port.buffer.set_transform(transform(1),'test');callback(image(1))
+    capture=FrameCapture(case_archive.directory/'detector_inputs')
+    capture.consume(10**9,dict(instance_id='observed-box',generation=2),'anomaly',
+        dict(detections=[],depth=np.full((16,24),1000,dtype='<u2')),{},now=0.)
+    capture.flush()
+    port.flush();port.close()
+    summary=json.loads((case_archive.directory/'fixture/summary.json').read_text())
+    assert not summary['selected'] and len(published)==1
+    row=next(row for row in summary['diagnostics'] if row['kind']=='detector_anomaly')
+    assert row['stamp_ns']==10**9 and row['published']
+    arrays=np.load(case_archive.directory/'fixture'/row['file'])
+    assert np.all(arrays['before_mm']==1000)
+    assert arrays['after_mm'].tobytes()==bytes(published[0].data)

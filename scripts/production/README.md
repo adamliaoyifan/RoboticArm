@@ -65,3 +65,14 @@ it does not rewrite operation results. With the flag absent the normal callback
 has no fixture TF subscription, timer or queue. This capture is not a latency
 benchmark. The diagnostic caller includes any explicitly enabled recovery time
 budget once per box; producer planning and recovery deadlines remain unchanged.
+
+The explicit depth-fault mode also enables the detector's existing same-stamp
+ambiguity capture under `detector_inputs/` and records semantic masks, detections
+and cargo clouds in the bounded sensor bag. Its anomaly receipts pin exact
+original/output depth without selecting a grasp. Up to four unselected tail
+frames survive teardown; they are marked as such and cannot stand in for an
+actual selected acquisition. All saved frame roles share sixteen payload slots
+of at most2MiB;trace is limited to31MiB,leaving metadata within64MiB retained.
+Missing exact anomaly inputs are explicit;no nearest image is substituted.
+Failure/invalid domain diagnostics are excluded from selected-pick inventories.
+These additions affect only explicitly enabled diagnostic capture.

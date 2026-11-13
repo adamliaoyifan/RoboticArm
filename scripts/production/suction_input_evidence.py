@@ -8,6 +8,7 @@ import gzip
 import hashlib
 import importlib
 import json
+import re
 from pathlib import Path
 
 
@@ -112,9 +113,13 @@ def audit_selected_inputs(folder):
         try:
             rows = json.loads(driver_manifest.read_text())['records']
             for row in rows:
-                if not row['file'].endswith('_top_domain.cdr'):
+                # Only observe() writes this exact record name after selecting
+                # a valid matched acquisition. failure_top_domain is diagnostic.
+                if not re.fullmatch(r'\d+_top_domain\.cdr', row['file']):
                     continue
                 domain = _read_message(driver_manifest.parent, row)
+                if not domain.valid:
+                    continue
                 stamp = int(domain.header.stamp.sec)*10**9+int(domain.header.stamp.nanosec)
                 key = (domain.instance_id, int(domain.generation), stamp)
                 if key in expected:

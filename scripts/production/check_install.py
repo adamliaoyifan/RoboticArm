@@ -69,6 +69,7 @@ MODULES = (
     'luggage_gazebo.depth_dropout_fixture',
     'luggage_gazebo.depth_dropout_port',
     'luggage_gazebo.depth_dropout_evidence',
+    'luggage_gazebo.detector_anomaly_events',
     'luggage_planning.planning_contract',
     'luggage_msgs.srv._prepare_joint_operation_v2',
     'luggage_msgs.srv._get_pickup_view_evidence_v2',

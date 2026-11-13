@@ -25,11 +25,14 @@ def test_fixture_exact_frozen_bytes_bound_to_actual_launch_model(case_archive):
     assert (root/receipt['file']).read_bytes()==raw
     assert receipt['sha256']==hashlib.sha256(raw).hexdigest()
     assert env['ELFIN_SIM_DEPTH_DROPOUT_CONFIG']==str(root/receipt['file'])
+    assert env['ELFIN_AMBIGUITY_CAPTURE']==str(root/'detector_inputs')
     resolved=dict(model_sha256=receipt['model_hash'],scene_revision=receipt['scene_revision'])
     validate_fixture_binding(receipt,resolved)
     for key in ('model_sha256','scene_revision'):
         with pytest.raises(ValueError):validate_fixture_binding(receipt,{**resolved,key:'different'})
-    assert configure_fixture(env,root,None) is None and env=={'UNRELATED':'kept'}
+    assert configure_fixture(env,root,None) is None
+    # Disabling the fault doesn't clear a generic diagnostic variable.
+    assert env=={'UNRELATED':'kept','ELFIN_AMBIGUITY_CAPTURE':str(root/'detector_inputs')}
 
 
 @pytest.mark.parametrize('start,capture',[(False,False),(False,True),(True,False)])
@@ -88,3 +91,25 @@ def test_audit_failure_cannot_skip_owned_teardown(case_archive,monkeypatch):
     case_archive.save('manifest',manifest);case_archive.save('call_order',calls)
     assert calls==['owned_stop','launch_terminal','audit']
     assert not manifest['capture_complete'] and manifest['teardown_exit_code']==0
+
+
+def test_preselection_tail_is_audited_without_claiming_a_selected_pick(case_archive):
+    import numpy as np
+    root=case_archive.directory;capture=DepthDropoutEvidence(root/'depth_dropout',root/'events.jsonl')
+    depth=np.ones((2,2),dtype='<u2')
+    capture.record(17,'camera_depth_optical_frame',depth,depth,
+        dict(active=True,reason='ACTIVE_CONE',changed_pixels=0,published=True))
+    capture.close();result=audit_fixture(root);case_archive.save('audit',result)
+    assert result['diagnostic_complete'] and result['diagnostic_count']==1
+    assert not result['complete'] and result['selected_count']==0
+
+
+def test_extra_bag_inputs_only_enabled_for_explicit_fixture():
+    runner=module('simulation')
+    ordinary=runner.sensor_capture_topics()
+    diagnostic=runner.sensor_capture_topics(detector_inputs=True)
+    extra={'/luggage/perception/detection_frame','/luggage/semantic/mask',
+        '/luggage/semantic/instance_mask','/luggage/semantic/yolo_detections',
+        '/luggage/semantic/cargo_points_untracked'}
+    assert set(diagnostic)-set(ordinary)==extra
+    assert len(diagnostic)==len(set(diagnostic)) and set(ordinary).issubset(diagnostic)

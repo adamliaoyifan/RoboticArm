@@ -92,6 +92,19 @@ def final_result(manifest, client_result, *, start, three_box):
     return (success if result==0 else 'INCOMPLETE'),result
 
 
+def sensor_capture_topics(*, detector_inputs=False):
+    topics=['/camera/color/image_raw','/camera/depth/image_raw','/camera/depth/camera_info',
+        '/luggage/preprocessed/camera/color/image','/luggage/preprocessed/camera/depth/image',
+        '/luggage/preprocessed/camera/depth/camera_info','/tf','/tf_static','/joint_states',
+        '/uld_occ_observer/receipts','/uld_occ_observer/validity','/luggage/suction_top_domain_v2',
+        '/luggage/observation/status','/clock']
+    if detector_inputs:
+        topics.extend(['/luggage/perception/detection_frame','/luggage/semantic/mask',
+            '/luggage/semantic/instance_mask','/luggage/semantic/yolo_detections',
+            '/luggage/semantic/cargo_points_untracked'])
+    return topics
+
+
 def finish_owned_launch(launch, pidfile, folder, manifest):
     """Finalize sensor evidence only after its launch owner has terminated."""
     try:
@@ -266,11 +279,7 @@ def main():
             if not config_ready:raise RuntimeError('LAUNCH_CONFIGURATION_NOT_READY')
             if manifest['depth_dropout_fixture'] is not None:
                 validate_fixture_binding(manifest['depth_dropout_fixture'], resolved)
-            topics=['/camera/color/image_raw','/camera/depth/image_raw','/camera/depth/camera_info',
-                '/luggage/preprocessed/camera/color/image','/luggage/preprocessed/camera/depth/image',
-                '/luggage/preprocessed/camera/depth/camera_info','/tf','/tf_static','/joint_states',
-                '/uld_occ_observer/receipts','/uld_occ_observer/validity','/luggage/suction_top_domain_v2',
-                '/luggage/observation/status','/clock']
+            topics=sensor_capture_topics(detector_inputs=manifest['depth_dropout_fixture'] is not None)
             bag_command=['ros2','bag','record','--snapshot-mode','--max-cache-size',str(512*1024*1024),
                 '--use-sim-time','--output',str(folder/'sensor_window'),*topics]
             manifest['bag_command']=bag_command;write()

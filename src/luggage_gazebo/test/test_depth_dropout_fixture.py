@@ -93,4 +93,86 @@ def test_capture_loss_is_explicit_and_never_uses_nearest(case_archive,damage):
     summary=capture.close();case_archive.save('summary',summary)
     assert not summary['complete']
     if damage=='ring_miss':
-        assert not summary['selected'] and any('EXACT_SELECTED_FRAME_MISSING' in s for s in summary['missing'])
+        assert not summary['selected'] and any('EXACT_FRAME_MISSING' in s for s in summary['missing'])
+
+
+def test_unselected_teardown_tail_uses_shared_finite_payload_limit(case_archive):
+    root=case_archive.directory
+    capture=DepthDropoutEvidence(root/'fixture',root/'events.jsonl',selected_frames=2)
+    for stamp in range(10):
+        depth=np.full((2,2),stamp,dtype='<u2')
+        capture.record(stamp,'camera_depth_optical_frame',depth,depth,
+            dict(active=True,reason='ACTIVE_CONE',changed_pixels=0,published=True))
+    summary=capture.close();case_archive.save('summary',summary)
+    assert not summary['selected'] and summary['complete']
+    assert [row['stamp_ns'] for row in summary['diagnostics']]==[9,8]
+    assert len(list((root/'fixture').glob('*.npz')))==2
+
+
+@pytest.mark.parametrize('damage',['none','evicted','partial','truncated','repeat','oversized'])
+def test_existing_detector_anomaly_pins_only_its_exact_stamp(case_archive,damage):
+    from luggage_gazebo.detector_anomaly_events import DetectorAnomalyEvents
+    from luggage_perception.ambiguity_capture import FrameCapture
+    root=case_archive.directory
+    capture=DepthDropoutEvidence(root/'fixture',root/'events.jsonl',ring_frames=1)
+    depth=np.full((2,2),1000,dtype='<u2');after=depth.copy();after[0,0]=0
+    capture.record(17,'camera_depth_optical_frame',depth,after,
+        dict(active=True,reason='ACTIVE_CONE',changed_pixels=1,published=True))
+    detector=FrameCapture(root/'detector_inputs')
+    detector.consume(17,dict(instance_id='observed-box',generation=2),'anomaly',
+        dict(detections=[],depth=after),{},now=0.)
+    detector.flush()
+    path=next((root/'detector_inputs').glob('*/anomaly_*/frame.json'))
+    watcher=DetectorAnomalyEvents(root/'detector_inputs',capture)
+    if damage=='evicted':capture.record(18,'camera_depth_optical_frame',depth,after,
+        dict(active=True,reason='ACTIVE_CONE',changed_pixels=1,published=True))
+    if damage in ('partial','truncated'):
+        original=path.read_bytes();path.write_bytes(original[:20]);watcher.poll()
+        assert not capture.diagnostics
+        if damage=='partial':path.write_bytes(original)
+    if damage=='oversized':path.write_bytes(b' '*65537)
+    watcher.poll()
+    if damage=='repeat':watcher.poll()
+    watcher.close();summary=capture.close();case_archive.save('summary',summary)
+    anomalies=[row for row in summary['diagnostics'] if row['kind']=='detector_anomaly']
+    if damage in ('evicted','truncated','oversized'):
+        assert not summary['complete'] and not anomalies
+    else:
+        assert summary['complete'] and len(anomalies)==1 and anomalies[0]['stamp_ns']==17
+        arrays=np.load(root/'fixture'/anomalies[0]['file'])
+        assert np.array_equal(arrays['before_mm'],depth) and np.array_equal(arrays['after_mm'],after)
+
+
+def test_selected_and_anomaly_references_share_one_exact_payload(case_archive):
+    root=case_archive.directory;selection=root/'events.jsonl'
+    capture=DepthDropoutEvidence(root/'fixture',selection,selected_frames=1)
+    depth=np.ones((2,2),dtype='<u2')
+    capture.record(17,'camera_depth_optical_frame',depth,depth,
+        dict(active=False,reason='OUTSIDE_CONE',changed_pixels=0))
+    capture.pin_diagnostic(dict(kind='detector_anomaly',stamp_ns=17))
+    selection.write_text(json.dumps(event(17))+'\n');summary=capture.close()
+    assert summary['complete'] and len(summary['selected'])==1
+    assert summary['diagnostics'][0]['file']==summary['selected'][0]['file']
+    assert len(list((root/'fixture').glob('*.npz')))==1
+
+
+@pytest.mark.parametrize('limit',['epoch','payload'])
+def test_detector_capture_resource_limits_are_observable(case_archive,limit):
+    from luggage_gazebo.detector_anomaly_events import DetectorAnomalyEvents
+    from luggage_perception.ambiguity_capture import FrameCapture
+    root=case_archive.directory
+    capture=DepthDropoutEvidence(root/'fixture',root/'events.jsonl',
+        selected_frames=1 if limit=='payload' else 16)
+    detector=FrameCapture(root/'detector_inputs')
+    depth=np.ones((2,2),dtype='<u2')
+    for stamp in range(1,6 if limit=='epoch' else 3):
+        capture.record(stamp,'camera_depth_optical_frame',depth,depth,
+            dict(active=True,reason='ACTIVE_CONE',changed_pixels=0))
+        detector.consume(stamp,dict(instance_id='observed-'+str(stamp),generation=stamp),
+            'anomaly',dict(depth=depth),{},now=0.)
+    detector.flush();watcher=DetectorAnomalyEvents(root/'detector_inputs',capture)
+    watcher.close();summary=capture.close();case_archive.save('summary',summary)
+    assert not summary['complete']
+    reason='DETECTOR_CAPTURE_EPOCH_LIMIT' if limit=='epoch' else 'FRAME_PAYLOAD_LIMIT'
+    assert reason in summary['missing']
+    assert len(list((root/'fixture').glob('*.npz'))) <= (16 if limit=='epoch' else 1)

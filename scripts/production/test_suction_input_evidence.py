@@ -68,7 +68,8 @@ def capture_fixture(tmp_path):
                             sha256=hashlib.sha256(raw).hexdigest(),acquisition_stamp_ns=stamp))
     (directory/'manifest.json').write_text(json.dumps(dict(records=records,
         acquisition_stamp_ns=stamp,selected_acquisition_complete=True)))
-    domain = SuctionTopDomainV2(header=frame.header, instance_id=frame.instance_id,generation=frame.generation)
+    domain = SuctionTopDomainV2(header=frame.header, instance_id=frame.instance_id,
+        generation=frame.generation,valid=True)
     raw = bytes(serialize_message(domain))
     (directory.parent/'0000_top_domain.cdr').write_bytes(raw)
     (directory.parent/'manifest.json').write_text(json.dumps(dict(records=[dict(file='0000_top_domain.cdr',
@@ -125,6 +126,19 @@ def test_no_selected_acquisition_never_claims_a_measured_capture(tmp_path):
     result = audit_selected_inputs(tmp_path)
     assert result['complete'] and result['status'] == 'NOT_EVALUATED'
     assert result['selected_count'] == 0
+
+
+@pytest.mark.parametrize('name,valid',[('0000_failure_top_domain.cdr',True),
+    ('0000_failure_top_domain.cdr',False),('0000_top_domain.cdr',False)])
+def test_failure_or_invalid_domains_are_not_selected_acquisitions(tmp_path,name,valid):
+    folder=tmp_path/'driver';folder.mkdir()
+    domain=SuctionTopDomainV2(instance_id='not-selected',generation=2,valid=valid)
+    domain.header.stamp.sec=40
+    raw=bytes(serialize_message(domain));(folder/name).write_bytes(raw)
+    (folder/'manifest.json').write_text(json.dumps(dict(records=[dict(file=name,
+        ros_type=type(domain).__module__+'.'+type(domain).__name__,sha256=hashlib.sha256(raw).hexdigest())])))
+    result=audit_selected_inputs(tmp_path)
+    assert result['status']=='NOT_EVALUATED' and result['selected_count']==0
 
 
 @pytest.mark.parametrize('change',['missing_window','different_stamp','different_instance','duplicate'])

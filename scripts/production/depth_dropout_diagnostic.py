@@ -25,6 +25,7 @@ def configure_fixture(env, folder, source):
         stream.write(raw)
     env['ELFIN_SIM_DEPTH_DROPOUT_CONFIG'] = str(frozen)
     env['ELFIN_SIM_DEPTH_DROPOUT_EVIDENCE'] = str(Path(folder)/'depth_dropout')
+    env['ELFIN_AMBIGUITY_CAPTURE'] = str(Path(folder)/'detector_inputs')
     return dict(file=frozen.name, sha256=hashlib.sha256(raw).hexdigest(),
                 model_hash=config.model_hash, scene_revision=config.scene_revision)
 
@@ -41,9 +42,7 @@ def audit_fixture(folder):
     missing = list(summary['missing'])
     if summary['trace_truncated']:
         missing.append('FIXTURE_TRACE_TRUNCATED')
-    if not summary['selected']:
-        missing.append('NO_EXACT_SELECTED_FIXTURE_INPUT')
-    for row in summary['selected']:
+    for row in summary['selected']+summary.get('diagnostics', []):
         raw = (root/row['file']).read_bytes()
         if hashlib.sha256(raw).hexdigest() != row['file_sha256']:
             missing.append('FIXTURE_SELECTED_FILE_HASH')
@@ -51,11 +50,23 @@ def audit_fixture(folder):
             for name, field in (('before_mm','input_sha256'), ('after_mm','output_sha256')):
                 if hashlib.sha256(arrays[name].tobytes()).hexdigest() != row[field]:
                     missing.append('FIXTURE_SELECTED_ARRAY_HASH:'+name)
-        suction = json.loads((Path(folder)/'suction_inputs'/row['suction_case']/'record.json').read_text())
-        if row['identity'] != suction['identity'] or row['stamp_ns'] != suction['stamp_ns']:
-            missing.append('FIXTURE_SUCTION_SELECTION_MISMATCH')
-    return dict(complete=summary['complete'] and not missing, missing=missing,
+        if 'suction_case' in row:
+            suction = json.loads((Path(folder)/'suction_inputs'/row['suction_case']/'record.json').read_text())
+            if row['identity'] != suction['identity'] or row['stamp_ns'] != suction['stamp_ns']:
+                missing.append('FIXTURE_SUCTION_SELECTION_MISMATCH')
+        if row.get('kind') == 'detector_anomaly':
+            record = Path(folder)/'detector_inputs'/row['detector_case']
+            if hashlib.sha256(record.read_bytes()).hexdigest() != row['detector_record_sha256']:
+                missing.append('FIXTURE_DETECTOR_MANIFEST_HASH')
+            if json.loads(record.read_text())['stamp_ns'] != row['stamp_ns']:
+                missing.append('FIXTURE_DETECTOR_STAMP_MISMATCH')
+    integrity_complete = summary['complete'] and not missing
+    if not summary['selected']:
+        missing.append('NO_EXACT_SELECTED_FIXTURE_INPUT')
+    return dict(complete=integrity_complete and bool(summary['selected']), missing=missing,
                 selected_count=len(summary['selected']), counts=summary['counts'],
+                diagnostic_count=len(summary.get('diagnostics', [])),
+                diagnostic_complete=integrity_complete and bool(summary.get('diagnostics')),
                 changed_selected_count=sum(row['active'] and row['changed_pixels'] > 0
                                            for row in summary['selected']))
 
