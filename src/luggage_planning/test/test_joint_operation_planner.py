@@ -255,3 +255,24 @@ def test_candidate_branch_cap_preserves_a_global_attempt_for_valid_fallback():
     assert [row[0].candidate_id for row in ep.calls] == ['candidate','fallback']
     assert sum(call[3]['request_id'].endswith(':carry') for call in connection.calls) == 3
     assert ('candidate','CANDIDATE_BRANCH_CAP') in result.trace
+
+
+@pytest.mark.parametrize("successful_index", [8, 15])
+def test_default_contact_budget_reaches_later_placement_slots(successful_index):
+    bundle = ports()
+    identity, candidate, endpoints, _, _, _, planner = bundle
+    calls = []
+    def solve(bound, **kwargs):
+        calls.append(bound.candidate_id)
+        evidence = replace(endpoints.evidence, candidate_id=bound.candidate_id)
+        if len(calls) <= successful_index:
+            return replace(evidence, reason='NO_PLACE_LOCAL_BRANCH', place_branches=())
+        return evidence
+    endpoints.solve = solve
+    candidates = tuple(replace(candidate, candidate_id=f'slot-{i//2}:contact-{i%2}')
+                       for i in range(16))
+    result = planner.prepare(identity, joints(0.), candidates, budget_s=5.)
+    assert result.status == 'PLAN_READY'
+    assert result.plan.candidate_id == candidates[successful_index].candidate_id
+    assert calls == [c.candidate_id for c in candidates[:successful_index+1]]
+    assert not any(row[:2] == ('budget', 'CANDIDATE_CAP') for row in result.trace)

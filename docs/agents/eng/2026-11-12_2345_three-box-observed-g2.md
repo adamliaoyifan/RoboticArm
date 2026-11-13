@@ -1045,3 +1045,29 @@ while arm remains stationary before seal confirmation, obtain explicit detached
 then attached states. No material pose change or carry is permitted between;
 next rehearsal must verify motion and release. Do not count48 against product
 reliability or claim attach success from queued plugin-load acknowledgement.
+
+Rehearsal49 succeeds: readiness18.52s, actuator exercise19.49s, actual native
+attach -> J1+0.03rad observed controller motion -> hold -> acknowledged detach ->
+existing dynamic release, teardown0. Three actual Pose_V samples show relative
+translation change0.56/0.57micrometre and rotation<=1.23e-7rad. This is actuator
+wiring evidence, not a pick/packing success. Diagnostic50 now runs the unchanged
+frozen70 three-box procedure with full contact and all-ULD-endpoint capture.
+Endpoint ledger now retains transformed float64 coordinates, explicitly tagged,
+to avoid float32 rounding at floor/grid boundaries during source backtrace.
+
+00:10UTC checkpoint / diagnostic50 completed on frozen70: first actual rigid
+physics observed floor cycle COMPLETE in179.530s (prepare22.662s), released
+then bounded observed exploration and return-to-pickup23.278s. Second prepare
+SEARCH_INCOMPLETE35.720s before any second pick. Full failure artifacts and
+teardown0. First carried containment8 synchronized physics samples, zero outside
+conservative envelope; this is sampled evidence, not continuous collision proof.
+Root: preparation supplies8 placement groups x2 directed contacts, but actual
+JointOperationPlanner still caps8 bound contacts and prepare_node overrides8.
+All second-stage local refusals concern requested placements0..3; centre choices
+4..7 never enter native search. Fix recommended: share placement/reversal bounds,
+let planner default16 bound contacts, preserve300s/global branch budget. Behavioral
+regression exercises actual planner reaching9th and16th contacts before sealing;
+103 focused tests pass1.91s. Earlier upstream-only budget test was insufficient.
+Offline replay first attempt inspected slots0/8 then stopped on a heading guard
+at10; preserved incomplete result, no product run consumed. Corrected replay
+restricts same-heading slots0/4/8/12, exact saved grasp/model/observed O only.

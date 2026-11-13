@@ -33,7 +33,7 @@ from luggage_planning.joint_operation.connection import NativeSnapshotConnection
 from luggage_planning.joint_operation.contacts import DirectedContactPort
 from luggage_planning.joint_operation.actual_contact import FrozenActualContactPort
 from luggage_perception.frozen_suction_service import binding_to_message
-from luggage_planning.joint_operation.contracts import OPERATION_JOINTS, OperationIdentity
+from luggage_planning.joint_operation.contracts import OPERATION_JOINTS, OperationIdentity, MAX_PLACEMENT_CANDIDATES
 from luggage_planning.joint_operation.adapters import operation_plan_from_message
 from luggage_planning.joint_operation.issuance import IssuedOperationRegistry
 from luggage_planning.joint_operation.map_source import map_source_to_message
@@ -132,7 +132,7 @@ class JointOperationPrepareNode(Node):
             aperture_router=aperture_router)
         planner = JointOperationPlanner(endpoints,connections,certifier,velocity_scale=velocity,
             acceleration_scale=acceleration,certification_reserve_s=float(param('certification_reserve_s',5.)),
-            max_candidates=8,max_branch_attempts=param('max_branch_attempts',3),
+            max_branch_attempts=param('max_branch_attempts',3),
             max_branch_attempts_per_candidate=param('max_branch_attempts_per_candidate',2),
             aperture_router=aperture_router)
         atlas,atlas_reason = None,'ATLAS_UNAVAILABLE_ONLINE_IK'
@@ -390,7 +390,7 @@ class JointOperationPrepareNode(Node):
         timing = StageTimings('root',root_trace,unit=request.request_id)
         def admit_request():
             if (not self.budget.admits(request.budget_s)
-                    or not request.request_id or not request.observation_id or not 1 <= request.candidate_limit <= 8
+                    or not request.request_id or not request.observation_id or not 1 <= request.candidate_limit <= MAX_PLACEMENT_CANDIDATES
                     or len(request.slots)>32
                     or request.expected_model_sha256 != self.model.model_sha256):
                 raise ValueError('PREPARATION_INPUT_IDENTITY_MISMATCH')

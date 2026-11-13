@@ -8,7 +8,7 @@ import time
 from luggage_perception.ros_suction_domain import require_matching_detection
 from luggage_planning.joint_operation.adapters import operation_plan_to_message
 from luggage_planning.joint_operation.candidates import candidate_for_contact, propose_contact
-from luggage_planning.joint_operation.contracts import OperationIdentity
+from luggage_planning.joint_operation.contracts import OperationIdentity, MAX_PLACEMENT_CANDIDATES, DIRECTED_CONTACT_REVERSALS
 from luggage_perception.observed_suction_domain import ObservedSuctionDomain
 from luggage_planning.placement_prior.contracts import PlacementCandidate, Snapshot, Transform
 from luggage_planning.joint_operation.preparation_profile import PreparationBudget, StageTimings
@@ -66,7 +66,7 @@ class JointOperationPreparation:
         try:
             snapshot,domain = inputs.snapshot,inputs.domain
             if (not request.request_id or not request.observation_id or not request.robot_state_stamp_valid
-                    or not 1 <= request.candidate_limit <= 8 or not math.isfinite(request.budget_s)
+                    or not 1 <= request.candidate_limit <= MAX_PLACEMENT_CANDIDATES or not math.isfinite(request.budget_s)
                     or not self.budget.admits(request.budget_s) or not math.isfinite(deadline)
                     or (request.geometry_hash,request.expected_map_revision,request.expected_model_sha256) !=
                        (snapshot.geometry_hash,snapshot.map_revision,snapshot.model_hash)):
@@ -89,12 +89,12 @@ class JointOperationPreparation:
                     groups += 1
                     target_box = snapshot.world_from_container.compose(placement.container_from_box)
                     proposed = []
-                    for contact_index,opposite in enumerate((False,True)):
+                    for contact_index,opposite in enumerate(DIRECTED_CONTACT_REVERSALS):
                         hint = inputs.world_from_reference_tool
                         if opposite:
                             hint = hint.compose(Transform((0.,0.,0.),(0.,0.,1.,0.)))
                         proposal = timing.call('contact_proposal',propose_contact,domain,self.model,
-                            query_id=placement.slot_id+':'+str(2*(groups-1)+contact_index+1),
+                            query_id=placement.slot_id+':'+str(len(DIRECTED_CONTACT_REVERSALS)*(groups-1)+contact_index+1),
                             world_from_place_box=target_box,desired_world_from_tool=hint,
                             max_center_checks=self.max_center_checks)
                         trace.append((proposal.query_id,proposal.reason,proposal.checked_centres))

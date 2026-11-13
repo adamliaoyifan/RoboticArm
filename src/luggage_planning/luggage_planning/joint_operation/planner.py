@@ -13,6 +13,7 @@ import time
 from luggage_planning.joint_operation.contracts import (
     JointKnot, JointOperationPlan, OperationBarrier, OperationIdentity, OperationLeg,
     OPERATION_JOINTS, operation_digest, seal_operation_plan,
+    MAX_PLACEMENT_CANDIDATES, DIRECTED_CONTACT_REVERSALS,
 )
 from luggage_planning.joint_operation.scenes import OperationScenes
 from luggage_planning.joint_operation.connection import GeometricConnection
@@ -179,7 +180,8 @@ class JointOperationPlanner:
     """
     def __init__(self, endpoint_port, connection_port, certification_port, *,
                  velocity_scale, acceleration_scale, certification_reserve_s,
-                 max_candidates=8, max_branch_attempts=3,
+                 max_candidates=MAX_PLACEMENT_CANDIDATES * len(DIRECTED_CONTACT_REVERSALS),
+                 max_branch_attempts=3,
                  max_branch_attempts_per_candidate=None, aperture_router=None, clock=time.monotonic):
         for name, value in (("velocity_scale", velocity_scale),
                             ("acceleration_scale", acceleration_scale)):
@@ -197,6 +199,7 @@ class JointOperationPlanner:
         self.aperture_router = aperture_router
         self.velocity_scale, self.acceleration_scale = velocity_scale, acceleration_scale
         self.reserve_s = float(certification_reserve_s)
+        # This cap counts bound placement/contact combinations, not placement slots.
         self.max_candidates, self.max_branch_attempts = max_candidates, max_branch_attempts
         self.candidate_branch_cap = max_branch_attempts_per_candidate or max_branch_attempts
         self.clock = clock

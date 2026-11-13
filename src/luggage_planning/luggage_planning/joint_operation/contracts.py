@@ -16,6 +16,10 @@ from luggage_description.frame_sequence_contracts import (
 from luggage_planning.placement_prior.contracts import Transform
 from st09_contracts.attachment_geometry import AttachmentGeometry
 
+# Placement budget and directed grasp alternatives use distinct counting units.
+MAX_PLACEMENT_CANDIDATES = 8
+DIRECTED_CONTACT_REVERSALS = (False, True)
+
 # Match the executor's six named joints without importing its ROS/model loaders.
 OPERATION_JOINTS = ("elfin_joint1", "elfin_joint2", "elfin_joint3",
                     "elfin_joint4", "elfin_joint5", "elfin_joint6")
