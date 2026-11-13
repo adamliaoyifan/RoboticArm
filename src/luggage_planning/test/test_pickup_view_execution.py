@@ -7,6 +7,7 @@ import time
 from types import SimpleNamespace
 
 import pytest
+from pickup_continuation_fixtures import case_archive
 from rclpy.serialization import serialize_message
 from luggage_msgs.action import ExecutePickupViewV2
 from luggage_msgs.srv import CheckPreparedPickupViewV2
@@ -36,7 +37,8 @@ def test_independent_owner_receipt_is_exact_and_nonrenewing(owner_case,damage):
 
 
 @pytest.fixture
-def lifecycle(tmp_path):
+def lifecycle(case_archive):
+    tmp_path = case_archive.directory
     view=PickupViewExecution.__new__(PickupViewExecution)
     view.action=ExecutePickupViewV2;view.owns_session=False;view.phase='IDLE';view.task_id=''
     view.dispatched_this_action=False;view.unexpected_load=False;view.load_checkpointed=False
@@ -70,9 +72,13 @@ def lifecycle(tmp_path):
     parent.motion=SimpleNamespace(execute_pickup_view=execute,max_joint_age_ns=10**9,
         poll_terminal=lambda:f.terminal)
     def prepare_view(search,**kwargs):
+        import hashlib
         f.prepares.append(search.request_id)
         if f.fail_prepare:raise ValueError('SCRIPTED_PREPARE_FAILED')
-        return view.action.Result().plan
+        plan = view.action.Result().plan
+        plan.request_id, plan.domain_sha256 = search.request_id, search.domain_sha256
+        plan.route_digest = hashlib.sha256(search.request_id.encode()).hexdigest()
+        return plan
     view.parent=parent;view.node=node
     view.ports=SimpleNamespace(prepare=prepare_view,leg=object(),validate=lambda *a,**kw:None,current=lambda d:True)
     view.empty=lambda:f.empty
@@ -84,7 +90,16 @@ def lifecycle(tmp_path):
             succeed=lambda:f.outcomes.append('succeed'),abort=lambda:f.outcomes.append('abort'),
             canceled=lambda:f.outcomes.append('canceled'))
     f.view,f.parent,f.handle=view,parent,handle
-    return f
+    case_archive.save('execution_fixture_initial', dict(params=params, actual_motion=False,
+        port='scripted terminal outcomes and clocked joint samples', initial_clock=f.clock))
+    try:
+        yield f
+    finally:
+        case_archive.save('execution_fixture_terminal', dict(mode=f.mode, clock=f.clock,
+            outcomes=f.outcomes, prepares=f.prepares, records=f.records, journal=f.journal,
+            ledger_rows=view.ledger.rows, durable=json.loads(view.ledger.path.read_text())
+                if view.ledger.path.exists() else None, active_lock=parent._active.locked(),
+            motion_lock=owner.motion_lock.locked(), session_present=parent.session is not None))
 
 
 def test_terminal_motion_settles_and_retry_does_not_reset_count(lifecycle):

@@ -167,6 +167,8 @@ def invoke(f,goal=None):
 
 
 def test_actual_o_view_dispatch_settle_and_retry_count(runtime_view):
+    from rclpy.serialization import deserialize_message
+    from luggage_msgs.msg import PickupViewPlanV2
     f=runtime_view
     result=invoke(f)
     assert result.success and result.submitted and result.motion_terminal,result.reason
@@ -174,6 +176,9 @@ def test_actual_o_view_dispatch_settle_and_retry_count(runtime_view):
     assert result.dispatched_motions==1 and len(f.state.goals)==1
     assert f.state.goals[0].trajectory.joint_trajectory==result.plan.leg.trajectory.trajectory
     assert f.runtime.session is None and f.runtime.journal.value['active'] is None
+    receipt = f.runtime.pickup_view.ledger.rows[f.goal.pickup_task_id]['settled_view']
+    assert receipt['dispatched'] == 1 and receipt['settled_stamp_ns'] == result.settled_stamp_ns
+    assert deserialize_message(bytes.fromhex(receipt['plan_cdr_hex']), PickupViewPlanV2) == result.plan
     retry=copy.deepcopy(f.goal);retry.preparation.request_id='another-prepare-same-box'
     result=invoke(f,retry)
     assert not result.success and not result.submitted and result.dispatched_motions==1

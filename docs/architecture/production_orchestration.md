@@ -353,6 +353,18 @@ The adapter neither executes nor adopts ledger aliases. Runtime must forward its
 actual terminal receipt and adopt the returned exact match under the original
 task before another recovery motion; default-cycle wiring remains separate.
 
+The runtime `/joint_operation/continue_after_pickup_view` service uses that same
+wire, but verifies the previous view and settle stamp against its actual Action
+terminal record in the durable original-task ledger. Only successful, submitted,
+terminal, settled empty views are recorded before replying Action success.
+The continuation budget is bounded by original task time remaining, independent
+of exhausted motion count. Verified new acquisitions inherit that original task
+before any returned plan or unresolved probe can be used. An independent plan
+refusal can still retain a verified alias; matching never supplies suction
+support. Late read-only results are captured in their own evidence scope and
+cannot adopt aliases or issue plans. Sensor acquisition and complete-operation
+dispatch remain caller/orchestration responsibilities; this service never moves.
+
 The exact-domain pickup-view evidence port optionally retains the original RGB
 image and every candidate reported by that acquisition's detector message,
 including competing and duplicate boxes, plus the selected ROI index. RGB,

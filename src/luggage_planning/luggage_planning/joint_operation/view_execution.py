@@ -12,6 +12,9 @@ import traceback
 from luggage_planning.joint_operation.contracts import OPERATION_JOINTS
 from luggage_planning.joint_operation.view_budget import PickupViewBudgetLedger
 from luggage_planning.joint_operation.view_execution_ports import PickupViewExecutionPorts
+from luggage_planning.joint_operation.view_continuation import (
+    PickupViewRuntimeContinuation, retain_terminal_view,
+)
 from luggage_planning.motion.settle_criterion import SettleTracker
 
 
@@ -37,6 +40,7 @@ class PickupViewExecution:
               else self.node.declare_parameter('container_collision_mesh','')).value
         self.ports=PickupViewExecutionPorts(parent,static_world_factory=lambda:StaticWorldAdmission(
             load_scene_tf_config(scene_path),parent.ports.container,mesh_path=mesh))
+        self.continuation=PickupViewRuntimeContinuation(self)
         # Volatile subscription does not consume an old transient-local sample.
         # Receipt time is transport freshness, not a sensor acquisition stamp.
         qos=QoSProfile(depth=10,durability=DurabilityPolicy.VOLATILE,
@@ -193,6 +197,8 @@ class PickupViewExecution:
                         self.checkpoint('UNRESOLVED')
                     else:self.release()
                     parent.record('pickup_view_execute_result',result)
+                    if result.success:
+                        retain_terminal_view(self.ledger, self.task_id, result)
                 if result.success:handle.succeed()
                 elif handle.is_cancel_requested and result.motion_terminal:handle.canceled()
                 else:handle.abort()
