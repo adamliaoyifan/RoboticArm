@@ -182,6 +182,11 @@ class JointOperationPrepareNode(Node):
             self.create_subscription(String,'/luggage/cargo_map/surface_2d',self._confirmation,qos)
         else:
             raise ValueError('map_backend must be observer or explicit grid_g compatibility')
+        from luggage_planning.joint_operation.view_owner import PickupViewPrepareOwner
+        self.pickup_views=PickupViewPrepareOwner(self,param=param,connections=connections,
+            velocity_scale=velocity,acceleration_scale=acceleration,
+            velocity_limits=certifier.velocity_limits,acceleration_limits=certifier.acceleration_limits,
+            max_samples=certifier.max_samples)
         # Detector publishes a sensor stream. A RELIABLE reader cannot receive
         # a BEST_EFFORT writer; frozen quality RPCs provide retained evidence.
         sensor_qos = QoSProfile(depth=10,reliability=ReliabilityPolicy.BEST_EFFORT)
@@ -425,11 +430,13 @@ class JointOperationPrepareNode(Node):
         started = time.monotonic();response.success = False;response.plan = JointOperationPlanV2()
         response.unresolved_contacts = []
         issued_plan = None
+        domain = None
         observed = None
         map_source = None
         response.trace_json,response.elapsed_s = '[]',0.
         if not self._active.acquire(blocking=False):
             response.reason = 'OPERATION_PREPARATION_BUSY';return response
+        self.pickup_views.contexts.forget(request.request_id)
         budget_value = request.budget_s if math.isfinite(request.budget_s) else str(request.budget_s)
         root_trace = [('preparation_budget',budget_value,self.budget.max_budget_s,
                        'diagnostic_watchdog_not_latency_target')]
@@ -541,6 +548,7 @@ class JointOperationPrepareNode(Node):
                 response.unresolved_contacts = []
                 self.get_logger().error(response.reason+':'+str(error))
             else:
+                self.pickup_views.remember(request,response,domain,observed)
                 if response.success:
                     try:
                         timing.call('plan_issuance',self.issued.issue,issued_plan,

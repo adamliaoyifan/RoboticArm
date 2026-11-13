@@ -267,6 +267,23 @@ identity. After certification and the final full-scene read, preparation checks
 the same non-renewing owner token, live six-joint start and pinned confirmed OCC.
 Unavailable, revoked, expired or changed-model evidence cannot issue PLAN_READY.
 
+`/joint_operation/prepare_pickup_view` is the read-only O adapter for this
+prerequisite. It accepts only the exact request/domain/query retained from this
+owner's `SEARCH_INCOMPLETE` response, under explicit non-renewing resource limits.
+It reads the exact raw acquisition, checks a localized decision-relevant gap,
+re-admits the original placement on latest O content in the same epoch, and uses
+the same full static-world admission and collision-margin policy as whole-plan
+preparation. Explicit camera sampling, optical range, IK and time budgets are
+search inputs, not calibrated uncertainty. Live joints, frozen observation,
+camera evidence, static scene and O content are checked again before issuing
+the independent typed view receipt. Both preparation services share one lock.
+Absent optional view context cannot change an ordinary plan result. G is an
+explicit unsupported recovery backend until its lifecycle adapter is qualified.
+This service does not dispatch motion, imply a new observation, establish same-box
+association, fill support or change the sealed grasp. Its receipt needs a future
+execution-owner lookup and fresh certification; six-leg execution accepts only
+its existing complete-operation type.
+
 Issuance stores the immutable contact binding with the exact issued plan and
 counts its metadata in the bounded byte budget. A duplicate publication cannot
 replace or drop that binding. The read-only issuance check returns this owner

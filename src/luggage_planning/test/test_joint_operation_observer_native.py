@@ -87,16 +87,22 @@ def observer_owner(native_stack):
             assert call('release_snapshot',ReleaseSnapshot.Request(handle=latest.handle)).status=='OK'
             state.lease=latest
             return latest
-        def observe(*,partial=False):
+        def observe(*,partial=False,hit_container=None):
             advance_clock(state.stamp+1)
             state.sequence+=1
             current=copy.deepcopy(request)
             current.observation_id='observed-'+str(state.sequence)
             current.epoch=state.epoch
             if partial:current.cloud=create_cloud_xyz32(current.cloud.header,points[len(points)//2:len(points)//2+1])
+            if hit_container is not None:
+                # Declared synthetic endpoint through the same optical transform;
+                # this changes the fixture workload, never mapper thresholds.
+                x,y,z=hit_container
+                current.cloud=create_cloud_xyz32(current.cloud.header,[(x,-y,2.-z)])
             current.cloud.header.stamp.sec=state.stamp
             current.uld_from_optical.header.stamp.sec=state.stamp
             response=call('integrate_observation',current)
+            state.last_receipt=response.receipt
             assert response.receipt.status=='INTEGRATED',response.receipt.status
             return acquire()
         def advance_clock(stamp):
@@ -171,23 +177,76 @@ def test_current_guard_detects_changed_map_instead_of_transition_time_validity(p
 
 
 @pytest.mark.parametrize('prepare_stack',['observer'],indirect=True)
+def test_log_odds_only_change_keeps_original_native_certificate(prepare_stack,monkeypatch):
+    from luggage_mapping.observer import same_planning_content
+    f=prepare_stack;original=f.root.observed_contacts.retain;changes=[]
+    def advance(*args,**kwargs):
+        result=original(*args,**kwargs)
+        if kwargs.get('expected_observation') is not None and not changes:
+            before=f.root.observer.capture(scene_revision='scene',request_id='before-probability',
+                expected_epoch=f.observer.epoch,expected_revision=None,deadline=time.monotonic()+2.)
+            latest=f.observer.observe()
+            after=f.root.observer.capture(scene_revision='scene',request_id='after-probability',
+                expected_epoch=f.observer.epoch,expected_revision=None,deadline=time.monotonic()+2.)
+            changes.append((before.source.map_revision,after.source.map_revision))
+            (f.directory/'log_odds_only_change.json').write_text(json.dumps(dict(
+                revisions=changes[-1],same_planning_content=same_planning_content(before,after),
+                occupancy_changed_keys=f.observer.last_receipt.occupancy_changed_keys)))
+            assert latest.identity.map_revision>before.source.map_revision
+            assert same_planning_content(before,after)
+        return result
+    monkeypatch.setattr(f.root.observed_contacts,'retain',advance)
+    try:
+        request=copy.deepcopy(f.request);request.request_id='probability-only-o-change'
+        response=f.call(request)
+        assert changes and response.success,response.reason
+        assert response.plan.map_revision==changes[0][0]
+        assert not any(row[0]=='map_recertification' for row in json.loads(response.trace_json))
+        assert any(row[:2]==['map_finalization','ORIGINAL_SOURCE_CURRENT'] for row in json.loads(response.trace_json))
+    finally:refresh_request(f)
+
+
+@pytest.mark.parametrize('prepare_stack',['observer'],indirect=True)
 def test_changed_o_after_native_certification_requires_recertification_before_issuance(prepare_stack,monkeypatch):
+    from luggage_mapping.observer import same_planning_content
     f=prepare_stack;f.state.scene_calls=0
     original=f.root.observed_contacts.retain
-    changed=[]
+    changed=[];certified=[]
+    native=f.root.preparation.planner.certification
+    certify=native.certify
+    def measured_certify(draft,candidate,**kwargs):
+        result=certify(draft,candidate,**kwargs)
+        certified.append((draft.identity.map_revision,result.passed))
+        return result
+    monkeypatch.setattr(native,'certify',measured_certify)
     def advance(*args,**kwargs):
         result=original(*args,**kwargs)
         if kwargs.get('expected_observation') is not None and not changed:
-            before=f.observer.lease.identity.map_revision
-            latest=f.observer.observe()
-            assert latest.identity.map_revision>before,'must exercise changed content'
+            before=f.root.observer.capture(scene_revision='scene',request_id='before-classification',
+                expected_epoch=f.observer.epoch,expected_revision=None,deadline=time.monotonic()+2.)
+            hit_counts=[]
+            # At the configured free clamp, <=4 standard hit integrations must
+            # produce an actual occupied classification. No model tuning.
+            for _ in range(4):
+                latest=f.observer.observe(hit_container=(-.65,-.65,.75))
+                hit_counts.append(int(f.observer.last_receipt.occupancy_changed_keys))
+                if hit_counts[-1]:break
+            after=f.root.observer.capture(scene_revision='scene',request_id='after-classification',
+                expected_epoch=f.observer.epoch,expected_revision=None,deadline=time.monotonic()+2.)
+            (f.directory/'actual_content_change.json').write_text(json.dumps(dict(
+                revisions=[before.source.map_revision,after.source.map_revision],
+                same_planning_content=same_planning_content(before,after),
+                occupancy_changed_keys_per_integration=hit_counts)))
+            assert hit_counts[-1]>0 and not same_planning_content(before,after),'classification change must trigger'
             changed.append(latest.identity.map_revision)
         return result
     monkeypatch.setattr(f.root.observed_contacts,'retain',advance)
     try:
         request=copy.deepcopy(f.request);request.request_id='late-o-change'
         response=f.call(request)
-        assert f.state.scene_calls==4,'initial certification plus a complete fresh-map certification'
+        (f.directory/'actual_content_certifications.json').write_text(json.dumps(certified))
+        assert len(certified)==2 and all(accepted for _,accepted in certified),certified
+        assert certified[1][0]==changed[0] and certified[0][0]<certified[1][0],certified
         assert response.success and response.reason=='PLAN_READY',response.reason
         assert sum(row[0]=='map_recertification' for row in json.loads(response.trace_json))==1
         assert len(response.plan.legs)==6 and response.plan.map_revision==changed[0]

@@ -1,0 +1,24 @@
+# Read-only, source-bound pre-pick recovery. Only an undecidable contact retained
+# from this owner's SEARCH_INCOMPLETE response may be selected. No motion.
+string request_id
+string task_request_id
+string domain_sha256
+string query_id
+bool robot_state_stamp_valid
+uint64 robot_state_stamp_ns
+float64[6] start_joints
+# Explicit search/range parameters, not calibrated sensor-error allowances.
+float64[] tilts_rad
+float64[] azimuths_rad
+float64[] distance_scales
+float64 min_optical_z_m
+float64 max_optical_z_m
+uint32 max_view_proposals
+uint32 max_ik_seeds
+float64 budget_s
+---
+bool success
+string reason
+luggage_msgs/PickupViewPlanV2 plan
+string trace_json
+float64 elapsed_s

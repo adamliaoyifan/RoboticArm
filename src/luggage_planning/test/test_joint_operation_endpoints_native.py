@@ -105,7 +105,8 @@ def native_stack(request):
             assert port.client.wait_for_service(timeout_sec=10.),'native port unavailable; see preserved node logs'
         assert all(p.poll() is None for p in processes)
         yield SimpleNamespace(endpoints=endpoints,connections=connections,certifier=certifier,
-            model=model,records=records,directory=directory,node=node,record=record)
+            model=model,robot_description=xml,robot_description_semantic=srdf,
+            records=records,directory=directory,node=node,record=record)
     finally:
         executor.shutdown(timeout_sec=2.);worker.join(timeout=2.)
         node.destroy_node();context.shutdown()

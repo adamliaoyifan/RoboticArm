@@ -40,6 +40,17 @@ binds candidate-grid parity, box dimensions, support height and native planning
 to one geometry; clients do not regenerate dimensions after selecting slots.
 Regenerate ROS interfaces when updating this field.
 
+The same prepare node exposes the read-only
+`/joint_operation/prepare_pickup_view` O recovery prerequisite (`view_owner`,
+`view_context`, `view_motion`). It accepts only an owner-retained unresolved
+contact from `SEARCH_INCOMPLETE`, uses the exact acquisition and latest O/full
+scene, and re-admits the original placement before native view planning. Camera
+sampling, optical range, IK and time budgets are explicit request inputs. It
+returns an independently retained `PickupViewPlanV2`, not a six-leg operation or
+execution permission. Controller dispatch, settling, new acquisition and unique
+same-box association remain separate orchestration work. Ordinary successful
+preparation does not query raw camera evidence or execute an observation.
+
 Preparation keeps the existing position priority and groups already-admitted
 headings with exactly the same XYZ. At each target it tries the primary measured
 contact for both directed tool headings before requesting alternate centres.

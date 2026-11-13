@@ -65,7 +65,8 @@ def run_case(stack,owner,f,directory,**settings):
     (directory/'view_scene.cdr').write_bytes(derived.scene_cdr)
     result=prepare(owner,f,request_id='view-'+'_'.join(directory.relative_to(stack.directory).parts),
         deadline=time.monotonic()+8.,**settings)
-    (directory/'result.json').write_text(json.dumps(asdict(result),indent=2))
+    (directory/'result.json').write_text(json.dumps(asdict(result),indent=2,
+        default=lambda item:dict(cdr_hex=item.hex()) if isinstance(item,bytes) else str(item)))
     return result
 
 

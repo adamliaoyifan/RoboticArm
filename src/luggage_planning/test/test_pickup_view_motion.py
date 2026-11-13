@@ -69,7 +69,8 @@ def capture(request):
                 (directory/'view.cdr').write_bytes(serialize_message(view_to_message(f.view)))
                 (directory/'proposal.json').write_text(json.dumps(asdict(f.proposal),indent=2))
             if isinstance(value,bytes):(directory/name).write_bytes(value)
-            else:(directory/name).write_text(json.dumps(value,indent=2))
+            else:(directory/name).write_text(json.dumps(value,indent=2,
+                default=lambda item:dict(cdr_hex=item.hex()) if isinstance(item,bytes) else str(item)))
     return record
 
 

@@ -16,7 +16,7 @@ import time
 import numpy as np
 import pytest
 
-from test_joint_operation_endpoints_native import native_stack, robot_fixture
+from test_joint_operation_endpoints_native import native_stack
 
 pytestmark = pytest.mark.skipif(not os.environ.get('JOINT_NATIVE_ENDPOINT_EXECUTABLE'),
                                 reason='explicit native preparation gate')
@@ -120,7 +120,7 @@ def prepare_stack(native_stack,request):
         services.extend([owner.create_service(GetCargoVolumeV2,'/cargo_map/get_volume_v2',serve_volume),
             owner.create_service(GetParameters,'/cargo_volume_mapper/get_parameters',
                 lambda req,res:GetParameters.Response(values=[ParameterValue(type=1,bool_value=True)]))])
-    xml,srdf=robot_fixture()
+    xml,srdf=stack.robot_description,stack.robot_description_semantic
     from test_joint_operation_scene_admission import fixture_scene_file
     fixture_scene,fixture_mesh,fixture_object=fixture_scene_file(directory)
     state.scene.world.collision_objects.append(fixture_object)

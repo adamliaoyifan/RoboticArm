@@ -3,7 +3,7 @@
 The owner provides the admitted complete O/static snapshot and its current-source
 check. This module never updates maps/scenes, executes or changes vacuum.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass,field
 import hashlib
 import math
 import time
@@ -34,6 +34,9 @@ class PreparedPickupView:
     leg: object
     route_digest: str
     certificate_id: str
+    # Preserve exactly the bytes bound by view_snapshot_identity; serializing an
+    # equivalent ROS scene again need not reproduce its CDR alignment bytes.
+    view_scene_cdr: bytes = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -115,7 +118,7 @@ class PickupViewMotionPreparation:
                 if source_current(snapshot) is not True:return refused('VIEW_SOURCE_CHANGED')
                 plan=PreparedPickupView(request_id,domain.digest(),view.digest(),proposal.query_id,
                     snapshot.identity,scene.identity,proposal.world_from_optical,target,mount,leg,digest,
-                    certificate.certificate_id)
+                    certificate.certificate_id,scene.scene_cdr)
                 return PickupViewMotionResult('VIEW_PATH_PREPARED',plan,tuple(trace))
             return refused('VIEW_SEARCH_INCOMPLETE')
         except (TypeError,ValueError,RuntimeError) as error:
