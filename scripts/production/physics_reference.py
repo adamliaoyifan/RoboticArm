@@ -96,7 +96,7 @@ def main():
     def flush():
         value=dict(ledger.summary(),pose_samples=rows,error=error,started=started,
             updated=time.time(),partition=os.environ.get('IGN_PARTITION',''),
-            command=command,scope=__doc__,
+            command=command,scope=__doc__,requested_stop=stopped,
             capture_complete=bool(ledger.messages and rows and not error
                 and all(row.get('exit_code')==0 and row.get('bytes',0)>0 for row in rows)))
         (args.output/'summary.json').write_text(json.dumps(value,indent=2)+'\n')
@@ -134,7 +134,9 @@ def main():
                 if ready:
                     chunk=os.read(process.stdout.fileno(),262144)
                     if not chunk:
-                        if process.poll() is not None:raise RuntimeError('CONTACT_STREAM_EXIT')
+                        if process.poll() is not None:
+                            if stopped:break
+                            raise RuntimeError('CONTACT_STREAM_EXIT')
                     else:ledger.add(chunk,phase)
                 if now-last_flush>=5.:flush();last_flush=now
     except Exception as exc:error=type(exc).__name__+':'+str(exc)

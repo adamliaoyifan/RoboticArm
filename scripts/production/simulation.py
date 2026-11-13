@@ -5,6 +5,7 @@ Run through production/run.sh. --start explicitly authorizes one simulated
 operation; otherwise only startup readiness is checked. Never stops foreign sims.
 """
 import argparse
+import hashlib
 from datetime import datetime
 import json
 import os
@@ -46,17 +47,31 @@ def stop(process,timeout=15.):
 
 
 def client_command(run_dir, evidence, *, start=False, three_box=False,
-                   failure_hold_s=25., prepick_replans=0, view_poses=None):
+                   failure_hold_s=25., prepick_replans=0, view_poses=None, pickup_recovery_config=None):
     """One actual installed driver, with motion authorized only by start."""
     command=['ros2','run','luggage_gazebo','joint_operation_sim_driver.py',
              '--run-dir',str(run_dir),'--evidence',str(evidence)]
     if start:
         command.append('--start')
         if three_box:command.append('--three-box')
+        if pickup_recovery_config:
+            command.extend(['--pickup-recovery-config',str(pickup_recovery_config)])
         command.extend(['--failure-hold-s',str(failure_hold_s),
                         '--prepick-replans',str(prepick_replans)])
     if view_poses:command.extend(['--view-poses',str(view_poses)])
     return command
+
+
+def freeze_pickup_recovery_config(source, folder):
+    """Validate explicit policy once; driver consumes the exact archived bytes."""
+    from luggage_planning.joint_operation.pickup_recovery import PickupRecoverySettings
+    raw=Path(source).read_bytes()
+    settings=PickupRecoverySettings.from_record(json.loads(raw))
+    frozen=Path(folder)/'input_pickup_recovery.json'
+    with frozen.open('xb') as stream:stream.write(raw)
+    return frozen, dict(source=str(Path(source).resolve()),file=frozen.name,
+        sha256=hashlib.sha256(raw).hexdigest(),max_extra_view_motions=settings.max_extra_view_motions,
+        total_recovery_budget_s=settings.total_recovery_budget_s)
 
 
 def client_timeout_s(*, start=False, three_box=False, prepick_replans=0):
@@ -106,6 +121,8 @@ def main():
     parser.add_argument('--prepick-replans',default=0,type=int,choices=(0,1,2))
     parser.add_argument('--capture-physics',action='store_true',help='Separate offline poses/contact ledger')
     parser.add_argument('--view-poses',type=Path,help='Explicit model/scene-bound diagnostic observation goals')
+    parser.add_argument('--pickup-recovery-config',type=Path,
+        help='Explicit count/time/sampling/association policy; archived and forwarded only to started driver')
     parser.add_argument('--domain',default=7,type=int)
     args = parser.parse_args()
     if args.three_box and not args.start:parser.error('--three-box requires --start')
@@ -123,6 +140,16 @@ def main():
     def write():
         (folder/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     write()
+    recovery_input=None
+    if args.pickup_recovery_config:
+        try:
+            recovery_input,manifest['pickup_recovery_config']=freeze_pickup_recovery_config(
+                args.pickup_recovery_config,folder)
+        except (OSError,ValueError,TypeError,KeyError) as error:
+            manifest.update(outcome='INVALID_PICKUP_RECOVERY_CONFIG',nodes_started=0,
+                exception=type(error).__name__+':'+str(error),capture_complete=True,replay_possible=True)
+            write();return 2
+        write()
     view_input=None
     if args.view_poses:
         view_input=folder/'input_view_poses.json'
@@ -145,7 +172,6 @@ def main():
     receipt=json.loads(args.build_receipt.read_text())
     if not receipt.get('passed'):
         raise ValueError('PASSING_PRODUCTION_BUILD_RECEIPT_REQUIRED')
-    import hashlib
     changed=[name for name,digest in receipt['source_after'].items()
         if not (ROOT/name).is_file() or hashlib.sha256((ROOT/name).read_bytes()).hexdigest()!=digest]
     if changed:
@@ -216,7 +242,7 @@ def main():
                     nonlocal client
                     command=client_command(folder/'runtime',folder/name,start=start,
                         three_box=args.three_box,failure_hold_s=args.failure_hold_s,
-                        prepick_replans=args.prepick_replans,view_poses=view_input)
+                        prepick_replans=args.prepick_replans,view_poses=view_input,pickup_recovery_config=recovery_input)
                     row=dict(stage=name,command=command,begin=time.monotonic());manifest['stages'].append(row);write()
                     with (folder/(name+'.log')).open('w') as output:
                         client=subprocess.Popen(command,env=env,stdout=output,stderr=subprocess.STDOUT,start_new_session=True)

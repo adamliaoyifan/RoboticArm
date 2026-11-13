@@ -3,6 +3,8 @@ import gzip
 import importlib.util
 from pathlib import Path
 import threading
+import pytest
+from pickup_continuation_fixtures import case_archive
 
 
 def module(name):
@@ -94,3 +96,40 @@ def test_existing_discovery_node_receives_real_snapshot_response():
         executor.shutdown(timeout_sec=2.);worker.join(timeout=2.)
         server.destroy_service(service);server.destroy_node();client.destroy_node();rclpy.shutdown(context=context)
     assert not worker.is_alive()
+
+
+@pytest.mark.parametrize('count',[0,2])
+@pytest.mark.parametrize('start',[False,True])
+def test_recovery_configuration_is_frozen_and_only_forwarded_to_authorized_driver(case_archive,count,start):
+    from dataclasses import asdict
+    import hashlib,json
+    from test_pickup_recovery_cycle import settings
+    runner=module('simulation')
+    source=case_archive.directory/'operator_config.json'
+    record=dict(schema='pickup_view_recovery_v1',**asdict(settings(count)))
+    raw=(json.dumps(record,indent=2)+'\n').encode();source.write_bytes(raw)
+    folder=case_archive.directory/'run';folder.mkdir()
+    frozen,receipt=runner.freeze_pickup_recovery_config(source,folder)
+    case_archive.save('config_receipt',receipt);case_archive.save('config_original_bytes',raw)
+    source.write_text('{"changed_after_freeze":true}')
+    command=runner.client_command('/run','/evidence',start=start,pickup_recovery_config=frozen)
+    case_archive.save('constructed_driver_command',command)
+    assert frozen.read_bytes()==raw and receipt['sha256']==hashlib.sha256(raw).hexdigest()
+    assert receipt['max_extra_view_motions']==count
+    if start:assert command[command.index('--pickup-recovery-config')+1]==str(frozen)
+    else:assert '--pickup-recovery-config' not in command and '--start' not in command
+
+
+@pytest.mark.parametrize('damage',['schema','missing_policy','boolean_count'])
+def test_invalid_recovery_policy_never_freezes_an_implicit_production_default(case_archive,damage):
+    from dataclasses import asdict
+    import json
+    from test_pickup_recovery_cycle import settings
+    runner=module('simulation');record=dict(schema='pickup_view_recovery_v1',**asdict(settings()))
+    if damage=='schema':record['schema']='unknown'
+    elif damage=='missing_policy':record.pop('association_policy')
+    else:record['max_extra_view_motions']=True
+    source=case_archive.directory/'operator_config.json';source.write_text(json.dumps(record))
+    folder=case_archive.directory/'run';folder.mkdir();case_archive.save('invalid_input',record)
+    with pytest.raises((KeyError,TypeError,ValueError)):runner.freeze_pickup_recovery_config(source,folder)
+    assert not (folder/'input_pickup_recovery.json').exists()

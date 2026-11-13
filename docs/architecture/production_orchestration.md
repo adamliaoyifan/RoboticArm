@@ -371,6 +371,9 @@ releases its O lease before any extra motion. Only exact owner-issued localized
 `SEARCH_INCOMPLETE` probes may cause a view. An explicit optional
 `--pickup-recovery-config` supplies count/time/sampling/association limits;
 absence or zero count disables extra views without rejecting healthy plans.
+The production simulation runner accepts the same option, validates and archives
+the exact JSON bytes, then forwards the frozen copy only to its explicitly started
+driver; its separate readiness client receives no recovery configuration.
 These are not calibrated production error defaults. The existing `--start`
 authorization still precedes detection or motion. One task key spans all prepare
 retries for the same box; a detector ID change never creates a new budget. The
@@ -386,6 +389,14 @@ contacts/targets. No-terminal/loaded/uncertain results stop automatic recovery.
 The workflow only returns a bound plan; the normal complete-operation Action
 remains its sole loading-motion consumer. Map-lease/cancel cleanup may finish
 after a deadline but grants no additional planning or motion budget.
+
+The diagnostic empty site-view caller keeps one 90-second Action window and
+consumes its existing three planning attempts as sequential single-candidate
+MoveGroup requests. Only terminal `ABORTED/INVALID_MOTION_PLAN` with no executed
+joint or multi-DOF trajectory may try the same goal again. Each rejected candidate
+is retained. Partial execution, another error, uncertain transport, or deadline
+exhaustion stops; no collision exemption or timing tolerance is changed. This
+caller is separate from loaded complete-operation recovery.
 
 The exact-domain pickup-view evidence port optionally retains the original RGB
 image and every candidate reported by that acquisition's detector message,

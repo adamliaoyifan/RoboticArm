@@ -41,6 +41,7 @@ from controller_manager_msgs.srv import ListControllers
 import yaml
 from luggage_gazebo.operation_readiness import wait_active_controllers, wait_static_scene
 from luggage_gazebo.operation_pickup import ObservedPickupPreparation
+from luggage_gazebo.operation_motion import execute_observation_goal
 from luggage_gazebo.observer_failure_capture import ObserverFailureCapture
 from luggage_description.scene_tf_config_utils import load_scene_tf_config, pedestal_enabled, world_transform
 from scipy.spatial.transform import Rotation
@@ -355,9 +356,8 @@ class OperationSimDriver(Node):
                             tolerance_below=.01,weight=1.) for joint,value in zip(JOINTS,target['values'])])]
         goal.planning_options.plan_only=False
         self.read_scene('before_observe_'+name)
-        result = self.action(self.move,goal,'observe_'+name,90.)
+        execute_observation_goal(self,goal,'observe_'+name,timeout=90.)
         self.read_scene('after_observe_'+name)
-        if result.result.error_code.val!=1:raise RuntimeError('OBSERVE_MOVEIT:'+str(result.result.error_code.val))
         # Wait for the existing stationary-depth adapter and O receipt, no guessed free-space.
         time.sleep(1.)
         validity = self.call(self.validity,GetValidity.Request(),'view_validity')

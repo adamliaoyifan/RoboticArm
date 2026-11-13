@@ -174,10 +174,12 @@ def test_pickup_view_does_not_require_an_unrelated_uld_hit(tmp_path,monkeypatch,
     poses=tmp_path/'poses.yaml'
     poses.write_text('poses:\n  pickup:\n    valid: true\n    values: [0, 0, 0, 0, 0, 0]\n')
     monkeypatch.setattr(module.time,'sleep',lambda _:None)
+    terminal=module.MoveGroup.Impl.GetResultService.Response(status=4)
+    terminal.result.error_code.val=1
     probe=SimpleNamespace(launch={'resolved':{'robot_poses_config':str(poses)}},extra_views={},
         move='move',validity='validity',images={},joint=JointState(),
         read_scene=lambda _:None,record=lambda *a:None,
-        action=lambda *a:SimpleNamespace(result=SimpleNamespace(error_code=SimpleNamespace(val=1))),
+        action=lambda *a,**kw:terminal,
         call=lambda *a:SimpleNamespace(last_integrated_stamp_ns=0))
     if require_uld:
         with pytest.raises(RuntimeError,match='NO_INTEGRATED_SENSOR_VIEW'):
