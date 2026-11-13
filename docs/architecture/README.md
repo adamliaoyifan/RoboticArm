@@ -7,8 +7,11 @@ preference.
 
 Current product route orientation: [`docs/CONTEXT.md`](../CONTEXT.md).
 Completed calibration / YOLO closed-loop / platform-free / early-migration
-plans are under [`docs/archive/`](../archive/README.md) and are not current
-contracts.
+material is under [`docs/archive/`](../archive/README.md) and is not a current
+contract. Historical dual-machine hardware notes live in
+[`docs/archive/hardware/`](../archive/hardware/); current device references are
+[`docs/hardware/README.md`](../hardware/README.md) and
+[eef_sensor_frames.md](eef_sensor_frames.md).
 
 - [Perception module architecture](perception_architecture.md): algorithm
   classes versus ROS nodes, state ownership, output contracts.

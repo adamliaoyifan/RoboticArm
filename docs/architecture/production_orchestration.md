@@ -28,6 +28,16 @@ requirement. LiDAR integration requires its actual range/frame/time semantics,
 not relabelling Cartesian laser points as optical-Z depth. Sensors share one map
 owner and source resolution. Startup and execution authorization stay unchanged.
 
+The observed three-box simulation profile uses 2cm source resolution and 2cm
+lateral O obstacle expansion. It adds no extra vertical O expansion: the complete
+source voxel height remains blocked, and the existing attachment envelope retains
+payload height uncertainty. This explicit policy must be identical during prepare
+and execution recertification. Isolated g2 replay showed vertical dilation raising
+floor voxels into the carrying envelope; removing only extra vertical dilation
+restored the inward local branches while retaining every occupied/unknown voxel.
+The complete trajectory and actual placement still require validation. Other
+profiles retain their explicitly configured collision-margin policy.
+
 ## Full-operation simulation adapter
 
 `luggage_gazebo` selects `planning_pipeline=joint_operation` explicitly through
@@ -298,6 +308,15 @@ layer does not command vacuum, certify a changed grasp's remaining path or
 complete production execution; those event and native admission gates remain.
 Raw CDR is retained for replay; stable receipt hashes use canonical typed ROS
 fields because DDS alignment padding can change for identical messages.
+
+The vacuum boundary must read the measured TCP again after the actuator
+confirms sealing; a pose read before a blocking seal wait is not confirmation
+evidence. Preserve the original stationary box timestamp and the new TCP
+timestamp. If sealing succeeded but this later measurement cannot qualify,
+report physical success with `has_measured_attachment=false` and the explicit
+`SEALED_ATTACHMENT_MEASUREMENT_UNQUALIFIED` diagnostic. Keep vacuum enabled;
+the operation owner must refuse carrying and retain the unresolved payload.
+Do not detach or invent a measured relation to turn this into a clean failure.
 
 Actual full-footprint contact revalidation may use the same box's retained,
 frozen pre-grasp RGB-D top observation and the measured attachment relation.

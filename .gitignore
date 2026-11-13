@@ -2,6 +2,10 @@
 build/
 install/
 log/
+build-production/
+install-production/
+install-mo/
+log-production/
 
 # Python
 __pycache__/
