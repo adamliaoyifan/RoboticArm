@@ -11,6 +11,18 @@ online map inputs may not.
 service readiness, sensor readiness, timers, and ordinary `run` / `step`
 commands must not authorize robot motion, vacuum changes, or detection.
 
+The simulation controller-manager watchdog requires a typed read-only response,
+not a graph advertisement. A still-pending query alone is not proof that the
+manager is absent: additional read-only probes use the same client/executor and
+original total deadline at a declared positive interval. Earlier pending replies
+remain eligible, every attempt is captured, and outstanding futures are removed
+at teardown. This never repeats a control command or extends the startup budget.
+The production simulation runner admits its current launch's hash-checked typed
+watchdog receipt, as well as existing active-controller/scene/sensor checks,
+before dispatching an explicitly authorized cargo job. A failed/missing receipt
+or terminal launch dispatches no job. Configuration, readiness and receipt wait
+share one180s runner startup deadline; operation budgets are unchanged.
+
 The only initial authorization event is an explicit operator `start` command.
 After it is accepted, the orchestrator establishes the cargo-map session before
 prompting for a placed box. User ruling2026-11-12 permits a declared initially

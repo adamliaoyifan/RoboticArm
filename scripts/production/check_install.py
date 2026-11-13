@@ -50,6 +50,7 @@ MODULES = (
     'luggage_perception.observer_lidar',
     'luggage_gazebo.operation_launch',
     'luggage_gazebo.operation_readiness',
+    'luggage_gazebo.startup_admission',
     'luggage_planning.planning_contract',
     'luggage_msgs.srv._prepare_joint_operation_v2',
     'luggage_msgs.srv._get_pickup_view_evidence_v2',

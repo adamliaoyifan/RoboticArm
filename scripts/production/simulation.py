@@ -185,6 +185,7 @@ def main():
     result=1
     try:
         with (folder/'launch.log').open('w') as log:
+            startup_deadline=time.monotonic()+180.
             launch=subprocess.Popen(command,env=env,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
             pidfile.write_text(str(launch.pid)+'\n');manifest['launch_pid']=launch.pid;write()
             # Launch materializes the model/owner identity before starting nodes.
@@ -221,24 +222,34 @@ def main():
                         client=subprocess.Popen(command,env=env,stdout=output,stderr=subprocess.STDOUT,start_new_session=True)
                         deadline=time.monotonic()+client_timeout_s(start=start,
                             three_box=args.three_box,prepick_replans=args.prepick_replans)
+                        if not start:deadline=min(deadline,startup_deadline)
                         while client.poll() is None and launch.poll() is None and time.monotonic()<deadline:
                             time.sleep(.2)
                         if client.poll() is None:stop(client)
                     row.update(exit_code=client.returncode,elapsed_s=time.monotonic()-row['begin'])
                     write();return client.returncode
                 result=run_client('readiness')
-                # World/reference topics must exist before the first bounded
-                # pose read. Readiness authorizes no cargo operation; capture
-                # still starts before any spawn or execution client.
-                if result==0 and args.capture_physics:
-                    physics_command=['/usr/bin/python3',str(ROOT/'scripts/production/physics_reference.py'),
-                        '--run-dir',str(folder/'runtime'),'--output',str(folder/'reference'),
-                        '--contact-topic',env['ELFIN_BOX_CONTACT_TOPIC']]
-                    manifest['physics_command']=physics_command;write()
-                    with (folder/'physics.log').open('w') as physics_log:
-                        physics=subprocess.Popen(physics_command,env=env,stdout=physics_log,
-                            stderr=subprocess.STDOUT,start_new_session=True)
-                if result==0 and args.start:result=run_client('driver',True)
+                def run_ready_work():
+                    nonlocal physics
+                    # Reference capture precedes cargo spawn/execution. It does
+                    # not authorize a job without explicit --start.
+                    if args.capture_physics:
+                        physics_command=['/usr/bin/python3',str(ROOT/'scripts/production/physics_reference.py'),
+                            '--run-dir',str(folder/'runtime'),'--output',str(folder/'reference'),
+                            '--contact-topic',env['ELFIN_BOX_CONTACT_TOPIC']]
+                        manifest['physics_command']=physics_command;write()
+                        with (folder/'physics.log').open('w') as physics_log:
+                            physics=subprocess.Popen(physics_command,env=env,stdout=physics_log,
+                                stderr=subprocess.STDOUT,start_new_session=True)
+                    return run_client('driver',True) if args.start else 0
+                def record_startup_admission(admission):
+                    (folder/'startup_admission.json').write_text(json.dumps(admission,indent=2)+'\n')
+                    manifest['startup_admission']=admission;write()
+                if result==0:
+                    from luggage_gazebo.startup_admission import run_after_controller_probe
+                    result,_=run_after_controller_probe(folder/'startup/controller_manager',launch,
+                        deadline=startup_deadline,on_ready=run_ready_work,
+                        on_admission=record_startup_admission)
                 manifest['launch_exit_code']=launch.poll()
                 # Flush the bounded pre-trigger cache before stopping sensors.
                 snapshot=flush_sensor_snapshot(probe)

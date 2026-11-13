@@ -37,43 +37,60 @@ READY_MARKER = "wait_controller_manager: ok"
 FAIL_MARKER = "startup_failed: controller_manager_not_ready"
 
 
-def wait_for_controller_response(node, service_name, timeout_sec, *, recorder=None):
-    """One typed read-only RPC within one total discovery/response deadline.
+def wait_for_controller_response(node, service_name, timeout_sec, *, recorder=None,
+                                 retry_interval_sec=1.0):
+    """Typed read-only probes within one total discovery/response deadline.
 
     This proves a responding manager, not active controllers, sensor readiness
     or the cause of an unavailable manager. Caller owns node/context teardown.
+    A pending request alone does not prove manager absence. Additional queries
+    share the original deadline and client; an earlier delayed reply stays
+    eligible. The finite deadline/interval bound the number of pending queries.
     """
     from rclpy.executors import SingleThreadedExecutor
     from controller_manager_msgs.srv import ListControllers
     if not math.isfinite(timeout_sec) or timeout_sec <= 0:
         raise ValueError('positive finite controller readiness timeout required')
+    if not math.isfinite(retry_interval_sec) or retry_interval_sec <= 0:
+        raise ValueError('positive finite controller probe retry interval required')
     started=time.monotonic()
     deadline=started+timeout_sec
     client=node.create_client(ListControllers,service_name)
     executor=SingleThreadedExecutor(context=node.context)
     executor.add_node(node)
-    future=None
-    def result(ok,reason):
-        return dict(ok=ok,reason=reason,elapsed_s=time.monotonic()-started,service=service_name)
+    futures=[]
+    next_request=started
+    def result(ok,reason,response_attempt=None):
+        return dict(ok=ok,reason=reason,elapsed_s=time.monotonic()-started,service=service_name,
+                    attempt_count=len(futures),response_attempt=response_attempt,
+                    timeout_sec=timeout_sec,retry_interval_sec=retry_interval_sec)
     try:
-        while not client.service_is_ready():
+        while time.monotonic()<deadline:
+            for index,future in enumerate(futures,1):
+                if not future.done():continue
+                response=future.result()
+                if response is None:return result(False,'CONTROLLER_MANAGER_RESPONSE_MISSING')
+                if recorder:recorder('response' if index==1 else 'response_'+str(index),response)
+                if time.monotonic()>deadline:return result(False,'CONTROLLER_MANAGER_RESPONSE_TIMEOUT')
+                return result(True,'CONTROLLER_MANAGER_RESPONDED',index)
+            now=time.monotonic()
+            if now>=deadline:break
+            if client.service_is_ready() and now>=next_request:
+                request=ListControllers.Request()
+                index=len(futures)+1
+                if recorder:recorder('request' if index==1 else 'request_'+str(index),request)
+                futures.append(client.call_async(request))
+                next_request=now+retry_interval_sec
+            # One executor/node; no CLI discovery polling or renewed deadline.
             remaining=deadline-time.monotonic()
-            if remaining<=0:return result(False,'CONTROLLER_MANAGER_SERVICE_UNAVAILABLE')
-            executor.spin_once(timeout_sec=min(.05,remaining))
-        request=ListControllers.Request()
-        if recorder:recorder('request',request)
-        future=client.call_async(request)
-        executor.spin_until_future_complete(future,timeout_sec=max(0.,deadline-time.monotonic()))
-        if not future.done():return result(False,'CONTROLLER_MANAGER_RESPONSE_TIMEOUT')
-        response=future.result()
-        if response is None:return result(False,'CONTROLLER_MANAGER_RESPONSE_MISSING')
-        if recorder:recorder('response',response)
-        if time.monotonic()>deadline:return result(False,'CONTROLLER_MANAGER_RESPONSE_TIMEOUT')
-        return result(True,'CONTROLLER_MANAGER_RESPONDED')
+            if remaining>0:executor.spin_once(timeout_sec=min(.05,remaining))
+        return result(False,'CONTROLLER_MANAGER_RESPONSE_TIMEOUT' if futures else
+                      'CONTROLLER_MANAGER_SERVICE_UNAVAILABLE')
     finally:
-        if future is not None and not future.done():
-            client.remove_pending_request(future)
-            future.cancel()
+        for future in futures:
+            if not future.done():
+                client.remove_pending_request(future)
+                future.cancel()
         node.destroy_client(client)
         executor.remove_node(node)
         executor.shutdown(timeout_sec=1.)
@@ -83,6 +100,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--controller-manager", default="/controller_manager")
     parser.add_argument("--timeout-sec", type=float, default=45.0)
+    parser.add_argument("--retry-interval-sec", type=float, default=1.0)
     args = parser.parse_args(argv)
 
     service_name = args.controller_manager.rstrip("/") + SERVICE_SUFFIX
@@ -104,11 +122,14 @@ def main(argv=None):
             records.append(dict(file=filename,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest()))
     outcome=None
     try:
-        outcome=wait_for_controller_response(node,service_name,args.timeout_sec,recorder=record)
+        outcome=wait_for_controller_response(node,service_name,args.timeout_sec,recorder=record,
+            retry_interval_sec=args.retry_interval_sec)
     finally:
         if folder:
-            (folder/'result.json').write_text(json.dumps(dict(outcome=outcome,records=records,
+            temporary=folder/'result.json.tmp'
+            temporary.write_text(json.dumps(dict(outcome=outcome,records=records,
                 scope='Read-only manager response, not active-controller or sensor qualification'),indent=2))
+            temporary.replace(folder/'result.json')
         node.destroy_node()
         rclpy.try_shutdown()
 
