@@ -112,6 +112,7 @@ def main():
     if not 0 < args.failure_hold_s <= 60:parser.error('failure hold must be within (0,60] seconds')
     folder = args.evidence.resolve();folder.mkdir(parents=True,exist_ok=False)
     env = dict(os.environ,ROS_DOMAIN_ID=str(args.domain),ROS_LOCALHOST_ONLY='1',
+               ELFIN_STARTUP_EVIDENCE_DIR=str(folder/'startup'),
                IGN_PARTITION='loading_'+str(os.getpid())+'_'+str(time.time_ns()))
     if args.capture_physics:env['ELFIN_BOX_CONTACT_TOPIC']='/loading/eval_contacts'
     manifest = dict(started_at=datetime.now().astimezone().isoformat(),start_authorized=args.start,

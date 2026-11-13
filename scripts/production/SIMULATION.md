@@ -62,7 +62,17 @@ select complete-operation planning. New mode is the explicit integration entry;
 whole-cycle success, default production promotion and real baseline remain open.
 
 The owned runner captures a bounded sensor snapshot and tears down its process
-group automatically. Readiness rehearsal (add `--start` for one explicit cycle):
+group automatically.
+
+The controller-manager startup watchdog requires an actual typed
+`ListControllers` response. Global service names also include clients, so names
+alone cannot qualify readiness. Discovery and the single read-only request share
+the existing total timeout. The runner saves its request/response and outcome
+under `startup/controller_manager`; missing replies remain named startup failures.
+This gate does not certify active controllers or repair a lost vendor-plugin
+URDF response. The driver separately requires active controllers and sensors.
+
+Readiness rehearsal (add `--start` for one explicit cycle):
 
 ```bash
 scripts/production/run.sh /usr/bin/python3 scripts/production/simulation.py \

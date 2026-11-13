@@ -376,7 +376,9 @@ def run_launch_attempt(index, attempt_index, args, repo, env, deadlines):
         "marker_order_ok": marker_order_ok(log_text),
         "plugin_received_urdf": plugin_received_urdf(log_text),
         "launch_log": str(attempt.log_path.relative_to(Path(args.out))),
-        "watchdog_fired": "startup_failed: plugin_urdf_not_received" in log_text,
+        "watchdog_fired": any(marker in log_text for marker in (
+            "startup_failed: controller_manager_not_ready",
+            "startup_failed: plugin_urdf_not_received")),
     })
 
     stop_stack(repo, env, out_dir / "stop_sim.log")
