@@ -241,6 +241,23 @@ settled measurement and conditional unique same-box association before reuse.
 Instance ID equality alone cannot establish association; ambiguous acquisitions
 remain separate. This pure proposal layer does not implement those execution
 and association gates.
+
+Native pickup-view preparation derives the optical/tool mount from the captured
+URDF's same six-joint rigid sensor branch. It uses a full private copy of the
+caller-admitted O/static scene and a measured stationary pickup box, forbidding
+all robot-box contact during observation. Existing attachments or conflicting
+object association reject. Other obstacles, unknown-space collision objects,
+meshes, padding and unrelated ACM entries survive. The owner supplies static
+world admission and current-source checks; a pure Snapshot type alone does not
+prove that its O/ULD contents are complete or current.
+
+A view path requires exact-target native IK, private-scene connection, timing
+that retains checked polyline corners, and independent native certification of
+the controller-interpolated path. Explicit search/time/sample/velocity limits
+apply. Refused, partial, cancelled or source-revoked work returns no plan. Its
+certificate binds the original source, derived scene, measured acquisition,
+camera/tool target and starting joints. This is plan-only evidence: dispatch
+still requires current-source/start validation and terminal-result ownership.
 Later camera frames cannot substitute samples or replace the retained acquisition
 identity. After certification and the final full-scene read, preparation checks
 the same non-renewing owner token, live six-joint start and pinned confirmed OCC.

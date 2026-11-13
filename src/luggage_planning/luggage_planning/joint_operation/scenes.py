@@ -44,7 +44,7 @@ def _pose(transform):
     return result
 
 
-def _reset_payload_contacts(scene, object_id):
+def _reset_payload_contacts(scene, object_id, *, allow_suction_touch=True):
     """Preserve unrelated ACM entries, overriding every payload allowance."""
     from moveit_msgs.msg import AllowedCollisionEntry
     acm = scene.allowed_collision_matrix
@@ -62,7 +62,8 @@ def _reset_payload_contacts(scene, object_id):
             rows.append([False]*len(names))
     payload_index = names.index(object_id)
     for index, name in enumerate(names):
-        rows[index][payload_index] = rows[payload_index][index] = name in SUCTION_TOUCH_LINKS
+        rows[index][payload_index] = rows[payload_index][index] = (
+            allow_suction_touch and name in SUCTION_TOUCH_LINKS)
     acm.entry_names = names
     acm.entry_values = [AllowedCollisionEntry(enabled=row) for row in rows]
     if len(acm.default_entry_names) != len(acm.default_entry_values):

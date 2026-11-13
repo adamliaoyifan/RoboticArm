@@ -44,7 +44,7 @@ def robot_fixture():
 
 
 @pytest.fixture(scope='module')
-def native_stack():
+def native_stack(request):
     import rclpy
     import yaml
     from luggage_planning.joint_operation.endpoints import NativeOperationEndpointPort
@@ -52,7 +52,7 @@ def native_stack():
     from luggage_planning.joint_operation.certification import EndpointModel,NativeOperationCertificationPort
     directory = Path(os.environ['JOINT_ENDPOINT_EVIDENCE_DIR'])
     directory.mkdir(parents=True,exist_ok=False)
-    xml,srdf = robot_fixture()
+    xml,srdf = getattr(request,'param',None) or robot_fixture()
     model_parameters = {'robot_description':xml,'robot_description_semantic':srdf}
     kinematics = {'elfin_arm':{'kinematics_solver':'kdl_kinematics_plugin/KDLKinematicsPlugin',
         'kinematics_solver_search_resolution':.005,'kinematics_solver_timeout':.05}}
