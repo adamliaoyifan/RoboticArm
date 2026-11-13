@@ -1,5 +1,6 @@
 """One frozen geometry owns grid parity and the shared hard placement gates."""
 from types import SimpleNamespace
+import math
 import pytest
 from test_joint_operation_observer import configuration,snapshot
 from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy
@@ -10,9 +11,9 @@ from luggage_planning.placement_prior.task_slots import observed_placement_slots
 
 def test_frozen_dimensions_regenerate_slots_instead_of_reusing_old_grid_parity(tmp_path):
     cfg,_,_=configuration(tmp_path,size=(.8,.8,1.),floor=.53,resolution=.02)
-    captured=snapshot(cfg,[1]*__import__('math').prod(cfg.dimensions_xyz))
+    captured=snapshot(cfg,[1]*math.prod(cfg.dimensions_xyz))
     limits=load_attachment_geometry_policy()
-    old=(.20,.13,.10);fresh=(.21,.11,.12)
+    old=(.20,.13,.12);fresh=(.21,.11,.12)
     old_slots,_=observed_placement_slots(captured.surface,captured.volume,old,'floor',
         limits=limits,margin=.02,vertical_margin=0.)
     assert old_slots and not all(admit_placement_targets(captured.surface,fresh,old_slots,volume=captured.volume))

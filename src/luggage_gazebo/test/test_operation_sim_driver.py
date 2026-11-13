@@ -38,7 +38,8 @@ def test_explicit_observation_views_are_model_bound_goals(tmp_path,damage):
 
 
 @pytest.mark.parametrize('success',[True,False])
-def test_prepare_binds_repository_identity_and_releases_lease_on_refusal(monkeypatch,tmp_path,success):
+@pytest.mark.parametrize('task_mode',[None,'floor','stack'])
+def test_prepare_binds_repository_identity_and_releases_lease_on_refusal(monkeypatch,tmp_path,success,task_mode):
     module=driver_module()
     detection=DetectedLuggage(id='measured')
     domain=SuctionTopDomainV2(generation=3,domain_sha256='observed')
@@ -58,6 +59,7 @@ def test_prepare_binds_repository_identity_and_releases_lease_on_refusal(monkeyp
         if client=='release':return ReleaseSnapshot.Response(status='OK')
         assert client=='prepare'
         assert request.expected_map_revision==5 and request.geometry_hash=='current-geometry'
+        assert request.placement_task_mode==(task_mode or '') and not request.slots
         return PrepareJointOperationV2.Response(success=success,reason='diagnostic',trace_json='[]')
     probe=SimpleNamespace(detect='detect',domain=domain,validity='validity',snapshot='snapshot',
         release_snapshot='release',prepare='prepare',call=call,record=lambda *a:None,
@@ -65,10 +67,10 @@ def test_prepare_binds_repository_identity_and_releases_lease_on_refusal(monkeyp
         launch={'model_sha256':'model','resolved':{'operation_prepare_budget_s':300.}},
         folder=tmp_path)
     probe.prepare_from_observation=lambda *a,**kw:module.OperationSimDriver.prepare_from_observation(probe,*a,**kw)
-    if success:module.OperationSimDriver.plan(probe)
+    if success:module.OperationSimDriver.plan(probe,task_mode=task_mode)
     else:
         with pytest.raises(RuntimeError,match='PREPARE:diagnostic'):
-            module.OperationSimDriver.plan(probe)
+            module.OperationSimDriver.plan(probe,task_mode=task_mode)
     assert requests[-1][0]=='release' and requests[-1][1].handle=='2:7'
 
 

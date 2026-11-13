@@ -1117,7 +1117,7 @@ New operation_o_sources selection rgbd/rgbd_lidar uses existing optional observe
 subscription. Bare launch keeps both; explicit joint profile rgbd. Source provenance
 records selected inputs; full model and all unknown/collision gates unchanged.
 
-00:47UTC diagnostic53 RGB-D-only O rehearsal: startup8.94s, first prepare refuses
+00:46UTC diagnostic53 RGB-D-only O rehearsal: startup8.94s, first prepare refuses
 REQUESTED_SLOT_NOT_GEOMETRICALLY_ADMITTED6.94s, no product motion. Exact request
 and pinned O replay reject32/32 slots. Their centres include x.495 and-.005;
 fresh measurement(.494964,.361470,.247177) changes footprint-grid parity from the
@@ -1131,3 +1131,8 @@ slots. Explicit supplied slots retain strict compatibility admission and cannot
 be combined with task mode. No new placement policy, planner or perception prior.
 Initial source tests37pass/2fail because old installed generated interface lacks
 new field; rebuild interfaces before evaluating the updated client behavior.
+
+Frozen74 interface build passes50.79s unchanged inputs. Refine parity regression
+to keep old/fresh heights identical, isolating XY parity rather than merely Z;
+exercise real client request encoding for default/floor/stack with lease release
+on both success and refusal. Freeze75 includes these focused test improvements.
