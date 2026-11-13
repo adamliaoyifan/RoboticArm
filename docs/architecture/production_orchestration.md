@@ -219,6 +219,28 @@ global native candidate/branch/deadline limits remain explicit. Already-admitted
 headings at exactly one position are tried together without changing targets or
 inventing rotations. An exhausted budget is incomplete search, not proof of
 unreachability. No part of this search permits changing an attached grasp.
+On `SEARCH_INCOMPLETE`, preparation may return `SuctionSupportProbeV2` hypotheses
+for failed geometric contacts, bound to the exact domain/model and already
+admitted placement. Only actually checked failed centres are ranked by missing
+support; a too-small observed grid may instead carry its centre as an explicit
+hypothesis. These records cannot be converted to accepted contact queries and
+never authorize a grasp or observation motion. Success and other refusals return
+no probes. Ordinary successful preparation makes no raw-view RPC or extra motion.
+
+Pre-pick observation assessment separately consumes the exact acquisition-bound
+camera inputs. It rasterizes the complete projected physical footprint, including
+partial pixels and out-of-image regions. Missing depth inside the consumed region
+or clipping by the actual image may establish a conditional information need;
+mask exclusions and finite-depth quality/IK/backend failures alone do not. Bbox
+provenance remains explicit. Assessment never fills the support grid. Camera
+hypotheses use caller-supplied sampling, actual intrinsics/plane/camera distance,
+explicit optical-Z range and configured work bounds; no production motion count
+or pose defaults are implied. Predicted visibility is only a ranking heuristic.
+Each view still requires full-model, payload/ULD/O-scene motion validation,
+settled measurement and conditional unique same-box association before reuse.
+Instance ID equality alone cannot establish association; ambiguous acquisitions
+remain separate. This pure proposal layer does not implement those execution
+and association gates.
 Later camera frames cannot substitute samples or replace the retained acquisition
 identity. After certification and the final full-scene read, preparation checks
 the same non-renewing owner token, live six-joint start and pinned confirmed OCC.

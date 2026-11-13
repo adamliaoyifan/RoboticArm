@@ -13,6 +13,7 @@ from luggage_perception.observed_contact_footprint import (
     check_observed_contact_footprint, project_contact_footprint,
 )
 from luggage_planning.joint_operation.contacts import grasp_for_contact
+from luggage_planning.joint_operation.contact_observation import contact_matrix as _contact_matrix, unresolved_probe
 from luggage_planning.joint_operation.planner import OperationCandidate
 from luggage_planning.joint_operation.scenes import build_operation_scenes
 from luggage_planning.placement_prior.contracts import PlacementCandidate, Transform
@@ -30,6 +31,7 @@ class ContactProposal:
     yaw_rad: float
     checked_centres: int
     reason: str
+    unresolved_probe: object = None
 
     def to_message(self):
         from luggage_msgs.msg import DirectedSuctionQueryV2
@@ -37,15 +39,6 @@ class ContactProposal:
             raise ValueError('complete geometric proposal required')
         return DirectedSuctionQueryV2(query_id=self.query_id,
             center_uv_top_m=list(self.center_uv_top_m),yaw_rad=self.yaw_rad)
-
-
-def _contact_matrix(domain, uv, yaw):
-    normal = np.asarray(domain.normal_world)
-    x = math.cos(yaw)*np.asarray(domain.u_axis_world)+math.sin(yaw)*np.asarray(domain.v_axis_world)
-    matrix = np.eye(4)
-    matrix[:3,:3] = np.column_stack((x,-np.cross(normal,x),-normal))
-    matrix[:3,3] = domain.world_point(uv)
-    return matrix
 
 
 def centered_ranking_geometry(domain, limits):
@@ -134,7 +127,9 @@ def _propose_contact(domain, model, *, query_id, world_from_place_box,
     upper = (np.asarray(domain.origin_uv_top_m)+np.asarray(domain.shape)*domain.cell_size_m
              -vertices.max(axis=0))
     if np.any(lower > upper):
-        return ContactProposal(query_id,(),yaw,0,'FOOTPRINT_LARGER_THAN_OBSERVED_GRID')
+        center = np.asarray(domain.origin_uv_top_m)+np.asarray(domain.shape)*domain.cell_size_m/2
+        probe = unresolved_probe(domain,model,query_id,center,yaw,vertices+center)
+        return ContactProposal(query_id,(),yaw,0,'FOOTPRINT_LARGER_THAN_OBSERVED_GRID',probe)
     preferred = np.clip(desired_uv,lower,upper)
     centres = np.argwhere(domain.cells())
     uv = np.asarray(domain.origin_uv_top_m)+(centres+.5)*domain.cell_size_m
@@ -156,12 +151,18 @@ def _propose_contact(domain, model, *, query_id, world_from_place_box,
     else:
         proposals = [] if previous_centres else [preferred]
     checked = 0
+    best = None
     for point in proposals[:max_center_checks]:
         checked += 1
-        if check_observed_contact_footprint(domain,model,_contact_matrix(domain,point,yaw)).contained:
+        coverage = check_observed_contact_footprint(domain,model,_contact_matrix(domain,point,yaw))
+        if coverage.contained:
             return ContactProposal(query_id,tuple(float(v) for v in point),yaw,checked,
                                    'OBSERVED_FOOTPRINT_PROPOSAL')
-    return ContactProposal(query_id,(),yaw,checked,'CONTACT_CENTRE_SEARCH_INCOMPLETE')
+        if coverage.invalid_cell_count and (best is None or coverage.invalid_cell_count < best[0]):
+            best = (coverage.invalid_cell_count,point)
+    probe = (unresolved_probe(domain,model,query_id,best[1],yaw,vertices+best[1])
+             if best is not None else None)
+    return ContactProposal(query_id,(),yaw,checked,'CONTACT_CENTRE_SEARCH_INCOMPLETE',probe)
 
 
 def _rotation_x(transform):

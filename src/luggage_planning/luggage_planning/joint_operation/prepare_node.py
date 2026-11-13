@@ -423,6 +423,7 @@ class JointOperationPrepareNode(Node):
     def _prepare(self,request,response):
         from luggage_msgs.msg import JointOperationPlanV2
         started = time.monotonic();response.success = False;response.plan = JointOperationPlanV2()
+        response.unresolved_contacts = []
         issued_plan = None
         observed = None
         map_source = None
@@ -526,6 +527,7 @@ class JointOperationPrepareNode(Node):
                 issued_plan = operation_plan_from_message(response.plan,identity,response.plan.plan_digest)
         except Exception as error:
             response.success = False;response.plan = JointOperationPlanV2()
+            response.unresolved_contacts = []
             response.reason = 'PREPARATION_REFUSED:'+type(error).__name__+':'+str(error)
         finally:
             core_trace = json.loads(response.trace_json)
@@ -536,6 +538,7 @@ class JointOperationPrepareNode(Node):
                 # strand the ROS request by escaping from the service callback.
                 response.success = False;response.plan = JointOperationPlanV2()
                 response.reason = 'PREPARATION_EVIDENCE_FAILED:'+type(error).__name__
+                response.unresolved_contacts = []
                 self.get_logger().error(response.reason+':'+str(error))
             else:
                 if response.success:

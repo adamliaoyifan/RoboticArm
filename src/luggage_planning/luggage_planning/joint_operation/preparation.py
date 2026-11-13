@@ -63,12 +63,15 @@ class JointOperationPreparation:
         began = self.clock()
         response.success,response.reason = False,'SEARCH_INCOMPLETE'
         response.plan = JointOperationPlanV2()
+        response.unresolved_contacts = []
+        unresolved = []
         trace = [('atlas','QUALIFIED_PROPOSALS' if self.atlas else self.atlas_unavailable_reason)]
         search_evidence = PreparationSearchEvidence(inputs.domain)
         timing = StageTimings('candidate_preparation', trace, clock=self.clock)
         def stopped(): return cancelled() or self.clock() >= deadline
         def finish(reason):
             response.reason = reason
+            response.unresolved_contacts = unresolved if reason == 'SEARCH_INCOMPLETE' else []
             trace.append(('preparation_search_evidence',search_evidence.record(reason)))
             response.trace_json = json.dumps(trace,separators=(',',':'),allow_nan=False)
             response.elapsed_s = max(0.,self.clock()-began)
@@ -116,6 +119,9 @@ class JointOperationPreparation:
                             if proposal is None:continue
                             search_evidence.proposal(proposal)
                             trace.append((proposal.query_id,proposal.reason,proposal.checked_centres))
+                            if proposal.unresolved_probe is not None:
+                                unresolved.append(proposal.unresolved_probe.to_message(placement,snapshot,
+                                    request.request_id,proposal.checked_centres))
                             if proposal.reason == 'OBSERVED_FOOTPRINT_PROPOSAL':proposed.append(proposal)
                         if not proposed:break
                         trace.append(('contact_round',placement.slot_id,contact_round,

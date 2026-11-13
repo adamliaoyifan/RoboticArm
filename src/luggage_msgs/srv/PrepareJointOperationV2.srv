@@ -31,3 +31,5 @@ string reason
 luggage_msgs/JointOperationPlanV2 plan
 string trace_json
 float64 elapsed_s
+# Only SEARCH_INCOMPLETE may carry these; not permission to observe or grasp.
+luggage_msgs/SuctionSupportProbeV2[] unresolved_contacts

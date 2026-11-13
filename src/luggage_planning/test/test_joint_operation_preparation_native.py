@@ -211,6 +211,7 @@ def test_generated_prepare_rpc_returns_whole_certified_plan(prepare_stack):
     result=prepare_stack.call(copy.deepcopy(prepare_stack.request))
     assert result.success,result.reason+' '+result.trace_json
     assert result.reason=='PLAN_READY' and len(result.plan.legs)==6 and len(result.plan.barriers)==2
+    assert not result.unresolved_contacts
     assert result.elapsed_s<=prepare_stack.request.budget_s
     rounds=[row for row in json.loads(result.trace_json) if row[0]=='contact_round']
     assert rounds and all(row[2]==0 for row in rounds)
@@ -279,15 +280,21 @@ def test_prepare_search_receipts_distinguish_support_quality_and_transport(prepa
         assert record['domain_sha256']==domain.digest()
         assert record['native_candidates_yielded']==0
         if fault=='unproven_support':
+            assert result.unresolved_contacts
+            assert all(p.domain_sha256==domain.digest() and p.contact_model_hash==domain.contact_model_hash
+                and p.unproven_cell_count>0 and p.placement_slot_id for p in result.unresolved_contacts)
+            assert all(p.placement.pose==request.slots[0].pose for p in result.unresolved_contacts)
             assert record['supported_cells']==0
             assert record['unproven_cells']==len(domain.support)
             assert record['furthest_stage']=='CONTACT_PROPOSAL'
             assert record['proposals_accepted']==record['quality_batches_complete']==record['quality_batches_incomplete']==0
         elif fault=='rough_quality':
+            assert not result.unresolved_contacts
             assert record['furthest_stage']=='DIRECTED_QUALITY'
             assert record['quality_batches_complete']>0 and record['quality_contacts_refused']>0
             assert record['quality_batches_incomplete']==record['quality_contacts_accepted']==0
         else:
+            assert not result.unresolved_contacts
             assert record['furthest_stage']=='DIRECTED_QUALITY'
             assert record['quality_batches_incomplete']>0
             assert record['quality_batches_complete']==record['quality_contacts_refused']==0
@@ -444,6 +451,7 @@ def test_invalid_prepare_inputs_return_inactive_plan(prepare_stack,damage):
     try:
         result=prepare_stack.call(request)
         assert not result.success and not result.plan.legs and not result.plan.barriers
+        assert not result.unresolved_contacts
     finally:
         prepare_stack.quality.replace_context(prepare_stack.quality_context)
 
@@ -535,3 +543,24 @@ def test_one_short_global_deadline_returns_no_partial_plan(prepare_stack):
     request=copy.deepcopy(prepare_stack.request);request.budget_s=.001
     result=prepare_stack.call(request)
     assert not result.success and not result.plan.legs and not result.plan.barriers
+    assert not result.unresolved_contacts
+
+
+def test_native_endpoint_failure_with_full_support_does_not_request_observation(prepare_stack):
+    from rclpy.serialization import serialize_message
+    f=prepare_stack;endpoint=f.root.preparation.planner.endpoints;original=endpoint.solve
+    directory=f.directory/'native_failure_without_view';directory.mkdir()
+    def refused(candidate,**kwargs):
+        actual=original(candidate,**kwargs)
+        (directory/'injection.json').write_text(json.dumps(dict(actual_reason=actual.reason,
+            injected_reason='LOCAL_PATHS_REFUSED',scope='test-only endpoint refusal after actual native RPC')))
+        return replace(actual,complete=False,reason='LOCAL_PATHS_REFUSED',pick_branches=(),place_branches=())
+    endpoint.solve=refused
+    try:
+        request=copy.deepcopy(f.request);request.request_id+='-endpoint-refused'
+        result=f.call(request)
+        (directory/'response.cdr').write_bytes(serialize_message(result))
+        assert not result.success and result.reason=='SEARCH_INCOMPLETE',result.reason
+        assert _search_evidence(result)['native_candidates_yielded']>0
+        assert not result.unresolved_contacts
+    finally:endpoint.solve=original
