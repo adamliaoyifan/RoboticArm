@@ -67,7 +67,7 @@ class DepthDropoutPort:
         except Exception as error:
             self._capture_error(error)
 
-    def _emit(self, message, transform, reason):
+    def _emit(self, message, transform, reason, *, publish=True):
         before = np.frombuffer(bytes(message.data), dtype='<u2').reshape(message.height, message.width)
         after = before
         effect = dict(active=False, reason=reason, changed_pixels=0)
@@ -81,13 +81,15 @@ class DepthDropoutPort:
             except ValueError as error:
                 effect['reason'] = str(error)
         message.data = after.tobytes()
+        effect['published'] = publish
+        if publish:
+            self.publish(message)
         # Capture failure cannot turn a diagnostic failure into a different sensor workload.
         try:
             self.evidence.record(Time.from_msg(message.header.stamp).nanoseconds,
                                  message.header.frame_id, before, after, effect)
         except Exception as error:
             self._capture_error(error)
-        self.publish(message)
 
     def close(self):
         if self.closed:
@@ -95,7 +97,9 @@ class DepthDropoutPort:
         self.closed = True
         self.timer.cancel()
         while self.pending:
-            self._emit(self.pending.popleft()[0], None, 'TEARDOWN_PENDING_TF')
+            # rclpy's signal handler may already have shut down this context.
+            # Preserve the unsubmitted frame as such; publishing cannot recover it.
+            self._emit(self.pending.popleft()[0], None, 'TEARDOWN_PENDING_TF', publish=False)
         if self.errors:
             self.evidence.missing.extend(self.errors[:16])
         self.evidence.close()

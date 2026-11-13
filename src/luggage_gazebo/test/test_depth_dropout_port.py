@@ -53,7 +53,7 @@ def actual_node(case_archive,monkeypatch):
         yield create
     finally:
         for node in nodes:node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():rclpy.shutdown()
 
 
 def image(stamp):
@@ -129,3 +129,13 @@ def test_diagnostic_capture_failure_does_not_change_injected_image(actual_node,c
     port.close()
     summary=json.loads((case_archive.directory/'fixture/summary.json').read_text())
     assert not summary['complete'] and any('capture failure' in s for s in summary['missing'])
+
+
+def test_pending_teardown_after_context_shutdown_writes_summary_without_publishing(actual_node,case_archive):
+    node,callback,published,_=actual_node()
+    callback(image(1));assert len(node._fixture.pending)==1
+    rclpy.shutdown();node.destroy_node()
+    summary=json.loads((case_archive.directory/'fixture/summary.json').read_text())
+    trace=[json.loads(line) for line in (case_archive.directory/'fixture/trace.jsonl').read_text().splitlines()]
+    assert not published and summary['counts']['TEARDOWN_PENDING_TF']==1
+    assert len(trace)==1 and not trace[0]['published']
