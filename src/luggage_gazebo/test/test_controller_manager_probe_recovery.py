@@ -98,12 +98,18 @@ def test_actual_held_response_and_independent_manager(implementation,scenario,tm
 
 def test_never_responding_retries_share_one_budget(tmp_path):
     module=load_watchdog('current')
+    directory=Path(os.environ.get('LOADING_STARTUP_RECOVERY_EVIDENCE',str(tmp_path)))/'never_responding'
+    directory.mkdir(parents=True,exist_ok=False)
     context=rclpy.context.Context();rclpy.init(context=context,domain_id=177)
     owner=rclpy.create_node('silent_probe_owner',context=context)
     probe=rclpy.create_node('silent_probe_client',context=context)
     name='/silent_recovery/list_controllers'
     owner.create_service(ListControllers,name,lambda request,response:response)
     records=[];outcome=None;clients=[]
+    def record(label,message):
+        raw=serialize_message(message);filename=label+'.cdr'
+        (directory/filename).write_bytes(raw)
+        records.append(dict(file=filename,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest()))
     create=probe.create_client
     def capture_client(*args,**kwargs):
         client=create(*args,**kwargs);clients.append(client);return client
@@ -113,16 +119,16 @@ def test_never_responding_retries_share_one_budget(tmp_path):
         while not any(n==name for n,_ in probe.get_service_names_and_types()):
             assert time.monotonic()<until;time.sleep(.01)
         outcome=module.wait_for_controller_response(probe,name,.6,retry_interval_sec=.1,
-            recorder=lambda label,message:records.append(label))
+            recorder=record)
         assert not outcome['ok'] and outcome['reason']=='CONTROLLER_MANAGER_RESPONSE_TIMEOUT'
         assert outcome['elapsed_s']<1.1 and 1<=outcome['attempt_count']<=6
         assert len(records)==outcome['attempt_count']
         assert all(not c._pending_requests for c in clients)
     finally:
         probe.destroy_node();owner.destroy_node();context.try_shutdown()
-        directory=Path(os.environ.get('LOADING_STARTUP_RECOVERY_EVIDENCE',str(tmp_path)))/'never_responding'
-        directory.mkdir(parents=True,exist_ok=False)
-        (directory/'result.json').write_text(json.dumps(dict(outcome=outcome,labels=records,worker_stopped=True),indent=2)+'\n')
+        (directory/'result.json').write_text(json.dumps(dict(outcome=outcome,records=records,
+            pending_requests_after=0 if all(not c._pending_requests for c in clients) else None,
+            worker_stopped=True),indent=2)+'\n')
 
 
 @pytest.mark.parametrize('interval',[0.,-1.,float('inf'),float('nan')])
