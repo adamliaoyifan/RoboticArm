@@ -1,0 +1,77 @@
+{
+  "observations": [
+    {
+      "file": "0028_top_domain.cdr",
+      "stamp_ns": 14718000000,
+      "box_id": "detected_box",
+      "instance_id": "pickup_box_0001_carryon",
+      "generation": 2,
+      "dimensions_wdh": [
+        0.49496407997458913,
+        0.35936183022929563,
+        0.24717894808267626
+      ],
+      "valid": true,
+      "reason": "DIRECTLY_OBSERVED",
+      "domain_sha256": "b7af636f2834af00d71a0edcbdf80fd8fea2c49d3b9f370b7e29f5a21edcf95a",
+      "estimate_minus_observable_reference_mm": [
+        -20.922122479977823,
+        -30.676570659147362,
+        9.716151811828944
+      ],
+      "estimate_minus_collision_outer_aabb_mm": [
+        -55.03592002541091,
+        -40.638169770704394,
+        -2.821051917323736
+      ]
+    },
+    {
+      "file": "0063_submit_top_domain.cdr",
+      "stamp_ns": 16434000000,
+      "box_id": "detected_box",
+      "instance_id": "pickup_box_0001_carryon",
+      "generation": 2,
+      "dimensions_wdh": [
+        0.49496404329541793,
+        0.3614696204177787,
+        0.2471771834556038
+      ],
+      "valid": true,
+      "reason": "DIRECTLY_OBSERVED",
+      "domain_sha256": "69c28a0526499b292e3e602b89a1647e6bf8ea5cc9792ea8e7b29d23693ce411",
+      "estimate_minus_observable_reference_mm": [
+        -20.92215915914902,
+        -28.5687804706643,
+        9.714387184756479
+      ],
+      "estimate_minus_collision_outer_aabb_mm": [
+        -55.03595670458211,
+        -38.53037958222133,
+        -2.8228165443962006
+      ]
+    }
+  ],
+  "delta_new_minus_old_mm": [
+    -3.667917120031561e-05,
+    2.1077901884830608,
+    -0.0017646270724647195
+  ],
+  "delta_relative_percent": [
+    -7.410471321918688e-06,
+    0.5865370251309543,
+    -0.0007139067004502698
+  ],
+  "time_separation_s": 1.716,
+  "scope": "Observed estimate change of same static physical box; not absolute measurement error.",
+  "observable_reference_wdh_m": [
+    0.515886202454567,
+    0.390038400888443,
+    0.23746279627084732
+  ],
+  "observable_reference_semantics": "STL-derived lid-plane XY extent and lid-plane-to-AABB-bottom height; not full collision dimensions.",
+  "sim_collision_outer_aabb_wdh_m": [
+    0.55,
+    0.4,
+    0.25
+  ]
+}

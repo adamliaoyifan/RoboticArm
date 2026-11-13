@@ -1,0 +1,40 @@
+{
+  "scope": "Post-acceptance correction of reference-size semantics; no online code or scored witness changed.",
+  "observed_refresh_evidence": "../diagnostic_53/dimension_refresh_comparison.json",
+  "previous_audit": "acceptance_audit.json",
+  "previous_reference": "SpawnNextBox.box is observable lid reference, not full physical collision dimensions.",
+  "corrected_reference": "All 40 vertices of actual five box collision solids in archived released_physical.sdf, with local collision poses applied.",
+  "boxes": [
+    {
+      "instance": "pickup_box_0001_carryon",
+      "collision_dimensions": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "sample_count": 19,
+      "outside_samples": 0
+    },
+    {
+      "instance": "pickup_box_0002_carryon",
+      "collision_dimensions": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "sample_count": 10,
+      "outside_samples": 0
+    },
+    {
+      "instance": "pickup_box_0003_carryon",
+      "collision_dimensions": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "sample_count": 14,
+      "outside_samples": 0
+    }
+  ],
+  "conclusion": "Corrected physical-collision containment samples all pass; earlier v4 physical-dimensions wording was incorrect. No hardware accuracy claim."
+}

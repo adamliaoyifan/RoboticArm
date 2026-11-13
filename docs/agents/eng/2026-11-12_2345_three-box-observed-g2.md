@@ -1202,3 +1202,64 @@ Evidence:
 - docs/status/evidence/three_box_observed/g2/diagnostic_54/final_o_native.png
 - docs/status/evidence/three_box_observed/g2/diagnostic_54/payload_containment_eval_v4.json
 - docs/status/evidence/three_box_observed/g2/REVIEW_10H.md
+
+
+## User follow-up: precision and geometry-update review -- 2026-11-13T09:50+08:00
+
+Read-only historical replay, no new live run or production behavior change.
+Diagnostic53 original/submit SuctionTopDomain observations are1.716s apart.
+WDH old[.494964079975,.359361830229,.247178948083], new
+[.494964043295,.361469620418,.247177183456]m. Delta[-.00003668,
+2.10779019,-.00176463]mm; depth+.586537%. It crosses.36m,18->19 cells
+at2cm, shifting enumeration-centre parity1cm. Current admission also requires
+same-pose1e-8m membership in a regenerated finite target set. Frozen same-
+measurement selection repaired consistency only, not calibrated temporal geometry.
+
+Round all8 diagnostic52 floor endpoints to.1mm in final container coordinates:
+all remain layer0, before and after. Domain includes exact floor; raw endpoint
+hit is still admitted. Hence numerical rounding alone does not fix structure-
+surface semantics. Existing O already uses official OctoMap hit/miss logodds;
+repeated biased hits reinforce the artifact, so another vote layer alone is no fix.
+
+Important correction: pickup spawner _gt_size explicitly reports mesh observable
+lid XY and lid-to-bottom height, NOT full collision AABB. Frozen53 source hashes
+match inspected source. Observable ref[.515886202455,.390038400888,.237462796271]m.
+Fresh observation minus ref[-20.922159,-28.568780,+9.714387]mm. Actual full SDF
+collision AABB .55x.40x.25m is another distinct semantic reference. Two-frame
+variation is not absolute accuracy; source model itself is tapered/recessed.
+Prior containment_v4 mislabeled observable reference as physical dimensions.
+Add v5, actual all5 collision solids/40 vertices and their local poses. Same saved
+54 loaded windows19/10/14 samples,0 outside each; original acceptance untouched,
+supplement documents corrected scope. Closest sampled axis slack~1.25mm is not a
+calibrated hardware clearance. This correction does not change observed three-box
+physical completion or introduce physical truth into online consumers.
+
+Research/recommendation, NOT implemented: acquisition TF/deskew plus quality
+filtering; measured structural plane association with uncertainty, preserving
+static ULD collision and terminating floor rays; ambiguous returns remain unknown
+or require reobserve, never blanket floor-height deletion. For static same-box
+observations use bounded robust multi-frame estimation, distinct observed seal
+patch/body extent/conservative collision envelope, and versioned per-operation
+frozen geometry. Validate selected poses by actual shared geometric predicates
+when dimensions change rather than target-set membership; that future admission
+change requires an explicit architecture revision. Thresholds need measured
+repeatability and independent reference bias, not hardcoded size-change deadbands.
+Autoware official preprocessing, ground segmentation and object tracker support
+these general patterns. Zivid filter docs, ifm O3D dimensioning and RealSense DWS
+show available approaches and distinguish precision/accuracy/working conditions;
+none proves our D555/LiDAR hardware accuracy or is an automatic drop-in solution.
+
+Evidence:
+- docs/status/evidence/three_box_observed/g2/diagnostic_53/dimension_refresh_comparison.json
+- docs/status/evidence/three_box_observed/g2/diagnostic_52/floor_rounding_review.json
+- docs/status/evidence/three_box_observed/g2/diagnostic_54/acceptance_supplement_dimensions.json
+- docs/status/evidence/three_box_observed/g2/diagnostic_54/payload_containment_eval_v5.json
+
+Primary references for this follow-up:
+- https://docs.autoware.org/main/design/autoware-architecture-v1/components/sensing/data-types/point-cloud/
+- https://autowarefoundation.github.io/autoware_universe/main/perception/autoware_ground_segmentation/docs/ransac-ground-filter/
+- https://autowarefoundation.github.io/autoware_universe/main/perception/autoware_multi_object_tracker/
+- https://www.livoxtech.com/cn/mid-360/specs
+- https://support.zivid.com/en/v2.4/academy/camera/capturing-high-quality-point-clouds/adjusting-filters.html
+- https://dev.realsenseai.com/docs/dimensional-weight-software-dws-datasheet/
+- https://media.ifm.com/dam/47e63ab7-4842-43c6-9df0-4d183897acab/Original/O3D314-01_EN-GB.pdf
