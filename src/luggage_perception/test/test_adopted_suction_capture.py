@@ -51,7 +51,7 @@ def adopted(case_archive):
                                     lifetime_s=10., clock=lambda:0.)
     handler = FrozenSuctionService(store, context_provider=lambda:current.context,
         model_provider=lambda:current.context._model,
-        on_retained=lambda domain:detector.LuggageDetector._capture_retained_suction_input(node, domain))
+        on_retained=lambda domain:detector.LuggageDetector._capture_selected_suction_input(node, domain))
     count = [0]
 
     def stage(stamp):

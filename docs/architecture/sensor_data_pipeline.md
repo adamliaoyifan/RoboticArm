@@ -146,9 +146,12 @@ introduced by this interface. Active views require a separate decision-relevant
 gap and complete robot motion validation.
 
 Optional exact evaluator-input diagnostics stage a bounded frame ring. Successful
-frozen-observation retention pins the adopted domain's instance, generation and
-integer acquisition stamp. Read-only detection queries do not spend capture
-slots. Retention checks deduplicate the same stamp; they do not renew or select
+frozen-observation retention and successful explicit-domain pickup-view reads
+pin the consumed domain's instance, generation and integer acquisition stamp.
+The view read pins before downstream association can refuse, without creating
+quality retention or granting a match. Failed/revoked view reads never pin.
+Read-only detection queries do not spend capture slots. Retention and bound
+view checks deduplicate the same stamp; they do not renew or select
 a newer acquisition. Missing exact staged inputs or exhausted diagnostic capacity
 are reported without substituting frames or changing ordinary retention,
 quality or planning results. Diagnostic I/O failures remain evidence failures.

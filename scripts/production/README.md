@@ -42,7 +42,9 @@ inputs make the diagnostic capture incomplete; an operation's own Action result
 remains separately retained. Startup without a selected pickup is
 `NOT_EVALUATED`. This optional capture has overhead and is not a timing benchmark.
 Exact input slots are selected when planning successfully retains a frozen
-observation. Read-only detection/current-source checks do not spend slots.
+observation or reads an explicitly named pickup view. A post-view acquisition
+is therefore preserved even if subsequent association refuses. Read-only
+detection checks do not spend slots;bound view checks deduplicate their stamp.
 Repeated retention checks deduplicate the same acquisition; missing exact staged
 inputs are recorded without choosing another frame or changing the operation.
 Raw selected windows are recorded for every explicitly started observed cycle,

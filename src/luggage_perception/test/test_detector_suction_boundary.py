@@ -62,6 +62,6 @@ def test_detection_reads_do_not_select_diagnostic_frames():
         assert result is box and confidence==.9
     assert calls==[] and warnings==[]
     domain=SimpleNamespace(instance_id='selected-box',generation=7,stamp_ns=123456789123)
-    module.LuggageDetector._capture_retained_suction_input(fake,domain)
+    module.LuggageDetector._capture_selected_suction_input(fake,domain)
     assert calls==[('selected-box',7,123456789123)]
     assert warnings and 'exact_input_missing' in warnings[0]

@@ -740,12 +740,13 @@ class LuggageDetector(Node):
                 context_provider=self._current_directed_suction_context,
                 context_lookup=self._current_directed_suction_context,
                 model_provider=lambda:self._suction_evaluator.contact_model,
-                on_retained=self._capture_retained_suction_input)
+                on_retained=self._capture_selected_suction_input)
             from luggage_msgs.srv import GetPickupViewEvidenceV2
             from luggage_perception.pickup_view_service import PickupViewService
             self._pickup_view_service=PickupViewService(
                 context_lookup=self._current_directed_suction_context,
-                frozen_context_lookup=self._frozen_suction_service.pickup_context)
+                frozen_context_lookup=self._frozen_suction_service.pickup_context,
+                on_read=self._capture_selected_suction_input)
             self._pickup_view_ros_service=self.create_service(GetPickupViewEvidenceV2,
                 '/luggage/get_pickup_view_evidence_v2',self._pickup_view_service.get,
                 callback_group=self._group)
@@ -2338,8 +2339,8 @@ class LuggageDetector(Node):
         self._last_failure_reason = "ok"
         return frame.box, float(frame.pca_confidence)
 
-    def _capture_retained_suction_input(self, domain):
-        """Pin exact evaluator inputs only when planning adopts this acquisition."""
+    def _capture_selected_suction_input(self, domain):
+        """Pin the exact acquisition consumed by retention or a named view read."""
         capture = getattr(self, '_suction_input_capture', None)
         if capture is not None:
             try:

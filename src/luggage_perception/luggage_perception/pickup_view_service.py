@@ -1,4 +1,5 @@
 """Read-only exact-source camera evidence port; no latest-frame substitutions."""
+import logging
 import numpy as np
 
 from luggage_perception.pickup_view_evidence import (
@@ -99,9 +100,10 @@ def _association_from_message(message):
 
 
 class PickupViewService:
-    def __init__(self, *, context_lookup, frozen_context_lookup=None):
+    def __init__(self, *, context_lookup, frozen_context_lookup=None, on_read=None):
         self.context_lookup=context_lookup
         self.frozen_context_lookup=frozen_context_lookup
+        self.on_read=on_read
 
     def get(self, request, response):
         from luggage_msgs.msg import PickupViewEvidenceV2,FrozenSuctionObservationV2
@@ -135,4 +137,11 @@ class PickupViewService:
             response.success,response.reason=True,'PICKUP_VIEW_EVIDENCE_AVAILABLE'
         except (AttributeError,TypeError,ValueError,OverflowError) as error:
             response.reason='PICKUP_VIEW_REFUSED:'+type(error).__name__+':'+str(error)
+        if response.success and self.on_read is not None:
+            try:
+                self.on_read(context.domain)
+            except Exception as error:
+                # Diagnostic selection must not turn a valid evidence read into
+                # a different observation, retention or planning decision.
+                logging.getLogger(__name__).warning('selected view input capture failed: %s', error)
         return response
