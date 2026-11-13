@@ -3172,3 +3172,121 @@ r2矩阵（revision `a9d007d7`，§22修订后）42/42单位完成，审计PASS(
 - 遗留：UPPER-PRIOR-PHYSICS（原尺寸+600×400×250两案例闭环）待领取；
   用户已同意的GEN2（碰撞感知预演表+候选区间化+枚举vs预演对照）在物理任务
   之后排期；正式MOTION-PHYSICS G12 gen2仍open。
+
+
+## 22. Reuse elfin_e2e PersistentPlannerSession (user confirmed)
+
+Development branch `research/uld-upper-layer-curobo-g1` rebased from5d0d31d7 onto
+frozen masterd6e2a276e6268a295bd033a9ab80af039518ac53; rebased HEADea6b6562.
+Original Claude-owned worktree and its cleanup remain unchanged. Sole live plan
+stays here; evidence/coordination stay primary-only. Master's offline_ik package
+migration requires five import updates. OMPL remains the default backend.
+
+User confirmed PersistentPlannerSession and explicitly deferred Python runtime
+setup. Reuse the existing implementation in elfin_e2e, rather than building a
+second sphere fitter, planner or geometry owner. The earlier standalone GPU
+prototype was removed; its failed cases and replay source remain primary-only
+in `curobo_backend_g1/retired_prototype/`. None was source-certified success.
+
+### Interface and ownership
+
+- `path_planning.joint_path` dispatches only opt-in free-joint transfers to
+  `curobo_backend.joint_path(scene,start_q,goal_q,config,contact_tool)`.
+  Attached/sealed transfers are included; existing constrained Cartesian and
+  pushing stages retain their source planner. `contact_tool=True` means a seal,
+  not permission to omit the carried box.
+- `curobo_scene.make_request` exports every existing source world object in
+  **elfin_base_link**, including the hollow ULD mesh and any released payload.
+  Exact box recognition preserves the upstream pedestal/base mount mask;
+  arbitrary meshes never become their bounding boxes. The source ULD mesh is not
+  watertight; preserve all6000vertices/2000triangles as the existing upstream
+  non-solid triangle mesh schema (`solid=False`), rather than declaring a closed
+  solid or filling the cavity. The failing schema input and diagnostics are saved.
+  Current grasp supplies
+  TCP-from-box; final and start goals remain source joint angles in radians.
+- A private worker uses external RobotAssets, ExecutionProfile and
+  PersistentPlannerSession with RRT and inverse dynamics disabled. Existing
+  `update` owns the world, attached geometry, contact masks and captured buffers.
+  The public `session.planner.plan_cspace` preserves the selected IK endpoint;
+  upstream `successful_positions` excludes failures and padded output.
+  Current source collision bytes/origins/scales, fixed kinematics, limits and
+  joint order must match the external model; FK must agree at both endpoints
+  within0.1mm/0.01deg. Source changes after request construction reject.
+- One worker belongs to one FullArmScene. It is bounded by the existing attempt
+  deadline, killed on timeout/parent death, and recreated if Python or external
+  repo changes. One upstream session is reused while model/config/capacity stay
+  compatible; actual world/payload updates go through the existing owner.
+- GPU output is a proposal. Restore float32 endpoints only within1e-5rad, then
+  check source limits/states, optional configured effort screening and complete
+  source FCL interval certificates. Existing stage retiming and controller
+  interpolation certification still decide executability. GPU timing is not
+  executed. Explicit dependency/identity/planning failures; no implicit fallback
+  reported as GPU success.
+
+### Runtime configuration
+
+Hot-loaded UpperConfig/YAML fields, all empty unless explicitly configured:
+
+```yaml
+free_motion_backend: curobo_fast  # default remains ompl
+curobo_python: /path/to/compatible/python
+curobo_e2e_root: /path/to/elfin_e2e
+curobo_assets_manifest: /path/to/input-manifest.json
+path_attempt_budget_s: 300.0  # development cold-start budget; measure separately
+```
+
+The manifest reuses the external schema, requiring only its `assets` object:
+`bundle` (full validated bundle manifest), `urdf`, and `mesh_root` are absolute
+paths. Existing upstream loader validates model approval/derivative identities;
+we do not manufacture a replacement approval or disable its checks.
+Upstream currently requires cuRobo8991ec140f1f03cca2725118575c857aa3aef70e and
+1095physical spheres. The local older environment and standalone0.9 release
+are not equivalent to this pinned runtime. Runtime setup is deferred by user.
+
+### Asset discovery and verification boundary
+
+Found all1095rows in external
+`training/motion_constraints/model_records/elfin_s20/front-coarsened/component-geometry.csv`.
+All15source collision groups (including two primitive boxes) match current source
+geometry, local origins and scales; no source collision group is missing.
+This does not certify fixed kinematics or full approved volume coverage.
+The table and model identity do not contain the complete parent/grid/proof chain
+required by RobotAssets. The expected reduced-input-manifest is not on this host
+(user confirmed); full validated bundle was not found in external repo, including
+ignored files. Do not present the CSV as a directly loadable RobotAssets bundle.
+
+CPU verification: existing research suite plus behavioral dispatch/default-route,
+source export, exact box recognition, payload/release transform, source geometry
+identity, native collision veto, malformed output, bounded private IPC and
+upstream session reuse/world-update tests. The last test uses real external
+schemas/profile with a fake GPU owner; it is not a CUDA or physics test. Each
+behavior once; no population reliability claim. Run:
+
+```bash
+source /opt/ros/humble/setup.bash
+ELFIN_E2E_ROOT=/path/to/elfin_e2e /tmp/uld-upper-python/bin/python -m unittest discover -s research/uld_upper_layer/tests
+```
+
+A later real smoke uses `curobo_smoke.py --help`: source fixture, active scene_tf,
+actual measured/supplied joint endpoints, explicit Python/external-repo/assets
+manifest and primary-only output. Two accepted cold/warm requests, source FK,
+source intervals and existing controller certificates are required before
+claiming GPU integration. Watchdog300s; preserve failed request/status/raw q,
+config/revision/timing/log before rerun. Setup failures consume no scored trial.
+Speedup, complete upper-placement feasibility and physical execution remain
+not_evaluated. No Gazebo/controller starts in this task.
+
+#### Development boundary dump matrix
+
+| Boundary | T1 / failure trigger | Failure payload | Window / budget | Inspection |
+|---|---|---|---|---|
+| Source export → external schemas | request identity, object counts; schema rejection | lossless request plus topology/winding/volume and exception | one request, ≤32MiB | reuse adapter unittest + saved world_schema_request.json |
+| GPU IPC → source admission | elapsed/reason/endpoints/cold flag; timeout or rejection | exact request, raw output/q, bounded12KiB log tail, source/config hashes | one query, ≤32MiB response; request deadline | curobo_smoke.py with same explicit inputs |
+| Source path → controller certificate | joint interval and controller proof; any veto | returned path/proof and controller interpolation | one failed case, ≤64MiB | same saved request through source certificates |
+
+Total development evidence budget2GiB; retain failed cases, no blind deletion.
+No throughput or physical sample is spent in these setup probes. Capture health
+requires request/output/log identities and replay inputs; missing historical
+package/runtime versions are listed explicitly as replay prerequisites rather
+than falsely reporting a complete replay environment. New runs must write a
+manifest before teardown. Full runtime qualification remains deferred.

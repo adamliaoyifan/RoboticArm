@@ -5,7 +5,7 @@ from scipy.spatial.transform import Rotation,Slerp
 
 
 def cartesian_path(scene,start_q,target_container,config,contact_tool=False,box_motion=None):
-    from luggage_planning.offline_ik import refine_to_pose
+    from luggage_planning.motion.offline_ik import refine_to_pose
     start=scene.container_world@scene.urdf.tcp(start_q,scene.urdf.path_to('suction_contact_frame'))
     target=np.asarray(target_container).reshape(4,4)
     distance=np.linalg.norm(target[:3,3]-start[:3,3])
@@ -44,6 +44,9 @@ def robot_radius(scene):
 
 
 def joint_path(scene,start_q,goal_q,config,contact_tool=False):
+    if config.free_motion_backend=='curobo_fast':
+        from curobo_backend import joint_path as gpu_joint_path
+        return gpu_joint_path(scene,start_q,goal_q,config,contact_tool)
     from ompl import base as ob,geometric as og
     from interval_certificate import certify_joint_intervals
     started=time.monotonic();deadline=started+config.path_attempt_budget_s;active_deadline=deadline

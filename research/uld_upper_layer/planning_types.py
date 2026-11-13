@@ -70,6 +70,11 @@ class UpperConfig:
     prior_query_budget_s: float = 5.
     # Endpoint-barren family demotion limit; 0 keeps the static candidate order.
     family_demote_barren_limit: int = 3
+    # Per-request hot-loaded policy. GPU is a proposal generator, never a certificate.
+    free_motion_backend: str = 'ompl'
+    curobo_python: str = ''
+    curobo_e2e_root: str = ''
+    curobo_assets_manifest: str = ''
 
     def __post_init__(self):
         for field in fields(self):
@@ -78,7 +83,7 @@ class UpperConfig:
                 if not value or not all(math.isfinite(v) for v in value):
                     raise ValueError(f'invalid {field.name}')
             elif isinstance(value, str):
-                if field.name != 'prior_index_path':
+                if field.name not in ('prior_index_path','free_motion_backend','curobo_python','curobo_e2e_root','curobo_assets_manifest'):
                     raise ValueError(f'invalid {field.name}')
             elif not math.isfinite(value) or value < 0:
                 raise ValueError(f'invalid {field.name}')
@@ -86,6 +91,8 @@ class UpperConfig:
             raise ValueError('INVALID_PAYLOAD_EFFORT_POLICY')
         if type(self.prior_enabled) is not bool:
             raise ValueError('INVALID_PRIOR_ENABLE')
+        if self.free_motion_backend not in ('ompl','curobo_fast'):
+            raise ValueError('INVALID_FREE_MOTION_BACKEND')
         if (isinstance(self.prior_branches_per_stage, bool) or not isinstance(self.prior_branches_per_stage, int)
                 or self.prior_branches_per_stage < 1):
             raise ValueError('INVALID_PRIOR_BRANCHES_PER_STAGE')
