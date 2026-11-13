@@ -4,6 +4,13 @@ The Python algorithms live under `luggage_planning/`, grouped by responsibility.
 These folders are not four interchangeable execution modes: prior and atlas are
 inputs to planning; whole-operation and segmented planning have separate entries.
 
+`joint_operation/pickup_recovery.py` owns the bounded node-layer pre-pick
+workflow. It consumes explicit observation-deficit probes, uses the actual
+empty-view Action and runtime continuation, and returns a plan for the existing
+complete-operation consumer. The observed simulation adapter owns its sensor
+joins/map leases in `luggage_gazebo/operation_pickup.py`; it supplies no geometry
+from physics spawn responses. No recovery configuration means no extra views.
+
 ```text
 luggage_planning/
 ├── joint_operation/    complete pick/carry/place preparation and bound execution

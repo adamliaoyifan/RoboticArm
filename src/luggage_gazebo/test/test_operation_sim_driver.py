@@ -43,7 +43,7 @@ def test_prepare_binds_repository_identity_and_releases_lease_on_refusal(monkeyp
     module=driver_module()
     detection=DetectedLuggage(id='measured')
     domain=SuctionTopDomainV2(generation=3,domain_sha256='observed')
-    monkeypatch.setattr(module,'wait_observed_detection',lambda *a,**k:(detection,domain))
+    monkeypatch.setattr('luggage_gazebo.operation_pickup.wait_observed_detection',lambda *a,**k:(detection,domain))
     lease=GetSnapshot.Response(status='OK',handle='2:7')
     lease.identity.epoch=2;lease.identity.map_revision=5;lease.identity.geometry_hash='current-geometry'
     lease.validity.epoch=2;lease.validity.generation=4;lease.validity.state='VALID'
@@ -65,8 +65,8 @@ def test_prepare_binds_repository_identity_and_releases_lease_on_refusal(monkeyp
         release_snapshot='release',prepare='prepare',call=call,record=lambda *a:None,
         joint=JointState(name=module.JOINTS,position=[0.]*6),images={},
         launch={'model_sha256':'model','resolved':{'operation_prepare_budget_s':300.}},
-        folder=tmp_path)
-    probe.prepare_from_observation=lambda *a,**kw:module.OperationSimDriver.prepare_from_observation(probe,*a,**kw)
+        folder=tmp_path,pickup_capture=None,pickup_task_id='test-task')
+    probe.pickup_preparation=module.ObservedPickupPreparation(probe)
     if success:module.OperationSimDriver.plan(probe,task_mode=task_mode)
     else:
         with pytest.raises(RuntimeError,match='PREPARE:diagnostic'):
@@ -313,7 +313,7 @@ def test_task_intent_uses_one_observation_and_server_placement_ownership(monkeyp
     domain=SuctionTopDomainV2(box_wdh=[.21,.11,.12]);detection=DetectedLuggage(id='measured')
     acquisitions=[]
     def observe(*a,**kw):acquisitions.append(1);return detection,domain
-    monkeypatch.setattr(module,'wait_observed_detection',observe)
+    monkeypatch.setattr('luggage_gazebo.operation_pickup.wait_observed_detection',observe)
     lease=GetSnapshot.Response(status='OK',handle='pinned');lease.identity.epoch=2;lease.identity.map_revision=5
     lease.validity.epoch=2;lease.validity.generation=4;lease.validity.state='VALID'
     requests=[]
@@ -322,11 +322,17 @@ def test_task_intent_uses_one_observation_and_server_placement_ownership(monkeyp
         if client=='snapshot':return lease
         if client=='release':requests.append('released');return ReleaseSnapshot.Response(status='OK')
         raise AssertionError(client)
-    def prepare(actual,observed,identity,*,task_mode):
+    def prepare(actual,observed,identity,*,task_mode,deadline=None):
         assert actual is detection and observed is domain
         assert task_mode=='stack' and identity.map_revision==5
-        return 'single_measured_submission'
+        from luggage_planning.joint_operation.pickup_recovery import PickupPreparationAttempt
+        response=PrepareJointOperationV2.Response(success=True)
+        response.plan.request_id='single_measured_submission'
+        return PickupPreparationAttempt(PrepareJointOperationV2.Request(),response,actual,observed)
     probe=SimpleNamespace(detect='detect',domain=domain,images={},validity='validity',snapshot='snapshot',
-        release_snapshot='release',record=lambda *a:None,call=call,prepare_from_observation=prepare)
-    assert module.OperationSimDriver.plan(probe,task_mode='stack')=='single_measured_submission'
+        release_snapshot='release',record=lambda *a:None,call=call,pickup_capture=None,pickup_task_id='test-task')
+    probe.pickup_preparation=module.ObservedPickupPreparation(probe)
+    probe.pickup_preparation.prepare_from_observation=prepare
+    plan,actual,observed=module.OperationSimDriver.plan(probe,task_mode='stack')
+    assert plan.request_id=='single_measured_submission' and actual is detection and observed is domain
     assert acquisitions==[1] and requests==['released']

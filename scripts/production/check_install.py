@@ -52,6 +52,8 @@ MODULES = (
     'luggage_planning.joint_operation.view_information',
     'luggage_planning.joint_operation.view_reprepare',
     'luggage_planning.joint_operation.view_continuation',
+    'luggage_planning.joint_operation.pickup_recovery',
+    'luggage_gazebo.operation_pickup',
     'luggage_msgs.srv._reprepare_after_pickup_view_v2',
     'luggage_msgs.msg._stationary_pickup_policy_v2',
     'luggage_perception.observer_depth',

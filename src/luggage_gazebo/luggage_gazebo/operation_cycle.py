@@ -1,5 +1,6 @@
 """Same observed operation for single-cycle and persistent three-box diagnostics."""
 from luggage_msgs.srv import SpawnNextBox
+import uuid
 
 
 def can_reprepare_before_pick(result):
@@ -12,6 +13,9 @@ def run_observed_cycle(driver, *, task_mode=None, prefix=''):
     def stage(name,call):return driver.stage(prefix+name,call)
     spawned=stage('physics_spawn',lambda:driver.call(driver.spawn,SpawnNextBox.Request(),'physics_spawn',30.))
     if not spawned.success:raise RuntimeError('SPAWN_FAILED')
+    # One task per externally authorized box cycle, including prepare retries.
+    # A changed detector ID never allocates a fresh recovery budget.
+    driver.pickup_task_id = 'pickup-'+uuid.uuid4().hex
     # Spawn response is actuator/eval data, never measured placement input.
     prepare=lambda:driver.plan(task_mode=task_mode)
     plan,detection,domain=stage('prepare',prepare)

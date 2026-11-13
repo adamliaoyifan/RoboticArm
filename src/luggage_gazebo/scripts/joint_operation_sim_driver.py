@@ -39,7 +39,8 @@ from luggage_planning.placement_prior.snapshot import build_private_snapshot, CO
 from luggage_planning.placement_prior.contracts import Transform
 from controller_manager_msgs.srv import ListControllers
 import yaml
-from luggage_gazebo.operation_readiness import wait_active_controllers, wait_observed_detection, wait_static_scene
+from luggage_gazebo.operation_readiness import wait_active_controllers, wait_static_scene
+from luggage_gazebo.operation_pickup import ObservedPickupPreparation
 from luggage_gazebo.observer_failure_capture import ObserverFailureCapture
 from luggage_description.scene_tf_config_utils import load_scene_tf_config, pedestal_enabled, world_transform
 from scipy.spatial.transform import Rotation
@@ -167,6 +168,8 @@ class OperationSimDriver(Node):
         self.observer_rpc=OperationRpc(self.record)
         self.observer=ObserverSnapshotPort(self,configuration=ObserverConfiguration.load(
             owner['geometry_file'],owner['config_file']),call=self.observer_rpc.call,recorder=self.record)
+        self.pickup_task_id = ''
+        self.pickup_preparation = ObservedPickupPreparation(self, getattr(args,'pickup_recovery_config',None))
 
     def capture_sensor(self,topic,cls,message):
         raw=serialize_message(message);kind=cls.__module__+'.'+cls.__name__
@@ -232,15 +235,20 @@ class OperationSimDriver(Node):
         if not done.wait(timeout):raise TimeoutError(reason)
         return value.result()
 
-    def call(self, client, request, name, timeout=10.):
-        if not client.wait_for_service(timeout_sec=10.):raise TimeoutError(name+'_UNAVAILABLE')
+    def call(self, client, request, name, timeout=10., *, deadline=None):
+        ready = 10. if deadline is None else min(10.,max(0.,deadline-time.monotonic()))
+        if not ready or not client.wait_for_service(timeout_sec=ready):raise TimeoutError(name+'_UNAVAILABLE')
         self.record(name+'_request',request)
-        result = self.future(client.call_async(request),timeout,name+'_TIMEOUT')
+        wait = timeout if deadline is None else min(timeout,max(0.,deadline-time.monotonic()))
+        if wait <= 0:raise TimeoutError(name+'_TIMEOUT')
+        result = self.future(client.call_async(request),wait,name+'_TIMEOUT')
         self.record(name+'_response',result)
+        if deadline is not None and time.monotonic()>=deadline:raise TimeoutError(name+'_TIMEOUT')
         return result
 
-    def action(self, client, goal, name, timeout):
-        if not client.wait_for_server(timeout_sec=10.):raise TimeoutError(name+'_UNAVAILABLE')
+    def action(self, client, goal, name, timeout, *, deadline=None):
+        ready = 10. if deadline is None else min(10.,max(0.,deadline-time.monotonic()))
+        if not ready or not client.wait_for_server(timeout_sec=ready):raise TimeoutError(name+'_UNAVAILABLE')
         self.record(name+'_goal',goal)
         options={}
         if name.startswith('execute'):
@@ -250,10 +258,14 @@ class OperationSimDriver(Node):
                         and stage.startswith('post_place_explore:')):
                     self.failure_capture.trigger()
             options['feedback_callback']=feedback
-        handle = self.future(client.send_goal_async(goal,**options),10.,name+'_ADMISSION_TIMEOUT')
+        admission = 10. if deadline is None else min(10.,max(0.,deadline-time.monotonic()))
+        if admission<=0:raise TimeoutError(name+'_ADMISSION_TIMEOUT')
+        handle = self.future(client.send_goal_async(goal,**options),admission,name+'_ADMISSION_TIMEOUT')
         if not handle.accepted:raise RuntimeError(name+'_REJECTED')
         try:
-            wrapped = self.future(handle.get_result_async(),timeout,name+'_RESULT_TIMEOUT')
+            wait = timeout if deadline is None else min(timeout,max(0.,deadline-time.monotonic()))
+            if wait<=0:raise TimeoutError(name+'_RESULT_TIMEOUT')
+            wrapped = self.future(handle.get_result_async(),wait,name+'_RESULT_TIMEOUT')
         except TimeoutError:
             self.future(handle.cancel_goal_async(),5.,name+'_CANCEL_TIMEOUT')
             raise
@@ -398,57 +410,7 @@ class OperationSimDriver(Node):
             raise RuntimeError('OBSERVATION_OCC_CLEANUP_REFUSED')
 
     def plan(self, *, task_mode=None):
-        detection,domain = wait_observed_detection(
-            lambda remaining:self.call(self.detect,DetectLuggage.Request(),'detect',timeout=remaining),
-            lambda:self.domain,deadline=time.monotonic()+30.)
-        self.record('top_domain',domain)
-        if self.pickup_capture is not None:
-            self.pickup_capture_count+=1
-            stamp=domain.header.stamp
-            receipt=self.pickup_capture.write(
-                self.folder/('pickup_acquisition_'+str(self.pickup_capture_count)),
-                stamp.sec*10**9+stamp.nanosec,required_topics=self.pickup_capture_required)
-            self.record('pickup_acquisition_receipt',json.dumps(receipt).encode())
-            self.pickup_capture_active=False
-        for key,message in self.images.items():self.record('detection_'+key,message)
-        validity = self.call(self.validity,GetValidity.Request(),'prepare_validity')
-        # GetValidity records the validity transition; its map_revision is not
-        # the latest repository identity. Pin the actual current snapshot until
-        # prepare has acquired its independent lease of those exact map bytes.
-        lease = self.call(self.snapshot,GetSnapshot.Request(expected_epoch=validity.epoch,
-            exact_revision=False,max_age_ms=1000,allow_stale=False),'prepare_snapshot')
-        if not lease.handle:raise RuntimeError('MAP_SNAPSHOT:'+lease.status)
-        try:
-            admit_response(lease,identity_record(lease.identity),lease.validity.generation)
-            # Placement and contacts share one frozen measured geometry inside
-            # prepare. Do not enumerate on an older acquisition then refresh size.
-            return self.prepare_from_observation(detection,domain,lease.identity,task_mode=task_mode)
-        finally:
-            self.call(self.release_snapshot,ReleaseSnapshot.Request(handle=lease.handle),'release_prepare_snapshot')
-
-    def prepare_from_observation(self,detection,domain,identity,*,slots=(),task_mode=None):
-        joint = self.joint;self.record('prepare_joints',joint)
-        positions = dict(zip(joint.name,joint.position))
-        request = PrepareJointOperationV2.Request(request_id='gazebo-'+str(time.time_ns()),
-            observation_id=domain.domain_sha256,detection=detection,generation=domain.generation,
-            geometry_hash=identity.geometry_hash,expected_map_revision=identity.map_revision,
-            expected_map_epoch=identity.epoch,expected_model_sha256=self.launch['model_sha256'],
-            robot_state_stamp_valid=True,
-            robot_state_stamp_ns=joint.header.stamp.sec*10**9+joint.header.stamp.nanosec,
-            start_joints=[positions[name] for name in JOINTS],candidate_limit=8,
-            placement_task_mode=task_mode or '',
-            budget_s=float(self.launch['resolved']['operation_prepare_budget_s']))
-        from luggage_planning.place.place_service import pose_message
-        request.slots=[pose_message(dict(contract_version=2,kind='pose',frame_id='container_link',length_unit='m',
-            stamp_ns=0,time_basis='scene',scene_revision=self.launch['scene_revision'],request_id=request.request_id,
-            reference='box_center',orientation_semantics='box_axis_pi',position=slot.translation,
-            quaternion_xyzw=slot.quaternion_xyzw)) for slot in slots]
-        prepared = self.call(self.prepare,request,'prepare',timeout=request.budget_s+10.)
-        trace=self.folder/'prepare_trace.json'
-        if trace.exists():trace=self.folder/('prepare_trace_'+request.request_id+'.json')
-        trace.write_text(prepared.trace_json+'\n')
-        if not prepared.success:raise RuntimeError('PREPARE:'+prepared.reason)
-        return prepared.plan,detection,domain
+        return self.pickup_preparation.plan(task_mode=task_mode)
 
     def run(self):
         try:
@@ -539,6 +501,7 @@ def main():
     parser.add_argument('--view-poses',help='Exact model/scene-bound diagnostic observation goals JSON')
     parser.add_argument('--failure-hold-s',type=float,default=0.,
         help='Diagnostic stationary observer capture after a terminal source refusal (0..60 s)')
+    parser.add_argument('--pickup-recovery-config',help='Explicit extra-view limits, camera sampling and association policy JSON; omitted disables views')
     parser.add_argument('--prepick-replans',type=int,default=0,
         help='Explicit bounded new complete plans after terminal pre-pick map/native refusal (0..2)')
     parser.add_argument('--box-count',type=int,default=1,

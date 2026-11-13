@@ -365,6 +365,28 @@ support. Late read-only results are captured in their own evidence scope and
 cannot adopt aliases or issue plans. Sensor acquisition and complete-operation
 dispatch remain caller/orchestration responsibilities; this service never moves.
 
+The observed cycle uses `operation_pickup.ObservedPickupPreparation` and the
+shared `joint_operation.pickup_recovery` workflow. Initial read-only preparation
+releases its O lease before any extra motion. Only exact owner-issued localized
+`SEARCH_INCOMPLETE` probes may cause a view. An explicit optional
+`--pickup-recovery-config` supplies count/time/sampling/association limits;
+absence or zero count disables extra views without rejecting healthy plans.
+These are not calibrated production error defaults. The existing `--start`
+authorization still precedes detection or motion. One task key spans all prepare
+retries for the same box; a detector ID change never creates a new budget. The
+adapter retains the first recovery deadline across those retries, including the
+ordinary fallback; the runtime ledger independently enforces durable limits.
+
+After a successful empty view, the cycle requires a matching Action plan and a
+new exact detection/domain acquisition strictly after actual settling. Runtime
+continuation keeps the original target first. New verified geometry supersedes
+old probes. Count exhaustion may run ordinary preparation on that verified
+observation while time remains, under the same deadline, to try other decidable
+contacts/targets. No-terminal/loaded/uncertain results stop automatic recovery.
+The workflow only returns a bound plan; the normal complete-operation Action
+remains its sole loading-motion consumer. Map-lease/cancel cleanup may finish
+after a deadline but grants no additional planning or motion budget.
+
 The exact-domain pickup-view evidence port optionally retains the original RGB
 image and every candidate reported by that acquisition's detector message,
 including competing and duplicate boxes, plus the selected ROI index. RGB,
