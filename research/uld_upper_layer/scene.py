@@ -187,11 +187,20 @@ def intersecting_triangles(center, half, triangles):
     return hits
 
 
-def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None,contact_profile=None,scene_path=None):
+def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None,contact_profile=None,scene_path=None,pickup_override=None):
     if output.exists() and any(output.iterdir()):
         raise ValueError('output must be new or empty; do not overwrite a previous scene')
     assets = load(repo,scene_path)
     spec = fixture(assets)
+    if pickup_override is not None:
+        size = [float(v) for v in pickup_override['size_m']]
+        mass = float(pickup_override['mass_kg'])
+        if len(size) != 3 or min(size) <= 0 or size[0] < size[1] or mass <= 0:
+            raise ValueError('pickup override needs x>=y>0 dimensions and positive mass')
+        # Only the placed payload changes; lower layers keep the catalog box so
+        # the occupied scene stays identical to the evaluated matrix snapshot.
+        spec['pickup_payload_override'] = dict(size_m=size, mass_kg=mass,
+            source='upper_prior_physics_case_input')
     material=BoxContactMaterial.load(contact_profile)
     spec['contact_material']=asdict(material)
     container_model = assets['scene']['gazebo']['container_model']
@@ -238,10 +247,13 @@ def write_scene(repo, output, physics_plugin=None, vacuum_plugin=None,contact_pr
     # The usual spawner remains a service, so this named test payload is explicit.
     pickup = gazebo_pickup_platform_spawn_pose(assets['scene'])
     platform = assets['scene']['pickup_platform']
-    target = dict(name='upper_layer_payload', size_m=spec['payload']['size_m'],
-                  mass_kg=spec['payload']['mass_kg'],
+    override = spec.get('pickup_payload_override')
+    payload_size = list(override['size_m']) if override else spec['payload']['size_m']
+    payload_mass = override['mass_kg'] if override else spec['payload']['mass_kg']
+    target = dict(name='upper_layer_payload', size_m=payload_size,
+                  mass_kg=payload_mass,
                   pose_world=[pickup['x'], pickup['y'], pickup['z']+platform['size'][2]
-                              +spec['payload']['size_m'][2]/2+.001, 0,0,0])
+                              +payload_size[2]/2+.001, 0,0,0])
     spec['pickup_payload'] = target
     spec['payload_contact_topic']='/upper_layer_payload/contacts'
     world.append(box_model(target, '0.15 0.55 0.85 1',spec['payload_contact_topic'],material=material))
@@ -285,8 +297,17 @@ def main():
     parser.add_argument('--vacuum-plugin',type=Path)
     parser.add_argument('--contact-profile',type=Path)
     parser.add_argument('--scene-config',type=Path)
+    parser.add_argument('--pickup-size',nargs=3,type=float,
+        help='Override only the placed payload box (x y z metres); lower layers keep the catalog box')
+    parser.add_argument('--pickup-mass',type=float,
+        help='Override payload mass kg; required with --pickup-size')
     args = parser.parse_args()
-    spec = write_scene(args.repo.resolve(), args.output.resolve(),args.physics_plugin,args.vacuum_plugin,args.contact_profile,args.scene_config)
+    pickup_override = None
+    if args.pickup_size or args.pickup_mass is not None:
+        if not args.pickup_size or args.pickup_mass is None:
+            parser.error('--pickup-size and --pickup-mass are required together')
+        pickup_override = dict(size_m=args.pickup_size, mass_kg=args.pickup_mass)
+    spec = write_scene(args.repo.resolve(), args.output.resolve(),args.physics_plugin,args.vacuum_plugin,args.contact_profile,args.scene_config,pickup_override)
     print(json.dumps({k:spec[k] for k in ('support_z_m','upper_headroom_m','lower_fill_fraction',
                                           'payload_ceiling_gap_m','suction_panel_depth_from_contact_m')}, indent=2))
     print(f"Scene: {args.output.resolve()} (24 dynamic support boxes; no action commands)")
