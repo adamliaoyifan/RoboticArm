@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from luggage_msgs.msg import DetectionFrame
+from luggage_msgs.msg import DetectionFrame, SuctionTopDomainV2
 from rclpy.serialization import serialize_message
 from sensor_msgs.msg import Image
 
@@ -68,6 +68,11 @@ def capture_fixture(tmp_path):
                             sha256=hashlib.sha256(raw).hexdigest(),acquisition_stamp_ns=stamp))
     (directory/'manifest.json').write_text(json.dumps(dict(records=records,
         acquisition_stamp_ns=stamp,selected_acquisition_complete=True)))
+    domain = SuctionTopDomainV2(header=frame.header, instance_id=frame.instance_id,generation=frame.generation)
+    raw = bytes(serialize_message(domain))
+    (directory.parent/'0000_top_domain.cdr').write_bytes(raw)
+    (directory.parent/'manifest.json').write_text(json.dumps(dict(records=[dict(file='0000_top_domain.cdr',
+        ros_type=type(domain).__module__+'.'+type(domain).__name__,sha256=hashlib.sha256(raw).hexdigest())])))
     return tmp_path/'suction_inputs/case-000', directory
 
 
@@ -120,6 +125,35 @@ def test_no_selected_acquisition_never_claims_a_measured_capture(tmp_path):
     result = audit_selected_inputs(tmp_path)
     assert result['complete'] and result['status'] == 'NOT_EVALUATED'
     assert result['selected_count'] == 0
+
+
+@pytest.mark.parametrize('change',['missing_window','different_stamp','different_instance','duplicate'])
+def test_actual_domain_receipts_expose_missing_windows_and_deduplicate(tmp_path, change):
+    import shutil
+    from rclpy.serialization import deserialize_message
+    _, directory = capture_fixture(tmp_path)
+    driver = directory.parent
+    if change == 'missing_window':
+        shutil.rmtree(directory)
+    else:
+        manifest = json.loads((driver/'manifest.json').read_text())
+        if change in ('different_stamp','different_instance'):
+            domain = deserialize_message((driver/'0000_top_domain.cdr').read_bytes(), SuctionTopDomainV2)
+            if change == 'different_stamp': domain.header.stamp.sec += 1
+            else: domain.instance_id = 'a-different-instance'
+            raw = bytes(serialize_message(domain))
+            (driver/'0000_top_domain.cdr').write_bytes(raw)
+            manifest['records'][0]['sha256'] = hashlib.sha256(raw).hexdigest()
+        else:
+            shutil.copyfile(driver/'0000_top_domain.cdr',driver/'0001_top_domain.cdr')
+            manifest['records'].append(dict(manifest['records'][0],file='0001_top_domain.cdr'))
+        (driver/'manifest.json').write_text(json.dumps(manifest))
+    result = audit_selected_inputs(tmp_path)
+    if change == 'duplicate':
+        assert result['status'] == 'COMPLETE' and result['selected_count'] == 1
+    else:
+        assert result['status'] == 'INCOMPLETE' and not result['complete']
+        assert any(row.get('reason') == 'SELECTED_RAW_ACQUISITION_MISSING' for row in result['selected'])
 
 
 def test_real_runner_finally_tears_down_owned_stub_launch_when_audit_raises(tmp_path, monkeypatch):

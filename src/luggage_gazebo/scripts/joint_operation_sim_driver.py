@@ -97,7 +97,9 @@ class OperationSimDriver(Node):
         self._static_tf_blocks={}
         self._capture_number=1
         self.completed_boxes=[]
-        self.pickup_capture=AcquisitionCapture() if getattr(args,'three_box',False) else None
+        # Every authorized observed cycle needs its selected raw acquisition.
+        # Single-box and multi-box modes share the same preparation lifecycle.
+        self.pickup_capture=AcquisitionCapture() if getattr(args,'start',False) else None
         self.pickup_capture_active=self.pickup_capture is not None
         self.pickup_capture_count=0
         self.pickup_capture_required=(

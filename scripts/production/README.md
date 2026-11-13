@@ -41,3 +41,6 @@ instance/generation/stamp and original depth bytes. Missing or mismatched select
 inputs make the diagnostic capture incomplete; an operation's own Action result
 remains separately retained. Startup without a selected pickup is
 `NOT_EVALUATED`. This optional capture has overhead and is not a timing benchmark.
+Raw selected windows are recorded for every explicitly started observed cycle,
+including single-box runs. The audit also reads actual selected-domain receipts:
+a missing window is incomplete evidence even if no window directory exists.

@@ -25,20 +25,23 @@ def _hash(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _selected_message(directory, manifest, topic):
+def _read_message(directory, row):
     from rclpy.serialization import deserialize_message
-    rows = [row for row in manifest['records'] if row['topic'] == topic
-            and row['acquisition_stamp_ns'] == manifest['acquisition_stamp_ns']]
-    if len(rows) != 1:
-        raise ValueError('SELECTED_INPUT_NOT_UNIQUE:' + topic)
-    row = rows[0]
     raw = (directory / row['file']).read_bytes()
     if row['file'].endswith('.gz'):
         raw = gzip.decompress(raw)
     if hashlib.sha256(raw).hexdigest() != row['sha256']:
-        raise ValueError('SELECTED_CDR_HASH_MISMATCH:' + topic)
+        raise ValueError('SELECTED_CDR_HASH_MISMATCH:' + row.get('topic', row['file']))
     module, name = row['ros_type'].rsplit('.', 1)
     return deserialize_message(raw, getattr(importlib.import_module(module), name))
+
+
+def _selected_message(directory, manifest, topic):
+    rows = [row for row in manifest['records'] if row['topic'] == topic
+            and row['acquisition_stamp_ns'] == manifest['acquisition_stamp_ns']]
+    if len(rows) != 1:
+        raise ValueError('SELECTED_INPUT_NOT_UNIQUE:' + topic)
+    return _read_message(directory, rows[0])
 
 
 def audit_selected_inputs(folder):
@@ -58,6 +61,7 @@ def audit_selected_inputs(folder):
         except (OSError, ValueError) as error:
             invalid.append(dict(file=str(record_path.relative_to(folder)), reason=str(error)))
     selected = []
+    selected_keys = set()
     for manifest_path in sorted((folder / 'driver').glob('pickup_acquisition_*/manifest.json')):
         result = dict(acquisition=str(manifest_path.parent.relative_to(folder)), complete=False)
         try:
@@ -69,6 +73,7 @@ def audit_selected_inputs(folder):
             if int(frame.header.stamp.sec)*10**9+int(frame.header.stamp.nanosec) != stamp:
                 raise ValueError('SELECTED_FRAME_STAMP_MISMATCH')
             identity = (frame.instance_id, int(frame.generation), stamp)
+            selected_keys.add(identity)
             result.update(instance_id=identity[0], generation=identity[1], stamp_ns=stamp)
             matches = [(path, record) for path, record in captured
                        if tuple(record.get('identity', ())) == identity[:2]
@@ -99,6 +104,27 @@ def audit_selected_inputs(folder):
             # Evidence errors cannot escape to skip the simulation owner's teardown.
             result['reason'] = type(error).__name__ + ':' + str(error)
         selected.append(result)
+    # A successful raw directory is not the inventory authority. The actual
+    # selected domain receipts expose windows that were never written at all.
+    driver_manifest = folder / 'driver/manifest.json'
+    expected = set()
+    if driver_manifest.exists():
+        try:
+            rows = json.loads(driver_manifest.read_text())['records']
+            for row in rows:
+                if not row['file'].endswith('_top_domain.cdr'):
+                    continue
+                domain = _read_message(driver_manifest.parent, row)
+                stamp = int(domain.header.stamp.sec)*10**9+int(domain.header.stamp.nanosec)
+                key = (domain.instance_id, int(domain.generation), stamp)
+                if key in expected:
+                    continue
+                expected.add(key)
+                if key not in selected_keys:
+                    selected.append(dict(instance_id=key[0], generation=key[1], stamp_ns=stamp,
+                        complete=False, reason='SELECTED_RAW_ACQUISITION_MISSING'))
+        except Exception as error:
+            invalid.append(dict(file='driver/manifest.json',reason=type(error).__name__+':'+str(error)))
     complete = not invalid and all(row['complete'] for row in selected)
     status = 'INCOMPLETE' if not complete else ('COMPLETE' if selected else 'NOT_EVALUATED')
     return dict(status=status, complete=complete, selected_count=len(selected),
