@@ -231,7 +231,12 @@ def run_unit(matrix_path, evidence, size_id, mode, seed, extra_budget=None):
     request = request_from_record(frozen)
     unit_dir = evidence / 'units' / size_id / f'{mode}_seed{seed}'
     if unit_dir.exists():
-        raise ValueError('UNIT_DIRECTORY_EXISTS: ' + str(unit_dir))
+        if (unit_dir / 'unit_summary.json').is_file():
+            raise ValueError('UNIT_ALREADY_COMPLETE: ' + str(unit_dir))
+        # A unit interrupted without a verdict (pause/watchdog kill) keeps its
+        # partial evidence aside and the rerun starts a fresh directory.
+        partial = unit_dir.parent / (unit_dir.name + '_partial_' + time.strftime('%H%M%S'))
+        unit_dir.rename(partial)
     started = time.monotonic()
     config = derived_configs(matrix)[mode]
     if extra_budget:
