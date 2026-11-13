@@ -1,8 +1,8 @@
 # ULD 上层放置第一版计划
 
-- version: V1-draft
-- date: 2026-11-10
-- status: design-only
+- version: V1-claude-prior-size-handoff
+- date: 2026-11-13
+- status: research-prototype; request-driven nominal physics passed; formal G12 open
 - dispatch_ready: no
 - author: codex
 - base_revision: 5aabe6c9cca21815ed6e6b6346cb652f23aff316
@@ -10,7 +10,17 @@
 - worktree: /tmp/elfin_uld_upper_layer_g1
 - coordination_root: /home/adamliao/work/elfin_humble_ws/docs/agents
 
+> 最新进展：输入驱动接口与完整9阶段实际控制器链已实现，E-EDGE1案例10通过理想平面对齐箱场景的完整名义物理执行和独立审计。正式G12/不规则顶面/真实感知/硬件仍open。早期“只保存计划、不开发”等文字是历史任务记录，已由后续用户开发授权及末尾实验修订取代。
+
 > 当前实验范围以第 16 节 G9 为准：理想输入下的 pick 前联合规划与物理执行；历史修订保留供追溯。PlanningContext 在后续接口中统一称为 PlanningInputs。
+
+## 当前有效执行入口（2026-11-13）
+
+**后续执行以第20节为准**：Claude先接入只读几何/姿态先验，再开展多尺寸配对规划，
+最后运行代表性实际物理闭环。第1—19节中的“不开发”“尚无完整路径”等为历史状态，
+不得作为当前任务范围；历史证据及正式G12未完成事项保留，不由本次接续覆盖。
+当前处于理想输入、平面对齐下层箱场景；真实D555接入/不规则支撑仍排后。
+`dispatch_ready` 顶层字段不代替各子任务线程的派发门：第20节按依赖分别领取。
 
 ## 1. 目标与明确约束
 
@@ -2538,3 +2548,548 @@ push_pre自由转向连接耗尽预算，尚无完整方案。增加源几何推
 再逆向连接到push_pre；自由关节路径必须接到该分支的精确关节状态。
 所有正向时间插值仍重新认证；失败分支记录并回溯，不放宽碰撞规则。
 215项离线行为测试通过。完整物理执行结果继续单列，不以单测替代。
+
+#### 19.44.3 完整名义链及后抓取准入修复
+
+request_measured_search_g12_04与target02_g12_03均产生9阶段完整名义链，
+正向时间轨迹逐段认证通过；随后发现free_box_validation与score_plan
+仍写死12阶段，错误拒绝已抓取入口。改为共享expected_stages契约；
+缺阶段仍拒绝。worker保留外层拒绝原因，避免空diagnostic掩盖入口缺陷。
+对已保存名义链的独立后处理诊断通过自由箱体非接触误差包络，push_pre
+经包络场景重新规划并独立重检；该诊断不作为可执行方案冒充新服务结果。
+后续从原始输入完整重跑规划、包络与评分。整段关节绕圈选择保持源关节
+限位和FK几何等价，正向轨迹仍重新认证，不单独wrap采样点。
+
+#### 19.44.4 水平推入目标一致性
+
+完整评分收尾的接缝模型发现handoff与显式final高度相差2.7e-7m：
+前者由支撑顶面max生成，后者原样保留请求，违反固定朝向水平直线模型。
+修复为显式final的高度/朝向定义整段推压；支撑高差继续只用于接触准入，
+不再改变handoff基准。真实推压面高度范围与非固定抓取TCP亦使用同一箱底。
+增加带3e-7m表面噪声输入的实际trace_push_seams检查；218测试通过。
+三组原始请求完整重跑，旧失败证据保持不变。
+
+#### 19.44.5 实际状态闭环规划入口
+
+三个原始请求（.55m原目标、.55m目标+20mm、.57m理想尺寸变体）均各获得
+1条通过完整评分方案，耗时约497/510/496s，配置目标1条。原目标全臂净空
+下界14.7946mm，payload净空下界6.3741mm，交接面积61.8182%，COM裕量65mm。
+57cm用例不是实测箱体，不计物理覆盖；默认产品目标3条/最少1条未变。
+
+第一次物理重放在下发前被原初态门槛拦截：重抓后关节差.0003016rad
+超过.0001rad，箱体差.2008mm；未执行上层动作，完整失败窗口保存。
+增加replan-live实验入口：同次仿真实际抓取后生成新request，保持原控制器
+目标且持续原生监控，独立进程规划，期间状态漂移仍用原门槛拒绝。只将
+新评分动作在附着planning_hold边界绑定，执行新轨迹，不能重放旧末态。
+抽出只读plan_artifact，统一离线/在线源hash与请求/模型/配置验证。
+220项离线测试通过；在线物理实验单列结果。
+
+#### 19.44.6 实际搬运偏离、源模型努力约束及反馈证据
+
+physical_g12_02同次状态规划与初态复检通过后，实际翻转时payload/取箱平台
+间距4.924mm触发原5mm检查并取消。668个失败窗口样本证明：FK与实际工具
+误差最大.31um，附着关系误差最大.58um；实际关节路径偏离规划轨迹的工具
+位置最大184mm。故不以小幅放宽几何净空掩盖关节执行偏差。
+
+源URDF/实际生成SDF的J5努力限额34Nm、摩擦15Nm、阻尼25Nm/(rad/s)。
+8kg箱体的准静态含摩擦/阻尼需求估计峰值约64.7Nm；这是模型计算，
+不是实测关节力矩。新增可选BoxState.mass_kg和源模型重力/摩擦/阻尼余量
+筛选，质量缺失时启用该筛选必须明确拒绝。公开运行时参数：
+payload_effort_screen_enabled、payload_effort_reserve_nm（5Nm）、
+payload_effort_joint_step_rad（.02rad）、gravity_world_mps2。
+源努力/摩擦限额不修改；模型不包含完整加速度/耦合/接触逆动力学。
+所有阶段记录采样努力筛选，修复自由路径后重检；计时限制阻尼使用预留预算。
+
+carry_collision_margin_m默认10mm（有效值不低于原碰撞门槛），仅自由附着
+搬运额外留量；实际监控仍5mm。约束交接链枚举源限位内等价整圈分支，
+自由搬运不再默认选择会多转一圈的关节表示。
+
+新增控制器命令、reference/feedback/error档案；controller_tracking_error_rad
+默认.01rad可配置，超限或反馈过期拒绝继续运动。两路重复订阅导致过期的
+独立接线实验已保存并修复为最新一帧订阅；capture_g12_02真实抓取抬箱通过，
+最大跟踪误差约.003105rad。保持原1ms原生接触/监控速率与失效窗口。
+
+effort_search_g12_02在额外10mm搬运余量加入前，已通过完整规划、努力筛选、
+误差包络和评分（393.6s）；翻转段30节点/101.45s，总名义311.03s。
+新的physical_g12_03从显式live-request重建状态，计算时自动暂停物理时钟，
+复检/恢复后再下发，防止离线CPU等待消耗600sim/200MB动作实验预算。
+226项测试通过；该轮完整物理结果另行记录，尚无上层物理成功声明。
+
+### 请求链时钟接线验证（2026-11-12，G12继续）
+
+229项离线测试通过，见主工作区request_integration_g12_01/unit_tests26.log。
+physical_g12_03动作前因阻塞clock service导致native积压失败。服务等待
+改为持续泵送监控；独立暂停演练02原始窗口证实PostUpdate在暂停期间
+刷新世界位姿、同一时间戳出现不同值。原生发布器仅在非暂停物理步发布，
+不改变物理动力学/关节/箱体/碰撞。新库独立构建，旧夹具/库不覆盖。
+rehearsal04完成实际抓取保持、暂停19.918s不变、恢复至20.921s，最大
+native步间隔1ms，无重复/丢步。演练仅评估时钟接线，不计上层放置成功。
+physical_g12_04使用scene_pick_start_g12_03及实际抓取状态进行完整联合
+规划与物理执行，结果另记。正式G12及释放54/真实感知/可靠性仍未关闭。
+
+### E-SLOW1 非计分工程验证（G12正式预算不更改）
+
+physical_g12_04从真实抓取状态得到完整1条评分方案（403.02s），
+起步.35s时CONTROLLER_TRACKING_ERROR停止，最大.0100813rad >.01rad。
+原始控制器reference/feedback同戳；各轴沿同方向滞后，速度/位置误差比
+中位9.397/s（8.671..9.643/s），不同于先前J5停滞的失败。不能据此
+声称实际力矩饱和。完整3s原生触发窗口3001样本，capture_complete=true。
+
+修复使用现有运行时joint_speed_scaling=.02，不修改控制器、源执行器或
+.01rad跟踪停止门槛。对相同路径离线重计时名义735.34s；故单独工程
+profile1200sim/3600wall/500MB（预留20MB失效窗口），不计正式G12 seed，
+也不改写G12原600sim/1800wall/200MB验收要求。此profile只测理想输入
+下完整控制器放置能否完成。先从实际抓取状态重新规划，不能重放旧初态。
+
+输入.55x.40x.25m/8kg箱体、24箱密铺支撑、原最终中心位姿和支撑IDs，
+实际post-pick关节及完整抓取变换；COM默认中心/裕量20mm。
+找到1条即可，搜索1800s；实际执行1次，结果是单案例可行性，
+不形成成功率结论。通过须9阶段全部执行、原生每1ms接触不断流、
+全臂/箱体5mm净空（仅合法接触例外）、交接真实支撑>=60%/20mm、
+完整panel悬空适配、解除前真实接触且驻留.1s，解除后退出并稳定3s，
+实际panel面接触后推动、下层位移<=3mm/转角<=.5deg、最终<=5mm/1deg
+并稳定3s、无箱体pose指令、无解除后附着约束残留、全程跟踪<=.01rad。
+每个门槛由源策略和逐阶段/原生/控制器档案计算，无样本记not_evaluated。
+失败保留原始窗口、输入、代码/配置/模型hash及异常后1s物理观测再停栈。
+命令同physical04，改--config effort_slow_config.yaml、--policy
+slow_execution_policy.yaml、--initialize-pick pick_initializer_slow.json；
+新目录request_physical_g12_05，revision06e55835+历史清理删除dirty状态。
+## E-SLOW1第一轮及反馈线程修复
+
+physical05完整规划/评分407.31s通过，名义735.346s；实际搬运37.43s
+最大跟踪误差.00313985rad，明显低于原.01rad门槛。原生流连续1ms，
+native处理最大积压33ms；共享ROS回调队列中的controller反馈过期至
+116ms，CONTROLLER_FEEDBACK_NOT_CURRENT停止。失效窗口/异常后观测
+均完整保留。不得把此结果称为放置成功或源模型饱和证据。
+
+实现独立反馈ROS node/executor线程，采集只读；退出先停线程再关闭
+trace/context，异常进入capture_error，保留100ms年龄门槛。新增实际
+ROS不依赖主线程spin的正/负行为测试。230测试通过(unit_tests28.log)。
+接下来先做60sim-s实际持箱重负载监控接线实验request_feedback_hold_g12_01；
+通过再重跑完整请求，避免未量测接线条件下反复消耗长规划/动作实验。
+
+独立反馈持箱演练request_feedback_hold_g12_01通过60sim-s；11852次
+跟踪检查，最大反馈年龄21ms、最大误差.00268536rad，62029原生步
+最大间隔1ms。manifest完整、owned栈已退出。230测试通过，提交14dad308。
+physical06继续E-SLOW1完整链；正式G12及可靠性仍未关闭。
+
+## 计算吞吐与失效取证修复（6e701373）
+
+physical06完整规划400.806s通过；实际搬运38.71sim-s后native处理积压
+126ms，超过100ms门槛停止。独立反馈最大年龄21ms、跟踪误差.00314rad；
+单次监控回调最大193ms。离线回放200份真实失效前输入（无仿真/指令），
+cProfile计时完整场景平均14ms，原生接触平均.248ms；网格精确距离占
+1.2s/2.985s。采样工具有额外开销，不能直接当无采样实时速度。
+
+06原生窗口前端缺28ms，capture_complete=false如实保留。故障检测
+即触发缓存，新增独立failure_capture_lag_s=1s（不放宽100ms新鲜度），
+行为测试复现额外.1s缓存不完整、1s完整，232测试通过。
+
+新scene_pick_start_g12_04只把墙钟real_time_factor改为.4；1ms积分、
+轨迹仿真秒数、28模型XML、质量/材料/碰撞/支撑门槛全部保持。
+源SDF/fixture/robot_poses和XML一致性报告已保存在paced_*。
+physical07现从实际抓取状态重新规划并执行。E-SLOW1是非计分计算资源
+profile，不形成真机实时性/可靠性结论；正式G12不据此关闭。
+
+## 限速案例07及现场停顿计时（31f7f85d）
+
+07完整规划403.69s，实际搬运135.54sim-s后native积压104ms停止，
+单次回调386ms。反馈30ms、跟踪.00314rad，未触发碰撞失败。
+新增缓存/立即触发正确保存153.047..156.047s的3001个原生样本，
+capture_complete=true，122583252B。
+
+回放07实际失效前200输入，带采样的完整检查平均15.95ms、最大19.05ms，
+单个网格距离最慢1.67ms。没有复现386ms单次网格查询，因此不据此
+修改碰撞算法。31f7f85d补充现场callback/collision/write墙钟、线程CPU
+与cyclic-GC停顿记录及有界诊断，不更改GC/物理策略。234测试通过。
+08同一.4环境继续完整规划/实际执行并采集长停顿直接证据；没有把07
+称为完整放置通过，没有关闭G12或计入正式seed。
+
+## E-EDGE1：源接缝有限棱接触实验（默认关闭，独立于正式G12）
+
+请求驱动案例08已完成翻转、朝上插入、真实下层接触、解除吸附、撤板、
+3s稳定观察、重定位及真实平面推压。405.107s完整规划通过；推入143.31mm
+时严格接触规则拒绝lower_l3_x1_y0入口顶棱：深度3.728um，箱体前下棱与
+支撑入口顶棱相交，水平法向。不是机械臂碰撞，也不是横向支撑边界。
+现场GC最大83.8ms、碰撞检查95.9ms；该次未发生此前积压失败，不能据此
+宣称其可靠性已修复。失败窗口已完整保存，物理08整体失败。
+
+原支持谓词保持不变，新增独立实验模式，不将侧法向算成承重支撑。
+执行策略push_edge_transition_enabled默认false，实验显式true；所有字段
+YAML运行时读取并进入源/策略绑定。限定push且已解除吸附、source SAT
+预计进入事件、handoff/final声明支持来源；源坐标与实测材料边界同时验证。
+箱体前下棱和下层入口顶棱的点误差<=0.1mm，穿透<=0.05mm，法向同时位于
+两材料棱的合法锥内（1deg）；进度距源事件<=10mm，包含既有位姿跟踪域。
+原生每1ms逐点检查，并要求同一步有独立严格顶/底接触，棱不充当支撑。
+同一源事件自首次棱接触起最多1s；间断接触不得重置时限；原有卡住、
+支撑>=60%、COM>=20mm、下层不动、偏移/旋转和机械臂碰撞规则全部保留。
+FCL仅在相同push模式用同一几何棱谓词检查箱体—该下层对；机器人及工具
+碰撞检查不变。非push和默认策略继续严格拒绝水平法向。
+
+非计分工作负载：08实际失败输入离线回放（必须严格模式拒绝、实验模式
+满足几何及独立支撑后接受）；反例覆盖侧壁/错误源/法向/深穿透/事件外/
+无真实支撑/吸附中/超时。随后一条相同尺寸、质量、目标、支撑和源物理的
+完整fresh live-request，E-SLOW1预算；必须实际完成9阶段、到位<=5mm/1deg、
+撤板后3s稳定、下层位移/旋转与逐步接触/控制器跟踪全通过，完整保留失败。
+样本数1，按单个案例验收，不编码成功率，不关闭正式G12或声明误差管通过。
+若棱接触超时或出现其他接触，仍停止并保留，不能继续扩大参数求通过。
+
+
+## 请求驱动闭环名义执行通过（physical10，source14e6f73a）
+
+80个输入驱动几何候选中第1个得到完整9阶段/非接触包络/评分方案，
+规划409.380s。名义机械臂净空下界10.2257mm、箱体非接触净空下界
+5.9320mm、交接支撑61.8182%、COM65mm。使用实际当前关节和确认抓取关系，
+无位置答案/固定关节轨迹注入；源箱体.55×.40×.25m、质量8kg。
+
+E-EDGE1原生物理完成翻转、朝上插入、真实接触后解除、撤板与3s稳定、
+重定位、真实panel平面推压、撤离与最终3s稳定。独立终态位置误差
+1.21876mm、姿态误差.0005096deg，14项审计全通过；控制器38016消息、
+192589跟踪检查，最大误差.00313985rad，反馈年龄<=36ms。
+744029个初始基准之后的native1ms步检查无缺口；全场景10ms检查。
+接缝55个棱接触点，最大深度11.0777um、持续21ms，低于预设50um/1s。
+推入最少支撑61.8263%、COM65.045mm。下层最大漂移1.39164mm、旋转
+.04336deg，小于3mm/.5deg；不主动移动下层不意味着物理零漂移。
+
+证据主目录request_physical_g12_10，完整capture/replay、源归档hash全匹配，
+约536.874MB；09在执行前容量预测中止、capture不完整如实保留。独立
+审计和轨迹图位于request_integration_g12_01/physical10_audit.json及physical10.png。
+工程记录容量750MB，正式G12预算与seed不变。仅1个理想输入名义案例；
+不声明成功率、接触力安全、误差管完成、释放54/正式C5或实机已通过。
+
+复用配置落在research/uld_upper_layer/profiles/nominal_physics_{planning,execution}.yaml，
+接口/消费者/生命周期/运行入口见同目录README。后续只修复取消采集时ROS
+context关闭仍应写出summary，以及实验法向限值取规划/执行较严格者；
+本案例两者均1deg，名义动作逻辑与该次运行一致。新增行为测试独立覆盖。
+
+
+### Multiple-position/posture offline continuation (2026-11-12)
+
+Run the source577fda2d request planner against the case10 measured initial
+joints/attachment and unchanged OCC snapshot.16 geometric inputs span original
+position, insertion-depth +/-20mm and lateral+20mm, each at box yaw0/90/180/270.
+The long-edge insertion requirement still applies. Two bounded planning requests
+compare depth/lateral goal alternatives with spin180, and original goal with
+push-face spins0/90/270. Each has1800s budget and seed0; complete9-stage scored
+schemes only count (minimum1, target3 for positions / target1 for alternatives).
+Support60%,COM20mm and collision5mm remain hard gates. All producer files frozen;
+inherited dirty state retained and archived. No statistical reliability estimate,
+no global infeasibility conclusion from bounded failures. New physical results
+are not_evaluated. Exact commands, requests, configs, intermediates and summaries:
+primary `docs/status/evidence/uld_upper_layer_v1/multi_scheme_g12_01/`.
+
+
+#### Search-policy design refinement
+
+Use deterministic task-and-motion hypothesis search: support/goal generation ->
+handoff/push-frame expansion -> necessary full-arm IK screens -> backward
+constrained chain/forward actual-start connection -> complete certificates ->
+collision-first ranking/dedup. Fixed measured attachment cannot be resampled.
+Add nested queues by goal and push posture to avoid starvation by many handoff
+variants of the first target. Per-action quotas/resumable frontiers remain design
+items; current worker may consume remaining request budget. Expand seeds and
+allowed goal discretization only; never relax support/collision admission.
+MoveIt/OMPL can solve free-motion connections under this policy; MTC can host
+its stages later. Physical support/release/push validation remains custom.
+Detailed design and exact measurements: primary
+`docs/status/evidence/uld_upper_layer_v1/multi_scheme_g12_01/REPORT.md`.
+
+
+#### Multiple-scheme continuation result
+
+Frozen source 577fda2d produced four distinct complete nine-stage nominal schemes
+in the original goal neighbourhood: depth -20/+20mm, lateral +20mm, and original
+target with alternative push spin 0deg (others 180deg). All retain panel-up
+insertion and confirmed attachment. Artifact audit 43/43 passes; minimum arm
+clearance 10.226mm, payload clearance 5.102mm, geometric support 61.818%, COM
+support margin 65mm. New physical execution is not_evaluated; no full-workspace
+or singularity claim. Three calls completed normally; the surplus positions
+call was cancelled after one accepted plan once the campaign target was met,
+and its request manifest correctly remains incomplete. Exact results/design
+are in the primary REPORT above. Fair scheduling remains proposed.
+
+
+## Depth and row continuation -- 2026-11-12T23:34:15.878561+08:00
+
+Compare original support with entrance x0 column removed across all layers,
+using the same box, measured grasp and ideal OCC contract. Protocol, exact
+requests/configs and capture rules: primary
+`docs/status/evidence/uld_upper_layer_v1/depth_rows_g12_01/protocol.json`.
+Six geometric depths each, four push postures; bounded endpoint screens then
+complete nine-stage planning at deepest candidates, minimum1/target1, seed0,
+1200s per request. Support60%, COM20mm, collision5mm; no producer edits,
+no physics or reliability claim. Row capacity is geometric until sequential
+planning includes previously placed upper boxes as collision obstacles.
+
+
+## Depth and two-row outcome -- 2026-11-12T23:58:25.803989+08:00
+
+Frozen source577fda2d: four complete nominal nine-stage schemes pass. Original
+and entrance-all-layers column-removed layouts both reach hull-max centre
+X_container=.465 (base Y~-1.524), leading face base Y~-1.799, depth1.485m.
+Near row at X_container=-.105 (base Y~-.954) also passes with far row retained
+as occupied obstacle and20mm gap. Maximum depth rows2, vertical upper layers1
+for550x400x250mm/8kg; reduced near final support75.3939%, allowing front overhang.
+Reduced old lane fails source joint2 effort; support-derived lateral shift
+~89mm finds a passing lane, with no threshold/mass/grasp/actuator changes.
+Source-derived gap20mm replaces diagnosed failed10mm envelope gap; original
+failure and cancelled tails preserved. Audit36/36; four normal successes,
+two bounded failures, two explicitly incomplete cancelled calls. All new
+physics not_evaluated. Reduced far motion1267.337s exceeds current1200sim
+execution timer: nominal plan does NOT establish runnable execution with that
+unchanged policy. No source code changed, sole plan only in worktree, evidence
+primary-only. Full G12 remains open; no sim launched.
+
+- docs/status/evidence/uld_upper_layer_v1/depth_rows_g12_01/REPORT.md
+- docs/status/evidence/uld_upper_layer_v1/depth_rows_g12_01/aggregate.json
+- docs/status/evidence/uld_upper_layer_v1/depth_rows_g12_01/two_rows.png
+
+
+## Posture/point prior consolidation -- 2026-11-13T08:59:40.572077+08:00
+
+Read-only study on producer577fda2d; no new motion searches or simulation.
+Catalogue9 nominal plans (8 nominal-only plus1 historical native-physics case),
+4 sparse TCP IK atlases, full box/TCP handoff/push SE3 and source hashes.
+Current/old matching robot-local joint XML signatures agree; this only permits
+seed use, never collision certificate reuse. Fixed Link6 descendants include
+panel, adapter and sensors: derive clearance projection from source meshes and
+confirmed attachment, rather than summing nominal link lengths.
+For current550x400x250mm measured attachment and5mm margin, fully-under-ceiling
+required support-to-ceiling gaps: down607.803mm, sides405mm, up255mm.
+Current284.001mm gap admits only up among these four axis-aligned modes. At
+entrance/partial ceiling overlap use exact geometry; do not apply this threshold
+as a global exclusion or arbitrary-tilt impossibility proof.
+
+Design only, not implementation dispatch: UpperPlacementPrior.query receives
+current request and allowed goals, returns immutable mode hints, joint seed
+sets, route templates and candidate ordering with identity/evidence scope.
+Keep indexed archive private/read-only. Per-request hints expire when snapshot,
+start, attachment or config changes. Re-solve exact IK and revalidate whole-arm
+paths, support, payload, uncertainty and duration before scoring/admission.
+Sparse failed samples lower priority only; expand/fallback ordinary search.
+Preserve runtime-configured thresholds, actual attachment and allowed goals.
+Reduced far plan1267.337sim seconds still exceeds1200s motion budget; never
+upgrade it to executable under that unchanged policy. No performance claim.
+
+Consolidation verification: script assertions pass9/9 nominal records,
+8 nominal-only/1 historical physics case,4 atlases, unchanged referenced hashes,
+up-only current-height check and known duration rejection. Audit and report:
+- docs/status/evidence/uld_upper_layer_v1/posture_prior_g12_01/REPORT.md
+- docs/status/evidence/uld_upper_layer_v1/posture_prior_g12_01/catalogue.json
+- docs/status/evidence/uld_upper_layer_v1/posture_prior_g12_01/geometry.json
+- docs/status/evidence/uld_upper_layer_v1/posture_prior_g12_01/atlas_index.json
+- docs/status/evidence/uld_upper_layer_v1/posture_prior_g12_01/audit.json
+
+Only the existing worktree plan is changed there; evidence remains primary-only.
+Formal G12 remains open. A future prior-enabled timing comparison requires a
+separate frozen workload/repetition/acceptance definition before dispatch.
+
+
+## 20. Claude接续：姿态先验接入、多尺寸规划与物理验证
+
+### 20.1 授权、归属和冻结规则
+
+用户已确认“先验接入，再验证多尺寸”，并授权落盘和派发。接收者为
+`eng/claude`，模型按派发时本机Claude配置解析为`glm-5.3`（1M上下文）；
+来源是当前settings中opus别名映射，不是过期RUNTIME记录。若领取时模型不同，
+先按协作规范换代重派，不伪报身份或修改已领取任务。
+
+- 统一父任务：`ULD-UPPER-LAYER-20261110`。新增三个独立子任务，generation=1；
+  不改写已领取`MOTION-PHYSICS` generation2，该正式G12继续open。
+- 代码基线：`577fda2d0dbc1104318dff9551f859b4413b1b66`。本次仅计划提交是其后继；
+  每个子任务以该基线加本计划提交及已完成依赖的明确提交为有效工作基底。
+- 原工作树：`/tmp/elfin_uld_upper_layer_g1`；分支`research/uld-upper-layer-g1`。
+  唯一计划为本文件。历史大批删除为用户要求清理，必须保持未暂存，禁止恢复或
+  `git add -A`。只提交显式所有文件；已存在的其他未提交修改不纳入本任务。
+- 协调和全部证据仅位于主工作区`/home/adamliao/work/elfin_humble_ws/docs/`。
+  禁止在worktree新增计划副本、证据、RESULTS或第二邮箱。
+- 每次计分/物理运行冻结代码提交，归档源码/配置/模型/输入哈希及dirty清单；
+  只允许已记录清理删除，不允许未提交的行为修改混入冻结结果。
+  接线修复先做非计分预演，修改后重新冻结，不能将两个版本的样本合并。
+
+| 子任务 | Claude负责的结果 | 依赖 | 关闭要求 |
+|---|---|---|---|
+| UPPER-PRIOR | 独立先验类、几何筛选、规划接入、行为测试 | none | 第20.3节全部行为门通过，提交代码/文档/证据 |
+| UPPER-SIZE-EVAL | 七尺寸普通/先验配对搜索、诊断与能力表 | UPPER-PRIOR | 第20.4节42个单位记录完整，配对回归门通过 |
+| UPPER-PRIOR-PHYSICS | 原尺寸及一个新尺寸实际闭环 | UPPER-SIZE-EVAL | 第20.5节两案例物理门通过，提交集成结果 |
+
+后两个任务可先发布，但依赖未pass不得领取。领取/完成使用主工作区
+`scripts/agent_start.sh`和`scripts/agent_complete.sh`，每个任务自行实现、测试、
+修复、提交、写角色记录，禁止将日常测试另行转包。角色`reviews`负责本次交接，
+不代替Claude领取或谎报实现完成。所有正式G12/54释放校准/C5仍单独开放。
+
+### 20.2 必须带入的已有经验和边界
+
+1. **已实现链路**：输入驱动、固定实际抓取的九阶段路径：翻转/接近、朝上插入、
+   降至支撑、解除后下移、撤板、转到推压预位、平面接触、直线推入、退出。
+   不能用孤立IK点或可视化路径冒充完整链路。
+2. **历史完整物理**：`request_physical_g12_10`，执行源14e6f73a，当前源码577fda2d。
+   源控制器/原生解除/平面推动通过，独立审计14/14；最终误差1.21876mm、
+   .0005096deg，下层最大平移1.39164mm。仅一个理想输入名义案例；不等于数学零
+   下层运动、真实感知、硬件或正式G12通过。
+3. **当前几何**：550×400×250mm、8kg，COM在几何中心，实际偏置抓取。
+   净空5mm时完全处于顶板覆盖内所需净高：朝下607.803mm，侧向405mm，朝上255mm。
+   当前净高284.001mm，四类轴对齐姿态仅朝上通过必要高度条件。Link6原点到TCP约
+   411.7mm，完整固定组件在TCP轴向约[-352.803,-3]mm，含面板、转接件、相机、雷达。
+   这些不是通用硬编码阈值；每次从源CAD、箱尺寸和实际抓取重新投影。入口部分
+   在顶板外和任意倾斜候选不得套用该高度表一刀切，使用实际网格碰撞。
+4. **姿态先验**：四方向各7056个TCP采样位置，朝下/左/上/右有逆解位置数为
+   2939/3497/4537/3497；共154502个保留分支。旧与当前匹配机器人局部关节XML
+   签名相同，仅支持使用IK初值，不证明旧碰撞模型/场景/证书兼容。旧atlas坐标是
+   base下TCP，当前目标为container绝对坐标箱心，两者禁止按xyz直接混用。
+   原图纯运动学深度不等于ULD带箱可放深度，也不证明样本外不可达。
+5. **多方案**：`multi_scheme_g12_01`四条完整名义方案，目标箱心X为-.418/-.398/-.378m，
+   Y为-.4905或-.4705m，Z约1.850999m；交接X约-.663m。相同最终目标有不同推压
+   面板自转（相差180deg），不代表插入箱体朝向不同。全部新物理not_evaluated。
+6. **深度与两排**：`depth_rows_g12_01`四条完整名义路径。原场景与入口整列各层移除
+   场景最深最终箱心X_container=.465m（base Y约-1.524m），近排X=-.105m，间距20mm，
+   近排规划保留远排占用。550mm深度最多两排、一个上层高度；移除列近排允许前端
+   135.3mm悬空、最终支撑约75.39%。若要求全部底面支撑，该布局不能声称两排。
+7. **失败机制**：移除列的原横向车道被配置的重力力矩预测筛掉，横向调整约89mm
+   后找到路径；不是实际关节力矩测量，也不是全局IK不可达。10mm间距在非接触
+   误差包络阶段失败，按源模型及配置推导20mm后通过。保留原失败及取消尾部，
+   禁止隐藏无效尝试或用放宽阈值解释成功。
+8. **执行准入缺口**：移除列远排名义时长1267.337sim秒，大于现行1200sim秒预算；
+   只能记nominal_valid，不能计入该执行策略下可执行数量。先修复显式时长准入和
+   实验预算配置，不能关掉超时。支持率60%、COM裕量20mm、目标3条/最低1条保持
+   运行时配置；严格支撑+完整面板悬空容纳条件必须同时满足。
+
+权威证据指针均为主工作区相对路径，全部源失败保留：
+- `docs/status/evidence/uld_upper_layer_v1/request_integration_g12_01/REPORT.md`
+- `docs/status/evidence/uld_upper_layer_v1/request_physical_g12_10/`
+- `docs/status/evidence/uld_upper_layer_v1/orientation_reachability_g12_01/REPORT.md`
+- `docs/status/evidence/uld_upper_layer_v1/multi_scheme_g12_01/REPORT.md`
+- `docs/status/evidence/uld_upper_layer_v1/depth_rows_g12_01/REPORT.md`
+- `docs/status/evidence/uld_upper_layer_v1/posture_prior_g12_01/REPORT.md`
+- 后者`catalogue.json`有9条轨迹、完整箱/TCP/交接/推压SE3、源引用哈希；
+  `geometry.json`有源组件投影，`atlas_index.json`有4图引用，`audit.json`整理断言通过。
+  本次9条目录包含8条名义记录与1条历史物理记录，不是9次新执行。
+
+### 20.3 UPPER-PRIOR：接口、消费者和行为验收
+
+实现只读、ROS-free的`UpperPlacementPrior.query(request, goals, budget) -> PriorHints`，
+由现有`UpperPlacementPlanner`调用，不建立agent、LLM或第二套OCC。输入沿用
+PlacementRequest/BoxState/SceneSnapshot：尺寸、质量、COM、实际start_q、实际确认
+box_T_tool、occupied/支撑/顶板、允许箱心SE3。坐标明示container绝对或base；size
+不承载绝对Z，姿态统一SE3及具名参考点。
+
+返回不可变提示：输入/model/config身份、各候选几何模式结果/见证、分阶段多个
+关节初值、带来源及兼容性的路径模板、目标/交接/推压族排序、未命中/预算耗尽诊断。
+归档索引私有只读，进程生命周期内可复用；提示只在单请求有效。OCC、起始关节、
+抓取、配置或模型变化必须重新查询。执行器只消费当前验证/准入后的正式计划。
+
+先按完整源工具和箱体计算几何可行窗口，再以位置+旋转距离查询多个IK分支并
+校正到精确目标。最终目标、交接、推压、多IK分支联合选择；旧轨迹只作种子，
+禁止缩放后直接执行。碰撞、支撑、完整面板可容纳、接触、负载预测、误差包络、
+执行时间全部重新检查，通过后按机械臂碰撞裕量优先评分/去重。相似失败只调低
+排序，不认定全局不可达；无可用先验时回退普通搜索。有效已抓取请求不得重采抓取。
+
+先验开关、查询半径、分支数、查询预算均运行时读取、记录有效值。查询半径默认
+位置100mm/旋转15deg、每阶段最多8个分支、单请求先验查询上限5s；近似匹配无证书
+权限。先验开关默认false，显式profile开启。沿用已有净空/COM/支持率参数，不新增
+冲突副本。支持率与完整悬空面板计算用实际多边形/工具包络，不把占用未知当free。
+
+验收（每项独立行为用例运行一次，不作可靠性估计）：
+- 当前源模型重算高度与归档误差<=0.1mm；改变箱高/工具几何/抓取后阈值真实变化。
+- 顶板内拒绝确实碰撞候选；入口工具部分在顶板外的反例不会被全局高度阈值误杀。
+- snapshot/model/start/attachment/config任一身份变化，旧证书不能被执行；旧种子仍需校正。
+- 无索引、索引不兼容、查询无解、5s预算耗尽均不崩溃，普通搜索仍被调用。
+- 已抓取变换逐值保持；多个目标不会因首个目标耗尽整轮预算而永远不被尝试。
+- 修改COM裕量20mm至80mm，对归档65mm交接裕量的同候选真实产生准入差异，无编译。
+- 名义1267.337s对1200s执行预算拒绝；显式足够预算后仅解除时长这一项拒绝。
+- 先验及返回对象不能写OCC/发运动/改真空；固定/未附着请求各有行为覆盖。
+- 全量已有研究单测及新增行为单测通过；原历史242项只作参考，不伪称当前已运行。
+
+命令：在worktree中source ROS Humble后，使用已有虚拟环境
+`/tmp/uld-upper-python/bin/python -m unittest discover -s research/uld_upper_layer/tests`。
+保存全量日志、用例/结果、配置有效值与提交。最邻近README同步维护接口和生命周期。
+
+### 20.4 UPPER-SIZE-EVAL：尺寸矩阵、配对规则和产物
+
+新增可重复运行入口`research/uld_upper_layer/evaluate_prior.py`。该入口写证据必须
+指定主工作区绝对目录；支持`--matrix PATH --evidence PATH --mode baseline|prior|paired
+--prepare-only --audit`（后两项独立模式），使用source scene而非安装副本。
+每例生成目标的算法读取支撑多边形/箱尺寸/净空；普通与先验共享同一允许目标集合、
+同一抓取输入、start、预算和配置，配对前冻结请求，先验不能扩大自己目标集合。
+
+固定矩阵（米）：基准(.55,.40,.25)，另(.50,.40,.25)、(.60,.40,.25)、
+(.55,.35,.25)、(.55,.45,.25)、(.55,.40,.20)、(.55,.40,.30)。质量固定8kg，
+COM几何中心，只改变一个尺寸因素。使用原完整下层对齐场景，不移除入口列。
+各尺寸读取当前OCC；仅为ideal_sim_fixture，禁止声称真实感知。
+
+新尺寸的抓取使用源模型/配置生成合法候选，不复制physical10的确认抓取。离线
+首次用未附着模式共同计算合法抓取/方案，输出合成夹具输入并标注来源；如评估
+已附着分支，必须由源FK/箱体几何构造自洽边界并明确synthetic_fixture，不能声称
+实测。实际物理阶段必须重新真实吸附抬起、采集实际q和吸附变换后调用同一规划器。
+
+每尺寸baseline/prior各运行seed0/1/2一次，42单位；单单位规划墙钟1200s（含先验
+查询），target3/minimum1，限速/质量筛选/碰撞等使用相同nominal_physics profile。
+单次规划外层watchdog1320s，超过后保留失败证据再清理。42单位总搜索预算14h，
+预演启动/接线不计入单位，另限30min并记录次数。顺序按尺寸表、seed、baseline/prior；
+不并发运行，记录机器/版本/载荷及首解、总时长，不能把并行吞吐当单次加速。
+
+所有单位要有显式结果：GEOMETRY_REJECTED、ENDPOINT_REJECTED、NO_PLAN_WITHIN_BUDGET、
+NOMINAL_VALID、INFRA_FAILURE；无采样结果为not_evaluated，不伪报不可行。按每个同输入
+同seed配对，baseline若有完整可行方案则prior也必须有>=1条，否则回归门失败，
+由同一owner修复后以新revision重跑对应冻结矩阵，不混版本。至少baseline尺寸有
+3个baseline/prior名义成功对；若没有先诊断，不以全失败通过配对门。
+这个门是有限矩阵可复现回归的AND，不估计生产每单成功率。速度只描述21对数据，
+分开超时/拒绝与双成功对的中位数，不设或宣称统计显著加速。双成功对少于3时
+速度比较not_evaluated，仍保留原始计时。新尺寸无成功时能力表如实报告，物理
+新尺寸任务不能冒充完成。
+
+每单位必须保留请求、生成目标/抓取、配置、模型哈希、先验查询/命中来源、阶段
+边界、候选拒绝统计、完整计划/证书或失败包；结果JSON/CSV、最终尺寸能力表、
+配对报告、输入矩阵和命令清单均primary-only。每个子任务内补齐实现所需测试。
+
+### 20.5 UPPER-PRIOR-PHYSICS：两个代表性实际案例
+
+先完成原550×400×250mm回归。第二个按“550×400×200、600×400×250、550×350×250、
+550×450×250、500×400×250”顺序选首个先验规划已通过新尺寸；不允许选高300mm
+负例来制造无效任务。每案例一次完整执行；非计分预演允许在30min接线预算内修复，
+一旦实际动作开始即保留该尝试。失败可修复重跑但不得删除前次或宣称首试成功率。
+没有任何新尺寸完整方案时记录依赖能力缺口，继续诊断而非将新尺寸物理记pass。
+
+实际生成正确尺寸/质量的箱体，原生吸附、抬起并获取实际start_q/box_T_tool；
+随后按同一接口重新生成/验证计划，不强制执行离线合成边界轨迹。不得通过命令
+自由箱体位姿或挪动下层达到目标。fixture seal起始不代表home-to-pick已验证。
+
+使用nominal_physics慢速profile及显式E-EDGE1，不放宽其接触法向/深度/时间限制。
+同次运行执行预算`max(1200, ceil(trajectory_duration)+30)` sim秒；实际规划等待
+暂停模拟时钟方式沿用现有链，记录预算与实际驻留；墙钟上限为
+`max(3600, ceil(4*execution_sim_budget))`秒，预演实测RTF不足则先改资源/限速配置并
+重新冻结，禁止超时后临时延长同次门。不能更改正式G12的冻结预算。
+
+验收两个案例均完整9阶段+解除后稳定+最终3s稳定；终态<=5mm/1deg，下层最大
+平移<=3mm、旋转<=.5deg，使用现有更严格监测项全部通过。交接/推动支持率>=.60、
+COM裕量>=.020m、完整面板可撤出，整臂连续路径证书和当前观察监测无未授权碰撞；
+解除后箱体位姿命令计数0，实际约束移除、原生接触、CAD平面推动可审计。
+该2案例AND仅证明这两个有限输入，不能推断正式C5或真机可靠性。没有两个完整
+结果则此集成子任务不能pass。失败取证完备后再清理自有仿真进程。
+
+### 20.6 证据矩阵、运行程序和交接完成门
+
+证据根：主工作区`docs/status/evidence/uld_upper_layer_v1/claude_prior_size_g1/`，
+按core/eval/physics分目录。每单位T0含commit、完整dirty清单/白名单、环境、case、
+seed、有效配置、命令、起止时间、manifest/inventory、首失败边界及清理状态。
+
+| 边界 | T1 | 触发 | T2内容 | 窗口/格式/预算 | 检查方式 |
+|---|---|---|---|---|---|
+| 输入/几何/先验 | 身份、尺寸、frame、候选数、耗时、原因 | 拒绝/超时/异常 | 完整请求/目标/几何见证/索引命中与配置哈希 | 静态JSON+NPZ引用，<=50MB/单位 | evaluate_prior.py --audit |
+| IK/路径/证书/选择 | stage、分支数、净空、支撑、时间 | 首失败或无完整方案 | 当前候选、上游种子、失败关节路径、碰撞见证、证书 | JSON/NPZ+现有source重放入口，<=200MB/单位 | 同矩阵case/seed重放，--audit核对可重放标志 |
+| 控制/接触/解除/推压 | sim/host stamp、stage、命令/反馈/接触、状态 | 门限/断流/停止/超时 | 原生状态/接触、上下游stage、停止前后和最终状态 | 现有2s前/1s后触发窗及必要阶段基准，<=750MB/案例 | 既有物理独立审计程序+manifest检查 |
+
+总预留16GB（42单位各<=250MB，物理含失败最多4次各<=750MB，其余索引/汇总余量）。
+到达预算先停止，不能删失败或截断必要数据继续跑；所有证据长期保留到用户决定
+清理，不在worktree复制。T1始终开启；T3仅首次失败定位不足时对指定模块下一次
+启用，标debug开销，不能混入配对计时。不得每模块全量dump。
+
+capture gate：每个单位所有必需文件存在、哈希和frame/request可关联，manifest
+capture_complete/replay_possible均true；缺失则该单位incomplete，不得通过或当作
+产品不可行样本。审计验证schema、哈希和实际边界行为，不用源码文本匹配代替行为。
+保留基线已有完整边界捕获；先做一次失败触发预演确认T2后再进42单位矩阵。
+
+每个任务关闭必须给实现提交、实际命令和期望/观察对照、角色记录、唯一计划增量、
+成功与失败证据及遗留项。最终检查：worktree只有本计划且无evidence文件，历史
+清理删除未被提交；没有本任务自有Gazebo/bridge残留，正式G12仍open。主邮箱只
+投影当前待办，不重写旧Claim。发布任务不等于Claude已开始执行。
