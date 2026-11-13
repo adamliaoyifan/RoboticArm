@@ -4,6 +4,14 @@ import numpy as np
 from luggage_perception.observed_suction_domain import ObservedSuctionDomain
 
 
+def acquisition_metadata_from_message(message):
+    """Identity only, also available when this frame has no fitted domain."""
+    return dict(box_id=message.box_id, instance_id=message.instance_id,
+        generation=int(message.generation),
+        stamp_ns=int(message.header.stamp.sec)*10**9+int(message.header.stamp.nanosec),
+        frame_id=message.header.frame_id, contact_model_hash=message.contact_model_hash)
+
+
 def domain_to_message(record):
     from luggage_msgs.msg import SuctionTopDomainV2
     result = SuctionTopDomainV2()

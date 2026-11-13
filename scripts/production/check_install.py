@@ -42,6 +42,8 @@ MODULES = (
     'luggage_packing.placement_recheck',
     'luggage_perception.suction_patch_evaluator',
     'luggage_perception.suction_acquisition_history',
+    'luggage_perception.directed_suction_service',
+    'luggage_perception.ros_suction_domain',
     'luggage_perception.pickup_view_evidence',
     'luggage_perception.pickup_view_service',
     'luggage_perception.observer_depth',

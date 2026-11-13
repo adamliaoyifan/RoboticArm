@@ -253,11 +253,25 @@ class JointOperationPrepareNode(Node):
         except (TypeError,ValueError,KeyError): self.store.invalidate()
 
     def _domain(self,message):
+        from luggage_perception.ros_suction_domain import acquisition_metadata_from_message
+        error = None
         try: domain = domain_from_message(message)
-        except (TypeError,ValueError): domain = None
+        except (TypeError,ValueError) as failure:
+            domain, error = None, str(failure)
         with self._state_lock:
-            if domain is None:self.domain_history.clear('INVALID_DOMAIN:'+message.reason)
-            else:self.domain_history.remember(domain)
+            if domain is None:
+                before = self.domain_history.diagnostics()
+                if message.valid:
+                    self.domain_history.clear('MALFORMED_CLAIMED_VALID_DOMAIN:'+str(error))
+                else:
+                    self.domain_history.unavailable(**acquisition_metadata_from_message(message),
+                        reason=message.reason)
+                # One immutable slot, exported at the next request boundary.
+                # Preserve the exact rejection without an unbounded frame log.
+                self._last_domain_rejection = (serialize_message(message), dict(
+                    decoder_error=error, before=before, after=self.domain_history.diagnostics()))
+            else:
+                self.domain_history.remember(domain)
             self.domain = domain
 
     def _joints(self,message):
@@ -275,6 +289,7 @@ class JointOperationPrepareNode(Node):
     def _current(self,request,*,frozen_domain=None):
         with self._state_lock:
             joints = self.joints
+            rejection = getattr(self, '_last_domain_rejection', None)
             if frozen_domain is not None:
                 domain = frozen_domain
             else:
@@ -283,6 +298,9 @@ class JointOperationPrepareNode(Node):
                 domain = self.domain_history.domain_for_acquisition((detection.id,
                     int(request.generation),int(stamp.sec)*10**9+int(stamp.nanosec),
                     detection.header.frame_id,self.preparation.model.identity_hash))
+        if rejection is not None:
+            self._record('latest_rejected_domain_input',rejection[0])
+            self._record('latest_rejected_domain_transition',json.dumps(rejection[1]).encode())
         if domain is None or joints is None:
             stamp=request.detection.header.stamp
             missing_inputs = [name for name,available in (

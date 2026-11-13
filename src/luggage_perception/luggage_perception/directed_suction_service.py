@@ -33,6 +33,11 @@ class DirectedSuctionService:
         return (self._history.context_for_digest(domain_sha256)
                 if domain_sha256 else self._context)
 
+    def unavailable_acquisition(self, **metadata):
+        """No current-frame permission; exact historical lookup remains scoped."""
+        self._context = None
+        return self._history.unavailable(**metadata)
+
     def handle(self, request, response):
         from luggage_msgs.msg import DirectedSuctionContactV2
         started = self._clock()

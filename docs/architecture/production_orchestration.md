@@ -209,6 +209,19 @@ unavailability alone does not establish an observation-coverage deficit and
 must not trigger an automatic camera motion. The failure archive retains the
 requested acquisition, individual availability and history clear provenance.
 
+An unavailable single frame is distinct from session-wide revocation. When its
+box, instance, generation, acquisition, frame and contact-model identity are
+complete, remove only that acquisition's handoff; retain other same-identity
+immutable records without renewing timestamps or retention. The current-frame
+quality service becomes unavailable. Only exact named historical queries may
+continue, subject to ordinary stationary-box, freshness and quality admission.
+Identity/model changes, malformed scope and malformed claimed-valid domains
+still revoke the preceding history; explicit resets retain their global revoke
+semantics. Invalid producer messages therefore carry loaded model identity even
+when no domain can be fitted. Keep one latest rejected raw message and history
+transition in memory and archive them at the next request boundary; do not log
+an unbounded stream or reinterpret old messages lacking model identity as scoped.
+
 Candidate quality queries use the independent
 `EvaluateFrozenSuctionV2` service; the existing current-frame service is unchanged.
 Pre-pick candidate recovery preserves the admitted target while trying distinct

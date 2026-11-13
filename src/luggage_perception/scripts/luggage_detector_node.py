@@ -2111,12 +2111,16 @@ class LuggageDetector(Node):
             return
         from luggage_msgs.msg import SuctionTopDomainV2
         from luggage_perception.ros_suction_domain import (
-            observed_domain_for_detection, domain_to_message,
+            observed_domain_for_detection, domain_to_message, acquisition_metadata_from_message,
         )
         output = SuctionTopDomainV2()
         output.header = frame.header
         output.box_id = frame.box.id
         output.instance_id, output.generation = frame.instance_id, int(frame.generation)
+        model = getattr(getattr(self, '_suction_evaluator', None), 'contact_model', None)
+        if model is not None:
+            output.contact_model_version = model.model_version
+            output.contact_model_hash = model.identity_hash
         output.reason = 'OBSERVED_TOP_DOMAIN_UNAVAILABLE'
         service = getattr(self, '_directed_suction_service', None)
         try:
@@ -2138,12 +2142,13 @@ class LuggageDetector(Node):
         except (TypeError, ValueError) as error:
             # Publish this frame's invalid result; never silently reuse the
             # previous frame or turn fitted box dimensions into support.
-            if service is not None:
-                service.replace_context(None)
             output.valid = False
             output.support = []
             output.domain_sha256 = ''
             output.reason = 'OBSERVED_TOP_DOMAIN_UNAVAILABLE:'+str(error)
+            if service is not None:
+                service.unavailable_acquisition(**acquisition_metadata_from_message(output),
+                    reason=output.reason)
         # The last published immutable acquisition stays available during sample
         # construction. Replace it only with a complete matching acquisition or
         # the explicit invalid result above; never expose an unpublished gap.

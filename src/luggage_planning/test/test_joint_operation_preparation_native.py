@@ -331,6 +331,38 @@ def test_prepare_keeps_requested_acquisition_when_newer_topic_precedes_rpc(prepa
         f.publishers[2].publish(f.messages[2])
 
 
+def test_unavailable_newer_frame_preserves_selected_acquisition_through_native_prepare(prepare_stack):
+    from luggage_perception.ros_suction_domain import domain_to_message, acquisition_metadata_from_message
+    from rclpy.serialization import deserialize_message
+    from luggage_msgs.msg import SuctionTopDomainV2
+    f = prepare_stack
+    newer = replace(f.domain, stamp_ns=f.domain.stamp_ns+198_000_000)
+    message = domain_to_message(newer)
+    message.valid, message.reason = False, 'OBSERVED_TOP_DOMAIN_UNAVAILABLE:isolated native frame'
+    message.support, message.domain_sha256 = [], ''
+    f.quality.unavailable_acquisition(**acquisition_metadata_from_message(message), reason=message.reason)
+    f.publishers[2].publish(message)
+    try:
+        deadline = time.monotonic()+2.
+        while time.monotonic()<deadline:
+            rejection = getattr(f.root, '_last_domain_rejection', None)
+            if rejection and deserialize_message(rejection[0], SuctionTopDomainV2).header == message.header:
+                break
+            time.sleep(.01)
+        assert f.root.domain is None
+        assert f.quality.context_snapshot() is None
+        result = f.call(copy.deepcopy(f.request))
+        assert result.success, result.reason
+        assert result.plan.observation_stamp_ns == f.domain.stamp_ns
+        assert result.plan.certificate_id
+        transition = f.root._last_domain_rejection[1]
+        assert transition['after']['last_unavailable']['action'] == 'REJECTED_ACQUISITION_ONLY'
+        assert any(row['key'][2] == f.domain.stamp_ns for row in transition['after']['records'])
+    finally:
+        f.quality.replace_context(f.quality_context)
+        f.publishers[2].publish(f.messages[2])
+
+
 @pytest.mark.parametrize('missing,reason',[
     (('observed_domain',),'OBSERVED_DOMAIN_UNAVAILABLE'),
     (('joint_state',),'CURRENT_JOINT_STATE_UNAVAILABLE'),

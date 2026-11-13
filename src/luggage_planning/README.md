@@ -51,6 +51,14 @@ execution permission. Controller dispatch, settling, new acquisition and unique
 same-box association remain separate orchestration work. Ordinary successful
 preparation does not query raw camera evidence or execute an observation.
 
+An unavailable later acquisition with complete box/instance/generation/frame/model
+identity does not revoke independently valid earlier acquisitions. Preparation
+selects the exact requested record within its original lifetime, then performs
+the same frozen-quality and freshness admission. The current-frame quality
+service becomes unavailable. Explicit reset, changed identity/model, malformed
+scope and conflicting exact acquisitions still revoke affected evidence. The
+latest rejected domain and before/after history are captured at request boundaries.
+
 Preparation keeps the existing position priority and groups already-admitted
 headings with exactly the same XYZ. At each target it tries the primary measured
 contact for both directed tool headings before requesting alternate centres.

@@ -39,6 +39,7 @@ class SuctionAcquisitionHistory:
         self._lock = threading.RLock()
         self._last_clear = None
         self._last_view_conflict = None
+        self._last_unavailable = None
 
     def clear(self, reason='EXPLICIT_REVOCATION'):
         with self._lock:
@@ -52,6 +53,43 @@ class SuctionAcquisitionHistory:
     def acquisition_key(domain):
         return (domain.box_id, domain.generation, domain.stamp_ns,
                 domain.frame_id, domain.contact_model_hash)
+
+    def unavailable(self, *, box_id, instance_id, generation, stamp_ns,
+                    frame_id, contact_model_hash, reason):
+        """Reject this acquisition without revoking unrelated immutable frames.
+
+        Identity changes still revoke the preceding box/model. Incomplete scope
+        cannot justify retaining evidence; callers distinguish that conservative
+        revocation from an ordinary, completely identified unavailable frame.
+        This never creates evidence or extends an existing entry's lifetime.
+        """
+        with self._lock:
+            self._expire(self.clock())
+            complete = (all(isinstance(v, str) and v.strip() for v in
+                (box_id, instance_id, frame_id, contact_model_hash))
+                and type(generation) is int and generation >= 0
+                and type(stamp_ns) is int and stamp_ns >= 0)
+            discarded = []
+            if not complete:
+                self.clear('UNSCOPED_UNAVAILABLE_ACQUISITION')
+                action = 'REVOKED_UNSCOPED'
+            else:
+                identity = (box_id, instance_id, generation, contact_model_hash, frame_id)
+                if self._identity != identity:
+                    self.clear('INSTANCE_OR_MODEL_CHANGED')
+                    self._identity = identity
+                    action = 'REVOKED_IDENTITY_CHANGED'
+                else:
+                    key = (box_id, generation, stamp_ns, frame_id, contact_model_hash)
+                    for digest, row in tuple(self._rows.items()):
+                        if self.acquisition_key(row.domain) == key:
+                            discarded.append(key)
+                            self._remove(digest)
+                    action = 'REJECTED_ACQUISITION_ONLY'
+            self._last_unavailable = dict(reason=reason, action=action,
+                acquisition=(box_id, instance_id, generation, stamp_ns, frame_id, contact_model_hash),
+                discarded=discarded, monotonic=self.clock())
+            return self._last_unavailable.copy()
 
     def _expire(self, now):
         for key, row in tuple(self._rows.items()):
@@ -99,7 +137,7 @@ class SuctionAcquisitionHistory:
                         for value in vars(context._height_map).values())
             size += len(json.dumps(context._model.as_dict()).encode())
         identity = (domain.box_id, domain.instance_id, domain.generation,
-                    domain.contact_model_hash)
+                    domain.contact_model_hash, domain.frame_id)
         with self._lock:
             now = self.clock()
             self._expire(now)
@@ -149,4 +187,5 @@ class SuctionAcquisitionHistory:
             return dict(records=[dict(key=self.acquisition_key(row.domain),digest=digest)
                 for digest,row in self._rows.items()],bytes=self._bytes,
                 view_bytes=self._view_bytes,max_view_bytes=self.max_view_bytes,
-                last_view_conflict=self._last_view_conflict,last_clear=self._last_clear)
+                last_view_conflict=self._last_view_conflict,last_clear=self._last_clear,
+                last_unavailable=self._last_unavailable)
