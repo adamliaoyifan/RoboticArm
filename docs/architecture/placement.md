@@ -94,14 +94,31 @@ are `occupied` (commit rasterized as `SOURCE_GEOMETRY`, or sensor-occupied
 once depth integration exists). Face contact with a placed AABB is allowed;
 positive-volume overlap is a capacity reject.
 
-A stack candidate is feasible when:
+The production `placement_query` and `SelectedPoseAdmission` share one
+`HorizontalContactSupport` calculation. A horizontal stack candidate is feasible
+when:
 
-- the footprint has no unknown cells, or every unknown cell is still at the
-  floor (`peak ≈ floor_z` within `support_tol`, default 0.05 m);
-- `support_ratio ≥ min_support_ratio` (default 0.6): fraction of footprint
-  cells within `support_tol` of `peak`;
-- remaining top clearance is at least `clearance_margin` (default 0.03 m);
-- hull, overlap, support and same-snapshot volume gates pass.
+- every positively overlapped support column above the floor is known;
+- only native upper faces at the requested box bottom contribute contact area.
+  Equality uses a numerical 1e-9 m epsilon, not a sensor error tolerance;
+- exact clipped contact area / continuous footprint area is at least
+  `min_support_ratio` (default 0.6). Lower ledges and holes do not contact the
+  horizontal bottom; they remain in the collision map;
+- the box centre's vertical projection lies in the convex hull of actual contact
+  patches. The centre pixel need not itself contact anything. More than half of
+  a rectangular footprint's area guarantees this condition; lower configured
+  thresholds use the explicit clipped-patch convex hull;
+- remaining top clearance is at least `clearance_margin` (default 0.03 m), and
+  hull, overlap and same-snapshot known-free XYZ volume gates pass.
+
+A native height map cannot establish physical flatness or subvoxel slope. A
+resolvable ramp with insufficient same-height area refuses; accepting quantized
+contact is not a hardware stability qualification. Production does not use the
+span of heights within a 5 cm band as a physical tilt proxy. `support_tol` still
+serves historical same-layer classification; it is not production contact area.
+Direct offline solver/structural calls without the shared support dependency
+retain their legacy band/span behavior solely for archived compatibility. They
+are not a production admission route. No extra launch switch selects this rule.
 
 There is no API to target a specific prior box. Stacking is an automatic
 candidate at XY cells whose `peak` is that box's top.

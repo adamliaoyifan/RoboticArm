@@ -54,6 +54,10 @@ Full contract: `docs/architecture/placement.md`. Hull identity and the
   cargo occupancy at `geometry_hash` / `map_revision`. Occupied and
   unknown-above-floor cells are obstacles for the swept payload and arm.
   URDF plus `scene_manager` boxes are not occupancy (`RS-27`).
+- Production proposal scoring and selected-target admission share native horizontal
+  contact geometry: exact partial-cell area, existing 60% minimum and centre inside
+  the contact convex hull. Lower ledges remain obstacles, not contact. A numerical
+  height equality epsilon does not establish physical flatness or sensor accuracy.
 - Generate a set of candidate paths when the first is in collision, below
   the cartesian fraction gate, or has no IK. Select among collision-free
   paths by cost with dimension, safety, and efficiency terms. An empty set

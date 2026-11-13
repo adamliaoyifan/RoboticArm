@@ -40,6 +40,7 @@ MODULES = (
     'luggage_packing.placement_query',
     'luggage_packing.selected_pose_admission',
     'luggage_packing.surface_grid',
+    'luggage_packing.horizontal_contact_support',
     'luggage_packing.placement_volume_query',
     'luggage_packing.placement_recheck',
     'luggage_planning.placement_prior.requests',

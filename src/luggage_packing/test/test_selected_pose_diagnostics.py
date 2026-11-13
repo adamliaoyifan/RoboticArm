@@ -1,4 +1,4 @@
-"""Explain existing physical-boundary refusals without changing their decisions."""
+"""Explain contact geometry without inferring unobserved physical flatness."""
 import json
 
 import pytest
@@ -10,8 +10,8 @@ from luggage_packing.placement_volume_query import KnownFreeVolume
 
 @pytest.mark.parametrize('resolution', [.01, .02])
 @pytest.mark.parametrize('case,expected', [
-    ('flat', None), ('lower_ledge', 'support_tilt_unsupported'),
-    ('ramp', 'support_tilt_unsupported'), ('support', 'insufficient_support'),
+    ('flat', None), ('lower_ledge', None),
+    ('ramp', 'insufficient_support'), ('support', 'insufficient_support'),
     ('unknown_support', 'unknown_above_floor'), ('overlap', 'edge_occupied_overlap'),
     ('hull', 'outside_hull'), ('unknown_volume', 'volume_unknown'),
     ('occupied_volume', 'volume_occupied'),
@@ -46,14 +46,14 @@ def test_explanation_preserves_boundary_decision(resolution, case, expected):
     assert detail['bottom_z_floor_relative_container_m'] == pytest.approx(.1)
     assert len(json.dumps(detail, allow_nan=False)) < 2048
     if case in ('flat', 'lower_ledge'):
-        assert detail['support_ratio'] == pytest.approx(1.)
+        expected_ratio = 1. if case=='flat' else 1.-resolution**2/(.12*.10)
+        assert detail['support_ratio'] == pytest.approx(expected_ratio)
         assert detail['min_support_ratio'] == .6
-        assert detail['support_band_m'] == .05
-        assert detail['support_height_span_m'] == pytest.approx(0. if case=='flat' else .04)
-        assert detail['support_tilt_ratio'] == pytest.approx(0. if case=='flat' else .04/.12)
-    if case=='lower_ledge':
-        assert detail['support_tilt_ratio'] > detail['max_support_tilt_ratio']
-        assert 'volume_checked' not in detail  # the rejected branch never reaches volume
+        assert detail['contact_height_numeric_epsilon_m'] == 1e-9
+        assert detail['support_model'] == 'native_horizontal_contact_v1'
+        assert detail['centre_in_support_polygon']
+        assert detail['physical_flatness'] == 'not_established_by_native_grid'
+        assert detail['volume_checked']
 
 
 @pytest.mark.parametrize('yaw', [0., 1.5707963267948966, 3.141592653589793, -1.5707963267948966])

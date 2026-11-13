@@ -76,8 +76,9 @@ def placement_query(surface, box_size, *, allowed_yaws=DIRECTED_PLACEMENT_YAWS,
 
     result = solve_placement(surface, box_size, allowed_yaws=allowed_yaws,
         params=cfg, candidate_validator=validate, volume_verifier=verifier,
-        atlas_annotate=ranking_only_atlas(atlas_annotate))
+        atlas_annotate=ranking_only_atlas(atlas_annotate), support_model=admission.support)
     result['admission_policy'] = dict(name='shared_observed_volume',
+        support='native_horizontal_contact_v1',
         nominal_side_gap_m=cfg['same_layer_clearance_m'],
         straight_corridor='ranking_only', center_atlas='ranking_only',
         motion_authority='bound_full_model_trajectory')

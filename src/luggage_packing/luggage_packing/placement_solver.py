@@ -44,6 +44,7 @@ REASON_EDGE_OCCUPIED = "edge_occupied_overlap"
 # footprint (gentle slope within ``support_tol`` per cell, so support_ratio
 # alone cannot see it) does not hold a placed box flat.
 REASON_SUPPORT_TILT_UNSUPPORTED = "support_tilt_unsupported"
+REASON_SUPPORT_CENTRE_OUTSIDE = "support_centre_outside_polygon"
 # Reviews 2026-11-08_1751 (same-snapshot volume authorization): a
 # sensor-supported candidate may only be authorized when its OWN box
 # volume is observed known-free on the SAME snapshot the surface was
@@ -66,7 +67,7 @@ CAPACITY_REASONS = frozenset((
 POLICY_REASONS = frozenset((
     REASON_OUTSIDE_APERTURE, REASON_CORRIDOR_BLOCKED,
     REASON_UNKNOWN_ABOVE_FLOOR, REASON_INSUFFICIENT_SUPPORT,
-    REASON_SUPPORT_TILT_UNSUPPORTED, REASON_VOLUME_UNKNOWN,
+    REASON_SUPPORT_TILT_UNSUPPORTED, REASON_SUPPORT_CENTRE_OUTSIDE, REASON_VOLUME_UNKNOWN,
     REASON_VOLUME_OCCUPIED, REASON_VOLUME_UNVERIFIED))
 
 # Frozen st09_contracts GeometryVerdict values, mirrored as strings so the
@@ -87,6 +88,7 @@ _REASON_TO_VERDICT = {
     REASON_OUTSIDE_APERTURE: VERDICT_APERTURE_VIOLATION,
     REASON_UNKNOWN_ABOVE_FLOOR: VERDICT_SUPPORT_MISSING,
     REASON_INSUFFICIENT_SUPPORT: VERDICT_SUPPORT_MISSING,
+    REASON_SUPPORT_CENTRE_OUTSIDE: VERDICT_SUPPORT_MISSING,
     REASON_SUPPORT_TILT_UNSUPPORTED: VERDICT_SUPPORT_TILT_UNSUPPORTED,
     REASON_OVERLAP: VERDICT_OVERLAP,
     REASON_SAME_LAYER_CLEARANCE: VERDICT_SAME_LAYER_CLEARANCE,
@@ -1249,7 +1251,7 @@ def _validator_verdict(candidate_validator, candidate):
 
 def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                         candidate_validator=None, totals=None,
-                        volume_verifier=None):
+                        volume_verifier=None, support_model=None):
     """Return scored placement candidates sorted feasible-first by score.
 
     ``surface_map`` is the ``surface_map_2d`` dict. ``box_size`` is
@@ -1262,6 +1264,10 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
     then carries ``volume_verified: True``; a reason string rejects the
     candidate with that reason. A raising verifier rejects fail-closed.
     ``None`` (default) keeps the legacy surface-only path.
+
+    ``support_model`` is the shared production HorizontalContactSupport instance.
+    Its exact native contact area supplies both scoring and admission; legacy
+    direct/offline calls without this dependency retain their historical rule.
 
     Each candidate also carries ``capacity_feasible``: True when no capacity
     gate rejected it, so a caller can tell "the container is full" from
@@ -1360,8 +1366,26 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                 # the continuous footprint is checked against the grid
                 # cells it actually overlaps — the ceil-sized window can
                 # miss a 5mm sliver over an adjacent occupied column.
-                edge_occupied = bool(pen_g[i, j])
-                edge_unknown = bool(spill_unknown_g[i, j])
+                contact_record = None
+                if support_model is not None:
+                    support_bottom = (center_container[2]-box_h/2
+                                      -(hull.floor_z if hull is not None else floor_container_z))
+                    contact_record = support_model.evaluate(
+                        (lx, ly), (footprint_l, footprint_w), support_bottom,
+                        cfg['min_support_ratio'])
+                    support_ratio = contact_record.get('support_ratio', 0.)
+                    # Coverage is the continuous footprint, not its enclosing
+                    # ceil-sized proposal window. Same-source XYZ still gates
+                    # the complete box after candidate validation.
+                    feasible = contact_record['reason'] is None
+                    reason = contact_record['reason'] or 'ok'
+                    has_unknown = contact_record.get('unknown_columns', 0) > 0
+                    support_source = ('initial_empty' if declared_initial_free
+                                      and abs(support_bottom) <= 1e-9 else 'sensor')
+                    if has_unknown and abs(support_bottom) <= 1e-9:
+                        support_source = 'floor_prior'
+                edge_occupied = support_model is None and bool(pen_g[i, j])
+                edge_unknown = support_model is None and bool(spill_unknown_g[i, j])
                 if edge_occupied:
                     feasible = False
                     reason = REASON_EDGE_OCCUPIED
@@ -1379,7 +1403,7 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                 # candidate rather than only for the ones that survive the
                 # observation gates above it.
                 clearance_ok = clearance_top >= cfg["clearance_margin"]
-                if feasible and has_unknown:
+                if support_model is None and feasible and has_unknown:
                     if abs(peak - floor_z) > cfg["support_tol"]:
                         # Stacking on an unobserved support surface -> reject.
                         # "floor exists" is geometric prior, but "something
@@ -1402,10 +1426,10 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                 if feasible and not clearance_ok:
                     feasible = False
                     reason = REASON_INSUFFICIENT_CLEARANCE
-                elif feasible and support_ratio < cfg["min_support_ratio"]:
+                elif support_model is None and feasible and support_ratio < cfg["min_support_ratio"]:
                     feasible = False
                     reason = REASON_INSUFFICIENT_SUPPORT
-                elif feasible:
+                elif support_model is None and feasible:
                     # ST09-A S1: a support ramp within support_tol per cell
                     # reads as full support by ratio; the span across the
                     # contact cells exposes the tilt. (lazy: only windows
@@ -1479,12 +1503,16 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                         "detail": {
                             "route_clearance_m": 0.0,
                             "route_not_evaluated": True,
-                            "tilt": tilt_record,
+                            **({'support': dict(contact_record)} if contact_record is not None
+                               else {'tilt': tilt_record}),
                             "margins": {
                                 "hull_static_wall_and_chamfer_m": float(
                                     cfg["hull_margin"]),
                                 "top_clearance_m": float(cfg["clearance_margin"]),
-                                "support_contact_tol_m": float(cfg["support_tol"]),
+                                **({'contact_height_numeric_epsilon_m':
+                                      contact_record['contact_height_numeric_epsilon_m']}
+                                   if contact_record is not None else
+                                   {'support_contact_tol_m': float(cfg['support_tol'])}),
                                 **hull_margin_detail,
                             },
                             "hull_from_descriptor": hull is not None,
@@ -1553,7 +1581,7 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
 
 def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
                     candidate_validator=None, atlas_annotate=None,
-                    volume_verifier=None):
+                    volume_verifier=None, support_model=None):
     """ROS-free ComputePlacement core with a stable failure taxonomy.
 
     On failure ``reason_code`` is one of ``INVALID_BOX_SIZE``,
@@ -1585,7 +1613,7 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
     candidates = generate_candidates(
         surface_map, size, allowed_yaws=allowed_yaws, params=params,
         candidate_validator=candidate_validator, totals=totals,
-        volume_verifier=volume_verifier)
+        volume_verifier=volume_verifier, support_model=support_model)
     atlas_report = None
     if atlas_annotate is not None:
         candidates, atlas_report = atlas_annotate(candidates)
