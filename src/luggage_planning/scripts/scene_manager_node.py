@@ -37,7 +37,7 @@ from luggage_description.scene_tf_publisher import rpy_to_quaternion
 from luggage_msgs.srv import (
     AddSceneBoxV2, RemoveSceneBoxV2, SyncStaticScene,
 )
-from luggage_planning.planning_scene_client import (
+from luggage_planning.motion.planning_scene_client import (
     BOX_OBJECT_ID,
     PlanningSceneClient,
     load_stl_mesh_msg,
@@ -205,7 +205,7 @@ class SceneManagerNode(Node):
                     (length, width, height), frame_id=self._world_frame)
                 if not ok:
                     return False, "pedestal apply: %s" % message
-                from luggage_planning.moveit_state_validity import (
+                from luggage_planning.motion.moveit_state_validity import (
                     DECLARED_STRUCTURE_PAIRS,
                 )
 
@@ -223,7 +223,7 @@ class SceneManagerNode(Node):
             origin_in_world, resolve_scene_tf_config_path,
         )
         from luggage_planning.atlas.runtime import compute_scene_tf_hash
-        from luggage_planning.scene_box_v2 import handle_add_scene_box_v2
+        from luggage_planning.place.scene_box_v2 import handle_add_scene_box_v2
         _gate = getattr(self, "_gate_mutation", None)
         if _gate is not None and not _gate(
                 response, request_id=str(getattr(request, "request_id", "")
@@ -238,7 +238,7 @@ class SceneManagerNode(Node):
             origin, rpy)
 
     def _handle_remove_scene_v2(self, request, response):
-        from luggage_planning.scene_box_v2 import handle_remove_scene_box_v2
+        from luggage_planning.place.scene_box_v2 import handle_remove_scene_box_v2
         _gate = getattr(self, "_gate_mutation", None)
         if _gate is not None and not _gate(
                 response, request_id=str(getattr(request, "request_id", "")

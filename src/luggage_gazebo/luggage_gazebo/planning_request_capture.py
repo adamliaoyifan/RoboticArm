@@ -8,7 +8,7 @@ replay command.
 
 from __future__ import division
 
-from luggage_planning.planning_capture import candidate_complete
+from luggage_planning.capture.planning_capture import candidate_complete
 
 
 REQUIRED_FIELDS = (

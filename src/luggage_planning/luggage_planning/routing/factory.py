@@ -35,31 +35,31 @@ def build_production_route_producer(node, scene_tf_path, surface_provider,
         pedestal_dimensions,
         pedestal_enabled,
     )
-    from luggage_planning.attachment_provider import MeasuredAttachmentProvider
+    from luggage_planning.attachment.attachment_provider import MeasuredAttachmentProvider
     from luggage_planning.atlas.prior import prior_for_targets
     from luggage_planning.routing.grid_search import route_budget_ns
     from luggage_planning.routing.lattice import LatticeStateChecker
-    from luggage_planning.map_revalidation import MapRevalidator
+    from luggage_planning.place.map_revalidation import MapRevalidator
     from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
-    from luggage_planning.moveit_state_validity import MoveItStateValidityAdapter
-    from luggage_planning.offline_ik import load_urdf, refine_to_pose
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.moveit_state_validity import MoveItStateValidityAdapter
+    from luggage_planning.motion.offline_ik import load_urdf, refine_to_pose
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
     from luggage_planning.atlas.graph import RouteGraph, make_offline_fk
     from luggage_planning.routing.producer import (
         RouteProducer,
         certification_policy_from_contract,
         revalidation_policy_from_contract,
     )
-    from luggage_planning.trajectory_certifier import TrajectoryCertifier
+    from luggage_planning.motion.trajectory_certifier import TrajectoryCertifier
     import json as _json
 
     logger = log or (lambda message: node.get_logger().info(message))
     try:
-        from ament_index_python.packages import get_package_share_directory
+        from luggage_planning.planning_contract.location import (
+            resolved_planning_contract_path,
+        )
 
-        contract_path = os.path.join(
-            get_package_share_directory("st09_contracts"),
-            "resolved_planning_contract.json")
+        contract_path = resolved_planning_contract_path()
         with open(contract_path, encoding="utf-8") as handle:
             contract_document = _json.load(handle)
         cert_policy = certification_policy_from_contract(contract_document)

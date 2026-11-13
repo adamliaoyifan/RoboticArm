@@ -707,7 +707,7 @@ class TestFKCertification(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        from luggage_planning.offline_ik import load_urdf, refine_to_pose
+        from luggage_planning.motion.offline_ik import load_urdf, refine_to_pose
         cls.urdf = load_urdf()
         path = cls.urdf.path_to("suction_contact_frame")
         cls.tcp_path = path[path.index("elfin_joint1"):]
@@ -835,7 +835,7 @@ class TestFKCertification(unittest.TestCase):
         script = os.path.join(
             PKG_DIR, "..", "..", "scripts", "certify_atlas_seeds.py")
         certify = runpy.run_path(script)["certify"]
-        from luggage_planning.offline_ik import load_urdf
+        from luggage_planning.motion.offline_ik import load_urdf
         import xml.etree.ElementTree as ET
         capture_xml = ET.tostring(load_urdf().root, encoding="unicode")
         with tempfile.TemporaryDirectory() as tmp:
@@ -889,7 +889,7 @@ class TestFKCertification(unittest.TestCase):
         script = os.path.join(
             PKG_DIR, "..", "..", "scripts", "certify_atlas_seeds.py")
         certify = runpy.run_path(script)["certify"]
-        from luggage_planning.offline_ik import load_urdf
+        from luggage_planning.motion.offline_ik import load_urdf
         import xml.etree.ElementTree as ET
         capture_xml = ET.tostring(load_urdf().root, encoding="unicode")
         with tempfile.TemporaryDirectory() as tmp:
@@ -941,7 +941,7 @@ class TestFKCertification(unittest.TestCase):
         script = os.path.join(
             PKG_DIR, "..", "..", "scripts", "certify_atlas_seeds.py")
         certify = runpy.run_path(script)["certify"]
-        from luggage_planning.offline_ik import load_urdf
+        from luggage_planning.motion.offline_ik import load_urdf
         import xml.etree.ElementTree as ET
         capture_xml = ET.tostring(load_urdf().root, encoding="unicode")
         with tempfile.TemporaryDirectory() as tmp:

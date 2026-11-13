@@ -1,4 +1,4 @@
-from luggage_planning.observation_ik_search import observation_goals
+from luggage_planning.motion.observation_ik_search import observation_goals
 
 
 def test_local_failure_reaches_other_branch_before_legacy_fallback():

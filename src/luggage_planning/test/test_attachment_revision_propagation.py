@@ -12,16 +12,16 @@ import pytest
 from luggage_msgs.msg import DetectedLuggage
 from luggage_msgs.srv import VacuumCommandV2
 from luggage_description.frame_contracts import ContractError
-from luggage_planning.attachment_frame_adapters import (
+from luggage_planning.attachment.attachment_frame_adapters import (
     attachment_revision_evidence,
     bound_attachment_scene_revision,
     handle_vacuum_command_v2,
     revision_evidence_from_message,
     vacuum_attach_revision_dump,
 )
-from luggage_planning.attachment_frame_contracts import _freeze
-from luggage_planning.pick_authorization import HEIGHT_SOURCE_MEASURED_SUPPORT
-from luggage_planning.place_service import pose_message
+from luggage_planning.attachment.attachment_frame_contracts import _freeze
+from luggage_planning.pick.pick_authorization import HEIGHT_SOURCE_MEASURED_SUPPORT
+from luggage_planning.place.place_service import pose_message
 from types import SimpleNamespace
 
 
@@ -118,7 +118,7 @@ def test_matching_live_revision_attaches():
 
 
 def test_attach_returns_actual_offset_instead_of_requested_grasp():
-    from luggage_planning.typed_driver_adapter import grasp_record
+    from luggage_planning.deploy.typed_driver_adapter import grasp_record
     request = _request(LIVE)
     request.has_grasp = True
     request.grasp = pose_message(grasp_record('attach', LIVE,
@@ -201,3 +201,44 @@ def test_driver_dump_names_adapter_bind_and_live_scene():
     assert dump["measured_stamp_ns"] == 1000
     assert dump["box_id"] == "pickup_box_0001_carryon"
     assert dump["generation"] == 2
+
+
+def test_delayed_seal_returns_tcp_measured_after_confirmation():
+    state = {'stamp_ns':2000, 'reads':[], 'sealed':False}
+    def tool(_stamp):
+        state['reads'].append((state['stamp_ns'],state['sealed']))
+        record = _tool(LIVE)
+        record['stamp_ns'] = state['stamp_ns']
+        return record
+    def attach(_payload):
+        state['stamp_ns'] = 6_300_002_000
+        state['sealed'] = True
+        return True, 'seal confirmed'
+    backend = SimpleNamespace(attach=attach)
+    response = handle_vacuum_command_v2(_request(LIVE),VacuumCommandV2.Response(),
+        scene_revision=LIVE,generation=2,resolve_tool=tool,backend=backend)
+    assert response.success and response.has_measured_attachment
+    assert state['reads'] == [(2000,False),(6_300_002_000,True)]
+    assert response.measured_grasp.identity.stamp_ns == 6_300_002_000
+    assert backend.last_attach_record['tool_stamp_ns'] == 6_300_002_000
+    assert backend.last_attach_record['box_pose']['stamp_ns'] == 1000
+
+
+def test_failed_postseal_measurement_preserves_seal_without_fabricating_attachment():
+    state = {'sealed':False,'detach_calls':0}
+    def tool(_stamp):
+        if state['sealed']:raise RuntimeError('postseal TF unavailable')
+        return _tool(LIVE)
+    def attach(_payload):
+        state['sealed'] = True
+        return True, 'seal confirmed'
+    def detach(_payload):
+        state['detach_calls'] += 1
+        return True, 'must not happen'
+    response = handle_vacuum_command_v2(_request(LIVE),VacuumCommandV2.Response(),
+        scene_revision=LIVE,generation=2,resolve_tool=tool,
+        backend=SimpleNamespace(attach=attach,detach=detach))
+    assert response.success and not response.has_measured_attachment
+    assert response.message.startswith('SEALED_ATTACHMENT_MEASUREMENT_UNQUALIFIED:')
+    assert not response.diagnostic.accepted
+    assert state['sealed'] and state['detach_calls'] == 0

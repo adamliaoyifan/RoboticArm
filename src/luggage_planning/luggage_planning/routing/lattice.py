@@ -108,8 +108,8 @@ class LatticeStateChecker(object):
         checker that already prepared against another scene reports
         ``prepared_digest`` so the caller can build a new one.
         """
-        from luggage_planning.anchor_payload_gate import live_scene_digest
-        from luggage_planning.moveit_state_validity import FrozenSceneComposer
+        from luggage_planning.pick.anchor_payload_gate import live_scene_digest
+        from luggage_planning.motion.moveit_state_validity import FrozenSceneComposer
 
         live = FrozenSceneComposer(self._scene_client).read_live()
         digest = live_scene_digest(live)
@@ -123,7 +123,7 @@ class LatticeStateChecker(object):
             return
         from luggage_msgs.srv import ValidateRouteV2
 
-        from luggage_planning.moveit_state_validity import (
+        from luggage_planning.motion.moveit_state_validity import (
             SERVICE_NAME,
             FrozenSceneComposer,
         )
@@ -317,9 +317,9 @@ def _digest8(text):
 
 def retime_positions(positions, velocity_scaling, acceleration_scaling):
     """Site rest-to-rest profile over joint states -> TimedTrajectory."""
-    from st09_contracts.graph import TimedTrajectory
+    from luggage_planning.planning_contract.graph import TimedTrajectory
 
-    from luggage_planning.trajectory_timing import (
+    from luggage_planning.motion.trajectory_timing import (
         time_parameterize_cartesian,
     )
 
@@ -560,7 +560,7 @@ class LatticeRoutePlanner(object):
         return self.graph.add_edge(edge)
 
     def _lattice_edge(self, source, destination, edge_class, states, names):
-        from st09_contracts.graph import GraphEdge
+        from luggage_planning.planning_contract.graph import GraphEdge
 
         trajectory = retime_positions(
             states, self.velocity_scaling, self.acceleration_scaling)
@@ -631,8 +631,8 @@ class LatticeRoutePlanner(object):
 
     def plan_route(self, snapshot, attachment, candidate, targets,
                    budget_ns):
-        from st09_contracts._base import digest_of
-        from st09_contracts.graph import LoadState, PlannedRoute
+        from luggage_planning.planning_contract._base import digest_of
+        from luggage_planning.planning_contract.graph import LoadState, PlannedRoute
 
         from luggage_planning.routing.grid_search import RoutePlanningError
         from luggage_planning.atlas.graph import GraphRoutePlanner

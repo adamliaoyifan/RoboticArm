@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from luggage_planning.joint_operation.post_place_explore import PostPlaceExplorer
 from luggage_planning.placement_prior.contracts import Transform
-from luggage_planning.interior_view_scorer import CameraIntrinsics
+from luggage_planning.geometry.interior_view_scorer import CameraIntrinsics
 
 
 @pytest.mark.parametrize('fresh',(True,False))

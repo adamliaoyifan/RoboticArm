@@ -21,7 +21,7 @@ import numpy as np
 import sys
 sys.path.insert(0, "/tmp/elfin-master-pack-baseline-g3/src/luggage_planning")
 sys.path.insert(0, "/tmp/elfin-master-pack-baseline-g3/src/luggage_description")
-from luggage_planning.offline_ik import load_urdf
+from luggage_planning.motion.offline_ik import load_urdf
 from luggage_planning.atlas.graph import make_offline_fk
 
 WS = "/tmp/elfin-master-pack-baseline-g3"

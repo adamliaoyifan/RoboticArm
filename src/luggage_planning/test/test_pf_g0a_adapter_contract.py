@@ -15,14 +15,14 @@ from luggage_msgs.msg import DetectedLuggage
 
 pytest.importorskip("luggage_msgs.msg")
 
-from luggage_planning.ros_message_adapters import pick_from_detected  # noqa: E402
-from luggage_planning.waypoint_generator import (  # noqa: E402
+from luggage_planning.adapters.ros_message_adapters import pick_from_detected  # noqa: E402
+from luggage_planning.place.waypoint_generator import (  # noqa: E402
     DEFAULT_PICK_CLEARANCES,
     FULL_GEOMETRY_REQUIRED,
     build_sequence,
     pick_contact_top_z,
 )
-from luggage_planning.pose import Point, Pose, Quaternion  # noqa: E402
+from luggage_planning.geometry.pose import Point, Pose, Quaternion  # noqa: E402
 
 
 def _full_geometry_msg():

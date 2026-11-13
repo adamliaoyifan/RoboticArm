@@ -5,10 +5,10 @@ from types import SimpleNamespace
 import pytest
 from luggage_msgs.msg import PlacementPriorChoiceV2, SurfaceContractV2
 from luggage_msgs.srv import VacuumCommandV2, PreparePlacementPriorV2, SelectPlacePathV2
-from luggage_planning.attachment_frame_adapters import handle_vacuum_command_v2
-from luggage_planning.hardware_place_planning import attachment_from_response, plan_attached_box
-from luggage_planning.place_service import pose_message
-from luggage_planning.typed_driver_adapter import TypedDriverAdapter, slot_record, tcp_record
+from luggage_planning.attachment.attachment_frame_adapters import handle_vacuum_command_v2
+from luggage_planning.deploy.hardware_place_planning import attachment_from_response, plan_attached_box
+from luggage_planning.place.place_service import pose_message
+from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter, slot_record, tcp_record
 from test_attachment_revision_propagation import _request, _tool, LIVE
 
 

@@ -15,7 +15,7 @@
         "src/luggage_description/luggage_description/scene_tf_config_utils.py",
         "src/luggage_description/scripts/container_tf_publisher",
         "src/luggage_description/luggage_description/scene_tf_publisher.py",
-        "src/luggage_planning/luggage_planning/scene_box_v2.py"
+        "src/luggage_planning/luggage_planning/place/scene_box_v2.py"
       ],
       "checks": [
         "translate_rotate90",
@@ -63,7 +63,7 @@
         "src/luggage_perception/scripts/luggage_detector_node.py",
         "src/luggage_msgs/msg/DetectedLuggage.msg",
         "src/luggage_msgs/msg/DetectionFrame.msg",
-        "src/luggage_planning/luggage_planning/ros_message_adapters.py",
+        "src/luggage_planning/luggage_planning/adapters/ros_message_adapters.py",
         "src/luggage_perception/luggage_perception/frame_boundary_records.py"
       ],
       "checks": [
@@ -86,8 +86,8 @@
       "sources": [
         "src/luggage_msgs/msg/SuctionCandidate.msg",
         "src/luggage_perception/luggage_perception/suction_patch_evaluator.py",
-        "src/luggage_planning/luggage_planning/suction_candidate_selection.py",
-        "src/luggage_planning/luggage_planning/suction_candidate_waypoints.py",
+        "src/luggage_planning/luggage_planning/pick/suction_candidate_selection.py",
+        "src/luggage_planning/luggage_planning/pick/suction_candidate_waypoints.py",
         "src/luggage_perception/luggage_perception/frame_boundary_records.py"
       ],
       "checks": [
@@ -131,7 +131,7 @@
       "sources": [
         "src/luggage_perception/scripts/cargo_volume_mapper_node.py",
         "src/luggage_perception/luggage_perception/cargo_volume_mapper.py",
-        "src/luggage_planning/luggage_planning/occupancy_place_paths.py"
+        "src/luggage_planning/luggage_planning/place/occupancy_place_paths.py"
       ],
       "checks": [
         "surface_stacked_unknown",
@@ -181,8 +181,8 @@
         "src/luggage_planning/scripts/trajectory_selector_node.py",
         "src/luggage_msgs/srv/BuildMotionSequenceV2.srv",
         "src/luggage_msgs/srv/SelectPlacePathV2.srv",
-        "src/luggage_planning/luggage_planning/place_tcp.py",
-        "src/luggage_planning/luggage_planning/place_service.py"
+        "src/luggage_planning/luggage_planning/place/place_tcp.py",
+        "src/luggage_planning/luggage_planning/place/place_service.py"
       ],
       "checks": [
         "missing_frame",
@@ -203,10 +203,10 @@
       "current": "world targets carried as bare poses",
       "target": "motion profile with explicit suction target link, observation identity and grasp offset",
       "sources": [
-        "src/luggage_planning/luggage_planning/waypoint_generator.py",
+        "src/luggage_planning/luggage_planning/place/waypoint_generator.py",
         "src/luggage_planning/scripts/hardware_pick_driver.py",
-        "src/luggage_planning/luggage_planning/suction_pick_session.py",
-        "src/luggage_planning/luggage_planning/pick_frame_contracts.py"
+        "src/luggage_planning/luggage_planning/pick/suction_pick_session.py",
+        "src/luggage_planning/luggage_planning/pick/pick_frame_contracts.py"
       ],
       "checks": [
         "motion_world",
@@ -226,9 +226,9 @@
       "current": "reuses approach target; frame identity not carried by MotionSegment",
       "target": "preserve original pose/link and transform snapshot; reject stale calibration",
       "sources": [
-        "src/luggage_planning/luggage_planning/suction_retry_contracts.py",
-        "src/luggage_planning/luggage_planning/suction_candidate_waypoints.py",
-        "src/luggage_planning/luggage_planning/pick_frame_contracts.py"
+        "src/luggage_planning/luggage_planning/pick/suction_retry_contracts.py",
+        "src/luggage_planning/luggage_planning/pick/suction_candidate_waypoints.py",
+        "src/luggage_planning/luggage_planning/pick/pick_frame_contracts.py"
       ],
       "checks": [
         "stale_scene",
@@ -247,11 +247,11 @@
       "current": "world slot conversion; center-to-top assumes centered horizontal grasp",
       "target": "box-to-tool transform, complete container-to-world pose conversion; distinct clearance lengths",
       "sources": [
-        "src/luggage_planning/luggage_planning/waypoint_generator.py",
+        "src/luggage_planning/luggage_planning/place/waypoint_generator.py",
         "src/luggage_planning/scripts/waypoint_generator_node.py",
         "src/luggage_msgs/srv/BuildMotionSequenceV2.srv",
-        "src/luggage_planning/luggage_planning/place_tcp.py",
-        "src/luggage_planning/luggage_planning/place_service.py"
+        "src/luggage_planning/luggage_planning/place/place_tcp.py",
+        "src/luggage_planning/luggage_planning/place/place_service.py"
       ],
       "checks": [
         "offcenter_grasp",
@@ -274,8 +274,8 @@
         "src/luggage_planning/luggage_planning/routing/producer.py",
         "src/luggage_planning/luggage_planning/routing/grid_search.py",
         "src/luggage_planning/luggage_planning/atlas/graph.py",
-        "src/luggage_planning/luggage_planning/occupancy_place_paths.py",
-        "src/luggage_planning/luggage_planning/place_tcp.py"
+        "src/luggage_planning/luggage_planning/place/occupancy_place_paths.py",
+        "src/luggage_planning/luggage_planning/place/place_tcp.py"
       ],
       "checks": [
         "nonsquare_width_axis",
@@ -300,8 +300,8 @@
         "scripts/select_place_path_probe.py",
         "src/luggage_msgs/srv/BuildMotionSequenceV2.srv",
         "src/luggage_msgs/srv/SelectPlacePathV2.srv",
-        "src/luggage_planning/luggage_planning/place_service.py",
-        "src/luggage_planning/luggage_planning/place_tcp.py"
+        "src/luggage_planning/luggage_planning/place/place_service.py",
+        "src/luggage_planning/luggage_planning/place/place_tcp.py"
       ],
       "checks": [
         "wrong_reference",
@@ -354,19 +354,19 @@
         "src/luggage_msgs/msg/MotionSegment.msg",
         "src/luggage_msgs/action/PlanMotion.action",
         "src/luggage_msgs/srv/ProbeMotionSegment.srv",
-        "src/luggage_planning/luggage_planning/pose.py",
-        "src/luggage_planning/luggage_planning/ros_message_adapters.py",
-        "src/luggage_planning/luggage_planning/motion_executor.py",
+        "src/luggage_planning/luggage_planning/geometry/pose.py",
+        "src/luggage_planning/luggage_planning/adapters/ros_message_adapters.py",
+        "src/luggage_planning/luggage_planning/motion/motion_executor.py",
         "src/luggage_msgs/msg/MotionSegmentV2.msg",
         "src/luggage_msgs/action/PlanMotionV2.action",
         "src/luggage_msgs/srv/ProbeMotionSegmentV2.srv",
         "src/luggage_msgs/srv/SelectPlacePathV2.srv",
         "src/luggage_msgs/srv/BuildMotionSequenceV2.srv",
-        "src/luggage_planning/luggage_planning/motion_frame_contracts.py",
-        "src/luggage_planning/luggage_planning/motion_frame_adapters.py",
-        "src/luggage_planning/luggage_planning/motion_v2_service.py",
+        "src/luggage_planning/luggage_planning/motion/motion_frame_contracts.py",
+        "src/luggage_planning/luggage_planning/motion/motion_frame_adapters.py",
+        "src/luggage_planning/luggage_planning/motion/motion_v2_service.py",
         "src/luggage_planning/scripts/motion_planner_node.py",
-        "src/luggage_planning/luggage_planning/place_service.py"
+        "src/luggage_planning/luggage_planning/place/place_service.py"
       ],
       "checks": [
         "motion_world",
@@ -388,10 +388,10 @@
       "target": "declared model root and tool constraints; compensation as framed vector",
       "sources": [
         "src/luggage_planning/scripts/motion_planner_node.py",
-        "src/luggage_planning/luggage_planning/offline_ik.py",
-        "src/luggage_planning/luggage_planning/motion_frame_contracts.py",
-        "src/luggage_planning/luggage_planning/motion_frame_adapters.py",
-        "src/luggage_planning/luggage_planning/motion_executor.py"
+        "src/luggage_planning/luggage_planning/motion/offline_ik.py",
+        "src/luggage_planning/luggage_planning/motion/motion_frame_contracts.py",
+        "src/luggage_planning/luggage_planning/motion/motion_frame_adapters.py",
+        "src/luggage_planning/luggage_planning/motion/motion_executor.py"
       ],
       "checks": [
         "base_to_world",
@@ -412,11 +412,11 @@
       "target": "verified full world pose and body-axis size; no assumed bare pose",
       "sources": [
         "src/luggage_planning/scripts/scene_manager_node.py",
-        "src/luggage_planning/luggage_planning/planning_scene_client.py",
-        "src/luggage_planning/luggage_planning/pickup_collision.py",
+        "src/luggage_planning/luggage_planning/motion/planning_scene_client.py",
+        "src/luggage_planning/luggage_planning/pick/pickup_collision.py",
         "src/luggage_msgs/srv/AddSceneBoxV2.srv",
         "src/luggage_msgs/srv/RemoveSceneBoxV2.srv",
-        "src/luggage_planning/luggage_planning/scene_box_v2.py"
+        "src/luggage_planning/luggage_planning/place/scene_box_v2.py"
       ],
       "checks": [
         "translate_rotate90",
@@ -435,16 +435,16 @@
       "current": "world box inputs and link attachment; separate physical backend",
       "target": "record actual T_box_tool; maintain same payload on both backends; valve state has no frame",
       "sources": [
-        "src/luggage_planning/luggage_planning/vacuum_backend.py",
-        "src/luggage_planning/luggage_planning/vacuum_attach_utils.py",
-        "src/luggage_planning/luggage_planning/planning_scene_client.py",
+        "src/luggage_planning/luggage_planning/attachment/vacuum_backend.py",
+        "src/luggage_planning/luggage_planning/attachment/vacuum_attach_utils.py",
+        "src/luggage_planning/luggage_planning/motion/planning_scene_client.py",
         "src/luggage_msgs/srv/VacuumCommandV2.srv",
-        "src/luggage_planning/luggage_planning/attachment_frame_contracts.py",
-        "src/luggage_planning/luggage_planning/attachment_frame_adapters.py",
+        "src/luggage_planning/luggage_planning/attachment/attachment_frame_contracts.py",
+        "src/luggage_planning/luggage_planning/attachment/attachment_frame_adapters.py",
         "src/luggage_planning/scripts/vacuum_controller_node.py",
         "src/luggage_planning/luggage_planning/joint_operation/attachment.py",
-        "src/luggage_planning/luggage_planning/attachment_provider.py",
-        "st09_contracts/stationary_attachment.py"
+        "src/luggage_planning/luggage_planning/attachment/attachment_provider.py",
+        "src/luggage_planning/luggage_planning/planning_contract/stationary_attachment.py"
       ],
       "checks": [
         "offcenter_grasp",
@@ -536,7 +536,7 @@
       "current": "multiple hand-written base/world/local conversions",
       "target": "same public contracts; ground truth remains separate oracle; exercise real service path",
       "sources": [
-        "src/luggage_planning/luggage_planning/typed_driver_adapter.py",
+        "src/luggage_planning/luggage_planning/deploy/typed_driver_adapter.py",
         "src/luggage_gazebo/luggage_gazebo/typed_driver_adapter.py",
         "src/luggage_gazebo/scripts/place_only_eval_driver.py",
         "src/luggage_gazebo/scripts/motion_occ_eval_driver.py",

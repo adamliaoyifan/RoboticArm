@@ -17,8 +17,8 @@ from luggage_perception.observation_policy import (
     plan_views,
 )
 
-from st09_contracts.fixtures import make_snapshot
-from st09_contracts.planning import ObservationRequirement
+from luggage_planning.planning_contract.fixtures import make_snapshot
+from luggage_planning.planning_contract.planning import ObservationRequirement
 
 
 def requirement():
@@ -105,7 +105,7 @@ class TestBoundedViews(object):
             make_snapshot(map_revision=1).occupancy_counts()
 
     def test_coverage_after_integration_names_unknowns(self):
-        from st09_contracts.fixtures import snapshot_pair
+        from luggage_planning.planning_contract.fixtures import snapshot_pair
         _first, second = snapshot_pair()
         remaining = coverage_after_integration(second, requirement())
         assert remaining, "the deep footprint is still unknown after one pass"

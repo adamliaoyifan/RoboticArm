@@ -2,7 +2,7 @@ import json
 from moveit_msgs.action import MoveGroup
 from moveit_msgs.msg import PlanningScene
 from rclpy.serialization import deserialize_message
-from luggage_planning.joint_boundary_capture import capture_boundary
+from luggage_planning.capture.joint_boundary_capture import capture_boundary
 
 
 def test_boundary_roundtrip_and_limit(tmp_path):
@@ -32,7 +32,7 @@ def test_missing_scene_is_incomplete_evidence(tmp_path):
 def test_failed_insert_roundtrip_includes_exact_waypoints_and_fraction(tmp_path):
     from geometry_msgs.msg import Pose
     from moveit_msgs.srv import GetCartesianPath
-    from luggage_planning.joint_boundary_capture import capture_insert_boundary
+    from luggage_planning.capture.joint_boundary_capture import capture_insert_boundary
     scene = PlanningScene()
     request = GetCartesianPath.Request()
     request.start_state.joint_state.position = [0.12345678901234567] * 6

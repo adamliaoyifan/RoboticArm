@@ -14,8 +14,8 @@ from luggage_planning.joint_operation.contracts import seal_operation_plan
 from luggage_planning.joint_operation.revalidation import NativeOperationRevalidationPort
 from luggage_planning.joint_operation.scenes import build_operation_scenes
 from luggage_planning.placement_prior.contracts import Transform
-from st09_contracts.attachment_geometry import freeze_geometry
-from st09_contracts.payload_envelope import EnvelopeLimits
+from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
 
 pytestmark = pytest.mark.skipif(not os.environ.get('JOINT_NATIVE_CERTIFIER_EXECUTABLE'),
     reason='explicit real native revalidation gate')
@@ -39,7 +39,7 @@ def port(gate,**changes):
     def captured(plan,**arguments):
         from rclpy.serialization import serialize_message
         from luggage_planning.joint_operation.adapters import operation_plan_to_message
-        from luggage_planning.attachment_geometry_transport import geometry_to_message
+        from luggage_planning.attachment.attachment_geometry_transport import geometry_to_message
         name='boundary_'+str(time.monotonic_ns())
         (gate.directory/(name+'_plan.cdr')).write_bytes(serialize_message(
             operation_plan_to_message(plan,plan.identity,plan.plan_digest)))

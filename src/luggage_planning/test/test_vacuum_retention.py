@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import unittest
 
-from luggage_planning.vacuum_retention import retention_metrics
+from luggage_planning.attachment.vacuum_retention import retention_metrics
 
 
 class TestVacuumRetention(unittest.TestCase):

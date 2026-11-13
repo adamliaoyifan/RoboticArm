@@ -29,8 +29,8 @@ def test_rotated_payload_and_margin_are_included():
 
 def test_existing_attachment_envelope_ranks_interior_before_wall_without_veto():
     from luggage_description.container_geometry import cuboid_from_inner_size
-    from st09_contracts.attachment_geometry import freeze_geometry
-    from st09_contracts.payload_envelope import EnvelopeLimits
+    from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+    from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
     hull=cuboid_from_inner_size((1.,1.,1.))
     volume=SimpleNamespace(dimensions_xyz=[10,10,10],states=bytes([1])*1000,
         active=[True]*1000,origin_container=[-.5,-.5,0.],resolution_m=.1)

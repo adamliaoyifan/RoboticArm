@@ -27,7 +27,7 @@ def main():
     import luggage_perception
     import luggage_description
     import luggage_msgs
-    import st09_contracts
+    import luggage_planning.planning_contract
     from luggage_msgs import srv
     from geometry_msgs.msg import Point
 
@@ -35,7 +35,7 @@ def main():
     out.mkdir(parents=True, exist_ok=False)
     module_path = Path(get_package_prefix('luggage_perception'))/'lib/luggage_perception/cargo_volume_mapper_node.py'
     paths = {m.__name__: str(Path(m.__file__).resolve()) for m in
-             (luggage_perception, luggage_description, luggage_msgs, st09_contracts)}
+             (luggage_perception, luggage_description, luggage_msgs, luggage_planning.planning_contract)}
     if any('/tmp/occ-query-g2-install/' not in path for path in paths.values()):
         raise RuntimeError('all product imports must use the independent install: %r' % paths)
     manifest = dict(scored=False, profile='empty-map ROS wiring rehearsal', domain=args.domain,

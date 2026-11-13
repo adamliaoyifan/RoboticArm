@@ -521,11 +521,11 @@ def corridor_traverse_z(ctx, slot_center, size, placed_boxes,
                         portal_x=None):
     """Traverse contact height following the production corridor rule.
 
-    Mirrors ``luggage_planning.waypoint_generator.corridor_clearance``: the
+    Mirrors ``luggage_planning.place.waypoint_generator.corridor_clearance``: the
     payload bottom must clear the tallest committed surface between the
     portal and the slot by ``corridor_margin``.
     """
-    from luggage_planning.waypoint_generator import corridor_clearance
+    from luggage_planning.place.waypoint_generator import corridor_clearance
     inner_l = ctx["inner_l"]
     portal_x = float(portal_x if portal_x is not None else -inner_l * 0.5)
     box_h = float(size[2])

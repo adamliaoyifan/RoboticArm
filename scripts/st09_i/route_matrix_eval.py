@@ -68,7 +68,7 @@ from luggage_planning.routing.grid_search import (
     descend_pair_rank,
     hops_from_table,
 )
-from luggage_planning.offline_ik import load_urdf, refine_to_pose
+from luggage_planning.motion.offline_ik import load_urdf, refine_to_pose
 from luggage_planning.atlas.model import ReachabilityAtlas
 from luggage_planning.atlas.graph import (
     GraphRoutePlanner,
@@ -80,8 +80,8 @@ from luggage_planning.routing.producer import (
     anchor_plan,
     tool_down_branch_seeds,
 )
-from st09_contracts.fixtures import make_timed_trajectory
-from st09_contracts.graph import GraphEdge, LoadState
+from luggage_planning.planning_contract.fixtures import make_timed_trajectory
+from luggage_planning.planning_contract.graph import GraphEdge, LoadState
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 

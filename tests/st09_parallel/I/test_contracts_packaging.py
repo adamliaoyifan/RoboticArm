@@ -23,14 +23,14 @@ INSTALL_ROOT = REPO_ROOT / "install-st09"
 
 _OVERLAY_IMPORT = (
     "import sys, os\n"
-    "import st09_contracts\n"
-    "loc = st09_contracts.__file__\n"
+    "import luggage_planning.planning_contract\n"
+    "loc = luggage_planning.planning_contract.__file__\n"
     "assert 'install-st09' in loc, loc\n"
     "assert not any(os.path.realpath(p) == %r for p in sys.path)\n"
-    "from st09_contracts.fixtures import make_attachment, make_snapshot\n"
-    "from st09_contracts.graph import PlannedRoute\n"
-    "from st09_contracts.certification import CertificationResult\n"
-    "from st09_contracts.protocols import Certifier\n"
+    "from luggage_planning.planning_contract.fixtures import make_attachment, make_snapshot\n"
+    "from luggage_planning.planning_contract.graph import PlannedRoute\n"
+    "from luggage_planning.planning_contract.certification import CertificationResult\n"
+    "from luggage_planning.planning_contract.protocols import Certifier\n"
     "attachment = make_attachment('centered', symmetry='none')\n"
     "snapshot = make_snapshot(1)\n"
     "print(attachment.digest())\n"
@@ -80,20 +80,22 @@ class TestContractsPackaging:
         assert overlay.returncode == 0, overlay.stderr
         overlay_digest = overlay.stdout.strip().splitlines()[-1]
         # In-process: the parallel conftest put the repo root first.
-        from st09_contracts.fixtures import make_attachment
-        import st09_contracts
-        assert "install-st09" not in st09_contracts.__file__
+        from luggage_planning.planning_contract.fixtures import make_attachment
+        import luggage_planning.planning_contract
+        assert "install-st09" not in luggage_planning.planning_contract.__file__
         assert make_attachment("centered", symmetry="none").digest() \
             == overlay_digest
 
     def test_frozen_manifests_installed_to_share(self):
-        share = INSTALL_ROOT / "st09_contracts" / "share" / "st09_contracts"
+        share = (INSTALL_ROOT / "luggage_planning" / "share" / "luggage_planning"
+                 / "config" / "planning_contract")
+        source = REPO_ROOT / "src" / "luggage_planning" / "config" / "planning_contract"
         for name in ("resolved_planning_contract.json",
                      "st09_acceptance_manifest.json"):
             installed = share / name
             assert installed.exists(), name
             assert json.loads(installed.read_text()) == \
-                json.loads((REPO_ROOT / "st09_contracts" / name).read_text())
+                json.loads((source / name).read_text())
 
     def test_repo_root_import_still_wins_for_parallel_tests(self):
         """The C0 conftest contract: repo root on sys.path -> root copy.
@@ -104,8 +106,8 @@ class TestContractsPackaging:
         checks.
         """
         probe = (
-            "import st09_contracts\n"
-            "loc = st09_contracts.__file__\n"
+            "import luggage_planning.planning_contract\n"
+            "loc = luggage_planning.planning_contract.__file__\n"
             "assert 'install-st09' not in loc, loc\n"
             "print(loc)\n"
         )
@@ -116,7 +118,7 @@ class TestContractsPackaging:
             path = handle.name
         try:
             env = dict(os.environ)
-            env["PYTHONPATH"] = str(REPO_ROOT)
+            env["PYTHONPATH"] = str(REPO_ROOT / "src" / "luggage_planning")
             result = subprocess.run(
                 ["python3", path], env=env, capture_output=True,
                 text=True, timeout=60)
@@ -124,4 +126,4 @@ class TestContractsPackaging:
             os.unlink(path)
         assert result.returncode == 0, result.stderr
         assert REPO_ROOT.as_uri() not in result.stdout  # sanity: not a URI
-        assert str(REPO_ROOT) in result.stdout.strip()
+        assert str(REPO_ROOT / "src" / "luggage_planning") in result.stdout.strip()

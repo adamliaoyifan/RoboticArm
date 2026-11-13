@@ -10,12 +10,12 @@ import json
 import math
 import time
 
-from luggage_planning.attachment_provider import MeasuredPose
-from luggage_planning.hardware_place_planning import attachment_from_response
+from luggage_planning.attachment.attachment_provider import MeasuredPose
+from luggage_planning.deploy.hardware_place_planning import attachment_from_response
 from luggage_planning.joint_operation.actual_contact import RetainedContactObservation
 from luggage_planning.joint_operation.contracts import admit_operation_plan
 from luggage_planning.placement_prior.contracts import Transform
-from st09_contracts.stationary_attachment import (
+from luggage_planning.planning_contract.stationary_attachment import (
     StationaryAttachmentEvidence, measured_pose_digest,
 )
 

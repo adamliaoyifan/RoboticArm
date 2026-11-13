@@ -168,7 +168,7 @@ class PayloadScene(object):
     def attach(self):
         if self._payload is None:
             return
-        from luggage_planning.planning_scene_client import build_attach_scene
+        from luggage_planning.motion.planning_scene_client import build_attach_scene
         length, width, height = self._payload
         self._apply(build_attach_scene(
             "deploy_graph_payload", [0.0, 0.0, height * 0.5],
@@ -180,7 +180,7 @@ class PayloadScene(object):
     def detach(self):
         if not self._attached:
             return
-        from luggage_planning.planning_scene_client import build_detach_scene
+        from luggage_planning.motion.planning_scene_client import build_detach_scene
         self._attached = False
         self._apply(build_detach_scene(
             "deploy_graph_payload", "suction_contact_frame"),
@@ -188,7 +188,7 @@ class PayloadScene(object):
 
 
 def load_fk(urdf_path):
-    from luggage_planning.offline_ik import Urdf
+    from luggage_planning.motion.offline_ik import Urdf
     from luggage_planning.atlas.graph import make_offline_fk
     with open(urdf_path, "rb") as handle:
         urdf = Urdf(handle.read())
@@ -306,14 +306,14 @@ def build_chain_nodes(graph, atlas, target, resolution, opening_x, fk):
 
 
 def _contracts():
-    from st09_contracts import graph as contracts_graph
-    from st09_contracts._base import digest_of
+    from luggage_planning.planning_contract import graph as contracts_graph
+    from luggage_planning.planning_contract._base import digest_of
     return contracts_graph, digest_of
 
 
 def make_edge(graph, edge_class, source, destination, load_state,
               validity, static_identity):
-    from luggage_planning.trajectory_timing import (
+    from luggage_planning.motion.trajectory_timing import (
         time_parameterize_cartesian)
     contracts_graph, digest_of = _contracts()
     rows, travel = interpolation_rows(source.q, destination.q, INTERP_STEP_RAD)

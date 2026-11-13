@@ -16,8 +16,7 @@ for _path in (
         HERE,
         os.path.join(ROOT, "src", "luggage_planning"),
         os.path.join(ROOT, "src", "luggage_description"),
-        os.path.join(ROOT, "st09_contracts"),
-):
+        ):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
@@ -72,7 +71,7 @@ def main():
         "src/luggage_description/config/scene_tf_deploy.yaml",
         "src/elfin_description/urdf/S20.urdf.xacro",
         "src/luggage_planning/config/atlas_runtime_deploy_sim.yaml",
-        "st09_contracts/resolved_planning_contract.json",
+        "src/luggage_planning/config/planning_contract/resolved_planning_contract.json",
         "src/luggage_planning/luggage_planning/routing/corridor_lattice.py",
         "src/luggage_planning/luggage_planning/routing/lattice.py",
         "src/luggage_planning/luggage_planning/routing/producer.py",

@@ -4,7 +4,7 @@ import argparse
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from luggage_msgs.srv import ValidateRouteV2
-from luggage_planning.diagnostic_action_capture import CaptureNode
+from luggage_planning.capture.diagnostic_action_capture import CaptureNode
 
 
 def main():

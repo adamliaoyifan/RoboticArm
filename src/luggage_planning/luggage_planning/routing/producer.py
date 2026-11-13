@@ -26,7 +26,7 @@ Region anchors reuse the frozen waypoint clearances
 (``waypoint_generator``) as *graph node generators only* — they seed
 portal/approach/insert/exit nodes for the edge builder and never become
 execution specifications. Production never imports
-``st09_contracts.fixtures`` and never constructs a
+``luggage_planning.planning_contract.fixtures`` and never constructs a
 ``CertificationResult`` here; certification comes from C.
 """
 
@@ -37,10 +37,10 @@ import math
 import time
 from typing import List, Mapping, Optional, Sequence, Tuple
 
-from st09_contracts._base import ContractViolation
-from st09_contracts.attachment import UNLOADED_ATTACHMENT_DIGEST
-from st09_contracts.graph import LoadState, PlannedRoute
-from st09_contracts.planning import GeometryVerdict, PlacementCandidate
+from luggage_planning.planning_contract._base import ContractViolation
+from luggage_planning.planning_contract.attachment import UNLOADED_ATTACHMENT_DIGEST
+from luggage_planning.planning_contract.graph import LoadState, PlannedRoute
+from luggage_planning.planning_contract.planning import GeometryVerdict, PlacementCandidate
 
 from luggage_planning.routing.grid_search import (
     COMPLETE_ROUTE_RESERVE_S,
@@ -125,7 +125,7 @@ def camera_to_tcp_transform(urdf):
     return transform
 
 
-from luggage_planning.waypoint_generator import (
+from luggage_planning.place.waypoint_generator import (
     DEFAULT_CORRIDOR_MARGIN,
     DEFAULT_PLACE_CLEARANCE_Z,
     EXIT_EXTRA_LIFT_M,
@@ -233,7 +233,7 @@ def revalidation_policy_from_contract(contract: Mapping):
     contract's ``map_freshness.planning_snapshot_age_max_s`` (10 s,
     defined_by_c0) is the authority at route admission.
     """
-    from luggage_planning.map_revalidation import RevalidationPolicy
+    from luggage_planning.place.map_revalidation import RevalidationPolicy
 
     freshness = (contract.get("map_freshness") or {}).get(
         "planning_snapshot_age_max_s") or {}
@@ -250,7 +250,7 @@ def certification_policy_from_contract(contract: Mapping):
     (j2 [-3.3158, 0.1745] etc.), so production builds the policy from
     the packaged contract document.
     """
-    from luggage_planning.trajectory_certifier import CertificationPolicy
+    from luggage_planning.motion.trajectory_certifier import CertificationPolicy
 
     limits = (contract.get("joint_limits") or {}).get("position_rad") or {}
     lower, upper = [], []
@@ -390,13 +390,13 @@ def _yaw(quaternion_xyzw) -> float:
 
 
 def target_pairs(targets):
-    from luggage_planning.planning_capture import target_pairs as _pairs
+    from luggage_planning.capture.planning_capture import target_pairs as _pairs
     return _pairs(targets)
 
 
 def capture_fields(slot, targets, reachability, seed_sources):
     """Slot pose, TCP targets, reachability and seed labels for one row."""
-    from luggage_planning.planning_capture import capture_fields as _capture
+    from luggage_planning.capture.planning_capture import capture_fields as _capture
     return _capture(slot, targets, reachability, seed_sources)
 
 
@@ -648,7 +648,7 @@ class RouteProducer(object):
                  site_poses_fn=None, scene_config=None,
                  scene_revision_binding="", corridor_planner="graph",
                  lattice_checker_factory=None):
-        from luggage_planning.trajectory_certifier import CertificationPolicy
+        from luggage_planning.motion.trajectory_certifier import CertificationPolicy
 
         self.graph = graph
         self.edge_builder = edge_builder
@@ -848,7 +848,7 @@ class RouteProducer(object):
         return {"ok": False, "attempts": attempts, "best_pos_err_m": best}
 
     def _box_target(self, candidate, attachment, request):
-        from luggage_planning.place_targets import box_target_from_candidate
+        from luggage_planning.place.place_targets import box_target_from_candidate
 
         transform = request["container_transform"]
         return box_target_from_candidate(
@@ -958,8 +958,8 @@ class RouteProducer(object):
         a refusal here is the same judgement the route would meet later,
         reached without a MoveGroup call. See ``anchor_payload_gate``.
         """
-        from luggage_planning.anchor_payload_gate import AnchorPayloadGate
-        from luggage_planning.moveit_state_validity import FrozenSceneComposer
+        from luggage_planning.pick.anchor_payload_gate import AnchorPayloadGate
+        from luggage_planning.motion.moveit_state_validity import FrozenSceneComposer
 
         self._payload_screen_fn = None
         if self.corridor_planner != "graph" or attachment is None \
@@ -1287,7 +1287,7 @@ class RouteProducer(object):
         # other freshness verdict stays with the per-candidate revalidation,
         # which reads the authoritative ``latest_snapshot_fn``.
         if not snapshot.occupancy_confirmed:
-            from st09_contracts.reasons import Reason
+            from luggage_planning.planning_contract.reasons import Reason
 
             reason = str(Reason.MAP_CONFIRMATION_REQUIRED)
             rows.append({
@@ -1363,7 +1363,7 @@ class RouteProducer(object):
                 # The prior is queried at the REAL TCP targets (the
                 # measured attachment composed in by _expand_targets),
                 # never at the raw slot box pose.
-                from luggage_planning.place_targets import (
+                from luggage_planning.place.place_targets import (
                     TargetSynthesisError,
                 )
 
@@ -1798,7 +1798,7 @@ class RouteProducer(object):
                 self._close_row(rows, row)
                 last_reason = row["reason"]
                 continue
-            from st09_contracts.certification import MapDecision
+            from luggage_planning.planning_contract.certification import MapDecision
 
             row["decision"] = getattr(revalidation.decision, "value",
                                       str(revalidation.decision))
@@ -2261,7 +2261,7 @@ class RouteProducer(object):
         revalidation = self._revalidate(route, snapshot, edges)
         if revalidation is None:
             return False, "MAP_REVALIDATION_UNAVAILABLE", {}
-        from st09_contracts.certification import MapDecision
+        from luggage_planning.planning_contract.certification import MapDecision
 
         if revalidation.decision is not MapDecision.CONTINUE:
             return False, getattr(
@@ -2410,7 +2410,7 @@ class RouteProducer(object):
             allow_unconfirmed=unloaded_observation)
         if revalidation is None:
             return False, "MAP_REVALIDATION_UNAVAILABLE", {}
-        from st09_contracts.certification import MapDecision
+        from luggage_planning.planning_contract.certification import MapDecision
 
         if revalidation.decision is not MapDecision.CONTINUE:
             return False, getattr(
@@ -2434,8 +2434,8 @@ class RouteProducer(object):
         first one that builds AND certifies is the answer. Returns a
         dict mirroring plan_place_route's success/refusal shape.
         """
-        from st09_contracts.attachment import compose_transform
-        from st09_contracts.graph import LoadState, PlannedRoute
+        from luggage_planning.planning_contract.attachment import compose_transform
+        from luggage_planning.planning_contract.graph import LoadState, PlannedRoute
 
         started_ns = self._clock_ns()
         self._stage_ns = {"certify": 0, "revalidate": 0}
@@ -2490,7 +2490,7 @@ class RouteProducer(object):
                 start_node = self.graph.register_node(
                     current, tuple(start_fk[0]), tuple(start_fk[1]),
                     "observation_home", LoadState.UNLOADED, "observation")
-                from luggage_planning.observation_ik_search import observation_goals
+                from luggage_planning.motion.observation_ik_search import observation_goals
                 refine = getattr(self, "refine", None) or self._refine_to
                 expired = lambda: self._clock_ns() - started_ns >= self.budget_ns
                 for q, _info in observation_goals(
@@ -2543,7 +2543,7 @@ class RouteProducer(object):
                         self._close_row(rows, row)
                         last_reason = row["reason"]
                         continue
-                    from st09_contracts.certification import MapDecision
+                    from luggage_planning.planning_contract.certification import MapDecision
 
                     if revalidation.decision is not MapDecision.CONTINUE:
                         row["reason"] = getattr(
@@ -2617,7 +2617,7 @@ class RouteProducer(object):
         those are caller-side decisions, never server-side fallbacks.
         Returns a dict mirroring plan_observation_route's shape.
         """
-        from luggage_planning.named_robot_poses import (
+        from luggage_planning.deploy.named_robot_poses import (
             is_current_pose_name)
 
         started_ns = self._clock_ns()
@@ -2641,7 +2641,7 @@ class RouteProducer(object):
             return self._fail("JOINT_ORDER_MISMATCH", [{
                 "file": list(identity.get("joint_names") or []),
                 "expected": list(CANONICAL_JOINTS)}])
-        from luggage_planning.site_pose_schema import (
+        from luggage_planning.deploy.site_pose_schema import (
             executable_site_pose,
             validate_site_poses,
         )
@@ -2767,7 +2767,7 @@ class RouteProducer(object):
                 row["reason"] = "MAP_REVALIDATION_UNAVAILABLE"
                 rows.append(row)
                 return self._fail(row["reason"], rows)
-            from st09_contracts.certification import MapDecision
+            from luggage_planning.planning_contract.certification import MapDecision
 
             if revalidation.decision is not MapDecision.CONTINUE:
                 row["reason"] = getattr(
@@ -2844,7 +2844,7 @@ class RouteProducer(object):
                            for i in range(3)))
 
     def _expand_targets(self, candidate, attachment, request):
-        from luggage_planning.place_targets import expand_place_targets
+        from luggage_planning.place.place_targets import expand_place_targets
 
         box_target = self._release_box_target(
             self._box_target(candidate, attachment, request), request)
@@ -2863,7 +2863,7 @@ class RouteProducer(object):
         applied by the route search; this function only makes the
         continuous goal exist. A seed is never a verdict.
         """
-        from luggage_planning.place_targets import GoalSeed
+        from luggage_planning.place.place_targets import GoalSeed
 
         anchors = []
         seen = set()
@@ -2950,7 +2950,7 @@ class RouteProducer(object):
             SceneState,
             occupancy_boxes_from_surface,
         )
-        from st09_contracts.attachment import compose_transform
+        from luggage_planning.planning_contract.attachment import compose_transform
 
         # [ST09-I S5.7-4] Unloaded-only routes (observation/pick/exit)
         # carry no AttachmentRecord and no placement candidate: no
@@ -2958,7 +2958,7 @@ class RouteProducer(object):
         # boxes remain the obstacle set.
         payload = None
         if attachment is not None:
-            from st09_contracts.payload_envelope import collision_payload
+            from luggage_planning.planning_contract.payload_envelope import collision_payload
             geometry = collision_payload(attachment)
             payload = PayloadSpec(
                 dimensions_wdh=tuple(
@@ -2978,7 +2978,7 @@ class RouteProducer(object):
                 tuple(float(v) for v in candidate.position_container),
                 tuple(float(v) for v in
                       candidate.quaternion_xyzw_container))
-            from luggage_planning.payload_envelope_geometry import geometry_at_box_pose
+            from luggage_planning.attachment.payload_envelope_geometry import geometry_at_box_pose
             released_center, released_quaternion, released_dimensions = geometry_at_box_pose(
                 attachment, released_center, released_quaternion)
             released = BoxSpec(
@@ -3014,8 +3014,8 @@ class RouteProducer(object):
         """
         import dataclasses
 
-        from st09_contracts._base import ContractViolation
-        from luggage_planning.trajectory_certifier import (
+        from luggage_planning.planning_contract._base import ContractViolation
+        from luggage_planning.motion.trajectory_certifier import (
             CertificationContext,
         )
 
@@ -3024,7 +3024,7 @@ class RouteProducer(object):
         adapter = self.validity_adapter_factory(
             scene_states=scene_states, edges=edges)
         policy = self.cert_policy
-        from st09_contracts.graph import LoadState as _LoadState
+        from luggage_planning.planning_contract.graph import LoadState as _LoadState
 
         context = CertificationContext(
             route=route, snapshot=snapshot, attachment=attachment,
@@ -3068,7 +3068,7 @@ class RouteProducer(object):
         import time as _reval_time
 
         _reval_t0 = _reval_time.monotonic_ns()
-        from luggage_planning.map_revalidation import RevalidationInput
+        from luggage_planning.place.map_revalidation import RevalidationInput
 
         latest = snapshot
         fetch = self.latest_snapshot_fn
@@ -3533,10 +3533,10 @@ def certify_unloaded_legs(*, edges, snapshot, request_id, route_id, purpose,
     supplied snapshot and adapter. Returns
     ``(CertificationResult, PlannedRoute)``.
     """
-    from st09_contracts._base import digest_of
-    from st09_contracts.attachment import UNLOADED_ATTACHMENT_DIGEST
-    from st09_contracts.graph import LoadState, PlannedRoute
-    from luggage_planning.trajectory_certifier import CertificationContext
+    from luggage_planning.planning_contract._base import digest_of
+    from luggage_planning.planning_contract.attachment import UNLOADED_ATTACHMENT_DIGEST
+    from luggage_planning.planning_contract.graph import LoadState, PlannedRoute
+    from luggage_planning.motion.trajectory_certifier import CertificationContext
 
     edges = tuple(edges)
     if not edges:
@@ -3568,7 +3568,7 @@ def _live_count(provider) -> int:
     records = getattr(provider, "_records", None)
     if not isinstance(records, dict):
         return 0
-    from st09_contracts.attachment import AttachmentValidity
+    from luggage_planning.planning_contract.attachment import AttachmentValidity
     return sum(
         1 for record in records.values()
         if getattr(record, "validity", None) is AttachmentValidity.VALID)
@@ -3595,7 +3595,7 @@ def attachment_invalidation_evidence(snapshot, *, now_ns, records_before,
                                      request_generation=0,
                                      stale_window_ns=None):
     """Selector row: why the frozen attach was or was not still live."""
-    from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
+    from luggage_planning.planning_contract.attachment import ATTACHMENT_MAX_AGE_NS
     stamp = None if snapshot is None else int(snapshot["record_stamp_ns"])
     age = None if stamp is None else int(now_ns) - stamp
     if stale_window_ns is None:
@@ -3622,7 +3622,7 @@ def attachment_invalidation_evidence(snapshot, *, now_ns, records_before,
 
 def _attachment_identity_reason(record, request, stored_generation):
     """Refuse a live record whose box or generation is not this select."""
-    from st09_contracts.attachment import AttachmentValidity
+    from luggage_planning.planning_contract.attachment import AttachmentValidity
     if getattr(record, "validity", None) is not AttachmentValidity.VALID:
         return None
     if not hasattr(record, "box_id"):
@@ -3647,8 +3647,8 @@ def admit_attachment_for_route(provider, request, now_ns):
     ``ATTACHMENT_REQUEST_MISMATCH``. Expiry still surfaces as
     ``ATTACHMENT_MISSING``, with the age fields on ``evidence``.
     """
-    from st09_contracts.attachment import AttachmentValidity
-    from st09_contracts.reasons import Reason
+    from luggage_planning.planning_contract.attachment import AttachmentValidity
+    from luggage_planning.planning_contract.reasons import Reason
 
     request_id = str(request["request_id"])
     now_ns = int(now_ns)
@@ -3717,8 +3717,8 @@ def register_attach_from_request(provider, request: Mapping,
     source ever passes through here: the source kind is measured and
     attach-confirmed.
     """
-    from st09_contracts.attachment import invert_transform
-    from luggage_planning.attachment_provider import (
+    from luggage_planning.planning_contract.attachment import invert_transform
+    from luggage_planning.attachment.attachment_provider import (
         AttachmentSourceKind, MeasuredPose,
     )
 

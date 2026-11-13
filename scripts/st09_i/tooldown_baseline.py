@@ -29,8 +29,7 @@ for _path in (
         os.path.join(ROOT, "src", "luggage_planning"),
         os.path.join(ROOT, "src", "luggage_description"),
         os.path.join(ROOT, "src", "luggage_perception"),
-        os.path.join(ROOT, "st09_contracts"),
-):
+        ):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
@@ -41,7 +40,7 @@ from luggage_planning.routing.corridor_lattice import (  # noqa: E402
     has_kinematic_chain,
     prepare_corridor,
 )
-from st09_contracts.attachment import rotate_vector  # noqa: E402
+from luggage_planning.planning_contract.attachment import rotate_vector  # noqa: E402
 
 OUT = os.path.join(
     ROOT, "docs/status/evidence/frame_migration/ST09-parallel-I-s5/m3",
@@ -60,13 +59,13 @@ ATTACHMENT_SOURCE = "synthetic_rx_pi_half_height"
 def _prefer_source_contracts():
     """The eval interpreter may already have imported the installed contract."""
     import importlib
-    source = os.path.join(ROOT, "st09_contracts")
+    source = os.path.join(ROOT, "src", "luggage_planning")
     sys.path.insert(0, source)
     for key in list(sys.modules):
-        if key == "st09_contracts" or key.startswith("st09_contracts."):
+        if key == "luggage_planning.planning_contract" or key.startswith("luggage_planning.planning_contract."):
             del sys.modules[key]
     importlib.invalidate_caches()
-    planning = importlib.import_module("st09_contracts.planning")
+    planning = importlib.import_module("luggage_planning.planning_contract.planning")
     if "occupancy_domain_complete" not in planning.PlanningSnapshot.__dataclass_fields__:
         raise SystemExit("PlanningSnapshot missing the domain flag: %s" % planning.__file__)
     return planning.__file__
@@ -218,8 +217,8 @@ def collide():
     from luggage_perception.eval.isolated_domain import isolated_replay_env
     from luggage_planning.routing.grid_search import ROUTE_TOTAL_WALL_S
     from luggage_planning.routing.lattice import LatticeStateChecker
-    from luggage_planning.planning_scene_client import PlanningSceneClient
-    from luggage_planning.typed_driver_adapter import container_transform_fields
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
+    from luggage_planning.deploy.typed_driver_adapter import container_transform_fields
     import rclpy
     from rclpy.executors import MultiThreadedExecutor
     from rclpy.node import Node
@@ -345,7 +344,7 @@ def collide():
 def _layer_of(point, request, opening, transit, urdf, joints):
     if not joints:
         return None
-    from luggage_planning.offline_ik import refine_to_pose
+    from luggage_planning.motion.offline_ik import refine_to_pose
 
     def refine(position, quaternion, seed):
         return refine_to_pose(
@@ -482,8 +481,8 @@ def fallback():
     from luggage_perception.eval.isolated_domain import isolated_replay_env
     from luggage_planning.routing.grid_search import ROUTE_TOTAL_WALL_S
     from luggage_planning.routing.lattice import LatticeStateChecker
-    from luggage_planning.planning_scene_client import PlanningSceneClient
-    from luggage_planning.typed_driver_adapter import container_transform_fields
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
+    from luggage_planning.deploy.typed_driver_adapter import container_transform_fields
     import rclpy
     from rclpy.executors import MultiThreadedExecutor
     from rclpy.node import Node

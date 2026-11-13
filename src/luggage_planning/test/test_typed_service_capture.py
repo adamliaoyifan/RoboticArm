@@ -3,7 +3,7 @@ import json
 from concurrent.futures import Future
 from rclpy.serialization import deserialize_message
 from luggage_msgs.srv import SelectPlacePathV2
-from luggage_planning.typed_driver_adapter import TypedDriverAdapter
+from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter
 from luggage_planning.placement_prior.evidence import PriorEvidenceRecorder
 
 

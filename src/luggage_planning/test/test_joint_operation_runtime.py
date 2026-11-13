@@ -7,7 +7,7 @@ import pytest
 
 from luggage_planning.joint_operation.runtime import OperationJournal, JointOperationRuntime
 from luggage_planning.joint_operation.map_source import OperationMapSource, OperationMapRefresh
-from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
+from luggage_planning.planning_contract.attachment import ATTACHMENT_MAX_AGE_NS
 
 
 def test_runtime_archive_budget_counts_lossless_stored_bytes_and_preserves_raw_hash(tmp_path):
@@ -165,7 +165,7 @@ def test_callback_terminal_transport_failure_still_releases_callback_mutex():
 
 def test_preparation_window_and_replay_retention_share_original_acquisition_bound(tmp_path):
     from luggage_planning.joint_operation.preparation_profile import execution_observation_age_limit_ns
-    from luggage_planning.attachment_provider import MeasuredAttachmentProvider
+    from luggage_planning.attachment.attachment_provider import MeasuredAttachmentProvider
     bound = execution_observation_age_limit_ns(300.)
     assert bound == ATTACHMENT_MAX_AGE_NS + 300_000_000_000
     provider = MeasuredAttachmentProvider('scene','model',max_age_ns=bound)

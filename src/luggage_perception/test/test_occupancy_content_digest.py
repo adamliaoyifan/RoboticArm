@@ -5,7 +5,7 @@ import hashlib
 from types import SimpleNamespace
 
 import pytest
-from st09_contracts._base import digest_of
+from luggage_planning.planning_contract._base import digest_of
 
 from luggage_perception.occupancy_content_digest import (
     _update_tuple_part,

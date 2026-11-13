@@ -24,11 +24,11 @@ from luggage_planning.routing.moveit_edge_adapter import (  # noqa: E402
     SceneState,
     occupancy_boxes_from_surface,
 )
-from luggage_planning.moveit_state_validity import (  # noqa: E402
+from luggage_planning.motion.moveit_state_validity import (  # noqa: E402
     FrozenSceneComposer,
     _scene_digest,
 )
-from luggage_planning.planning_scene_client import (  # noqa: E402
+from luggage_planning.motion.planning_scene_client import (  # noqa: E402
     build_collision_object,
 )
 from luggage_planning.routing.producer import RouteProducer  # noqa: E402
@@ -38,7 +38,7 @@ from moveit_msgs.msg import (  # noqa: E402
     CollisionObject,
     PlanningScene,
 )
-from st09_contracts.attachment import transform_point  # noqa: E402
+from luggage_planning.planning_contract.attachment import transform_point  # noqa: E402
 
 
 FLOOR_Z = 0.53
@@ -126,7 +126,7 @@ def _records(scene):
 
 
 def _inside(box, point):
-    from st09_contracts.attachment import invert_transform
+    from luggage_planning.planning_contract.attachment import invert_transform
 
     inverse_t, inverse_q = invert_transform(box.center, box.quaternion_xyzw)
     local = transform_point(inverse_t, inverse_q, point)

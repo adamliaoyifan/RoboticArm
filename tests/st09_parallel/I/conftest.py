@@ -99,7 +99,7 @@ class WholeChain(object):
     # -- convenience -----------------------------------------------------
 
     def adapter(self):
-        from luggage_planning.typed_driver_adapter import TypedDriverAdapter
+        from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter
 
         return TypedDriverAdapter(self.node, self.probe.runtime)
 

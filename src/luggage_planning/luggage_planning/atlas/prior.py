@@ -52,7 +52,7 @@ def _container_pose(transform):
 
 def _coerce_targets(targets):
     """Accept pose pairs, a JSON string, or that string split into characters."""
-    from luggage_planning.planning_capture import normalize_targets
+    from luggage_planning.capture.planning_capture import normalize_targets
     return normalize_targets(targets)
 
 
@@ -84,7 +84,7 @@ def prior_for_targets(targets, container_transform, query_fn):
     target transformed into the container frame; this function does not
     add ``query_offset``.
     """
-    from st09_contracts.attachment import compose_transform, invert_transform
+    from luggage_planning.planning_contract.attachment import compose_transform, invert_transform
 
     translation, quaternion = _container_pose(container_transform)
     inv_xyz, inv_quat = invert_transform(translation, quaternion)

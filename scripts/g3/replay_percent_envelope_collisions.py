@@ -14,8 +14,8 @@ import trimesh
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from replay_collision_attribution import Urdf, _origin_of, _resolve_package_path
-from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy as load_envelope_limits
-from st09_contracts.payload_envelope import build_envelope
+from luggage_planning.attachment.attachment_geometry_policy import load_attachment_geometry_policy as load_envelope_limits
+from luggage_planning.planning_contract.payload_envelope import build_envelope
 
 
 def pose(translation, quaternion):

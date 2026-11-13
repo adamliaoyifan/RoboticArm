@@ -131,7 +131,7 @@ def _yaw(quaternion):
 
 def _clear_occupancy(node):
     from moveit_msgs.msg import PlanningSceneComponents
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
 
     client = PlanningSceneClient(node)
     scene = client.get_scene(
@@ -147,7 +147,7 @@ def _clear_occupancy(node):
 
 def _add_occupancy(node, surface):
     """Occupied cells as world boxes, same size as scene_boxes_from_snapshot."""
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
 
     client = PlanningSceneClient(node)
     origin = surface["origin_local"]
@@ -380,7 +380,7 @@ def main():
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_perception.eval.isolated_domain import isolated_replay_env
     from luggage_planning.routing.lattice import LatticeStateChecker
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
     from luggage_planning.routing.producer import register_attach_from_request
 
     os.makedirs(OUT, exist_ok=True)

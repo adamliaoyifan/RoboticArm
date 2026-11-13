@@ -13,8 +13,8 @@ from luggage_packing.placement_solver import retain_directed_candidates
 from luggage_planning.placement_prior.requests import _placement_surface
 from luggage_planning.placement_prior.ranking import rank_payload_clearance
 from luggage_planning.placement_prior.contracts import Transform
-from st09_contracts.attachment_geometry import freeze_geometry
-from luggage_planning.waypoint_generator import PLACE_RELEASE_GAP_M,DEFAULT_PLACE_CLEARANCE_Z
+from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+from luggage_planning.place.waypoint_generator import PLACE_RELEASE_GAP_M,DEFAULT_PLACE_CLEARANCE_Z
 
 
 def observed_placement_slots(confirmed,volume,dimensions,mode,*,limits,margin,vertical_margin):

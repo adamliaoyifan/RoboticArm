@@ -16,21 +16,21 @@ from scipy.spatial.transform import Rotation
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from luggage_planning.attachment_provider import (
+from luggage_planning.attachment.attachment_provider import (
     MeasuredAttachmentProvider,
     MeasuredPose,
 )
 
-from st09_contracts._base import ContractViolation
-from st09_contracts.attachment import AttachmentSourceKind, AttachmentValidity
-from st09_contracts.fixtures import (
+from luggage_planning.planning_contract._base import ContractViolation
+from luggage_planning.planning_contract.attachment import AttachmentSourceKind, AttachmentValidity
+from luggage_planning.planning_contract.fixtures import (
     BOX_WDH,
     DEPLOY_CALIBRATION,
     DEPLOY_SCENE,
     SIM_CALIBRATION,
     SIM_SCENE,
 )
-from st09_contracts.reasons import Reason
+from luggage_planning.planning_contract.reasons import Reason
 
 STAMP = 1_000_000_000
 MEASURED_METHOD = "detection_pose+tcp_tf:same-stamp"

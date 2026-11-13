@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from luggage_planning.motion_ownership import MotionOwnership, OwnedActionClient, run_legacy_motion
+from luggage_planning.motion.motion_ownership import MotionOwnership, OwnedActionClient, run_legacy_motion
 
 
 class Controller:

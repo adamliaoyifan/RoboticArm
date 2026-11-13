@@ -38,7 +38,7 @@ python3 - "$EV" <<'PYEOF' > "$EV/graph_validation.json" 2> "$EV/graph_validation
 import json, os, sys
 sys.path.insert(0, "src/luggage_planning")
 sys.path.insert(0, "src/luggage_description")
-from luggage_planning.deploy_graph_assets import (load_deploy_graph,
+from luggage_planning.deploy.deploy_graph_assets import (load_deploy_graph,
                                                    validate_graph_structure)
 data = "src/luggage_planning/data/reachability_atlas_deploy"
 summary = json.load(open(os.path.join(data, "graphs", "summary.json")))
@@ -90,8 +90,8 @@ python3 - "$EV" > "$EV/site_pose_report.json" 2>&1 <<'PYEOF' || STATUS=1
 import json, sys
 sys.path.insert(0, "src/luggage_planning")
 sys.path.insert(0, "src/luggage_description")
-from luggage_planning import deploy_profile as dp
-from luggage_planning.site_pose_schema import (executable_site_pose,
+from luggage_planning.deploy import deploy_profile as dp
+from luggage_planning.deploy.site_pose_schema import (executable_site_pose,
                                                load_site_poses,
                                                validate_site_poses)
 record = dp.resolve_deploy_profile()

@@ -5,7 +5,7 @@ Hardware pick: observe -> DetectLuggage -> candidate selection ->
 PlanMotion per candidate, with bounded vacuum retry (dynamic-suction
 plan section D).
 
-The pick flow lives in ``luggage_planning.suction_pick_session.PickSession``
+The pick flow lives in ``luggage_planning.pick.suction_pick_session.PickSession``
 (pure, port-injected); this script only wires ROS clients into the
 session ports. Candidate contract: at most three candidates per request,
 one vacuum attempt per candidate; on VACUUM_SEAL_TIMEOUT the backend
@@ -60,23 +60,23 @@ from luggage_msgs.srv import (BuildMotionSequence, DetectLuggage,
                               ProbeMotionSegment, VacuumCommand)
 from std_msgs.msg import Bool, String
 
-from luggage_planning import ros_message_adapters as adapters
-from luggage_planning.pick_authorization import (
+from luggage_planning.adapters import ros_message_adapters as adapters
+from luggage_planning.pick.pick_authorization import (
     AuthorizationConfig,
     PickAuthorizationPolicy,
     run_authorization_loop,
 )
-from luggage_planning.pickup_collision import pickup_collision_aabb
-from luggage_planning.suction_candidate_selection import rank_candidates
-from luggage_planning.suction_candidate_waypoints import (
+from luggage_planning.pick.pickup_collision import pickup_collision_aabb
+from luggage_planning.pick.suction_candidate_selection import rank_candidates
+from luggage_planning.pick.suction_candidate_waypoints import (
     build_candidate_pick_segments,
 )
-from luggage_planning.suction_pick_session import (
+from luggage_planning.pick.suction_pick_session import (
     PickSession,
     SegmentOutcome,
     SessionConfig,
 )
-from luggage_planning.suction_pick_session import DetectionView
+from luggage_planning.pick.suction_pick_session import DetectionView
 
 
 class RosPickSessionPorts:
@@ -130,7 +130,7 @@ class RosPickSessionPorts:
 
     def probe(self, segment, candidate_id):
         if getattr(self._driver, "_typed", None) is not None:
-            from luggage_planning.typed_driver_adapter import (
+            from luggage_planning.deploy.typed_driver_adapter import (
                 segment_message_to_v2)
             from luggage_description.frame_contracts import ContractError
             try:
@@ -162,7 +162,7 @@ class RosPickSessionPorts:
 
     def execute_segment(self, segment, candidate_id):
         if getattr(self._driver, "_typed", None) is not None:
-            from luggage_planning.typed_driver_adapter import (
+            from luggage_planning.deploy.typed_driver_adapter import (
                 segment_message_to_v2)
             from luggage_description.frame_contracts import ContractError
             try:
@@ -301,7 +301,7 @@ class HardwarePickDriver(Node):
         self._frame_pick_msg = None
         self._frame_request_seq = 0
         if getattr(args, "frame_runtime", False):
-            from luggage_planning.typed_driver_adapter import (
+            from luggage_planning.deploy.typed_driver_adapter import (
                 TypedDriverAdapter, adopt_runtime_identity)
             peer = str(getattr(args, "frame_peer", "")
                        or "hardware_pick_driver")
@@ -333,7 +333,7 @@ class HardwarePickDriver(Node):
         if bool(getattr(args, 'plan_place_after_pick', False)):
             if self._typed is None or not args.use_vacuum or args.release:
                 raise ValueError('place planning requires frame-runtime, vacuum, and retained payload')
-            from luggage_planning.hardware_place_planning import HardwarePlacePlanner
+            from luggage_planning.deploy.hardware_place_planning import HardwarePlacePlanner
             self._place_planner = HardwarePlacePlanner(self, self._typed, group=self._group)
 
     def _on_current_box(self, msg):
@@ -352,7 +352,7 @@ class HardwarePickDriver(Node):
 
     def _scene_client(self):
         if self._scene is None:
-            from luggage_planning.planning_scene_client import PlanningSceneClient
+            from luggage_planning.motion.planning_scene_client import PlanningSceneClient
             self._scene = PlanningSceneClient(self, callback_group=self._group)
         return self._scene
 
@@ -402,7 +402,7 @@ class HardwarePickDriver(Node):
             self._typed.set_placement_prior(None)
         pick_msg = getattr(self, "_frame_pick_msg", None)
         if getattr(self, "_typed", None) is not None and pick_msg is not None:
-            from luggage_planning.typed_driver_adapter import (
+            from luggage_planning.deploy.typed_driver_adapter import (
                 detection_record_from_box)
             from luggage_description.frame_contracts import ContractError
             box_id, generation = self._frame_box_identity()
@@ -421,7 +421,7 @@ class HardwarePickDriver(Node):
                 return False, "vacuum timeout"
             if response.success:
                 if enable:
-                    from luggage_planning.hardware_place_planning import attachment_from_response
+                    from luggage_planning.deploy.hardware_place_planning import attachment_from_response
                     try:
                         self._measured_attachment = attachment_from_response(response,
                             request_id=request_id, box_id=box_id, generation=generation,
@@ -569,7 +569,7 @@ class HardwarePickDriver(Node):
         return ok, message
 
     def set_pickup_touch(self, allowed):
-        from luggage_planning.planning_scene_client import (
+        from luggage_planning.motion.planning_scene_client import (
             BOX_OBJECT_ID,
             DEFAULT_TOUCH_LINKS,
         )

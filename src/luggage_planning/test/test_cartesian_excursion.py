@@ -13,7 +13,7 @@ import json
 import os
 import unittest
 
-from luggage_planning.motion_executor import (
+from luggage_planning.motion.motion_executor import (
     _CARTESIAN_EXCURSION_MIN_PATH_M,
     _CARTESIAN_EXCURSION_RAD_PER_M,
     cartesian_excursion,

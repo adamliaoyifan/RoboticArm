@@ -38,8 +38,7 @@ for _path in (
         os.path.join(ROOT, "src", "luggage_packing", "scripts"),
         os.path.join(ROOT, "src", "luggage_planning"),
         os.path.join(ROOT, "src", "luggage_description"),
-        os.path.join(ROOT, "st09_contracts"),
-):
+        ):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
@@ -66,7 +65,7 @@ from luggage_planning.routing.corridor_lattice import (  # noqa: E402
     WRIST_SINGULARITY_MARGIN_RAD,
 )
 from luggage_planning.routing.grid_search import ROUTE_TOTAL_WALL_S  # noqa: E402
-from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS  # noqa: E402
+from luggage_planning.planning_contract.attachment import ATTACHMENT_MAX_AGE_NS  # noqa: E402
 
 SCENE = os.path.join(
     ROOT, "src", "luggage_description", "config", "scene_tf_deploy.yaml")
@@ -74,7 +73,8 @@ ATLAS_CONFIG = os.path.join(
     ROOT, "src", "luggage_planning", "config",
     "atlas_runtime_deploy_sim.yaml")
 CONTRACT = os.path.join(
-    ROOT, "st09_contracts", "resolved_planning_contract.json")
+    ROOT, "src", "luggage_planning", "config", "planning_contract",
+    "resolved_planning_contract.json")
 OUT = os.path.join(
     ROOT, "docs/status/evidence/frame_migration/ST09-parallel-I-s5/m3",
     "g3_placement_robustness_20261005")
@@ -774,8 +774,8 @@ def plan():
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_perception.eval.isolated_domain import isolated_replay_env
     from luggage_planning.routing.lattice import LatticeStateChecker
-    from luggage_planning.planning_scene_client import PlanningSceneClient
-    from luggage_planning.typed_driver_adapter import (
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
+    from luggage_planning.deploy.typed_driver_adapter import (
         container_transform_fields,
     )
     import rclpy
@@ -1156,8 +1156,8 @@ def fallback():
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_perception.eval.isolated_domain import isolated_replay_env
     from luggage_planning.routing.lattice import LatticeStateChecker
-    from luggage_planning.planning_scene_client import PlanningSceneClient
-    from luggage_planning.typed_driver_adapter import container_transform_fields
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
+    from luggage_planning.deploy.typed_driver_adapter import container_transform_fields
     import rclpy
     from rclpy.executors import MultiThreadedExecutor
     from rclpy.node import Node

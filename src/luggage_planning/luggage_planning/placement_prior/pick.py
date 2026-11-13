@@ -10,7 +10,7 @@ import hashlib
 import json
 
 from luggage_planning.placement_prior.contracts import GraspCandidate, Transform
-from luggage_planning.suction_candidate_waypoints import build_candidate_pick_segments
+from luggage_planning.pick.suction_candidate_waypoints import build_candidate_pick_segments
 
 
 def transform_from_pose(pose):

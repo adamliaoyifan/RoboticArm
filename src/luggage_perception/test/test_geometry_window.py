@@ -53,8 +53,8 @@ def test_late_or_conflicting_frame_cannot_reset_and_shrink_extent():
 
 
 def test_temporal_top_noise_preserves_current_contact_plane():
-    from st09_contracts.attachment_geometry import freeze_geometry
-    from st09_contracts.payload_envelope import EnvelopeLimits
+    from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+    from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
     window=StationaryGeometryWindow()
     window.observe('a',10,(0.,0.,.1005),0.,(.5,.4,.2))
     result=window.observe('a',20,(0.,0.,.1),0.,(.5,.4,.2))

@@ -8,7 +8,7 @@ pull service (docs/architecture/privilege_boundary.md).
 import json
 import unittest
 
-from luggage_planning.current_box_payload import (
+from luggage_planning.pick.current_box_payload import (
     identity_from_current_box_json,
     identity_from_current_box_payload,
     measured_from_current_box_json,

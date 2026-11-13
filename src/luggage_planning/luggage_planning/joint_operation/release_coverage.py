@@ -59,7 +59,7 @@ def projected_missing_columns(points_container,world_from_container,world_from_c
 
 def camera_aimed_at_missing(world_camera_position,points_container,world_from_container):
     """Aim a proposed optical +Z axis at the measured missing-footprint centre."""
-    from luggage_planning.container_aim_utils import look_at_quaternion
+    from luggage_planning.geometry.container_aim_utils import look_at_quaternion
     from luggage_planning.placement_prior.contracts import Transform
     points=np.asarray(points_container,dtype=float).reshape(-1,3)
     if not len(points):raise ValueError('MISSING_FOOTPRINT_TARGET_REQUIRED')

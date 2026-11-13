@@ -50,7 +50,7 @@ for _pkg in ("luggage_planning", "luggage_description"):
 from luggage_planning.atlas.frame_contracts import (  # noqa: E402
     tool_target_in_base,
 )
-from luggage_planning.offline_ik import JOINTS, Urdf  # noqa: E402
+from luggage_planning.motion.offline_ik import JOINTS, Urdf  # noqa: E402
 
 POS_TOL_M = 0.002
 ROT_TOL_RAD = 0.02

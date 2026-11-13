@@ -40,7 +40,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Sequence, Tuple
 
 #: Frozen judge values (a B test pins equality against
-#: st09_contracts/resolved_planning_contract.json).
+#: config/planning_contract/resolved_planning_contract.json).
 CARTESIAN_MIN_FRACTION = 0.95
 
 
@@ -211,7 +211,7 @@ def occupancy_boxes_from_surface(surface, container_transform, *,
     occupied cells but no container-link floor or no world transform,
     fails closed. It does not invent a 0–0.30 m box.
     """
-    from st09_contracts.attachment import compose_transform
+    from luggage_planning.planning_contract.attachment import compose_transform
 
     state = (surface or {}).get("state") or []
     occupied = [
@@ -282,7 +282,7 @@ class EdgeOutcome:
 
 
 def _slerp(a_xyzw, b_xyzw, t):
-    from st09_contracts.attachment import quaternion_angle_between
+    from luggage_planning.planning_contract.attachment import quaternion_angle_between
     angle = quaternion_angle_between(a_xyzw, b_xyzw)
     if angle <= 1e-12:
         return tuple(float(v) for v in a_xyzw)
@@ -407,7 +407,7 @@ class MoveItEdgeAdapter(object):
         self._cartesian = node.create_client(
             GetCartesianPath, "/compute_cartesian_path")
         if scene_client is None:
-            from luggage_planning.planning_scene_client import (
+            from luggage_planning.motion.planning_scene_client import (
                 PlanningSceneClient)
             scene_client = PlanningSceneClient(node)
         self._scene = scene_client
@@ -583,7 +583,7 @@ class MoveItEdgeAdapter(object):
         if scene.load_state == "carrying":
             if scene.payload is None:
                 raise RuntimeError("carrying scene without a payload spec")
-            from luggage_planning.planning_scene_client import (
+            from luggage_planning.motion.planning_scene_client import (
                 BOX_OBJECT_ID,
                 build_attach_scene,
             )
@@ -711,7 +711,7 @@ class MoveItEdgeAdapter(object):
                 klass, from_node, to_node, waypoints_hint),
             "reprobe": bool(candidate is not None),
         }
-        from st09_contracts.graph import GraphEdge
+        from luggage_planning.planning_contract.graph import GraphEdge
         edge = GraphEdge(
             edge_id="e-%s-%s-%s" % (
                 klass.value.lower(),
@@ -778,7 +778,7 @@ class MoveItEdgeAdapter(object):
         # world, attached payload or ACM is a different request. The digest
         # is semantic (geometry, attachment, ACM), never CDR padding bytes.
         try:
-            from luggage_planning.anchor_payload_gate import (
+            from luggage_planning.pick.anchor_payload_gate import (
                 live_scene_digest,
             )
             scene_digest = live_scene_digest(scene_msg)
@@ -808,7 +808,7 @@ class MoveItEdgeAdapter(object):
         if exact_sha in seen or len(seen) >= 8:
             return
         seen.add(exact_sha)
-        from luggage_planning.planning_scene_client import (
+        from luggage_planning.motion.planning_scene_client import (
             summarize_planning_scene,
         )
 
@@ -886,10 +886,10 @@ class MoveItEdgeAdapter(object):
         client = self._validity_client
         if not client.wait_for_service(timeout_sec=3.0):
             return {"status": "not_evaluated", "reason": "service_unavailable"}
-        from luggage_planning.moveit_state_validity import (
+        from luggage_planning.motion.moveit_state_validity import (
             FrozenSceneComposer,
         )
-        from luggage_planning.planning_scene_client import acm_pair_allowed
+        from luggage_planning.motion.planning_scene_client import acm_pair_allowed
 
         raw_allowed = acm_pair_allowed(
             scene_msg.allowed_collision_matrix,
@@ -1008,7 +1008,7 @@ class MoveItEdgeAdapter(object):
                 float(getattr(result, "planning_time", 0.0) or 0.0)
                 if result else None)})  # [G1]
         if capture_joint:
-            from luggage_planning.joint_boundary_capture import capture_boundary
+            from luggage_planning.capture.joint_boundary_capture import capture_boundary
             capture_boundary(capture_dir, capture_index, submission_scene, goal, result)
         trajectory = getattr(result, "planned_trajectory", None) if result \
             else None
@@ -1066,7 +1066,7 @@ class MoveItEdgeAdapter(object):
         recorded, never reported as a collision.
         """
         from luggage_planning.routing.grid_search import RoutePlanningError
-        from luggage_planning.moveit_state_validity import sample_states
+        from luggage_planning.motion.moveit_state_validity import sample_states
 
         if os.environ.get("ST09_EDGE_INTERPOLATION_GATE", "1") == "0":
             return
@@ -1137,7 +1137,7 @@ class MoveItEdgeAdapter(object):
         began = time.monotonic()
         response = self._send_cartesian_request(request)
         if capture_insert:
-            from luggage_planning.joint_boundary_capture import capture_insert_boundary
+            from luggage_planning.capture.joint_boundary_capture import capture_insert_boundary
             if capture_insert_boundary(
                     os.environ.get("ST09_PORTAL_CAPTURE_DIR"), insert_capture_index,
                     submission_scene, request, response):
@@ -1268,8 +1268,8 @@ class MoveItEdgeAdapter(object):
 
     def _retime(self, joint_trajectory, densify=False):
         """Site rest-to-rest trapezoid over the geometric knots -> ns."""
-        from st09_contracts.graph import TimedTrajectory
-        from luggage_planning.trajectory_timing import (
+        from luggage_planning.planning_contract.graph import TimedTrajectory
+        from luggage_planning.motion.trajectory_timing import (
             time_parameterize_cartesian)
 
         points = list(joint_trajectory.points)
@@ -1346,9 +1346,9 @@ def _excursion(trajectory, path_len_m):
     bookkeeping, not motion — measure angular distance on the circle
     (live: portal/approach traverses refused with ratios 6..510 whose
     "excursion" was exactly whole-turn flips)."""
-    from luggage_planning.joint_path import max_joint_step
+    from luggage_planning.motion.joint_path import max_joint_step
 
-    from luggage_planning.joint_path import joint_motion_report
+    from luggage_planning.motion.joint_path import joint_motion_report
 
     report = joint_motion_report(trajectory.positions, path_len_m)
     if report is None:

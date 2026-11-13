@@ -33,10 +33,10 @@ def main():
     from luggage_msgs.srv import ValidateRouteV2
     from luggage_msgs.msg import RouteLegV2
     from luggage_planning.routing.lattice import retime_positions
-    from luggage_planning.moveit_state_validity import (
+    from luggage_planning.motion.moveit_state_validity import (
         sample_grid,interpolated_positions,DISTANCE_STRIDE,CERT_BUDGET_S,SERVICE_TIMEOUT_S,
     )
-    from luggage_planning.trajectory_timing import cartesian_joint_limits
+    from luggage_planning.motion.trajectory_timing import cartesian_joint_limits
 
     xml=(args.capture/'robot.urdf').read_text()
     semantic=(args.capture/'robot.srdf').read_text()

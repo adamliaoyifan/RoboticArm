@@ -269,7 +269,7 @@ def child_env(install, extra_ld):
     dist = [os.path.join(install, pkg, 'local', 'lib', 'python3.10',
                          'dist-packages')
             for pkg in ('luggage_msgs', 'luggage_perception',
-                        'luggage_description', 'st09_contracts')]
+                        'luggage_description', 'luggage_planning')]
     keep = [p for p in env.get('PYTHONPATH', '').split(os.pathsep)
             if p and os.path.normpath(p) != repo
             and not os.path.normpath(p).startswith(repo + os.sep)]

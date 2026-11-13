@@ -24,7 +24,7 @@ from luggage_perception.target_association import (  # noqa: E402
     association_inputs_aligned,
     target_association_ambiguous,
 )
-from luggage_planning.pick_authorization import (  # noqa: E402
+from luggage_planning.pick.pick_authorization import (  # noqa: E402
     AUTHORIZE,
     PickAuthorizationPolicy,
     pick_authorized,

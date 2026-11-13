@@ -158,11 +158,11 @@ class TestAdapterQuaternionEquivalence(object):
             allowed_yaws=[0.0, math.pi / 2.0],
             params=PARAMS_FULL,
         )
-        from st09_contracts.fixtures import make_snapshot
+        from luggage_planning.planning_contract.fixtures import make_snapshot
         candidates, _requirement = generator.generate_candidates(
             make_snapshot(map_revision=1), payload.digest())
         assert candidates
-        from st09_contracts.fixtures import BOX_WDH as FIXTURE_BOX
+        from luggage_planning.planning_contract.fixtures import BOX_WDH as FIXTURE_BOX
         for candidate in candidates[:40]:
             quaternion = candidate.quaternion_xyzw_container
             # q and -q are the same rotation: both must reconstruct the
@@ -190,5 +190,5 @@ class TestAdapterQuaternionEquivalence(object):
 
 
 def _payload():
-    from st09_contracts.fixtures import make_attachment, make_payload
+    from luggage_planning.planning_contract.fixtures import make_attachment, make_payload
     return make_payload(make_attachment("centered"))

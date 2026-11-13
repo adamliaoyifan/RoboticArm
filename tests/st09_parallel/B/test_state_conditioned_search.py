@@ -6,7 +6,7 @@ Offline, on the same fake edge builder as test_grid_path_search.
 
 import pytest
 
-from st09_contracts.graph import LoadState
+from luggage_planning.planning_contract.graph import LoadState
 
 from luggage_planning.routing.grid_search import (
     MAX_SAME_FAILURE_PER_GOAL,

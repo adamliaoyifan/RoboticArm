@@ -138,7 +138,7 @@ higher-generation plan with metrics, tests, and `dispatch_ready: yes`.
 - **RS-8.** Closed: `ComputePlacement` and the pick drivers refuse
   `height_source!=MEASURED_SUPPORT`. TOP_ONLY waits then fail-closed
   (`DETECT_FULL_GEOMETRY_REQUIRED`); catalog/configured height never
-  authorize a grasp. `src/luggage_planning/luggage_planning/pick_authorization.py`.
+  authorize a grasp. `src/luggage_planning/luggage_planning/pick/pick_authorization.py`.
 - **RS-9.** `HEIGHT_SOURCE_CONFIGURED_SUPPORT` still sets `height_valid=true`.
   Param `platform_z` is treated as a fitted support plane in configured
   mode. Pick authorization ignores it. Launches stay `support_mode=auto`.

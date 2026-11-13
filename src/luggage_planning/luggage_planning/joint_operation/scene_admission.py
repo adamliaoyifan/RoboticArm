@@ -30,7 +30,7 @@ class StaticWorldAdmission:
     def __init__(self, config, world_from_container, *, mesh_path=''):
         from luggage_description.scene_mesh_utils import container_collision_mesh_path, container_model_name
         from luggage_description.scene_tf_config_utils import world_transform
-        from luggage_planning.planning_scene_client import load_stl_mesh_msg, build_mesh_collision_object
+        from luggage_planning.motion.planning_scene_client import load_stl_mesh_msg, build_mesh_collision_object
         xyz, rpy = world_transform(config, 'container_link')
         expected_pose = Transform(xyz, tuple(Rotation.from_euler('xyz', rpy).as_quat()))
         if (not np.allclose(expected_pose.translation, world_from_container.translation, atol=1e-9, rtol=0)

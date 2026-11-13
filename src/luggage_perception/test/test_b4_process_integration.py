@@ -254,7 +254,7 @@ class TestB4ProcessIntegration(unittest.TestCase):
                 expected_epoch="", expect_revision=True):
         """Direct in-process call through the REAL service handler."""
         from luggage_msgs.srv import AddPlacedBoxV2
-        from luggage_planning.place_service import pose_message
+        from luggage_planning.place.place_service import pose_message
         record = dict(
             contract_version=2, frame_id="container_link",
             length_unit="m", stamp_ns=1, time_basis="scene",

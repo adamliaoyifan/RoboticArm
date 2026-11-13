@@ -13,7 +13,7 @@ import math
 
 import pytest
 
-from st09_contracts import (
+from luggage_planning.planning_contract import (
     AttachmentRecord,
     AttachmentSourceKind,
     AttachmentValidity,
@@ -36,8 +36,8 @@ from st09_contracts import (
     LegacyCode,
     LEGACY_TO_REASON,
 )
-from st09_contracts._base import ContractViolation
-from st09_contracts.fixtures import (
+from luggage_planning.planning_contract._base import ContractViolation
+from luggage_planning.planning_contract.fixtures import (
     make_attachment,
     make_box_target,
     make_effect_trace,
@@ -48,7 +48,7 @@ from st09_contracts.fixtures import (
     make_timed_trajectory,
     snapshot_pair,
 )
-from st09_contracts.protocols import (
+from luggage_planning.planning_contract.protocols import (
     CandidateGenerator,
     Certifier,
     RoutePlanner,
@@ -180,7 +180,7 @@ class TestGraphContracts:
         assert traj.time_from_start_ns == (0, 500_000_000, 1_000_000_000)
 
     def test_negative_dropped_times(self):
-        from st09_contracts.graph import TimedTrajectory as TT
+        from luggage_planning.planning_contract.graph import TimedTrajectory as TT
         good = make_timed_trajectory()
         with pytest.raises(ContractViolation):
             TT(joint_names=good.joint_names, positions=good.positions,
@@ -269,7 +269,7 @@ class TestProtocols:
                 fn(*args)
 
     def test_freeze_rules_documented(self):
-        import st09_contracts as pkg
+        import luggage_planning.planning_contract as pkg
         doc = pkg.__doc__
         for rule in ("q``/``-q", "IK family", "unknown", "ROS-free"):
             assert rule in doc

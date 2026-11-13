@@ -68,7 +68,7 @@ def main():
     from luggage_msgs.srv import SelectPlacePathV2,GetCargoMapStats,ValidateRouteV2
     from rosidl_runtime_py.convert import message_to_ordereddict
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
-    from luggage_planning.place_service import request_dict,fill_select_response_route
+    from luggage_planning.place.place_service import request_dict,fill_select_response_route
     from luggage_planning.routing.factory import build_production_route_producer
     b=args.capture/'dumps/typed_service_boundaries'
     rows=[json.loads(line) for line in (b/'boundaries.jsonl').read_text().splitlines()]
@@ -194,8 +194,8 @@ def main():
         if hardware_consumer:
             from rclpy.callback_groups import ReentrantCallbackGroup
             from luggage_msgs.srv import VacuumCommandV2,PreparePlacementPriorV2
-            from luggage_planning.hardware_place_replay import replay_place
-            from luggage_planning.typed_driver_adapter import TypedDriverAdapter
+            from luggage_planning.deploy.hardware_place_replay import replay_place
+            from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter
             received=[]
             def select_callback(wire,reply):
                 recorder('select_server:request',wire)

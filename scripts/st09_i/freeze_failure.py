@@ -267,7 +267,7 @@ class CapturingValidityAdapter(object):
     def __call__(self, *, scene_states, edges):
         adapter = self._factory(scene_states=scene_states, edges=edges)
         for edge in edges:
-            from luggage_planning.moveit_state_validity import sample_states
+            from luggage_planning.motion.moveit_state_validity import sample_states
 
             edge_id = str(edge.edge_id)
             self.edges[edge_id] = {
@@ -325,16 +325,16 @@ def build_producer(node, runtime, record):
         load_scene_tf_config,
         resolve_scene_tf_config_path,
     )
-    from luggage_planning.attachment_provider import (
+    from luggage_planning.attachment.attachment_provider import (
         MeasuredAttachmentProvider,
     )
-    from luggage_planning.map_revalidation import MapRevalidator
+    from luggage_planning.place.map_revalidation import MapRevalidator
     from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
-    from luggage_planning.moveit_state_validity import (
+    from luggage_planning.motion.moveit_state_validity import (
         MoveItStateValidityAdapter,
     )
-    from luggage_planning.offline_ik import load_urdf, refine_to_pose
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.offline_ik import load_urdf, refine_to_pose
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
     from luggage_planning.atlas.graph import (
         RouteGraph,
         make_offline_fk,
@@ -343,11 +343,12 @@ def build_producer(node, runtime, record):
         RouteProducer,
         certification_policy_from_contract,
     )
-    from luggage_planning.trajectory_certifier import TrajectoryCertifier
+    from luggage_planning.motion.trajectory_certifier import TrajectoryCertifier
 
-    with open(os.path.join(
-            get_package_share_directory("st09_contracts"),
-            "resolved_planning_contract.json"), encoding="utf-8") as handle:
+    from luggage_planning.planning_contract.location import (
+        resolved_planning_contract_path,
+    )
+    with open(resolved_planning_contract_path(), encoding="utf-8") as handle:
         cert_policy = certification_policy_from_contract(json.load(handle))
     scene_tf_path = resolve_scene_tf_config_path(os.path.join(
         get_package_share_directory("luggage_description"), "config",
@@ -474,7 +475,7 @@ def main():
 
     install_files = {}
     for package, relative in (
-            ("st09_contracts", "resolved_planning_contract.json"),
+            ("luggage_planning", "config/planning_contract/resolved_planning_contract.json"),
             ("elfin_control", "config/elfin_controllers.yaml"),
             ("elfin_moveit_config", "config/S20.srdf"),
             ("luggage_description", "config/scene_tf.yaml.example")):
@@ -512,7 +513,7 @@ def main():
         time.sleep(0.2)
     q_before = joints()
 
-    from luggage_planning.typed_driver_adapter import TypedDriverAdapter
+    from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter
 
     adapter = TypedDriverAdapter(node, runtime)
     scene_revision = str(runtime.identity.get("scene_revision", ""))
@@ -521,10 +522,10 @@ def main():
     if not args.skip_reposition:
         from luggage_planning.routing.producer import _leg_record
         from luggage_description.frame_diagnostics import BoundaryContext
-        from luggage_planning.motion_frame_adapters import (
+        from luggage_planning.motion.motion_frame_adapters import (
             message_from_admitted,
         )
-        from luggage_planning.motion_frame_contracts import (
+        from luggage_planning.motion.motion_frame_contracts import (
             TARGET_LINK, ExecutionContext,
         )
 
@@ -583,8 +584,8 @@ def main():
     from luggage_description.scene_tf_config_utils import (
         container_usable_dimensions,
     )
-    from luggage_planning.place_service import request_dict
-    from luggage_planning.typed_driver_adapter import (
+    from luggage_planning.place.place_service import request_dict
+    from luggage_planning.deploy.typed_driver_adapter import (
         container_transform_fields,
         grasp_record,
         pose_message,
@@ -661,7 +662,7 @@ def main():
     # adapter creates its client inside _ensure_verdicts, so wrap the
     # factory product right after plan_place_route builds it — instead,
     # pre-wrap by monkeypatching _ensure_clients on the class for this run.
-    from luggage_planning.moveit_state_validity import (
+    from luggage_planning.motion.moveit_state_validity import (
         MoveItStateValidityAdapter,
     )
 

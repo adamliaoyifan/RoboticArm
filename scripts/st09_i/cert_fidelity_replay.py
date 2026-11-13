@@ -41,7 +41,7 @@ def _mesh_counts():
         container_collision_mesh_path,
     )
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
-    from luggage_planning.planning_scene_client import _read_stl_arrays
+    from luggage_planning.motion.planning_scene_client import _read_stl_arrays
 
     config = load_scene_tf_config(SCENE_TF)
     path = container_collision_mesh_path(config)

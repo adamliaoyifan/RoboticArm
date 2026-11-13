@@ -3,10 +3,10 @@ from itertools import product
 import math
 
 import pytest
-from st09_contracts._base import ContractViolation
-from st09_contracts.attachment import transform_point
-from st09_contracts.payload_envelope import EnvelopeLimits, build_envelope, sinusoid_bounds
-from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy as load_envelope_limits
+from luggage_planning.planning_contract._base import ContractViolation
+from luggage_planning.planning_contract.attachment import transform_point
+from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits, build_envelope, sinusoid_bounds
+from luggage_planning.attachment.attachment_geometry_policy import load_attachment_geometry_policy as load_envelope_limits
 
 
 def limits(yaw=5, growth=(0., 0., 0.), position_xy=(0., 0.), away_error=0.):
@@ -145,7 +145,7 @@ def test_config_and_identity(tmp_path):
 
 def envelope_attachment(kind='eccentric'):
     from dataclasses import replace
-    from st09_contracts.fixtures import make_attachment
+    from luggage_planning.planning_contract.fixtures import make_attachment
     nominal = make_attachment(kind)
     env = build_envelope(nominal.dimensions_wdh, nominal.t_tcp_box_translation,
         nominal.t_tcp_box_quaternion_xyzw, limits(5,(.1,)*3,(0,0),.005))
@@ -154,8 +154,8 @@ def envelope_attachment(kind='eccentric'):
 
 def test_attachment_binding_and_nominal_target_preserved():
     from dataclasses import replace
-    from st09_contracts.attachment import compose_transform
-    from luggage_planning.payload_envelope_geometry import geometry_at_box_pose
+    from luggage_planning.planning_contract.attachment import compose_transform
+    from luggage_planning.attachment.payload_envelope_geometry import geometry_at_box_pose
     nominal, attached = envelope_attachment()
     assert nominal.dimensions_wdh == attached.dimensions_wdh
     assert nominal.t_tcp_box_translation == attached.t_tcp_box_translation
@@ -217,7 +217,7 @@ def test_missing_measured_relation_is_never_centered():
 
 
 def test_certification_scene_uses_exact_offset_and_touch_links():
-    from luggage_planning.moveit_state_validity import _attach_payload_scene
+    from luggage_planning.motion.moveit_state_validity import _attach_payload_scene
     _, attachment = envelope_attachment()
     env = attachment.collision_envelope
     scene = _attach_payload_scene(env)

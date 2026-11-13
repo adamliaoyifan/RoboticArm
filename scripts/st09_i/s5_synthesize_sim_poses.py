@@ -37,7 +37,7 @@ for entry in ("src/luggage_planning", "src/luggage_description"):
     if path not in sys.path:
         sys.path.append(path)
 
-from luggage_planning.offline_ik import load_urdf, refine_to_pose  # noqa: E402
+from luggage_planning.motion.offline_ik import load_urdf, refine_to_pose  # noqa: E402
 
 SIM_SCENE = os.path.join(
     REPO, "src", "luggage_description", "config", "scene_tf.yaml.example")

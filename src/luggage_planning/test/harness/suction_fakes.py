@@ -10,14 +10,14 @@ import sys
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 
-from luggage_planning.pose import Point, Pose  # noqa: E402
-from luggage_planning.suction_candidate_selection import (  # noqa: E402
+from luggage_planning.geometry.pose import Point, Pose  # noqa: E402
+from luggage_planning.pick.suction_candidate_selection import (  # noqa: E402
     SuctionCandidateView,
 )
-from luggage_planning.suction_candidate_waypoints import (  # noqa: E402
+from luggage_planning.pick.suction_candidate_waypoints import (  # noqa: E402
     quaternion_aligning_z_to,
 )
-from luggage_planning.suction_pick_session import (  # noqa: E402
+from luggage_planning.pick.suction_pick_session import (  # noqa: E402
     DetectionView,
     SegmentOutcome,
 )

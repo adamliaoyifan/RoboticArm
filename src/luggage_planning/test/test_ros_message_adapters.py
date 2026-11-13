@@ -11,8 +11,8 @@ pytest.importorskip("luggage_msgs")
 
 import numpy as np  # noqa: E402
 
-from luggage_planning import ros_message_adapters as adapters  # noqa: E402
-from luggage_planning.pose import MotionSegment, Point, Pose, Quaternion  # noqa: E402
+from luggage_planning.adapters import ros_message_adapters as adapters  # noqa: E402
+from luggage_planning.geometry.pose import MotionSegment, Point, Pose, Quaternion  # noqa: E402
 
 
 def _sample_pose():

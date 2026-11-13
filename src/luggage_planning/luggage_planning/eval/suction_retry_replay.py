@@ -22,7 +22,7 @@ import json
 import os
 import sys
 
-from luggage_planning.suction_retry_contracts import (
+from luggage_planning.pick.suction_retry_contracts import (
     RetryEvent,
     RetryEventType,
     audit_trace,

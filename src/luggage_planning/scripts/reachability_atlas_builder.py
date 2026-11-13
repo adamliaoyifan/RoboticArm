@@ -364,7 +364,7 @@ class ReachabilityAtlasBuilder:
             import rospkg as _rp
             poses_path = os.path.join(
                 _rp.RosPack().get_path("luggage_description"),
-                "config", "robot_poses.yaml.example")
+                "config", "robot_poses.sim_deploy_update.yaml")
             with open(poses_path) as f:
                 cfg = yaml.safe_load(f)
             return [float(v) for v in cfg.get("poses", {}).get("observe", {}).get("values", [])]
@@ -417,7 +417,7 @@ class ReachabilityAtlasBuilder:
         """Load the deterministic FK/IK model once per build."""
         if self._offline_urdf is not None:
             return
-        from luggage_planning.offline_ik import load_urdf
+        from luggage_planning.motion.offline_ik import load_urdf
         self._offline_urdf = load_urdf(scene_tf_config=self._scene_tf_path)
         # load_urdf keeps the world_base joint, so a full path is in world.
         # Cell targets are elfin_base_link. Start at the first arm joint so
@@ -445,7 +445,7 @@ class ReachabilityAtlasBuilder:
         if seed is None or len(seed) != len(DEFAULT_JOINT_NAMES):
             raise ValueError("IK seed must contain exactly six joints")
         self._ensure_offline_ik()
-        from luggage_planning.offline_ik import refine_to_pose
+        from luggage_planning.motion.offline_ik import refine_to_pose
         joints, _info = refine_to_pose(
             self._offline_urdf, self._tcp_path, pos, quat, seed)
         if joints is None:
@@ -701,7 +701,7 @@ class ReachabilityAtlasBuilder:
             return False
         import rclpy
         from moveit_msgs.srv import ApplyPlanningScene
-        from luggage_planning.planning_scene_client import build_attach_scene
+        from luggage_planning.motion.planning_scene_client import build_attach_scene
         client = node.create_client(ApplyPlanningScene, "/apply_planning_scene")
         if not client.wait_for_service(timeout_sec=30.0):
             rospy.logerr("apply_planning_scene unavailable; payload not attached")

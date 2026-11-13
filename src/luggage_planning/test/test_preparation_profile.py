@@ -10,7 +10,7 @@ from luggage_planning.joint_operation.preparation_profile import PreparationBudg
 from luggage_planning.joint_operation.prepare_node import JointOperationPrepareNode
 from luggage_planning.joint_operation.preparation import JointOperationPreparation, PreparationInputs
 from luggage_planning.placement_prior.contracts import Transform
-from st09_contracts.payload_envelope import EnvelopeLimits
+from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
 from test_directed_suction_service import request_and_context
 from test_joint_operation_candidates import snapshot
 from test_joint_operation_planner import ports, prepare
@@ -189,7 +189,7 @@ def test_candidate_limit_covers_placements_with_both_directed_contacts():
 
 
 def test_new_prepare_refuses_old_observation_but_retained_same_plan_keeps_original_stamp():
-    from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
+    from luggage_planning.planning_contract.attachment import ATTACHMENT_MAX_AGE_NS
     request, context, _ = query_and_inputs(30.)
     domain = context.domain
     request.robot_state_stamp_valid = True

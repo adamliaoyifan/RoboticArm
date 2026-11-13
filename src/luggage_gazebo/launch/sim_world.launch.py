@@ -44,7 +44,7 @@ from launch.substitutions import Command, EnvironmentVariable, LaunchConfigurati
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from moveit_configs_utils import MoveItConfigsBuilder
-from luggage_planning.diagnostic_capture_routes import action_remappings, EXECUTE, FJT
+from luggage_planning.capture.diagnostic_capture_routes import action_remappings, EXECUTE, FJT
 
 from luggage_description.scene_tf_config_utils import (
     gazebo_container_model,
@@ -65,7 +65,7 @@ from luggage_description.cargo_grid_parameters import resolve_resolution
 WORLD_NAME = "airport_loading"
 _PROFILE_SENTINEL = "__profile__"
 
-# Same branches as luggage_description/config/robot_poses.yaml.example.
+# Same branches as luggage_description/config/robot_poses.sim_deploy_update.yaml.
 # Used only if that YAML is missing; gz_ros2_control must not silently spawn
 # on a different wrap than MoveIt/controller.
 _FALLBACK_OBSERVE = [3.5702, -1.3263, -1.0965, 3.9564, 1.6234, 0.4522]
@@ -91,7 +91,7 @@ def _default_launch_values():
         "scene_tf_config": os.path.join(
             get_package_share_directory("luggage_description"),
             "config",
-            "scene_tf.yaml.example",
+            "scene_tf_deploy_update.yaml",
         ),
         "world_sdf": "",
         "use_moveit": "true",
@@ -173,7 +173,7 @@ def _default_launch_values():
         "robot_poses_config": os.path.join(
             get_package_share_directory("luggage_description"),
             "config",
-            "robot_poses.yaml.example",
+            "robot_poses.sim_deploy_update.yaml",
         ),
         # ST09 F21: the typed v2 runtime chain. On = every peer node
         # publishes its measured RuntimeIdentityV2 and gates effects on
@@ -1321,8 +1321,23 @@ def _launch_setup(context):
                 "volume_evidence_source": str(
                     cfg.get("volume_evidence_source", "") or ""),
                 **({"validity_backend": "grid_g",
-                    "validity_topic": "/cargo_map/validity",
-                    "validity_status_service": "/cargo_map/get_validity"}
+                    # [fix 2026-11-10] the cargo_volume_mapper publishes
+                    # its lifecycle validity on /luggage/cargo_map/
+                    # validity (node default; nothing in this launch
+                    # overrides it) — the wiring previously pointed the
+                    # planner at /cargo_map/validity, where nothing ever
+                    # publishes, so the admission board never bound an
+                    # epoch and every grid_g compute failed closed with
+                    # GRID_G_SNAPSHOT_UNAVAILABLE (admitted epoch 0).
+                    "validity_topic": "/luggage/cargo_map/validity",
+                    "validity_status_service": "/cargo_map/get_validity",
+                    # [fix 2026-11-10] the campaign's volume
+                    # authorization gate (same-snapshot known-free voxel
+                    # check, reviews 2026-11-08_1751) is the ENTIRE point
+                    # of grid_g evidence; without volume_grid_g_cells the
+                    # planner ran surface-only ("cells off") and OCC
+                    # occupancy could never reject a candidate.
+                    "volume_grid_g_cells": True}
                    if str(cfg.get("volume_evidence_source", "") or "")
                    == "grid_g" else {}),
                 **frame_params,

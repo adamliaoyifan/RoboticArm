@@ -44,7 +44,7 @@ def test_per_leg_missing_samples_contacts_and_bad_clearance_refuse(field,value):
 
 
 def test_wire_uses_controller_quintic_samples_and_original_unmodified_knots():
-    from luggage_planning.moveit_state_validity import sample_states,sample_grid
+    from luggage_planning.motion.moveit_state_validity import sample_states,sample_grid
     from luggage_planning.joint_operation.certification import _trajectory
     source=timed_operation_leg('carry','carry',((0.,)*6,(.005,)*6,(.01,)*6),
         example_plan().identity,.2,.1)

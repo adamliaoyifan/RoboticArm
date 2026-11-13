@@ -7,10 +7,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src" / "luggage_planning"))
 
-from luggage_planning.map_revalidation import MapRevalidator, RevalidationInput, StopPolicy
-from st09_contracts.certification import EffectCounters, MapDecision
-from st09_contracts.fixtures import make_attachment, make_graph_fixture, make_route, make_snapshot
-from st09_contracts.reasons import Reason
+from luggage_planning.place.map_revalidation import MapRevalidator, RevalidationInput, StopPolicy
+from luggage_planning.planning_contract.certification import EffectCounters, MapDecision
+from luggage_planning.planning_contract.fixtures import make_attachment, make_graph_fixture, make_route, make_snapshot
+from luggage_planning.planning_contract.reasons import Reason
 
 
 def _edge_with_cells(edge, cells=((1, 1),)):

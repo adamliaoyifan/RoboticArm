@@ -25,8 +25,8 @@ import pytest
 np = pytest.importorskip("numpy")
 scipy_rot = pytest.importorskip("scipy.spatial.transform").Rotation
 
-from st09_contracts.graph import LoadState  # noqa: E402
-from st09_contracts.fixtures import (  # noqa: E402
+from luggage_planning.planning_contract.graph import LoadState  # noqa: E402
+from luggage_planning.planning_contract.fixtures import (  # noqa: E402
     BOX_WDH,
     make_attachment,
     make_snapshot,
@@ -66,7 +66,7 @@ class TestContractPins:
 
     def test_judge_values_match_resolved_contract(self):
         contract = json.loads(
-            (REPO_ROOT / "st09_contracts" / "resolved_planning_contract.json")
+            (REPO_ROOT / "src" / "luggage_planning" / "config" / "planning_contract" / "resolved_planning_contract.json")
             .read_text())
         timing = contract["time_parameterization"]
         assert CARTESIAN_MIN_FRACTION == \
@@ -204,7 +204,7 @@ class TestSceneHelpers:
         assert short["ratio"] == pytest.approx(1.0 / 0.05)  # floored denominator
 
     def test_joint_motion_report_names_a_pi_wrist_flip(self):
-        from luggage_planning.joint_path import joint_motion_report
+        from luggage_planning.motion.joint_path import joint_motion_report
 
         start = (0.1, -0.2, 0.8, -0.3, 1.2, 0.4)
         # One sample moves joint 6 by pi. The other joints stay put.
@@ -225,7 +225,7 @@ def _fk():
     world->elfin_base_link fixed joint, so node TCP poses and cartesian
     requests share move_group's planning frame."""
     try:
-        from luggage_planning.offline_ik import load_urdf
+        from luggage_planning.motion.offline_ik import load_urdf
         urdf = load_urdf()
     except Exception as err:
         pytest.skip("offline_ik unavailable: %s" % err)
@@ -235,7 +235,7 @@ def _fk():
 
 
 def _refined_below(urdf, tcp_path, fk, drop_m=0.05):
-    from luggage_planning.offline_ik import refine_to_pose
+    from luggage_planning.motion.offline_ik import refine_to_pose
     position, quaternion = fk(Q_SEED)
     target = (position[0], position[1], position[2] - drop_m)
     joints, info = refine_to_pose(urdf, tcp_path, target, quaternion, Q_SEED)

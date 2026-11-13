@@ -14,7 +14,7 @@ from luggage_description.frame_sequence_contracts import (
     unsigned_integer, validate_joint_trajectory,
 )
 from luggage_planning.placement_prior.contracts import Transform
-from st09_contracts.attachment_geometry import AttachmentGeometry
+from luggage_planning.planning_contract.attachment_geometry import AttachmentGeometry
 
 # Placement budget and directed grasp alternatives use distinct counting units.
 MAX_PLACEMENT_CANDIDATES = 8

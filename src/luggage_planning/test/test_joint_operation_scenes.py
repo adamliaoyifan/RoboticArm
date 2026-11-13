@@ -12,8 +12,8 @@ from luggage_planning.joint_operation.scenes import (
     build_operation_scenes, owned_payload_diff, same_payload_object,
 )
 from luggage_planning.placement_prior.contracts import Snapshot, Transform
-from st09_contracts.attachment_geometry import freeze_geometry
-from st09_contracts.payload_envelope import EnvelopeLimits
+from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
 from test_joint_operation_contracts import example_plan
 
 

@@ -60,7 +60,7 @@ def verification_outcome(commands, missing):
 
 
 def load_acceptance_manifest(ws):
-    path = Path(ws) / "st09_contracts" / "st09_acceptance_manifest.json"
+    path = Path(ws) / "src" / "luggage_planning" / "config" / "planning_contract" / "st09_acceptance_manifest.json"
     document = json.loads(path.read_text(encoding="utf-8"))
     return document
 

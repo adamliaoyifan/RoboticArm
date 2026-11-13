@@ -3,10 +3,10 @@ from copy import deepcopy
 from types import SimpleNamespace
 import pytest
 from luggage_msgs.srv import VacuumCommandV2, SelectPlacePathV2
-from luggage_planning.attachment_frame_adapters import handle_vacuum_command_v2
-from luggage_planning.hardware_place_planning import plan_attached_box
-from luggage_planning.hardware_place_replay import replay_place
-from luggage_planning.typed_driver_adapter import TypedDriverAdapter
+from luggage_planning.attachment.attachment_frame_adapters import handle_vacuum_command_v2
+from luggage_planning.deploy.hardware_place_planning import plan_attached_box
+from luggage_planning.deploy.hardware_place_replay import replay_place
+from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter
 from test_hardware_place_planning import inputs
 from test_attachment_revision_propagation import _request, _tool, LIVE
 

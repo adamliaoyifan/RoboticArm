@@ -147,7 +147,7 @@
 
 **下一步：**定义一个明确部署组合：当前scene导出O几何、传感器输入、owner配置、服务就绪、消费者参数；先做不执行运动的启动排练。
 
-来源：[hardware_placement_launch.py:10](/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/hardware_placement_launch.py:10)；[placement_planner_node.py:325](/home/adamliao/work/elfin_humble_ws/src/luggage_packing/scripts/placement_planner_node.py:325)；[standalone.launch.py:14](/home/adamliao/work/elfin_humble_ws/src/uld_occ_observer/launch/standalone.launch.py:14)。
+来源：[hardware_placement_launch.py:10](/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/deploy/hardware_placement_launch.py:10)；[placement_planner_node.py:325](/home/adamliao/work/elfin_humble_ws/src/luggage_packing/scripts/placement_planner_node.py:325)；[standalone.launch.py:14](/home/adamliao/work/elfin_humble_ws/src/uld_occ_observer/launch/standalone.launch.py:14)。
 
 ### F07 · P0 · 常用安装前缀未完整安装新整链接口
 
@@ -211,7 +211,7 @@
 
 **下一步：**按用户决定重审高度/方式，分开验证释放前几何、落稳位置、支撑和退出；不要单独缩高度制造通过。
 
-来源：[waypoint_generator.py:29](/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/waypoint_generator.py:29)；[route_producer.py:187](/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/route_producer.py:187)。
+来源：[waypoint_generator.py:29](/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/place/waypoint_generator.py:29)；[route_producer.py:187](/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/route_producer.py:187)。
 
 ### F13 · P0 · 误差账本和实机异常信号没有资格证据
 
@@ -335,7 +335,7 @@
 
 **下一步：**在固定G下由当前O/开口推导有界出入场候选；先从失败碰撞对定位哪一个端点模板阻挡。
 
-来源：[joint_operation_candidates.py:135](/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/joint_operation_candidates.py:135)；[waypoint_generator.py:19](/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/waypoint_generator.py:19)。
+来源：[joint_operation_candidates.py:135](/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/joint_operation_candidates.py:135)；[waypoint_generator.py:19](/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/place/waypoint_generator.py:19)。
 
 ### F25 · P1 · 缩小网格会改变unknown覆盖，全量O转换成本未测
 
@@ -406,7 +406,7 @@
 
 **下一步：**对实际执行入口做provider调用计数和精确FK witness，删除或迁移无消费者配置，明确两套atlas消费边界。
 
-来源：[motion_executor.py:455](/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/motion_executor.py:455)；[atlas_runtime_deploy_update.yaml:26](/home/adamliao/work/elfin_humble_ws/src/luggage_planning/config/atlas_runtime_deploy_update.yaml:26)。
+来源：[motion_executor.py:455](/home/adamliao/work/elfin_humble_ws/src/luggage_planning/luggage_planning/motion/motion_executor.py:455)；[atlas_runtime_deploy_update.yaml:26](/home/adamliao/work/elfin_humble_ws/src/luggage_planning/config/atlas_runtime_deploy_update.yaml:26)。
 
 ## 5 cm规则及相近数值的归属清单
 

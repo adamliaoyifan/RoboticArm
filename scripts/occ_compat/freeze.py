@@ -207,7 +207,7 @@ def run_freeze(manifest_path, out_dir):
         "G": _install_files(
             manifest["g_install"],
             ("luggage_perception", "luggage_msgs",
-             "luggage_description", "st09_contracts"),
+             "luggage_description", "luggage_planning"),
             problems, "G", out),
         "C1": _install_files(
             manifest["c1_install"],

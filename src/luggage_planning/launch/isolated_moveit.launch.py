@@ -131,7 +131,7 @@ def generate_launch_description():
         [
             FindPackageShare("luggage_description"),
             "config",
-            "scene_tf.yaml.example",
+            "scene_tf_deploy_update.yaml",
         ]
     )
     return with_profile(LaunchDescription(

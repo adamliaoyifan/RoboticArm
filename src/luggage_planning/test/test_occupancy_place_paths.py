@@ -8,7 +8,7 @@ from luggage_description.container_geometry import (
     cuboid_from_inner_size,
     normalize_descriptor,
 )
-from luggage_planning.occupancy_place_paths import (
+from luggage_planning.place.occupancy_place_paths import (
     DEFAULT_WEIGHTS,
     OccupancyMismatch,
     OccupancySnapshot,
@@ -75,7 +75,7 @@ class TestOccupancyPlacePaths(unittest.TestCase):
 
     def test_default_path_resolves_in_src_tree(self):
         # symlink-install / test runs: module file sits next to ../config.
-        from luggage_planning.occupancy_place_paths import (
+        from luggage_planning.place.occupancy_place_paths import (
             selector_weights_path)
         path = selector_weights_path()
         self.assertIsNotNone(path)
@@ -89,7 +89,7 @@ class TestOccupancyPlacePaths(unittest.TestCase):
         import shutil
         import tempfile
         import ament_index_python.packages as pkgs
-        from luggage_planning import occupancy_place_paths as occ
+        from luggage_planning.place import occupancy_place_paths as occ
         here = os.path.dirname(os.path.abspath(__file__))
         fake_module = os.path.join(tempfile.gettempdir(),
                                    "site_packages", "luggage_planning",
@@ -117,7 +117,7 @@ class TestOccupancyPlacePaths(unittest.TestCase):
     def test_unresolvable_defaults_warn_on_stderr(self):
         import contextlib
         import io
-        from luggage_planning import occupancy_place_paths as occ
+        from luggage_planning.place import occupancy_place_paths as occ
         original = occ.selector_weights_path
         occ.selector_weights_path = lambda: None
         self.addCleanup(setattr, occ, "selector_weights_path", original)

@@ -30,7 +30,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 TARGET="$WS/pydeps-frozen"
-MANIFEST="$WS/st09_contracts/st09_acceptance_manifest.json"
+MANIFEST="$WS/src/luggage_planning/config/planning_contract/st09_acceptance_manifest.json"
 
 [[ -f "$TARGET/DEPLOYED.json" ]] || {
     echo "frozen python deps prefix absent at $TARGET; run scripts/st09_i/deploy_python_deps.sh" >&2

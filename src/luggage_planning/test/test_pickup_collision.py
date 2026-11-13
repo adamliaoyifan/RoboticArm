@@ -4,13 +4,13 @@
 import unittest
 from types import SimpleNamespace
 
-from luggage_planning.pick_authorization import (
+from luggage_planning.pick.pick_authorization import (
     DETECT_FULL_GEOMETRY_REQUIRED,
     HEIGHT_SOURCE_CONFIGURED_SUPPORT,
     HEIGHT_SOURCE_MEASURED_SUPPORT,
     HEIGHT_SOURCE_UNAVAILABLE,
 )
-from luggage_planning.pickup_collision import pickup_collision_aabb
+from luggage_planning.pick.pickup_collision import pickup_collision_aabb
 
 
 def _box(**fields):

@@ -1,5 +1,5 @@
 """Response wait for an already-certified trajectory, not a planning limit."""
-from luggage_planning.timed_execution_budget import timed_execution_wait
+from luggage_planning.motion.timed_execution_budget import timed_execution_wait
 
 
 def _segment_points(segment):

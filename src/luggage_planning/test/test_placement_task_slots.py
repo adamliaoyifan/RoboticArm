@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import math
 import pytest
 from test_joint_operation_observer import configuration,snapshot
-from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy
+from luggage_planning.attachment.attachment_geometry_policy import load_attachment_geometry_policy
 from luggage_planning.joint_operation.prepare_node import JointOperationPrepareNode
 from luggage_planning.placement_prior.requests import admit_placement_targets
 from luggage_planning.placement_prior.task_slots import observed_placement_slots

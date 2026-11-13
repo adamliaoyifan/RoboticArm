@@ -192,7 +192,7 @@ class PlacementPlannerNode(Node):
                 load_atlas_runtime_for_scene,
                 load_runtime_atlas,
             )
-            from luggage_planning.urdf_identity import UrdfIdentity
+            from luggage_planning.deploy.urdf_identity import UrdfIdentity
         except ImportError as exc:
             PARAM_SPEC = ()
             load_atlas_runtime = None

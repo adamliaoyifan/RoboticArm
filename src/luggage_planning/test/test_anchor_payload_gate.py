@@ -4,9 +4,9 @@ import types
 
 import pytest
 
-from luggage_planning.anchor_payload_gate import (
+from luggage_planning.pick.anchor_payload_gate import (
     REASON_COLLISION, REASON_NOT_EVALUATED, AnchorPayloadGate)
-from st09_contracts.graph import LoadState
+from luggage_planning.planning_contract.graph import LoadState
 from luggage_planning.atlas.graph import GraphRoutePlanner, RouteGraph
 
 
@@ -121,7 +121,7 @@ def _scene(vertex_x=0.0, default=False):
 
 
 def test_digest_changes_with_mesh_vertex_and_acm_default():
-    from luggage_planning.anchor_payload_gate import live_scene_digest
+    from luggage_planning.pick.anchor_payload_gate import live_scene_digest
 
     base = live_scene_digest(_scene())
     assert live_scene_digest(_scene()) == base

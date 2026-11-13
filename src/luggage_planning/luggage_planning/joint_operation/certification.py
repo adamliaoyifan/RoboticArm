@@ -20,11 +20,11 @@ from luggage_planning.joint_operation.contracts import (
 )
 from luggage_planning.joint_operation.planner import OperationCertification
 from luggage_planning.joint_operation.scenes import PHASES, validate_phase_payloads
-from luggage_planning.moveit_state_validity import (
+from luggage_planning.motion.moveit_state_validity import (
     MAX_CERT_SAMPLE_DT_NS, sample_grid, sample_states,
 )
-from luggage_planning.offline_ik import Urdf
-from st09_contracts.graph import TimedTrajectory
+from luggage_planning.motion.offline_ik import Urdf
+from luggage_planning.planning_contract.graph import TimedTrajectory
 
 
 class EndpointModel:

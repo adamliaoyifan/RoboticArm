@@ -75,7 +75,7 @@ def main():
     }
 
     # ---- Retreat clearance under the baseline ------------------------
-    from luggage_planning.offline_ik import load_urdf, JOINTS
+    from luggage_planning.motion.offline_ik import load_urdf, JOINTS
     urdf = load_urdf(scene_tf_config=_SCENE_TF)
     ik_link = "suction_contact_frame"
     # Full path from the URDF root keeps the world_base patch, so FK is

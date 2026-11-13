@@ -5,7 +5,7 @@ import dataclasses
 import importlib
 import unittest
 
-from luggage_planning.exploration_contracts import (
+from luggage_planning.contracts.exploration_contracts import (
     AcquisitionStamp,
     CandidateView,
     ExplorationContext,
@@ -14,7 +14,7 @@ from luggage_planning.exploration_contracts import (
     ViewOutcome,
     ViewOutcomeStatus,
 )
-from luggage_planning.orchestration_contracts import (
+from luggage_planning.contracts.orchestration_contracts import (
     EventType,
     FailureBoundary,
     OperatorEvent,
@@ -91,7 +91,7 @@ class TestSimR1OrchestrationContracts(unittest.TestCase):
             with self.subTest(event_type=event_type):
                 transition = reduce_event(model, pickup_ready("unused"))
                 if event_type != EventType.PICKUP_READY:
-                    from luggage_planning.orchestration_contracts import OperatorEvent
+                    from luggage_planning.contracts.orchestration_contracts import OperatorEvent
 
                     transition = reduce_event(model, OperatorEvent(event_type))
                 self.assertIs(transition.state, model)
@@ -423,8 +423,8 @@ class TestSimR1ExplorationContracts(unittest.TestCase):
 
     def test_contract_modules_import_without_ros(self):
         for name in (
-            "luggage_planning.exploration_contracts",
-            "luggage_planning.orchestration_contracts",
+            "luggage_planning.contracts.exploration_contracts",
+            "luggage_planning.contracts.orchestration_contracts",
         ):
             module = importlib.import_module(name)
             self.assertNotIn("rclpy", module.__dict__)

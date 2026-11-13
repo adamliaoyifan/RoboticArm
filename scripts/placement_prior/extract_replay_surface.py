@@ -14,7 +14,7 @@ import sqlite3
 
 
 def check_legacy(surface, record, stats, inner_size):
-    from luggage_planning.occupancy_place_paths import _legacy_view_of_surface_contract
+    from luggage_planning.place.occupancy_place_paths import _legacy_view_of_surface_contract
     expected = _legacy_view_of_surface_contract(record, inner_size, surface['geometry_descriptor'])
     for key in ('map_revision', 'geometry_hash', 'resolution', 'nx', 'ny',
                 'inner_size', 'origin_local', 'state', 'confidence'):
@@ -53,7 +53,7 @@ def main():
     from luggage_msgs.srv import SelectPlacePathV2, GetCargoMapStats
     from luggage_msgs.msg import SurfaceContractV2
     from std_msgs.msg import String
-    from luggage_planning.place_service import request_dict
+    from luggage_planning.place.place_service import request_dict
     boundary = args.capture / 'dumps/typed_service_boundaries'
     rows = [json.loads(line) for line in (boundary / 'boundaries.jsonl').read_text().splitlines()]
     indices = [i for i, r in enumerate(rows)

@@ -2,7 +2,7 @@
 import math
 import pytest
 from luggage_planning.joint_operation.polyline_timing import polyline_vertices,time_parameterize_joint_polyline
-from luggage_planning.spline_timing_bounds import derivative_bounds
+from luggage_planning.motion.spline_timing_bounds import derivative_bounds
 
 
 def q(x,y=0.):return (x,y,0.,0.,0.,0.)

@@ -9,10 +9,10 @@ from rosidl_runtime_py.set_message import set_message_fields
 from luggage_msgs.srv import SelectPlacePathV2
 from luggage_msgs.msg import PoseContractV2, SurfaceContractV2
 from moveit_msgs.srv import GetPlanningScene
-from st09_contracts.attachment_geometry import AttachmentGeometry
-from st09_contracts.payload_envelope import PayloadEnvelope, EnvelopeLimits
-from luggage_planning.typed_driver_adapter import TypedDriverAdapter
-from luggage_planning.place_service import request_dict
+from luggage_planning.planning_contract.attachment_geometry import AttachmentGeometry
+from luggage_planning.planning_contract.payload_envelope import PayloadEnvelope, EnvelopeLimits
+from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter
+from luggage_planning.place.place_service import request_dict
 
 
 def audit(run):

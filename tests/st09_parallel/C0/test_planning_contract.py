@@ -12,7 +12,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 CONTRACT = json.loads(
-    (ROOT / "st09_contracts" / "resolved_planning_contract.json").read_text())
+    (ROOT / "src" / "luggage_planning" / "config" / "planning_contract" / "resolved_planning_contract.json").read_text())
 
 
 def test_no_tbd_or_placeholder_anywhere():

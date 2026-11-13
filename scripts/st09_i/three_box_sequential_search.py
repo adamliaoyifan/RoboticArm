@@ -75,7 +75,7 @@ def _yaw_of(quat):
 
 
 def _corners(center, quat, size):
-    from st09_contracts.attachment import transform_point
+    from luggage_planning.planning_contract.attachment import transform_point
 
     hx, hy, hz = (0.5 * float(v) for v in size)
     offsets = []
@@ -114,7 +114,7 @@ def _gap(a_low, a_high, b_low, b_high):
 
 
 def _payload_pose(tcp, quat, size):
-    from st09_contracts.attachment import compose_transform
+    from luggage_planning.planning_contract.attachment import compose_transform
 
     height = float(size[2])
     return compose_transform(
@@ -220,7 +220,7 @@ def _sync_static(node, scene):
         pedestal_enabled,
     )
     from luggage_description.scene_tf_publisher import rpy_to_quaternion
-    from luggage_planning.planning_scene_client import (
+    from luggage_planning.motion.planning_scene_client import (
         PlanningSceneClient,
         load_stl_mesh_msg,
     )
@@ -245,7 +245,7 @@ def _sync_static(node, scene):
 
 def _scene_boxes(client):
     from moveit_msgs.msg import PlanningSceneComponents
-    from luggage_planning.planning_scene_client import summarize_planning_scene
+    from luggage_planning.motion.planning_scene_client import summarize_planning_scene
 
     scene = client.get_scene(
         PlanningSceneComponents.WORLD_OBJECT_NAMES
@@ -304,7 +304,7 @@ def _contacts_at(node, joints, attached=()):
 
 
 def _legs(producer):
-    from luggage_planning.joint_path import joint_motion_report
+    from luggage_planning.motion.joint_path import joint_motion_report
 
     route = getattr(producer, "last_route", None)
     if route is None:
@@ -354,7 +354,7 @@ def _gates(legs):
 
 
 def _request(spec, placed_count):
-    from st09_contracts.attachment import invert_transform
+    from luggage_planning.planning_contract.attachment import invert_transform
 
     size = tuple(float(v) for v in spec["size"])
     yaw = float(spec["yaw"])
@@ -729,7 +729,7 @@ def _cartesian_again(node, start_q, waypoints, avoid):
 
 def _beyond_contact(node, producer, plan_row, object_id, size):
     """Step past the last collision-free Cartesian sample and read contacts."""
-    from luggage_planning.offline_ik import refine_to_pose
+    from luggage_planning.motion.offline_ik import refine_to_pose
 
     failure = next((item for item in plan_row["failures"]
                     if item.get("reason") == "fraction_below_min"), None)
@@ -742,7 +742,7 @@ def _beyond_contact(node, producer, plan_row, object_id, size):
     if partial is None:
         return {"error": "partial trajectory not captured", "failure": failure}
     from moveit_msgs.msg import PlanningSceneComponents
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
 
     attached = []
     live_scene = PlanningSceneClient(node).get_scene(
@@ -769,7 +769,7 @@ def _beyond_contact(node, producer, plan_row, object_id, size):
     tcp = None
     step_contacts = None
     if partial.get("positions"):
-        from luggage_planning.offline_ik import refine_to_pose
+        from luggage_planning.motion.offline_ik import refine_to_pose
 
         seed = partial["positions"][-1]
         here, heading = producer.fk(seed)

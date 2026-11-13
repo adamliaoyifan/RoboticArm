@@ -187,10 +187,10 @@ def alignment(witness):
     gt = _gt_pose(gt_path)
     ring = os.path.join(
         os.path.dirname(witness["surface_path"]), "joint_ring.jsonl")
-    from ament_index_python.packages import get_package_share_directory
-    contract_path = os.path.join(
-        get_package_share_directory("st09_contracts"),
-        "resolved_planning_contract.json")
+    from luggage_planning.planning_contract.location import (
+        resolved_planning_contract_path,
+    )
+    contract_path = resolved_planning_contract_path()
     contract = _load(contract_path)
     budgets = contract["planning_budgets"]
     rows = [
@@ -493,7 +493,7 @@ def _request_slots(witness, scene_config):
 
 
 def _build_many(document, surface, slots, stamp_ns):
-    from st09_contracts.attachment import invert_transform
+    from luggage_planning.planning_contract.attachment import invert_transform
 
     attachment = document["attachment_transform"]
     grasp_pos, grasp_quat = invert_transform(
@@ -559,7 +559,7 @@ def _host(node, scene_config, clock_ns):
         load_atlas_runtime_for_scene,
         load_runtime_atlas,
     )
-    from luggage_planning.urdf_identity import UrdfIdentity
+    from luggage_planning.deploy.urdf_identity import UrdfIdentity
 
     node._scene = scene_config
     node._scene_tf_hash = compute_scene_tf_hash(SCENE_TF)
@@ -801,8 +801,8 @@ def _diagnostic(node, packed):
     edges = packed.get("_edges") or ()
     if not saved.get("args") or not edges:
         return {"status": "not_evaluated", "reason": "no_chain"}
-    from luggage_planning.moveit_state_validity import MoveItStateValidityAdapter
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.moveit_state_validity import MoveItStateValidityAdapter
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
 
     producer = packed["_producer"]
     route, snapshot, attachment, edges, candidate, request = saved["args"][:6]

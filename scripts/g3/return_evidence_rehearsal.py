@@ -9,7 +9,7 @@ import time
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from luggage_planning.typed_driver_adapter import adopt_runtime_identity
+from luggage_planning.deploy.typed_driver_adapter import adopt_runtime_identity
 from luggage_description.scene_tf_config_utils import load_scene_tf_config, xyz_world_to_base_link
 from luggage_gazebo.place_gt_dump import build_place_gt, gt_place_dump, write_ply_xyzrgb
 

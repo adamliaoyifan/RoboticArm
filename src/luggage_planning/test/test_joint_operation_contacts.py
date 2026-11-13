@@ -109,8 +109,8 @@ def test_directed_grasp_same_G_at_both_ends_for_measured_offsets_heights_and_box
 
 
 def test_tilted_quality_normal_survives_grasp_and_conservative_attachment(consume):
-    from st09_contracts.attachment_geometry import freeze_geometry
-    from st09_contracts.payload_envelope import EnvelopeLimits
+    from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+    from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
     domain,hmap,model = context_inputs()
     angle = .02
     domain = replace(domain, v_axis_world=(0.,math.cos(angle),math.sin(angle)),

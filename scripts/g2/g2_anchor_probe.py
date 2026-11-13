@@ -31,7 +31,7 @@ def main():
     from rclpy.node import Node
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_msgs.srv import SelectPlacePathV2
-    from luggage_planning.place_service import fill_select_response_route
+    from luggage_planning.place.place_service import fill_select_response_route
     from luggage_planning.routing.producer import tool_down_branch_seeds
 
     stack = common.MoveItStack(out, "anchor_probe")

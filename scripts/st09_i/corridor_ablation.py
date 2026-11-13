@@ -33,8 +33,7 @@ for _path in (
         os.path.join(ROOT, "src", "luggage_packing", "scripts"),
         os.path.join(ROOT, "src", "luggage_planning"),
         os.path.join(ROOT, "src", "luggage_description"),
-        os.path.join(ROOT, "st09_contracts"),
-):
+        ):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
@@ -77,7 +76,7 @@ def _scene():
         pedestal_dimensions,
         pedestal_enabled,
     )
-    from luggage_planning.typed_driver_adapter import (
+    from luggage_planning.deploy.typed_driver_adapter import (
         container_transform_fields,
     )
 
@@ -92,7 +91,7 @@ def _scene():
 
 
 def _models():
-    from luggage_planning.offline_ik import load_urdf, refine_to_pose
+    from luggage_planning.motion.offline_ik import load_urdf, refine_to_pose
     from luggage_planning.atlas.graph import make_offline_fk
 
     urdf = load_urdf(scene_tf_config=scan.SCENE)
@@ -111,8 +110,8 @@ def _targets(request):
     import dataclasses
 
     from luggage_description.frame_transforms import rotate_vector
-    from luggage_planning.attachment_provider import MeasuredAttachmentProvider
-    from luggage_planning.place_targets import (
+    from luggage_planning.attachment.attachment_provider import MeasuredAttachmentProvider
+    from luggage_planning.place.place_targets import (
         box_target_from_candidate,
         expand_place_targets,
     )
@@ -426,8 +425,8 @@ def plan(condition, limit=None):
     from luggage_perception.eval.isolated_domain import isolated_replay_env
     from luggage_planning.routing.grid_search import ROUTE_TOTAL_WALL_S
     from luggage_planning.routing.lattice import LatticeStateChecker
-    from luggage_planning.planning_scene_client import PlanningSceneClient
-    from luggage_planning.typed_driver_adapter import container_transform_fields
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
+    from luggage_planning.deploy.typed_driver_adapter import container_transform_fields
     import rclpy
     from rclpy.executors import MultiThreadedExecutor
     from rclpy.node import Node

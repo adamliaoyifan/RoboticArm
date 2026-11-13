@@ -28,7 +28,7 @@ from luggage_perception.voxel_log_odds import FREE, OCCUPIED, UNKNOWN
 from luggage_perception.frame_message_adapters import (
     measured_surface_to_message, measured_surface_from_message,
 )
-from luggage_planning.occupancy_place_paths import (
+from luggage_planning.place.occupancy_place_paths import (
     OccupancyMismatch, OccupancySnapshot,
 )
 

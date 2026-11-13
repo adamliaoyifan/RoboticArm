@@ -9,21 +9,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src" / "luggage_planning"))
 
-from luggage_planning.map_revalidation import (
+from luggage_planning.place.map_revalidation import (
     MapRevalidator,
     MockControllerStopProbe,
     RevalidationInput,
     StopPolicy,
 )
-from luggage_planning.moveit_validity_adapter import StaticMoveItValidityAdapter, ValiditySample
-from luggage_planning.trajectory_certifier import CertificationContext, TrajectoryCertifier
-from st09_contracts._base import ContractViolation
-from st09_contracts.attachment import AttachmentSourceKind, AttachmentValidity
-from st09_contracts.certification import EffectCounters, MapDecision
-from st09_contracts.fixtures import make_attachment, make_graph_fixture, make_route, make_snapshot
-from st09_contracts.graph import TimedTrajectory
-from st09_contracts.planning import PlanningSnapshot
-from st09_contracts.reasons import Reason
+from luggage_planning.motion.moveit_validity_adapter import StaticMoveItValidityAdapter, ValiditySample
+from luggage_planning.motion.trajectory_certifier import CertificationContext, TrajectoryCertifier
+from luggage_planning.planning_contract._base import ContractViolation
+from luggage_planning.planning_contract.attachment import AttachmentSourceKind, AttachmentValidity
+from luggage_planning.planning_contract.certification import EffectCounters, MapDecision
+from luggage_planning.planning_contract.fixtures import make_attachment, make_graph_fixture, make_route, make_snapshot
+from luggage_planning.planning_contract.graph import TimedTrajectory
+from luggage_planning.planning_contract.planning import PlanningSnapshot
+from luggage_planning.planning_contract.reasons import Reason
 
 
 def _current_rev():

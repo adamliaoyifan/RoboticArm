@@ -17,10 +17,10 @@ from luggage_planning.joint_operation.planner import OperationCandidate
 from luggage_planning.joint_operation.scenes import build_operation_scenes
 from luggage_planning.placement_prior.contracts import PlacementCandidate, Transform
 from luggage_description.frame_transforms import rotate_vector
-from luggage_planning.waypoint_generator import (
+from luggage_planning.place.waypoint_generator import (
     DEFAULT_PLACE_CLEARANCE_Z, EXIT_EXTRA_LIFT_M, PLACE_RELEASE_GAP_M, corridor_clearance,
 )
-from st09_contracts.attachment_geometry import freeze_geometry
+from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
 
 
 @dataclass(frozen=True)

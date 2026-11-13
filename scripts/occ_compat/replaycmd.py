@@ -242,7 +242,7 @@ def _probe_e3(ctx, base_case=""):
         path = "%s/%s" % (c1, pkg)
         if path not in sys.path:
             sys.path.insert(0, path)
-    from luggage_planning.occupancy_place_paths import OccupancySnapshot
+    from luggage_planning.place.occupancy_place_paths import OccupancySnapshot
     surface = ctx.client.surface_map or {}
     try:
         snapshot = OccupancySnapshot.from_surface_2d(

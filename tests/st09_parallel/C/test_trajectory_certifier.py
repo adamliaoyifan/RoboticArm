@@ -9,16 +9,16 @@ import pytest
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "src" / "luggage_planning"))
 
-from luggage_planning.moveit_validity_adapter import StaticMoveItValidityAdapter, ValiditySample
-from luggage_planning.trajectory_certifier import CertificationContext, TrajectoryCertifier
-from st09_contracts.attachment import (
+from luggage_planning.motion.moveit_validity_adapter import StaticMoveItValidityAdapter, ValiditySample
+from luggage_planning.motion.trajectory_certifier import CertificationContext, TrajectoryCertifier
+from luggage_planning.planning_contract.attachment import (
     UNLOADED_ATTACHMENT_DIGEST,
     AttachmentSourceKind,
     AttachmentValidity,
 )
-from st09_contracts.fixtures import make_attachment, make_graph_fixture, make_route, make_snapshot
-from st09_contracts.graph import LoadState, TimedTrajectory
-from st09_contracts.reasons import Reason
+from luggage_planning.planning_contract.fixtures import make_attachment, make_graph_fixture, make_route, make_snapshot
+from luggage_planning.planning_contract.graph import LoadState, TimedTrajectory
+from luggage_planning.planning_contract.reasons import Reason
 
 
 def _edge_with_cells(edge, cells=((1, 1),)):

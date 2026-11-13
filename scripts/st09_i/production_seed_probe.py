@@ -30,12 +30,12 @@ from route_matrix_eval import (  # noqa: E402
     load_urdf,
 )
 from route_matrix_eval import Payload as MatrixPayload  # noqa: E402
-from luggage_planning.offline_ik import refine_to_pose  # noqa: E402
+from luggage_planning.motion.offline_ik import refine_to_pose  # noqa: E402
 from luggage_planning.routing.producer import (  # noqa: E402
     RouteProducer,
     tool_down_branch_seeds,
 )
-from luggage_planning.trajectory_certifier import (  # noqa: E402
+from luggage_planning.motion.trajectory_certifier import (  # noqa: E402
     TrajectoryCertifier,
 )
 

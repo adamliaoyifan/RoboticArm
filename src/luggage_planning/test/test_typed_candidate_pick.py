@@ -6,9 +6,9 @@ from types import SimpleNamespace
 import pytest
 from luggage_msgs.msg import DetectedLuggage, SuctionCandidate
 from luggage_msgs.srv import BuildMotionSequenceV2
-from luggage_planning.typed_driver_adapter import TypedDriverAdapter
-from luggage_planning.place_service import handle_build_v2
-from luggage_planning.ros_message_adapters import pick_from_detected
+from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter
+from luggage_planning.place.place_service import handle_build_v2
+from luggage_planning.adapters.ros_message_adapters import pick_from_detected
 
 
 def request():
@@ -37,7 +37,7 @@ def test_contact_reaches_actual_encoder_and_certification(monkeypatch):
     spec = importlib.util.spec_from_file_location('candidate_waypoint_node', path)
     module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
     import luggage_planning.routing.producer as producer
-    from st09_contracts.fixtures import make_timed_trajectory
+    from luggage_planning.planning_contract.fixtures import make_timed_trajectory
     captured = []; certified = []
     def records(waypoints, **kwargs):
         captured.extend(waypoints)

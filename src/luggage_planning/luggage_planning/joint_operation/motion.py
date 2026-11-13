@@ -16,7 +16,7 @@ from luggage_description.frame_contracts import vector
 from luggage_planning.joint_operation.contracts import OPERATION_JOINTS, admit_operation_plan
 from luggage_planning.joint_operation.execution import ValidationReceipt
 from luggage_planning.joint_operation.revalidation import OperationRevalidation
-from st09_contracts.attachment_geometry import AttachmentGeometry
+from luggage_planning.planning_contract.attachment_geometry import AttachmentGeometry
 
 
 @dataclass(frozen=True)

@@ -2,7 +2,7 @@
 
 import unittest
 
-from luggage_planning.joint6_hold import (
+from luggage_planning.pick.joint6_hold import (
     JOINT6_NAME,
     PICK_HOLD_JOINT6_NAMES,
     joint6_value,

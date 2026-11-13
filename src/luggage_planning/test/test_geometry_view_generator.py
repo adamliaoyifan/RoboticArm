@@ -23,12 +23,12 @@ import copy
 PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 from luggage_description.scene_tf_config_utils import load_scene_tf_config
-import luggage_planning.geometry_view_generator as g
+import luggage_planning.geometry.geometry_view_generator as g
 
 
 def _example_scene_path():
     return os.path.join(
-        PKG_ROOT, "..", "luggage_description", "config", "scene_tf.yaml.example")
+        PKG_ROOT, "..", "luggage_description", "config", "scene_tf_deploy_update.yaml")
 
 
 def _reachable_scene():

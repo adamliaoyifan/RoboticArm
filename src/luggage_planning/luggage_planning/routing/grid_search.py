@@ -10,7 +10,7 @@ stays inside the edge builder.
 # -- Section B: ST09-B bounded route search over the q-state graph -------
 
 #: Frozen planning budgets (a B test asserts equality with
-#: st09_contracts/resolved_planning_contract.json).
+#: config/planning_contract/resolved_planning_contract.json).
 from __future__ import division
 
 import json
@@ -64,7 +64,7 @@ DEFAULT_RETREAT_HOPS = (("exit", "RETREAT"), ("home", "RETURN"))
 
 
 def _reason(name):
-    from st09_contracts.reasons import Reason
+    from luggage_planning.planning_contract.reasons import Reason
     return Reason(str(name))
 
 
@@ -415,7 +415,7 @@ class RouteSearch(object):
 
     ``edge_builder(from_node, to_node, edge_class, candidate=None,
     scene=None)`` must return a verified
-    :class:`~st09_contracts.graph.GraphEdge` or raise
+    :class:`~luggage_planning.planning_contract.graph.GraphEdge` or raise
     :class:`RoutePlanningError`. The scene is threaded per chain (carrying
     for entry hops, unloaded-with-obstacles for the retreat). Verified
     cached edges are reused without budget cost; store candidates are
@@ -721,7 +721,7 @@ class RouteSearch(object):
                             zip(actual, destination.q)) > 1e-6:
                 anchored = self.graph.node_for_q(hop.load_state, actual)
                 if anchored is None:
-                    from st09_contracts import LoadState
+                    from luggage_planning.planning_contract import LoadState
 
                     position = destination.tcp_position
                     quaternion = destination.tcp_quaternion_xyzw
@@ -855,7 +855,7 @@ class RouteSearch(object):
                 pass
             twin = self.graph.node_for_q("unloaded", final_q)
             if twin is None:
-                from st09_contracts import LoadState
+                from luggage_planning.planning_contract import LoadState
 
                 position = goal.tcp_position
                 quaternion = goal.tcp_quaternion_xyzw

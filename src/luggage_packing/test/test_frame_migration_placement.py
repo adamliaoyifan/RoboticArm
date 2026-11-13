@@ -63,10 +63,10 @@ from luggage_description.frame_contracts import ContractError
 from luggage_description.frame_diagnostics import (
     BoundaryContext, BoundaryContractError,
 )
-from luggage_planning.frame_message_adapters import (
+from luggage_planning.adapters.frame_message_adapters import (
     planning_pose_from_message, planning_pose_to_message,
 )
-from luggage_planning.waypoint_generator import slot_from_contract
+from luggage_planning.place.waypoint_generator import slot_from_contract
 from luggage_packing.placement_legacy_v1 import v1_candidate_view
 from luggage_packing.placement_solver import (
     candidate_aabb, generate_candidates, solve_placement,
@@ -907,7 +907,7 @@ class PlacedLedgerSingleSource(unittest.TestCase):
         from std_msgs.msg import String
         from luggage_msgs.srv import ComputePlacementV2
         from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
-        from luggage_planning.place_service import pose_message
+        from luggage_planning.place.place_service import pose_message
 
         module = runpy.run_path(os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

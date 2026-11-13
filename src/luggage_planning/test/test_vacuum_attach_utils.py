@@ -4,7 +4,7 @@
 import math
 import unittest
 
-from luggage_planning.vacuum_attach_utils import (
+from luggage_planning.attachment.vacuum_attach_utils import (
     compose_transform,
     contact_distance,
     contact_ok,

@@ -28,7 +28,7 @@ for _entry in (
     if _entry not in sys.path:
         sys.path.append(_entry)
 
-from luggage_planning.place_service import pose_message  # noqa: E402
+from luggage_planning.place.place_service import pose_message  # noqa: E402
 
 
 def _load_pack_module():

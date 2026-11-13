@@ -4,7 +4,7 @@
 import unittest
 from types import SimpleNamespace
 
-from luggage_planning.pick_authorization import (
+from luggage_planning.pick.pick_authorization import (
     AUTHORIZE,
     DETECT_FAILED,
     DETECT_FULL_GEOMETRY_REQUIRED,

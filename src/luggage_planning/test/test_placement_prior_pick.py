@@ -2,14 +2,14 @@ from dataclasses import replace
 from types import SimpleNamespace
 import math
 import pytest
-from luggage_planning.pose import Pose, Point, Quaternion
+from luggage_planning.geometry.pose import Pose, Point, Quaternion
 from luggage_planning.placement_prior.pick import candidates_for_prior, bind_choice_to_pick
 from luggage_planning.placement_prior.contracts import Transform, PlacementCandidate
 from luggage_planning.placement_prior.core import PriorChoice
 
 
 def detection():
-    from luggage_planning.suction_pick_session import DetectionView
+    from luggage_planning.pick.suction_pick_session import DetectionView
     candidate = SimpleNamespace(candidate_id='offset', rank=1, stamp=1.0,
         frame='world', instance_id='box', generation=1, model_hash='cup', model_version=1,
         contact=Pose(Point(1., 2.04, .6), Quaternion()))

@@ -16,7 +16,7 @@ from luggage_perception.directed_suction_quality import DirectedSuctionResult, Q
 from luggage_perception.observed_contact_footprint import check_observed_contact_footprint
 from luggage_perception.ros_suction_domain import require_matching_detection
 from luggage_planning.placement_prior.contracts import GraspCandidate, Transform
-from luggage_planning.waypoint_generator import DEFAULT_PICK_CLEARANCES
+from luggage_planning.place.waypoint_generator import DEFAULT_PICK_CLEARANCES
 
 
 @dataclass(frozen=True)

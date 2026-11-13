@@ -14,11 +14,11 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 MANIFEST = json.loads(
-    (ROOT / "st09_contracts" / "st09_acceptance_manifest.json").read_text())
+    (ROOT / "src" / "luggage_planning" / "config" / "planning_contract" / "st09_acceptance_manifest.json").read_text())
 AUDIT = json.loads(
-    (ROOT / "st09_contracts" / "v2_field_audit.json").read_text())
+    (ROOT / "src" / "luggage_planning" / "config" / "planning_contract" / "v2_field_audit.json").read_text())
 DISPOSITION = json.loads(
-    (ROOT / "st09_contracts" / "restore_disposition.json").read_text())
+    (ROOT / "src" / "luggage_planning" / "config" / "planning_contract" / "restore_disposition.json").read_text())
 
 
 def test_no_tbd_in_commands_or_config():

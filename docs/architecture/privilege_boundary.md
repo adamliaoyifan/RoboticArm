@@ -31,7 +31,7 @@ The boundary is **structurally enforced**, not convention-enforced:
 | `/pickup_box_spawner/get_current_box` (pull) | GT `DetectedLuggage` + `generation`, `mass_kg`, `model_name` | sim physics, eval, fixtures, viz — never chain planning |
 | `/luggage/perception/size_eval/spawned` | GT spawn record | eval scoring only |
 
-Accessors (`luggage_planning/luggage_planning/current_box_payload.py`):
+Accessors (`luggage_planning/luggage_planning/pick/current_box_payload.py`):
 `identity_from_current_box_payload` / `measured_from_current_box_payload`
 are the only sanctioned reads of the topic. There is deliberately no
 accessor that returns GT off the topic.

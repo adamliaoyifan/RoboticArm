@@ -13,8 +13,8 @@ import copy
 import pytest
 import yaml
 
-from luggage_planning import site_pose_schema as sps
-from luggage_planning.named_robot_poses import (
+from luggage_planning.deploy import site_pose_schema as sps
+from luggage_planning.deploy.named_robot_poses import (
     default_observe_pose_name,
     load_poses_config,
     plan_goto_joints,

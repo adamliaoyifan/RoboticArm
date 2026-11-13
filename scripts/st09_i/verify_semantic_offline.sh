@@ -227,7 +227,7 @@ import os
 import sys
 
 ws, out_dir, vendor_tree, pydeps = sys.argv[1:5]
-with open(os.path.join(ws, "st09_contracts", "st09_acceptance_manifest.json")) as h:
+with open(os.path.join(ws, "src", "luggage_planning", "config", "planning_contract", "st09_acceptance_manifest.json")) as h:
     frozen = json.load(h)["semantic_assets"]
 with open(os.path.join(out_dir, "semantic_offline_proof.json")) as h:
     proof = json.load(h)

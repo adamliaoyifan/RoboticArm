@@ -47,13 +47,13 @@ from luggage_msgs.msg import DetectionFrame
 from luggage_msgs.srv import BuildMotionSequence, BuildMotionSequenceV2
 
 from luggage_perception.locked_stamp_window import LockedStampWindow
-from luggage_planning import ros_message_adapters as adapters
+from luggage_planning.adapters import ros_message_adapters as adapters
 from luggage_planning.atlas.wavefront import (
     SAFE_TOOL_Z,
     container_tool_z_in_frame,
 )
-from luggage_planning.place_service import handle_build_v2
-from luggage_planning.waypoint_generator import (
+from luggage_planning.place.place_service import handle_build_v2
+from luggage_planning.place.waypoint_generator import (
     DEFAULT_PICK_CLEARANCES,
     DEFAULT_PLACE_CLEARANCE_Z,
     build_sequence,
@@ -338,7 +338,7 @@ class WaypointGeneratorNode(Node):
         if getattr(self, "_pick_stack", None) is not None:
             return self._pick_stack
         from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
-        from luggage_planning.offline_ik import load_urdf, refine_to_pose
+        from luggage_planning.motion.offline_ik import load_urdf, refine_to_pose
         from luggage_planning.atlas.graph import (
             RouteGraph,
             make_offline_fk,
@@ -365,25 +365,23 @@ class WaypointGeneratorNode(Node):
         import json as _json
         import os as _os
 
-        from luggage_planning.moveit_state_validity import (
+        from luggage_planning.motion.moveit_state_validity import (
             MoveItStateValidityAdapter,
         )
-        from luggage_planning.planning_scene_client import (
+        from luggage_planning.motion.planning_scene_client import (
             PlanningSceneClient,
         )
         from luggage_planning.routing.producer import (
             certification_policy_from_contract,
         )
-        from luggage_planning.trajectory_certifier import TrajectoryCertifier
+        from luggage_planning.motion.trajectory_certifier import TrajectoryCertifier
 
         try:
-            from ament_index_python.packages import (
-                get_package_share_directory,
+            from luggage_planning.planning_contract.location import (
+                resolved_planning_contract_path,
             )
 
-            contract_path = _os.path.join(
-                get_package_share_directory("st09_contracts"),
-                "resolved_planning_contract.json")
+            contract_path = resolved_planning_contract_path()
             with open(contract_path, encoding="utf-8") as handle:
                 contract_document = _json.load(handle)
             cert_policy = certification_policy_from_contract(
@@ -462,7 +460,7 @@ class WaypointGeneratorNode(Node):
             SceneState,
             occupancy_boxes_from_surface,
         )
-        from luggage_planning.moveit_state_validity import (
+        from luggage_planning.motion.moveit_state_validity import (
             MoveItStateValidityAdapter,
         )
         from luggage_planning.routing.producer import certify_unloaded_legs
@@ -578,7 +576,7 @@ class WaypointGeneratorNode(Node):
                     "PICK_CONTRACT_UNAVAILABLE", {"leg": "pick"})
             waypoints = []
             if suction_candidate is not None:
-                from luggage_planning.suction_candidate_waypoints import build_candidate_pick_segments
+                from luggage_planning.pick.suction_candidate_waypoints import build_candidate_pick_segments
                 segments = build_candidate_pick_segments(
                     suction_candidate, pick_clearances=self._clearances(),
                     detection_yaw=pick.yaw, yaw_valid=pick.yaw_valid)

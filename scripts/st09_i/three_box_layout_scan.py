@@ -51,14 +51,14 @@ from luggage_packing.placement_solver import (  # noqa: E402
     candidate_aabb,
     solve_placement,
 )
-from luggage_planning.offline_ik import load_urdf, refine_to_pose  # noqa: E402
+from luggage_planning.motion.offline_ik import load_urdf, refine_to_pose  # noqa: E402
 from luggage_planning.atlas.graph import make_offline_fk  # noqa: E402
 from luggage_planning.routing.producer import (  # noqa: E402
     RELEASE_DROP_M,
     anchor_plan,
     tool_down_branch_seeds,
 )
-from st09_contracts.attachment import (  # noqa: E402
+from luggage_planning.planning_contract.attachment import (  # noqa: E402
     compose_transform,
     invert_transform,
 )
@@ -330,7 +330,7 @@ def _cartesian(node, from_q, poses, avoid):
 
 
 def _segment_motion(positions, distance):
-    from luggage_planning.joint_path import joint_motion_report
+    from luggage_planning.motion.joint_path import joint_motion_report
 
     report = joint_motion_report(positions, distance)
     if report is None:
@@ -614,7 +614,7 @@ def main():
         from rclpy.executors import MultiThreadedExecutor
         from rclpy.node import Node
         from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
-        from luggage_planning.planning_scene_client import PlanningSceneClient
+        from luggage_planning.motion.planning_scene_client import PlanningSceneClient
         from slot64_classify_replay import _sync_world
 
         rclpy.init()

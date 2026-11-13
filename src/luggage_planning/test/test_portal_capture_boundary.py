@@ -8,13 +8,13 @@ from pathlib import Path
 from luggage_msgs.srv import SelectPlacePathV2
 from moveit_msgs.msg import AllowedCollisionMatrix, PlanningScene
 
-from luggage_planning.boundary_capture import (
+from luggage_planning.capture.boundary_capture import (
     capture_service_request,
     load_service_request,
 )
 from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
-from luggage_planning.planning_scene_client import set_acm_pair
-from luggage_planning.portal_goal_classifier import (
+from luggage_planning.motion.planning_scene_client import set_acm_pair
+from luggage_planning.place.portal_goal_classifier import (
     classify_portal_record,
     urdf_joint_limits,
 )
@@ -181,7 +181,7 @@ def _rec(goal, validity=None):
 
 
 def test_missing_or_invalid_limit_is_not_evaluated_not_outside():
-    from luggage_planning.portal_goal_classifier import (
+    from luggage_planning.place.portal_goal_classifier import (
         classify_portal_record, urdf_joint_limits)
 
     goal = [0.0] * 6
@@ -194,7 +194,7 @@ def test_missing_or_invalid_limit_is_not_evaluated_not_outside():
 
 
 def test_xml_attribute_order_and_quote_variants_parse_alike():
-    from luggage_planning.portal_goal_classifier import urdf_joint_limits
+    from luggage_planning.place.portal_goal_classifier import urdf_joint_limits
 
     variants = [
         '<robot><joint name="elfin_joint1" type="revolute">'
@@ -207,7 +207,7 @@ def test_xml_attribute_order_and_quote_variants_parse_alike():
 
 
 def test_real_over_limit_goal_is_classified_outside():
-    from luggage_planning.portal_goal_classifier import (
+    from luggage_planning.place.portal_goal_classifier import (
         classify_portal_record, urdf_joint_limits)
 
     goal = [0.0, 1.0, 0.0, 0.0, 0.0, 0.0]  # joint2 upper is 0.1745
@@ -243,7 +243,7 @@ class _GateHost(object):
 
 
 def _timed():
-    from st09_contracts.graph import TimedTrajectory
+    from luggage_planning.planning_contract.graph import TimedTrajectory
 
     return TimedTrajectory(
         joint_names=tuple(NAMES),

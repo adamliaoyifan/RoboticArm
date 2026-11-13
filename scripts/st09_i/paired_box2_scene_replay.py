@@ -231,7 +231,7 @@ def _host(node, scene_config, clock_ns):
         load_atlas_runtime_for_scene,
         load_runtime_atlas,
     )
-    from luggage_planning.urdf_identity import UrdfIdentity
+    from luggage_planning.deploy.urdf_identity import UrdfIdentity
 
     node._scene = scene_config
     node._scene_tf_hash = compute_scene_tf_hash(SCENE_TF)
@@ -294,7 +294,7 @@ def _robot_model(node):
     if result is not None and result.values:
         text = str(result.values[0].string_value or "")
     from luggage_planning.atlas.runtime import compute_urdf_hash
-    from luggage_planning.offline_ik import default_urdf_xacro, load_urdf
+    from luggage_planning.motion.offline_ik import default_urdf_xacro, load_urdf
     from luggage_description.xacro_robot_with_scene_base import (
         expand_and_patch,
     )
@@ -318,7 +318,7 @@ def _robot_model(node):
 
 
 def _scene_client(node):
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
 
     client = PlanningSceneClient(node)
     if not client.wait_ready(timeout_sec=30.0):
@@ -366,7 +366,7 @@ def _acm_pairs(scene):
 
 
 def _inventory(client, names_only=False):
-    from luggage_planning.planning_scene_client import summarize_planning_scene
+    from luggage_planning.motion.planning_scene_client import summarize_planning_scene
 
     scene = client.get_scene(_components(names_only), timeout=8.0)
     if scene is None:

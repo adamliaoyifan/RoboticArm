@@ -39,7 +39,7 @@ def test_partial_cleanup_retains_failed_objects_for_retry(raises):
 
 @pytest.mark.parametrize('planning_raises', [False, True])
 def test_cleanup_failure_never_emits_executable_route(monkeypatch, planning_raises):
-    from luggage_planning import place_service
+    from luggage_planning.place import place_service
     from luggage_planning.routing import producer as route_producer
     monkeypatch.setattr(place_service, 'request_dict', lambda _: {'box_wdh': [0.5, 0.3, 0.2]})
     monkeypatch.setattr(route_producer, 'register_attach_from_request', lambda *a, **kw: None)
@@ -66,8 +66,8 @@ def test_cleanup_failure_never_emits_executable_route(monkeypatch, planning_rais
 
 def test_scene_digest_is_stable_and_covers_real_field_changes():
     from moveit_msgs.msg import CollisionObject, PlanningScene
-    from luggage_planning.moveit_state_validity import _scene_digest
-    from luggage_planning.planning_scene_client import build_collision_object
+    from luggage_planning.motion.moveit_state_validity import _scene_digest
+    from luggage_planning.motion.planning_scene_client import build_collision_object
     scene = PlanningScene()
     scene.world.collision_objects = [build_collision_object(
         'box', [0., 0., 1.], [0., 0., 0., 1.], [0.5, 0.3, 0.2], 'world', CollisionObject.ADD)]

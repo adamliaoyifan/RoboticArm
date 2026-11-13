@@ -17,7 +17,7 @@ import numpy as np
 from sensor_msgs.msg import Image, PointCloud2
 from sensor_msgs.msg import PointField
 
-from luggage_planning.debug_capture import (
+from luggage_planning.capture.debug_capture import (
     write_failure_capture,
     write_ply_xyz,
 )

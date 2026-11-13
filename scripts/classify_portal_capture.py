@@ -8,7 +8,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..",
                                 "src", "luggage_planning"))
-from luggage_planning.portal_goal_classifier import (  # noqa: E402
+from luggage_planning.place.portal_goal_classifier import (  # noqa: E402
     classify_portal_record, urdf_joint_limits)
 
 

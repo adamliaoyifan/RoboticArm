@@ -5,8 +5,8 @@ import importlib
 import json
 from rosidl_runtime_py.convert import message_to_ordereddict
 from rclpy.serialization import deserialize_message
-from luggage_planning.async_boundary_capture import read_stream
-from luggage_planning.ros_boundary_capture import _json_fields
+from luggage_planning.capture.async_boundary_capture import read_stream
+from luggage_planning.capture.ros_boundary_capture import _json_fields
 
 
 def main():

@@ -9,11 +9,11 @@ from luggage_planning.placement_prior.pick import candidates_for_prior, transfor
 
 
 def measured_detection_view(box):
-    from luggage_planning.pickup_collision import pickup_collision_aabb
-    from luggage_planning.ros_message_adapters import (
+    from luggage_planning.pick.pickup_collision import pickup_collision_aabb
+    from luggage_planning.adapters.ros_message_adapters import (
         detected_observation_identity, suction_candidates_from_detected,
     )
-    from luggage_planning.suction_pick_session import DetectionView
+    from luggage_planning.pick.suction_pick_session import DetectionView
     xyz, quat, size = pickup_collision_aabb(box)  # measured-support admission
     stamp, frame = detected_observation_identity(box)
     x,y,z,w = quat
@@ -26,7 +26,7 @@ def measured_detection_view(box):
 
 def _placement_surface(confirmed):
     """Validate the typed surface before converting its height datum."""
-    from luggage_planning.occupancy_place_paths import (
+    from luggage_planning.place.occupancy_place_paths import (
         OccupancySnapshot, _legacy_view_of_surface_contract,
     )
     record = confirmed.record()
@@ -145,7 +145,7 @@ def decode_request(message, snapshot, confirmed, *, fallback_yaw=0.0, prefetched
 def encode_choices(result, request):
     from geometry_msgs.msg import Pose
     from luggage_msgs.msg import PlacementPriorChoiceV2
-    from luggage_planning.place_service import pose_message
+    from luggage_planning.place.place_service import pose_message
     def record(transform,reference,semantics,frame):
         return dict(contract_version=2,frame_id=frame,length_unit='m',stamp_ns=0,
                     time_basis='scene',scene_revision=request.snapshot.scene_revision,

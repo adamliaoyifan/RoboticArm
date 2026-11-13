@@ -35,7 +35,7 @@ from luggage_description.scene_tf_config_utils import (  # noqa: E402
     origin_in_world,
     resolve_scene_tf_config_path,
 )
-from luggage_planning.occupancy_place_paths import (  # noqa: E402
+from luggage_planning.place.occupancy_place_paths import (  # noqa: E402
     OccupancySnapshot,
     occupancy_collision_boxes,
     stamp_geometry_descriptor,

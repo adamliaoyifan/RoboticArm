@@ -48,8 +48,8 @@ def response(request):
 
 @pytest.mark.parametrize('tilt', [0., .02])
 def test_private_request_removes_exact_target_only_and_never_double_inflates(tilt):
-    from st09_contracts.attachment_geometry import freeze_geometry
-    from st09_contracts.payload_envelope import EnvelopeLimits
+    from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+    from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
     from luggage_planning.joint_operation.scenes import build_operation_scenes
     from test_joint_operation_scenes import baseline
     _,candidate=fixture()

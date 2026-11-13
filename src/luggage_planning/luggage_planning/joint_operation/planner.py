@@ -18,8 +18,8 @@ from luggage_planning.joint_operation.contracts import (
 from luggage_planning.joint_operation.scenes import OperationScenes
 from luggage_planning.joint_operation.connection import GeometricConnection
 from luggage_planning.placement_prior.contracts import Transform, finite_tuple
-from luggage_planning.trajectory_timing import time_parameterize_cartesian
-from st09_contracts.attachment_geometry import AttachmentGeometry
+from luggage_planning.motion.trajectory_timing import time_parameterize_cartesian
+from luggage_planning.planning_contract.attachment_geometry import AttachmentGeometry
 
 
 def geometric_rows(rows):

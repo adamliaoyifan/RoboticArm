@@ -29,7 +29,7 @@ def replay_once(fixture, out_dir, label):
     from luggage_msgs.srv import SelectPlacePathV2, ValidateRouteV2
     from geometry_msgs.msg import Pose
     from shape_msgs.msg import SolidPrimitive
-    from luggage_planning.place_service import fill_select_response_route
+    from luggage_planning.place.place_service import fill_select_response_route
 
     os.makedirs(out_dir, exist_ok=True)
     os.environ["ST09_I_CERT_CAPTURE_DIR"] = os.path.join(out_dir, "cert_capture")

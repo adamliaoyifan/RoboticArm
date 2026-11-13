@@ -8,8 +8,8 @@ import time
 import numpy as np
 from scipy.spatial.transform import Rotation
 from luggage_description.scene_tf_config_utils import load_scene_tf_config, world_transform
-from luggage_planning.offline_ik import load_urdf, refine_to_pose
-from luggage_planning.container_aim_utils import look_at_quaternion
+from luggage_planning.motion.offline_ik import load_urdf, refine_to_pose
+from luggage_planning.geometry.container_aim_utils import look_at_quaternion
 
 
 def propose(scene, output, budget_s, profile='initial', views=None):

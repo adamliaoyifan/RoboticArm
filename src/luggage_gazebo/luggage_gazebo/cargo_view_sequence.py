@@ -14,7 +14,7 @@ from luggage_perception.cargo_view_integration import (  # noqa: F401
     cell_xy_container,
     footprint_sensor_hits,
 )
-from luggage_planning.container_aim_utils import look_at_quaternion
+from luggage_planning.geometry.container_aim_utils import look_at_quaternion
 
 VIEW_ORDER = ("aim", "lookback")
 EYE_RAISES_M = (0.0, 0.15)
@@ -285,7 +285,7 @@ def view_stop(trace):
 
 
 #: One name for "the released box was never observed", shared with the
-#: planner's entry gate (``st09_contracts.reasons.Reason``).
+#: planner's entry gate (``luggage_planning.planning_contract.reasons.Reason``).
 MAP_CONFIRMATION_REQUIRED = "MAP_CONFIRMATION_REQUIRED"
 
 

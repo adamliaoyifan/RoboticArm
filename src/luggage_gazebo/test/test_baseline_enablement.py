@@ -20,7 +20,7 @@ from luggage_description.suitcase_visual import (
     size_tier_name,
     sized_model_name,
 )
-from luggage_planning.site_pose_schema import (
+from luggage_planning.deploy.site_pose_schema import (
     SIM_SITE_POSE_SCHEMA,
     load_site_poses,
     validate_site_poses,

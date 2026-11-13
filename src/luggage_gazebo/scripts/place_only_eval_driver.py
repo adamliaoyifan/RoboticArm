@@ -1168,7 +1168,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         from luggage_description.frame_diagnostics import BoundaryContext
         from luggage_description.ros_frame_bindings.poses import (
             pose_from_message)
-        from luggage_planning.typed_driver_adapter import slot_spec_from_record
+        from luggage_planning.deploy.typed_driver_adapter import slot_spec_from_record
         surface_msg = getattr(self, "_surface_v2_msg", None)
         box_wdh = [float(pick_msg.width), float(pick_msg.depth),
                    float(pick_msg.height)]

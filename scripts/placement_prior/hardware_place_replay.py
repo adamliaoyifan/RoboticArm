@@ -35,9 +35,9 @@ def main():
     from moveit_msgs.srv import GetPlanningScene
     from moveit_msgs.msg import PlanningSceneComponents
     from luggage_msgs.srv import SelectPlacePathV2, VacuumCommandV2, PreparePlacementPriorV2
-    from luggage_planning.typed_driver_adapter import TypedDriverAdapter, adopt_runtime_identity
+    from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter, adopt_runtime_identity
     from luggage_planning.placement_prior.evidence import PriorEvidenceRecorder
-    from luggage_planning.hardware_place_replay import replay_place
+    from luggage_planning.deploy.hardware_place_replay import replay_place
     report={'completed':False,'F2':'not_evaluated','inputs':{}}
     def read(path, message_type):
         data=path.read_bytes()

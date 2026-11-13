@@ -26,7 +26,7 @@ import time
 import rclpy
 from sensor_msgs.msg import JointState
 
-from luggage_planning.named_robot_poses import JOINTS, format_pose_yaml
+from luggage_planning.deploy.named_robot_poses import JOINTS, format_pose_yaml
 
 pose_name = sys.argv[1]
 rclpy.init()

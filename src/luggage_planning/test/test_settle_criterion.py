@@ -15,7 +15,7 @@ import sys
 import unittest
 
 
-from luggage_planning.settle_criterion import (  # noqa: E402
+from luggage_planning.motion.settle_criterion import (  # noqa: E402
     DISPLACEMENT,
     VELOCITY,
     SettleTracker,

@@ -98,8 +98,8 @@ def main():
         if boundary is None:
             raise ValueError("envelope replay requires exact measured boundary")
         from itertools import product
-        from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy as load_envelope_limits
-        from st09_contracts.payload_envelope import build_envelope
+        from luggage_planning.attachment.attachment_geometry_policy import load_attachment_geometry_policy as load_envelope_limits
+        from luggage_planning.planning_contract.payload_envelope import build_envelope
         grasp = boundary["grasp"]
         nominal = np.linalg.inv(pose(grasp["position"], grasp["quaternion_xyzw"]))
         envelope = build_envelope(boundary["box_wdh"], nominal[:3,3],

@@ -18,7 +18,7 @@ import pytest
 
 from luggage_description.frame_contracts import ContractError
 from luggage_description.frame_diagnostics import BoundaryContext, BoundaryContractError
-from luggage_planning.motion_frame_contracts import (
+from luggage_planning.motion.motion_frame_contracts import (
     CANONICAL_JOINTS,
     ExecutionContext,
     admit_motion_segment,
@@ -29,7 +29,7 @@ from luggage_planning.motion_frame_contracts import (
     map_container_point,
     rotation_angle,
 )
-from luggage_planning.motion_executor import JOINTS, MotionExecutor
+from luggage_planning.motion.motion_executor import JOINTS, MotionExecutor
 
 
 SCENE = "scene-st08"
@@ -162,14 +162,14 @@ class TestMatrix(unittest.TestCase):
         self.assertEqual(len(CASES), 64)
 
     def test_execute_chain(self):
-        from luggage_planning.motion_frame_adapters import message_from_admitted, record_from_message
+        from luggage_planning.motion.motion_frame_adapters import message_from_admitted, record_from_message
         for index, (yaw, origin, floor, support, grasp) in CASES:
             geo = _geometry(yaw, origin, floor, support, grasp)
             identity = _pose(geo["tool"], geo["tool_q"], "suction_contact_frame",
                              "tool_quaternion", "world")
             world_poses = [
                 {"position": list(geo["tool"]), "quaternion_xyzw": list(geo["tool_q"])}]
-            from luggage_planning.typed_driver_adapter import (
+            from luggage_planning.deploy.typed_driver_adapter import (
                 pose_segment_message)
             message = pose_segment_message(
                 "transit", geo["tool"], geo["tool_q"],
@@ -186,8 +186,8 @@ class TestMatrix(unittest.TestCase):
 
     def test_collision_corners(self):
         from luggage_description.frame_diagnostics import BoundaryContext as BC
-        from luggage_planning.pickup_collision import admit_collision_box
-        from luggage_planning.scene_box_v2 import admit_placed_box
+        from luggage_planning.pick.pickup_collision import admit_collision_box
+        from luggage_planning.place.scene_box_v2 import admit_placed_box
         for index, (yaw, origin, floor, support, grasp) in CASES:
             del grasp
             geo = _geometry(yaw, origin, floor, support, (0.0, 0.0, 0.16))
@@ -206,7 +206,7 @@ class TestMatrix(unittest.TestCase):
                 interface_id="F17", producer="t", consumer="scene",
                 request_id="req", scene_revision=SCENE, frame_id="container_link",
                 reference="box_center", time_basis="scene")
-            from luggage_planning.motion_frame_adapters import message_from_admitted
+            from luggage_planning.motion.motion_frame_adapters import message_from_admitted
             del message_from_admitted
             from luggage_description.ros_frame_bindings.poses import pose_to_message
             slot_msg = pose_to_message(slot, "slot", context)
@@ -221,7 +221,7 @@ class TestMatrix(unittest.TestCase):
                 request_id="req", scene_revision=SCENE, frame_id="world",
                 reference="box_center", time_basis="acquisition")
             box = SimpleNamespace(height_source=1, height_valid=True)
-            from luggage_planning.pick_authorization import pick_authorized
+            from luggage_planning.pick.pick_authorization import pick_authorized
             if not pick_authorized(box):
                 box = SimpleNamespace(
                     height_valid=True, height_source=1, width=WDH[0], depth=WDH[1], height=WDH[2])
@@ -234,7 +234,7 @@ class TestMatrix(unittest.TestCase):
             _log("collision/%02d" % index, {"yaw": yaw})
 
     def test_attach_relation(self):
-        from luggage_planning.attachment_frame_contracts import (
+        from luggage_planning.attachment.attachment_frame_contracts import (
             admit_attachment, compose_box_world,
         )
         for index, (yaw, origin, floor, support, grasp) in CASES:
@@ -276,7 +276,7 @@ class TestJointsAndFk(unittest.TestCase):
         self.assertEqual(tuple(JOINTS), CANONICAL_JOINTS)
 
     def test_joint_time_survives_permutation(self):
-        from luggage_planning.motion_frame_adapters import timed_trajectory
+        from luggage_planning.motion.motion_frame_adapters import timed_trajectory
         names = list(reversed(CANONICAL_JOINTS))
         points = []
         for step in range(1, 4):
@@ -380,14 +380,14 @@ class TestJointsAndFk(unittest.TestCase):
         executor._attempts = 1
         executor._planning_time = 0.1
         executor._planner_id = "RRTConnect"
-        from luggage_planning.motion_frame_contracts import AdmittedSegment
+        from luggage_planning.motion.motion_frame_contracts import AdmittedSegment
         admitted = AdmittedSegment(
             segment_type="pose_target", name="t", target_link="suction_contact_frame",
             request_id="req", scene_revision=SCENE, stamp_ns=STAMP, time_basis="scene",
             keep_tool_down=False, keep_camera_down=False, lock_wrist=False,
             allow_ompl_fallback=False, required_cartesian_fraction=0.0,
             target_pose=target, waypoints=(), joint_names=None, joint_points=None)
-        from luggage_planning.motion_executor import _V2_ADMITTED
+        from luggage_planning.motion.motion_executor import _V2_ADMITTED
         token = _V2_ADMITTED.set(admitted)
         try:
             bad = executor._run_joint_goal([0.2] * 6, None, 1.0, "alt")
@@ -402,7 +402,7 @@ class TestJointsAndFk(unittest.TestCase):
 
     def test_keep_tool_down_fk_ignores_yaw(self):
         from luggage_description.frame_transforms import quaternion_product
-        from luggage_planning.motion_frame_contracts import tool_down_tilt
+        from luggage_planning.motion.motion_frame_contracts import tool_down_tilt
         # 180 deg about X: tool +Z is world -Z.
         down = (1.0, 0.0, 0.0, 0.0)
         yaw_pi = quaternion_product(down, (0.0, 0.0, 1.0, 0.0))
@@ -513,8 +513,8 @@ class TestNegatives(unittest.TestCase):
 
 class TestProvenance(unittest.TestCase):
     def test_gt_does_not_change_planning_pose(self):
-        from luggage_planning.attachment_frame_contracts import admit_attachment
-        from luggage_planning.vacuum_backend import SimVacuumBackend
+        from luggage_planning.attachment.attachment_frame_contracts import admit_attachment
+        from luggage_planning.attachment.vacuum_backend import SimVacuumBackend
         box = _pose((1, 2, 3), (0, 0, 0, 1), "box_center", "box_axis_pi", "world", "acquisition")
         tool = _pose((1, 2, 3.16), (0, 0, 0, 1), "suction_contact_frame",
                      "tool_quaternion", "world", "acquisition")
@@ -529,8 +529,8 @@ class TestProvenance(unittest.TestCase):
             request_id="req", scene_revision=SCENE, frame_id="world",
             reference="box_center", time_basis="acquisition")
         attachment = admit_attachment(tool, box, measured, None, 3, 3, "box", context)
-        from st09_contracts.attachment_geometry import freeze_geometry
-        from st09_contracts.payload_envelope import EnvelopeLimits
+        from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+        from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
         attachment['conservative_geometry'] = freeze_geometry(
             WDH, attachment['t_tool_box_translation'], attachment['t_tool_box_quaternion'],
             EnvelopeLimits(0., (0., 0., 0.), (0., 0.), 0.))

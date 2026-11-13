@@ -4,12 +4,12 @@ from copy import deepcopy
 import numpy as np
 import pytest
 
-from luggage_planning.spline_timing_bounds import derivative_bounds, required_time_scale
-from luggage_planning.trajectory_timing import (
+from luggage_planning.motion.spline_timing_bounds import derivative_bounds, required_time_scale
+from luggage_planning.motion.trajectory_timing import (
     time_parameterize_cartesian, time_parameterize_rest_to_rest, cartesian_joint_limits,
     HARDWARE_DECEL_RAD,
 )
-from luggage_planning.moveit_state_validity import _quintic_row
+from luggage_planning.motion.moveit_state_validity import _quintic_row
 
 
 def test_standard_quintic_has_known_interior_velocity_and_acceleration_peaks():

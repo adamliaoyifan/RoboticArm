@@ -7,7 +7,7 @@ import threading
 import time
 import unittest
 
-from luggage_planning.ros_clock_wait import (
+from luggage_planning.motion.ros_clock_wait import (
     ClockTimeout,
     is_ros_time_clock,
     wait_event,

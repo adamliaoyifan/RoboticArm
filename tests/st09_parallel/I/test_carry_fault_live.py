@@ -54,9 +54,9 @@ def test_carry_fault_mid_execution_cancels_and_closes(whole_chain):
     base = "i-fault-1"
     box_id = "fault-box-1"
 
-    from luggage_planning.pickup_collision import pickup_collision_aabb
-    from luggage_planning.planning_scene_client import PlanningSceneClient
-    from luggage_planning.typed_driver_adapter import (
+    from luggage_planning.pick.pickup_collision import pickup_collision_aabb
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
+    from luggage_planning.deploy.typed_driver_adapter import (
         detection_record_from_box,
     )
 

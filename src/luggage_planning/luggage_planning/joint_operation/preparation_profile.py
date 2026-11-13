@@ -32,7 +32,7 @@ def execution_observation_age_limit_ns(max_preparation_budget_s):
     This bounds a NEW action; its owner must still retain the exact original
     observation. Replay tombstones use this same original-acquisition bound.
     """
-    from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
+    from luggage_planning.planning_contract.attachment import ATTACHMENT_MAX_AGE_NS
     budget = PreparationBudget(max_preparation_budget_s)
     return ATTACHMENT_MAX_AGE_NS + math.ceil(budget.max_budget_s * 1e9)
 

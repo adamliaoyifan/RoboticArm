@@ -15,7 +15,7 @@ import re
 from pathlib import Path
 
 RERUN_MARKERS = (
-    re.compile(r'^\s*(?:import|from)\s+st09_contracts', re.M),
+    re.compile(r'^\s*(?:import|from)\s+luggage_planning\.planning_contract', re.M),
     re.compile(r'^\s*(?:import|from)\s+luggage_msgs', re.M),
     re.compile(r'get_package_share_directory|ament_index', re.M),
     re.compile(r'rclpy\.(init|create_node)|create_client|create_service', re.M),

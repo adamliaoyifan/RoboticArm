@@ -10,7 +10,7 @@ import unittest
 
 TEST_ROOT = os.path.dirname(os.path.abspath(__file__))
 
-from luggage_planning.interior_view_scorer import (
+from luggage_planning.geometry.interior_view_scorer import (
     FREE,
     OCCUPIED,
     UNKNOWN,

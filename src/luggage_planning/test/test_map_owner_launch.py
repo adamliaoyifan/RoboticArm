@@ -17,7 +17,7 @@ CONFIG = ROOT/'src/uld_occ_observer/config/observer.yaml'
 @pytest.mark.parametrize('backend', ['observer', 'grid_g'])
 @pytest.mark.parametrize('resolution', ['', '0.02'])
 def test_one_owner_and_consumer_resolution(monkeypatch, tmp_path, backend, resolution):
-    from luggage_planning import hardware_placement_launch as launch
+    from luggage_planning.deploy import hardware_placement_launch as launch
     monkeypatch.setattr(launch, 'Node', lambda **kwargs: kwargs)
     owner = owner_configuration(backend=backend, scene=SCENE,
         resolution_override=resolution, observer_config=CONFIG, artifact_root=tmp_path)
@@ -43,7 +43,7 @@ def test_one_owner_and_consumer_resolution(monkeypatch, tmp_path, backend, resol
 
 
 def test_optical_input_is_explicit_and_never_semantic_cloud(monkeypatch, tmp_path):
-    from luggage_planning import hardware_placement_launch as launch
+    from luggage_planning.deploy import hardware_placement_launch as launch
     monkeypatch.setattr(launch, 'Node', lambda **kwargs: kwargs)
     owner = owner_configuration(backend='observer', scene=SCENE,
         observer_config=CONFIG, artifact_root=tmp_path)
@@ -174,7 +174,7 @@ def test_compute_callback_consumes_shared_owner_capture(monkeypatch, tmp_path, l
 def test_ordinary_launch_callback_defaults_to_o(monkeypatch, tmp_path):
     from launch import LaunchContext
     import importlib.util
-    from luggage_planning import hardware_placement_launch
+    from luggage_planning.deploy import hardware_placement_launch
     monkeypatch.setenv('ROS_HOME', str(tmp_path))
     spec = importlib.util.spec_from_file_location('map_owner_hardware_launch',
         ROOT/'src/luggage_planning/launch/hardware_pick.launch.py')

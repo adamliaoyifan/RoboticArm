@@ -10,7 +10,7 @@ import unittest
 
 import pytest
 
-from luggage_planning.motion_boundary import (
+from luggage_planning.motion.motion_boundary import (
     load_latest_boundary,
     replay_manifest,
     robot_traj_to_dict,
@@ -73,7 +73,7 @@ class TestMotionBoundary(unittest.TestCase):
 class TestSceneSummary(unittest.TestCase):
     def test_summarize_box_omits_mesh_vertices(self):
         pytest.importorskip("moveit_msgs")
-        from luggage_planning.planning_scene_client import (
+        from luggage_planning.motion.planning_scene_client import (
             build_add_scene,
             summarize_collision_object,
             summarize_planning_scene,

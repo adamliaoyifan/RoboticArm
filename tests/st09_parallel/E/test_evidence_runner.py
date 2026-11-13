@@ -28,7 +28,7 @@ from stage_perf_probe import EXPECTED_JOINT_ORDER, replay_trajectory, validate_t
 
 
 def _acceptance():
-    return json.loads((ROOT / "st09_contracts" / "st09_acceptance_manifest.json").read_text())
+    return json.loads((ROOT / "src" / "luggage_planning" / "config" / "planning_contract" / "st09_acceptance_manifest.json").read_text())
 
 
 def _sample(sample_id, *, records=None, **overrides):

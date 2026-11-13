@@ -7,7 +7,7 @@ import pytest
 import rclpy
 from geometry_msgs.msg import TransformStamped
 from luggage_msgs.srv import VacuumCommandV2
-from luggage_planning import sim_physical_attachment as physical
+from luggage_planning.attachment import sim_physical_attachment as physical
 from test_attachment_revision_propagation import _request, LIVE
 
 
@@ -71,7 +71,7 @@ def test_real_node_v2_keeps_mesh_axes_and_measured_planning_separate(controller,
     result = node._handle_command_v2(request,VacuumCommandV2.Response())
     assert result.success, result.message
     assert list(result.attached_box_wdh) == [.516,.390,.247]
-    from luggage_planning.attachment_geometry_transport import geometry_from_message
+    from luggage_planning.attachment.attachment_geometry_transport import geometry_from_message
     geometry = geometry_from_message(result.conservative_geometry)
     expected_position, expected_quaternion = geometry.conservative_pose_at_box(
         (-1.,0.,.9835), (0.,0.,0.,1.))

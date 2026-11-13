@@ -4,7 +4,7 @@ import json
 import pytest
 from geometry_msgs.msg import Pose
 from luggage_msgs.srv import PreparePlacementPriorV2
-from luggage_planning.place_service import pose_message, _admit_grasp
+from luggage_planning.place.place_service import pose_message, _admit_grasp
 from luggage_planning.placement_prior.contracts import Snapshot, Transform
 from luggage_planning.placement_prior.surface import ConfirmedSurface
 from luggage_planning.placement_prior.requests import decode_request, encode_choices

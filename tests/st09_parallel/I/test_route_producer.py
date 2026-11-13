@@ -24,20 +24,20 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT / "src" / "luggage_planning") not in sys.path:
     sys.path.append(str(ROOT / "src" / "luggage_planning"))
 
-from st09_contracts._base import ContractViolation  # noqa: E402
-from st09_contracts.fixtures import make_timed_trajectory  # noqa: E402
-from st09_contracts.graph import GraphEdge, LoadState  # noqa: E402
+from luggage_planning.planning_contract._base import ContractViolation  # noqa: E402
+from luggage_planning.planning_contract.fixtures import make_timed_trajectory  # noqa: E402
+from luggage_planning.planning_contract.graph import GraphEdge, LoadState  # noqa: E402
 
-from luggage_planning.attachment_provider import (  # noqa: E402
+from luggage_planning.attachment.attachment_provider import (  # noqa: E402
     MeasuredAttachmentProvider,
 )
 from luggage_planning.routing.grid_search import RoutePlanningError  # noqa: E402
-from luggage_planning.map_revalidation import (  # noqa: E402
+from luggage_planning.place.map_revalidation import (  # noqa: E402
     MapRevalidator,
     RevalidationPolicy,
 )
-from luggage_planning.moveit_state_validity import sample_states  # noqa: E402
-from luggage_planning.moveit_validity_adapter import (  # noqa: E402
+from luggage_planning.motion.moveit_state_validity import sample_states  # noqa: E402
+from luggage_planning.motion.moveit_validity_adapter import (  # noqa: E402
     StaticMoveItValidityAdapter,
     ValiditySample,
 )
@@ -60,7 +60,7 @@ from luggage_planning.routing.producer import (  # noqa: E402
     route_missing_parts,
     surface_map_from_contract,
 )
-from luggage_planning.trajectory_certifier import (  # noqa: E402
+from luggage_planning.motion.trajectory_certifier import (  # noqa: E402
     TrajectoryCertifier,
 )
 
@@ -633,9 +633,9 @@ class TestCandidateScope:
 class TestMapStaleRefresh:
 
     def _rev(self, decisions):
-        from st09_contracts.certification import (
+        from luggage_planning.planning_contract.certification import (
             MapDecision, MapRevalidationDecision)
-        from st09_contracts.reasons import Reason
+        from luggage_planning.planning_contract.reasons import Reason
 
         state = {"n": 0}
 
@@ -850,7 +850,7 @@ class TestPlanPlaceRoute:
         assert result["slot_index"] == 0
         assert len(result["legs"]) == len(result["edges"]) > 0
         assert result["certification"].passed
-        from st09_contracts.certification import MapDecision
+        from luggage_planning.planning_contract.certification import MapDecision
         assert result["revalidation"].decision is MapDecision.CONTINUE
         names = [leg["name"] for leg in result["legs"]]
         # No opening datum in this fixture, so the portal hop is dropped.
@@ -859,10 +859,10 @@ class TestPlanPlaceRoute:
 
     def test_legs_admit_as_typed_v2_segments(self):
         from luggage_description.frame_diagnostics import BoundaryContext
-        from luggage_planning.motion_frame_adapters import (
+        from luggage_planning.motion.motion_frame_adapters import (
             message_from_admitted,
         )
-        from luggage_planning.motion_frame_contracts import (
+        from luggage_planning.motion.motion_frame_contracts import (
             TARGET_LINK, ExecutionContext,
         )
         producer, _clock = build_producer()
@@ -1137,10 +1137,10 @@ class TestPlanPlaceRoute:
         assert timings["by_reason_ms"] == {}
 
     def test_revalidation_stop_is_named(self):
-        from luggage_planning.map_revalidation import (
+        from luggage_planning.place.map_revalidation import (
             MapDecision, MapRevalidationDecision,
         )
-        from st09_contracts.reasons import Reason
+        from luggage_planning.planning_contract.reasons import Reason
 
         class Blocked(object):
             def revalidate(self, _request):
@@ -1667,7 +1667,7 @@ def _service_message(stamp_ns):
     from luggage_description.ros_frame_bindings.surfaces import (
         surface_to_message,
     )
-    from luggage_planning.place_service import boundary_context, pose_message
+    from luggage_planning.place.place_service import boundary_context, pose_message
 
     scene = "scene-1"
     request_id = "req-i-1"
@@ -1711,7 +1711,7 @@ def _service_message(stamp_ns):
             "req-map-1", scene, "container_link", "",
             geometry_hash="geo-1", map_revision=1))
     message.box_wdh = [0.30, 0.20, 0.20]
-    from luggage_planning.attachment_geometry_transport import geometry_to_message
+    from luggage_planning.attachment.attachment_geometry_transport import geometry_to_message
     message.conservative_geometry = geometry_to_message(_confirmed_geometry(make_request()))
     message.inner_size = [0.6, 0.4, 0.4]
     message.geometry_hash = "geo-1"
@@ -1744,7 +1744,7 @@ class TestSelectPlacePathV2Admission:
     def test_service_selects_the_reachable_route(self):
         import json
         from luggage_msgs.srv import SelectPlacePathV2
-        from luggage_planning.place_service import fill_select_response_route
+        from luggage_planning.place.place_service import fill_select_response_route
 
         producer, clock = build_producer()
         producer.atlas_prior = _tier_prior
@@ -2062,7 +2062,7 @@ def test_measured_corridor_height_raises_transit_not_placement():
 ])
 def test_cert_collision_rebuild_is_bounded_and_only_for_joint_interiors(
         failures, at_knot, edge_class, expected_success, expected_calls):
-    from st09_contracts.reasons import Reason
+    from luggage_planning.planning_contract.reasons import Reason
     producer, clock = build_producer()
     request = make_request()
     register_attach_from_request(producer.attachment_provider, request,
@@ -2095,7 +2095,7 @@ def test_cert_collision_rebuild_is_bounded_and_only_for_joint_interiors(
 
 
 def test_cert_collision_never_restarts_expired_select_budget():
-    from st09_contracts.reasons import Reason
+    from luggage_planning.planning_contract.reasons import Reason
     producer, clock = build_producer()
     request = make_request()
     register_attach_from_request(producer.attachment_provider, request,
@@ -2120,7 +2120,7 @@ def test_cert_collision_never_restarts_expired_select_budget():
 
 
 def test_cert_rebuild_failure_retains_secondary_cause():
-    from st09_contracts.reasons import Reason
+    from luggage_planning.planning_contract.reasons import Reason
     producer, _clock = build_producer()
     request = make_request()
     register_attach_from_request(producer.attachment_provider, request,
@@ -2143,9 +2143,9 @@ def test_cert_rebuild_failure_retains_secondary_cause():
 
 
 def _confirmed_geometry(request):
-    from st09_contracts.attachment import invert_transform
-    from st09_contracts.attachment_geometry import freeze_geometry
-    from st09_contracts.payload_envelope import EnvelopeLimits
+    from luggage_planning.planning_contract.attachment import invert_transform
+    from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+    from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
     grasp = request['grasp']
     transform = invert_transform(grasp['position'], grasp['quaternion_xyzw'])
     return freeze_geometry(request['box_wdh'], *transform,
@@ -2155,7 +2155,7 @@ def _confirmed_geometry(request):
 def test_selector_refuses_missing_attachment_geometry_before_search():
     from luggage_msgs.srv import SelectPlacePathV2
     from luggage_msgs.msg import AttachmentGeometryV2
-    from luggage_planning.place_service import fill_select_response_route
+    from luggage_planning.place.place_service import fill_select_response_route
     producer, clock = build_producer()
     message = _service_message(clock.now_ns)
     message.conservative_geometry = AttachmentGeometryV2()
@@ -2167,7 +2167,7 @@ def test_selector_refuses_missing_attachment_geometry_before_search():
 
 
 def test_envelope_identity_reaches_certification_with_nominal_targets():
-    from st09_contracts.payload_envelope import EnvelopeLimits
+    from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
     producer, _clock = build_producer()
     producer.scene_config = {'container': {'inner': {
         'length': 4, 'width': 4, 'floor_z': -1, 'ceiling_z': 3}}}
@@ -2194,7 +2194,7 @@ def test_envelope_identity_reaches_certification_with_nominal_targets():
 
 @pytest.mark.parametrize('collision', [False, True])
 def test_attachment_geometry_preserves_trajectory_collision_gate(collision):
-    from st09_contracts.payload_envelope import EnvelopeLimits
+    from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
     producer, _clock = build_producer()
     producer.scene_config = {'container': {'inner': {
         'length': 4, 'width': 4, 'floor_z': 0, 'ceiling_z': 3}}}

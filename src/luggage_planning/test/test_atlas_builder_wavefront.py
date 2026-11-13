@@ -11,7 +11,7 @@ from luggage_planning.atlas.wavefront import (
     container_tool_z_in_frame,
     retreat_height,
 )
-from luggage_planning.waypoint_generator import INSERT_CLEARANCE_MIN
+from luggage_planning.place.waypoint_generator import INSERT_CLEARANCE_MIN
 
 
 class TestWavefrontHelpers(unittest.TestCase):

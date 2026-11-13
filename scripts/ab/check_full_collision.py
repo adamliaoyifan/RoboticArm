@@ -181,7 +181,7 @@ def main():
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
-    from luggage_planning.offline_ik import load_urdf, JOINTS
+    from luggage_planning.motion.offline_ik import load_urdf, JOINTS
     urdf = load_urdf(scene_tf_config=_SCENE_TF)
     link_pts = load_link_point_sets(urdf.root)
     if not link_pts:

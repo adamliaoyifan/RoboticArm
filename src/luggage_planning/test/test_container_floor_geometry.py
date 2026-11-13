@@ -6,7 +6,7 @@ import unittest
 
 PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-from luggage_planning.container_floor_geometry import analyze_floor_surfaces  # noqa: E402
+from luggage_planning.geometry.container_floor_geometry import analyze_floor_surfaces  # noqa: E402
 
 
 class TestContainerFloorGeometry(unittest.TestCase):

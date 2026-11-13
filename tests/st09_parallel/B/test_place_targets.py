@@ -1,6 +1,6 @@
 """ST09-B acceptance (b)/(c): pure target synthesis and IK goal sets.
 
-Covers, against ``luggage_planning.place_targets``:
+Covers, against ``luggage_planning.place.place_targets``:
 
 - the eight sim/deploy target fixtures at <= 1e-9 against independent
   scipy expectations, including the theta+pi eccentric heading;
@@ -23,25 +23,25 @@ import pytest
 np = pytest.importorskip("numpy")
 scipy_rot = pytest.importorskip("scipy.spatial.transform").Rotation
 
-from st09_contracts.attachment import (  # noqa: E402
+from luggage_planning.planning_contract.attachment import (  # noqa: E402
     AttachmentSourceKind,
     AttachmentValidity,
     PlaceTarget,
     quaternion_angle_between,
 )
-from st09_contracts.fixtures import (  # noqa: E402
+from luggage_planning.planning_contract.fixtures import (  # noqa: E402
     BOX_WDH,
     make_attachment,
     make_box_target,
     target_fixture_matrix,
 )
-from st09_contracts.planning import (  # noqa: E402
+from luggage_planning.planning_contract.planning import (  # noqa: E402
     GeometryVerdict,
     PlacementCandidate,
 )
-from st09_contracts.reasons import Reason  # noqa: E402
+from luggage_planning.planning_contract.reasons import Reason  # noqa: E402
 
-from luggage_planning.place_targets import (  # noqa: E402
+from luggage_planning.place.place_targets import (  # noqa: E402
     GoalSeed,
     TargetSynthesisError,
     box_target_from_candidate,
@@ -190,7 +190,7 @@ class TestNamedNegatives:
 
     def test_expired_attachment(self):
         record = make_attachment("centered", stamp_ns=1_000_000_000)
-        from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
+        from luggage_planning.planning_contract.attachment import ATTACHMENT_MAX_AGE_NS
         box = make_box_target(record, stamp_ns=record.acquisition_stamp_ns + ATTACHMENT_MAX_AGE_NS + 1)
         with pytest.raises(TargetSynthesisError) as err:
             expand_place_targets(box, record)
@@ -360,7 +360,7 @@ class TestRealUrdfGoals:
     @pytest.fixture(autouse=True)
     def _load(self):
         try:
-            from luggage_planning.offline_ik import load_urdf
+            from luggage_planning.motion.offline_ik import load_urdf
             urdf = load_urdf()
         except Exception as err:  # no install overlay / xacro missing
             pytest.skip("offline_ik load_urdf unavailable: %s" % err)

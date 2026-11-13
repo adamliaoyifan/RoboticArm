@@ -5,8 +5,8 @@ import os
 import re
 import unittest
 
-from luggage_planning.pose import Point, Pose, Quaternion
-from luggage_planning.waypoint_generator import (
+from luggage_planning.geometry.pose import Point, Pose, Quaternion
+from luggage_planning.place.waypoint_generator import (
     DEFAULT_PICK_CLEARANCES,
     DEFAULT_PLACE_CLEARANCE_Z,
     PLACE_RELEASE_GAP_M,
@@ -301,7 +301,7 @@ class TestCorridorClearance(unittest.TestCase):
             0.15)
 
     def test_corridor_clearance_unit(self):
-        from luggage_planning.waypoint_generator import corridor_clearance
+        from luggage_planning.place.waypoint_generator import corridor_clearance
         # None -> passthrough.
         self.assertEqual(corridor_clearance(None, 0.3, 0.8, 0.15), 0.15)
         # Required below default -> default.

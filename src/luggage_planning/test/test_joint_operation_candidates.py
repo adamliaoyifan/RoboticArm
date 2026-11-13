@@ -24,8 +24,8 @@ from luggage_planning.joint_operation.endpoints import build_local_query
 from luggage_planning.joint_operation.scenes import validate_phase_payloads
 from luggage_planning.placement_prior.contracts import PlacementCandidate, Transform
 from luggage_planning.routing.producer import anchor_plan
-from luggage_planning.waypoint_generator import PLACE_RELEASE_GAP_M
-from st09_contracts.payload_envelope import EnvelopeLimits
+from luggage_planning.place.waypoint_generator import PLACE_RELEASE_GAP_M
+from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
 from test_directed_suction_service import request_and_context
 from test_directed_suction_quality import context_inputs
 from test_joint_operation_scenes import baseline

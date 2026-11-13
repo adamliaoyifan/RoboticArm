@@ -28,7 +28,7 @@ from luggage_description.frame_transforms import (
     transform_pose, box_to_tool_target, rotate_vector, rotate_covariance3,
 )
 from luggage_description.ros_frame_bindings.diagnostics import diagnostic_to_message
-from luggage_planning.frame_message_adapters import (
+from luggage_planning.adapters.frame_message_adapters import (
     planning_pose_to_message, planning_pose_from_message,
     cartesian_path_to_message, cartesian_path_from_message,
     joint_path_to_message, joint_path_from_message,

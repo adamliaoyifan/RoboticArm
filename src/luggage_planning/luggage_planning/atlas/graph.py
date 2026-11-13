@@ -38,9 +38,9 @@ Q_MERGE_TOL = 1e-9
 
 
 def _contracts():
-    """Lazy (st09_contracts.graph module, digest_of) import pair."""
-    from st09_contracts import graph as contracts_graph
-    from st09_contracts._base import digest_of
+    """Lazy (luggage_planning.planning_contract.graph module, digest_of) import pair."""
+    from luggage_planning.planning_contract import graph as contracts_graph
+    from luggage_planning.planning_contract._base import digest_of
     return contracts_graph, digest_of
 
 
@@ -103,7 +103,7 @@ class RegionAnchor:
     region: str
     xyz: Tuple[float, float, float]
     yaw: float
-    load_state: "object"  # st09_contracts.graph.LoadState
+    load_state: "object"  # luggage_planning.planning_contract.graph.LoadState
 
     def __post_init__(self):
         object.__setattr__(self, "region", str(self.region))
@@ -490,7 +490,7 @@ class GraphRoutePlanner(object):
     PlannedRoute has no certification field, and the route content is
     byte-identical with or without one (fake-certifier isolation is
     asserted by tests). Production code never imports
-    st09_contracts.fixtures and never constructs a CertificationResult.
+    luggage_planning.planning_contract.fixtures and never constructs a CertificationResult.
     """
 
     #: Existing entry-region nodes offered as retreat targets per hop.
@@ -548,8 +548,8 @@ class GraphRoutePlanner(object):
     # -- helpers ----------------------------------------------------------
 
     def _payload_identity(self, attachment):
-        from st09_contracts.planning import PayloadIdentity, PayloadSymmetry
-        from st09_contracts.payload_envelope import collision_payload
+        from luggage_planning.planning_contract.planning import PayloadIdentity, PayloadSymmetry
+        from luggage_planning.planning_contract.payload_envelope import collision_payload
         geometry = collision_payload(attachment)
         symmetry = (PayloadSymmetry.PI if attachment.symmetry == "pi"
                     else PayloadSymmetry.NONE)
@@ -567,7 +567,7 @@ class GraphRoutePlanner(object):
 
     def _goal_nodes(self, targets):
         """Register goal q-nodes (plus release twins) for every target."""
-        from luggage_planning.place_targets import goal_joint_sets
+        from luggage_planning.place.place_targets import goal_joint_sets
         if self.goal_seeds is None:
             raise ValueError(
                 "GraphRoutePlanner needs goal_seeds(target) (atlas or "
@@ -779,11 +779,11 @@ class GraphRoutePlanner(object):
         """World-frame box at the candidate's placed pose, composed
         through the injected world<-container transform."""
         from luggage_planning.routing.moveit_edge_adapter import BoxSpec
-        from st09_contracts.attachment import compose_transform
+        from luggage_planning.planning_contract.attachment import compose_transform
         position, quaternion = compose_transform(
             self.t_frame_container, self.q_frame_container,
             candidate.position_container, candidate.quaternion_xyzw_container)
-        from luggage_planning.payload_envelope_geometry import geometry_at_box_pose
+        from luggage_planning.attachment.payload_envelope_geometry import geometry_at_box_pose
         position, quaternion, dimensions = geometry_at_box_pose(attachment, position, quaternion)
         return BoxSpec(
             object_id="released-%s" % attachment.box_id,
@@ -798,7 +798,7 @@ class GraphRoutePlanner(object):
             PayloadSpec,
             SceneState,
         )
-        from st09_contracts.payload_envelope import collision_payload
+        from luggage_planning.planning_contract.payload_envelope import collision_payload
         geometry = collision_payload(attachment)
         carrying = SceneState(
             load_state="carrying",

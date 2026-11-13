@@ -1,8 +1,10 @@
 # Runtime reachability-atlas wiring, shared by placement_planner_node and
 # motion_planner_node. This file is the simulation cell, selected when the
 # active scene file hash matches data/reachability_atlas. The deploy cell
-# is config/atlas_runtime_deploy.yaml and is selected the same way from
-# scene_tf_deploy.yaml. An explicit atlas_runtime_config overrides both.
+# and the deploy-update cell config/atlas_runtime_deploy_update.yaml is
+# selected the same way from scene_tf_deploy_update.yaml (2026-11-11:
+# the example/deploy/deploy_sim cells were retired with their scenes).
+# An explicit atlas_runtime_config overrides both.
 # Loaded by luggage_planning.atlas_runtime; every value
 # can be overridden per node through atlas_* ROS parameters (launch profiles,
 # runner --atlas, or a different config path entirely).
@@ -13,7 +15,7 @@
 # matches the real machine and needs a manual nudge (or a rebuilt atlas set
 # dropped in via atlas_dir / atlas_file).
 enabled: true
-atlas_dir: ""            # "" = package data/reachability_atlas
+atlas_dir: reachability_atlas_deploy_update  # site cell (2026-11-11)
 basename: "s20_container_collision_aware"
 atlas_file: ""           # absolute .npz override; meta = same stem + .yaml
 # Certification cell. strict refuses the atlas unless the live scene file

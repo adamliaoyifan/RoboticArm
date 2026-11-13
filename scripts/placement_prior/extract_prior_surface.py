@@ -20,7 +20,7 @@ def main():
     from std_msgs.msg import String
     from luggage_description.frame_diagnostics import BoundaryContext
     from luggage_description.ros_frame_bindings.surfaces import surface_from_message
-    from luggage_planning.occupancy_place_paths import OccupancySnapshot
+    from luggage_planning.place.occupancy_place_paths import OccupancySnapshot
     prior=args.capture/'prior_boundaries'
     rows=[json.loads(s) for s in (prior/'boundaries.jsonl').read_text().splitlines()]
     response_row=[r for r in rows if r['boundary']=='prepare_response'][args.prepare_index]

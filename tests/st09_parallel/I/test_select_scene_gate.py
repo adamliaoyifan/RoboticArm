@@ -31,7 +31,7 @@ for entry in ("src/luggage_planning", "src/luggage_perception"):
     if path not in sys.path:
         sys.path.append(path)
 
-from luggage_planning.place_service import (  # noqa: E402
+from luggage_planning.place.place_service import (  # noqa: E402
     boundary_context, pose_message, request_dict,
 )
 from luggage_description.frame_contracts import ContractError  # noqa: E402
@@ -140,10 +140,10 @@ def _select_message(slot_scenes, surface_scene):
     message.container_stamp_ns = 0
     message.container_stamp_is_null = True
     message.excluded_ids = []
-    from st09_contracts.attachment_geometry import freeze_geometry
-    from st09_contracts.payload_envelope import EnvelopeLimits
-    from st09_contracts.attachment import invert_transform
-    from luggage_planning.attachment_geometry_transport import geometry_to_message
+    from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+    from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
+    from luggage_planning.planning_contract.attachment import invert_transform
+    from luggage_planning.attachment.attachment_geometry_transport import geometry_to_message
     p, q = message.grasp.pose.position, message.grasp.pose.orientation
     message.conservative_geometry = geometry_to_message(freeze_geometry(
         message.box_wdh, *invert_transform((p.x,p.y,p.z), (q.x,q.y,q.z,q.w)),

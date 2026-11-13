@@ -48,8 +48,8 @@ class TestStructuralPayload(unittest.TestCase):
         self.assertAlmostEqual(top, FLOOR_Z + 0.30 + 0.28, places=9)
 
     def test_from_attachment_away_growth_shifts_nominal_object(self):
-        from st09_contracts.attachment_geometry import freeze_geometry
-        from st09_contracts.payload_envelope import EnvelopeLimits
+        from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+        from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
         limits = EnvelopeLimits(
             yaw_half_range_deg=0.0,
             size_growth_fraction_wdh=(0.0, 0.0, 0.1),

@@ -53,7 +53,7 @@ def _world_yaw(container_in_world, yaw_container):
 
 def _refine_seeds(urdf, tcp_path, world_xyz, quat_xyzw, seeds):
     """refine_to_pose each seed onto the exact endpoint pose."""
-    from luggage_planning.offline_ik import refine_to_pose
+    from luggage_planning.motion.offline_ik import refine_to_pose
     refined, dropped = [], 0
     for seed in seeds:
         joints, _info = refine_to_pose(
@@ -66,7 +66,7 @@ def _refine_seeds(urdf, tcp_path, world_xyz, quat_xyzw, seeds):
 
 
 def _tool_down_quat_xyzw(world_yaw):
-    from luggage_planning.waypoint_generator import _tool_down_quaternion
+    from luggage_planning.place.waypoint_generator import _tool_down_quaternion
     quat = _tool_down_quaternion(world_yaw)
     return (quat.x, quat.y, quat.z, quat.w)
 

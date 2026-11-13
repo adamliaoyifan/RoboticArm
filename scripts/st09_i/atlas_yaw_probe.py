@@ -34,7 +34,7 @@ from luggage_planning.atlas.frame_contracts import (  # noqa: E402
     tool_target_in_base,
     wrapped_yaw_error,
 )
-from luggage_planning.waypoint_generator import tool_down_yaw  # noqa: E402
+from luggage_planning.place.waypoint_generator import tool_down_yaw  # noqa: E402
 from route_matrix_eval import (  # noqa: E402
     TOOL_DOWN_QUAT,
     _qmul,

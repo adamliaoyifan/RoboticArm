@@ -6,7 +6,7 @@ from geometry_msgs.msg import Pose
 from moveit_msgs.msg import PlanningScene
 
 from luggage_planning.joint_operation.scene_admission import StaticWorldAdmission
-from luggage_planning.planning_scene_client import build_mesh_collision_object
+from luggage_planning.motion.planning_scene_client import build_mesh_collision_object
 from luggage_planning.placement_prior.contracts import Transform
 
 
@@ -27,7 +27,7 @@ def fixture_scene_file(directory):
         'endloop\nendfacet\nendsolid fixture\n')
     config_file=directory/'fixture_scene.yaml'
     config_file.write_text(yaml.safe_dump(scene_config()))
-    from luggage_planning.planning_scene_client import load_stl_mesh_msg
+    from luggage_planning.motion.planning_scene_client import load_stl_mesh_msg
     obj=build_mesh_collision_object('fixture_uld',(0.,0.,0.),(0.,0.,0.,1.),load_stl_mesh_msg(str(mesh_file)))
     return config_file,mesh_file,obj
 

@@ -31,7 +31,7 @@ MODULES = (
     'luggage_perception.observer_lidar',
     'luggage_gazebo.operation_launch',
     'luggage_gazebo.operation_readiness',
-    'st09_contracts',
+    'luggage_planning.planning_contract',
     'luggage_msgs.srv._prepare_joint_operation_v2',
     'luggage_msgs.action._execute_joint_operation_v2',
     'uld_occ_observer.srv._read_cells',
@@ -97,8 +97,8 @@ def main():
     for name in dict.fromkeys((*MODULES, *relocated.values())):
         package = name.split('.')[0]
         candidate = ROOT/'src'/package/Path(*name.split('.')).with_suffix('.py')
-        if name == 'st09_contracts':
-            candidate = ROOT/'st09_contracts/st09_contracts/__init__.py'
+        if name == 'luggage_planning.planning_contract':
+            candidate = ROOT/'src/luggage_planning/luggage_planning/planning_contract/__init__.py'
         source = candidate if candidate.is_file() else None
         checks.append(check_module(name, prefix, source=source))
     package_names = {new.rsplit('.', 1)[0] for new in relocated.values()}
@@ -121,13 +121,14 @@ def main():
         from ament_index_python.packages import get_package_prefix, get_package_share_directory
         for package in ('luggage_description', 'luggage_planning', 'luggage_packing',
                         'luggage_perception', 'uld_occ_observer', 'luggage_msgs',
-                        'luggage_gazebo', 'luggage_mapping', 'st09_contracts'):
+                        'luggage_gazebo', 'luggage_mapping'):
             found = Path(get_package_prefix(package)).resolve()
             checks.append({'name': package, 'path': str(found),
                            'passed': found == prefix/package, 'kind': 'ament_package'})
         for package, relative in (
             ('luggage_planning', 'launch/hardware_pick.launch.py'),
             ('luggage_planning', 'launch/joint_operation_prepare.launch.py'),
+            ('luggage_planning', 'config/planning_contract/resolved_planning_contract.json'),
             ('luggage_planning', 'config/atlas_runtime_gazebo_operation.yaml'),
             ('luggage_planning', 'data/reachability_atlas_deploy_update_gazebo/operation_atlas_qualification.json'),
             ('luggage_planning', 'data/reachability_atlas_deploy_update_gazebo/s20_container_collision_aware.npz'),

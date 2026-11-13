@@ -2,13 +2,13 @@
 from dataclasses import replace
 import pytest
 
-from luggage_planning.attachment_provider import MeasuredAttachmentProvider, MeasuredPose
-from st09_contracts._base import ContractViolation
-from st09_contracts.attachment import AttachmentSourceKind, ATTACHMENT_MAX_AGE_NS
-from st09_contracts.attachment_geometry import freeze_geometry
-from st09_contracts.payload_envelope import EnvelopeLimits
-from st09_contracts.reasons import Reason
-from st09_contracts.stationary_attachment import StationaryAttachmentEvidence, measured_pose_digest
+from luggage_planning.attachment.attachment_provider import MeasuredAttachmentProvider, MeasuredPose
+from luggage_planning.planning_contract._base import ContractViolation
+from luggage_planning.planning_contract.attachment import AttachmentSourceKind, ATTACHMENT_MAX_AGE_NS
+from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
+from luggage_planning.planning_contract.reasons import Reason
+from luggage_planning.planning_contract.stationary_attachment import StationaryAttachmentEvidence, measured_pose_digest
 
 
 @pytest.fixture

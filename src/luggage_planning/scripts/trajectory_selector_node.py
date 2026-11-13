@@ -32,8 +32,8 @@ from luggage_planning.atlas.runtime import (
     load_atlas_runtime_for_scene,
     load_runtime_atlas,
 )
-from luggage_planning.urdf_identity import UrdfIdentity
-from luggage_planning.occupancy_place_paths import dump_rows
+from luggage_planning.deploy.urdf_identity import UrdfIdentity
+from luggage_planning.place.occupancy_place_paths import dump_rows
 
 
 class TrajectorySelectorNode(Node):
@@ -196,7 +196,7 @@ class TrajectorySelectorNode(Node):
         if not path:
             return None
         if getattr(self, "_site_poses_cache", None) is None:
-            from luggage_planning.site_pose_schema import load_site_poses
+            from luggage_planning.deploy.site_pose_schema import load_site_poses
 
             try:
                 self._site_poses_cache = (load_site_poses(path), path)
@@ -509,7 +509,7 @@ class TrajectorySelectorNode(Node):
                 response.reason_code = error.code
                 response.detail = "%s: %s" % (error.code, error.field)
                 return response
-        from luggage_planning.place_service import _route_motion_messages
+        from luggage_planning.place.place_service import _route_motion_messages
 
         response.success = True
         response.reason_code = "OK"
@@ -597,7 +597,7 @@ class TrajectorySelectorNode(Node):
                 response.reason_code = error.code
                 response.detail = "%s: %s" % (error.code, error.field)
                 return response
-        from luggage_planning.place_service import _route_motion_messages
+        from luggage_planning.place.place_service import _route_motion_messages
 
         response.success = True
         response.reason_code = "OK"
@@ -694,7 +694,7 @@ class TrajectorySelectorNode(Node):
     def _select_v2(self, request, response):
         # World poses come from transform_pose. v1 keeps _segments.
         # This callback does not execute motion.
-        from luggage_planning.boundary_capture import capture_service_request
+        from luggage_planning.capture.boundary_capture import capture_service_request
         capture_service_request(
             request, os.environ.get("ST09_SELECT_REQUEST_CAPTURE_DIR", ""),
             "select_place_path_v2")
@@ -721,7 +721,7 @@ class TrajectorySelectorNode(Node):
             response.success = False
             response.reason_code = "ROUTE_PRODUCER_UNAVAILABLE"
             return response
-        from luggage_planning.place_service import fill_select_response_route
+        from luggage_planning.place.place_service import fill_select_response_route
         try:
             latched = getattr(self, "_surface", None) or {}
             response = fill_select_response_route(

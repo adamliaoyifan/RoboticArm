@@ -19,7 +19,7 @@ def required_corridor_height(portal, approach, tcp_quaternion, attachment,
     remains authoritative. Obstacles already include the configured padding.
     This function neither changes the box goal nor writes any scene.
     """
-    from st09_contracts.payload_envelope import collision_payload
+    from luggage_planning.planning_contract.payload_envelope import collision_payload
     attachment = collision_payload(attachment)
     offset = rotate_vector(tcp_quaternion, attachment.t_tcp_box_translation)
     orientation = quaternion_product(

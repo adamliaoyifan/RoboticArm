@@ -37,7 +37,7 @@ from luggage_description.scene_tf_config_utils import (  # noqa: E402
     xyz_world_to_base_link,
 )
 from luggage_packing.placement_solver import solve_placement  # noqa: E402
-from luggage_planning.occupancy_place_paths import (  # noqa: E402
+from luggage_planning.place.occupancy_place_paths import (  # noqa: E402
     OccupancySnapshot,
 )
 from luggage_planning.path_candidates import GeometricVariantGenerator  # noqa: E402

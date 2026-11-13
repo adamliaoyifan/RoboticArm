@@ -55,7 +55,7 @@ from luggage_gazebo.place_metrics import (  # noqa: E402
 )
 from luggage_msgs.msg import MotionSegment  # noqa: E402
 from luggage_msgs.srv import ProbeMotionSegment  # noqa: E402
-from luggage_planning.occupancy_place_paths import (  # noqa: E402
+from luggage_planning.place.occupancy_place_paths import (  # noqa: E402
     PLACE_PATH_INFEASIBLE,
     PAYLOAD_SOURCE_MEASURED,
     dump_rows,
@@ -179,7 +179,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                 load_atlas_runtime_for_scene,
                 load_runtime_atlas,
             )
-            from luggage_planning.urdf_identity import UrdfIdentity
+            from luggage_planning.deploy.urdf_identity import UrdfIdentity
             from luggage_description.scene_tf_config_utils import (
                 resolve_scene_tf_config_path,
             )
@@ -291,7 +291,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
 
     def _leg_trajectory_digest(self, segment):
         """Rebuild the certified trajectory digest from a v2 leg message."""
-        from st09_contracts.graph import TimedTrajectory
+        from luggage_planning.planning_contract.graph import TimedTrajectory
         trajectory = None
         if getattr(segment, "joint_trajectory", None) is not None:
             trajectory = getattr(segment.joint_trajectory, "trajectory",
@@ -486,7 +486,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             pose_from_message)
         from luggage_msgs.msg import SlotSpec
         from luggage_msgs.srv import GetCargoMapStats
-        from luggage_planning.typed_driver_adapter import (
+        from luggage_planning.deploy.typed_driver_adapter import (
             container_transform_fields, tcp_record)
 
         if not bool(getattr(pick_msg, "height_valid", False)):
@@ -595,6 +595,16 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         from luggage_planning.routing.grid_search import route_budget_s
         box_count = int(getattr(self._args, "n", 1) or 1)
         select_timeout_s = route_budget_s(box_count) + 30.0
+        # [diagnostic override] When the server runs an extended
+        # diagnostic_route_budget_s, the client wait must match it or the
+        # boundary dies at the frozen-formula timeout while the server is
+        # still mid-search (BOUNDARY_TIMEOUT with the result unread).
+        try:
+            _override = float(getattr(self._args, "select_budget_s", 0) or 0)
+        except (TypeError, ValueError):
+            _override = 0.0
+        if _override > select_timeout_s:
+            select_timeout_s = _override
         for _attempt in range(attempts):
             try:
                 selection = self._typed.select_place_path(
@@ -611,6 +621,15 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                     excluded_ids=excluded,
                     box_id=box_id,
                     generation=generation,
+                    # [attachment-contract wiring] The select request REQUIRES
+                    # the frozen attachment geometry (place_service decodes it
+                    # unconditionally; an empty digest is refused as
+                    # ATTACHMENT_GEOMETRY_INVALID via ATTACHMENT_GEOMETRY_MISSING).
+                    # The pick flow stores it as _frame_attachment_geometry;
+                    # without this argument every select failed with
+                    # ATTACHMENT_GEOMETRY_INVALID (2026-11-11 grid_g motion run).
+                    conservative_geometry=getattr(
+                        self, "_frame_attachment_geometry", None),
                     timeout_sec=select_timeout_s)
             except ContractError as error:
                 trial.fail_code = trial.fail_code or error.code
@@ -806,7 +825,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             candidate_targets_from_rows,
             input_slots_from_messages,
         )
-        from luggage_planning.planning_capture import candidates_from_rows
+        from luggage_planning.capture.planning_capture import candidates_from_rows
 
         translation, quaternion = [], []
         if isinstance(container_transform, (list, tuple)) and len(

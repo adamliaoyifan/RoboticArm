@@ -154,7 +154,7 @@ def test_installed_driver_hooks_capture_typed_boundaries_and_fault_health(tmp_pa
     import json
     from std_msgs.msg import String
     from luggage_msgs.srv import SelectPlacePathV2
-    from luggage_planning.async_boundary_capture import read_stream
+    from luggage_planning.capture.async_boundary_capture import read_stream
     from rclpy.serialization import deserialize_message
     callbacks, previous, faults = {}, [], []
     class Typed:

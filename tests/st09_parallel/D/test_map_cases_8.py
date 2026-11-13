@@ -18,10 +18,10 @@ from luggage_perception.cargo_view_integration import (
     integrate_view_with_report,
 )
 
-from st09_contracts._base import ContractViolation
-from st09_contracts.fixtures import DEPLOY_SCENE, SIM_SCENE, make_snapshot
-from st09_contracts.planning import ObservationRequirement
-from st09_contracts.reasons import Reason
+from luggage_planning.planning_contract._base import ContractViolation
+from luggage_planning.planning_contract.fixtures import DEPLOY_SCENE, SIM_SCENE, make_snapshot
+from luggage_planning.planning_contract.planning import ObservationRequirement
+from luggage_planning.planning_contract.reasons import Reason
 
 SCENES = {"sim": SIM_SCENE, "deploy": DEPLOY_SCENE}
 GEOMETRY_HASH = make_snapshot(map_revision=1).geometry_hash

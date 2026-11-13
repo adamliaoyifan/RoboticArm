@@ -10,7 +10,7 @@ import math
 import numpy as np
 
 from luggage_planning.placement_prior.contracts import finite_tuple
-from luggage_planning.trajectory_timing import TimedPath, cartesian_joint_limits, HARDWARE_DECEL_RAD
+from luggage_planning.motion.trajectory_timing import TimedPath, cartesian_joint_limits, HARDWARE_DECEL_RAD
 
 
 def polyline_vertices(positions, required_positions=()):

@@ -1093,7 +1093,7 @@ def consumer_sweep(ctx, case_id, e4_harness):
                         validity_epoch[:10]))
     else:
         try:
-            from luggage_planning.occupancy_place_paths import (
+            from luggage_planning.place.occupancy_place_paths import (
                 OccupancySnapshot)
             snapshot = OccupancySnapshot.from_surface_2d(
                 surface,

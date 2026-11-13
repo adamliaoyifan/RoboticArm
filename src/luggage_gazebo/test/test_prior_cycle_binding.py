@@ -17,7 +17,7 @@ def measured_box():
     box.width=.4;box.depth=.3;box.height=.2
     box.height_valid=True;box.top_surface_valid=True
     # Use the actual production constant rather than a guessed wire enum.
-    from luggage_planning.pick_authorization import HEIGHT_SOURCE_MEASURED_SUPPORT
+    from luggage_planning.pick.pick_authorization import HEIGHT_SOURCE_MEASURED_SUPPORT
     box.height_source=HEIGHT_SOURCE_MEASURED_SUPPORT
     for rank,name in enumerate(('centre','offset'),1):
         candidate=SuctionCandidate()
@@ -114,8 +114,8 @@ def test_raw_service_boundaries_include_named_motion_requests():
 def test_confirmed_attachment_survives_later_tcp_capture_and_clears_on_release():
     from pick_retreat_eval_driver import PickRetreatEvalDriver
     from luggage_msgs.srv import VacuumCommandV2
-    from luggage_planning.typed_driver_adapter import grasp_record
-    from luggage_planning.place_service import pose_message
+    from luggage_planning.deploy.typed_driver_adapter import grasp_record
+    from luggage_planning.place.place_service import pose_message
     instance=object.__new__(PickRetreatEvalDriver)
     instance._frame_scene_revision='scene'
     instance._frame_box_identity=lambda:('box',1)
@@ -124,10 +124,10 @@ def test_confirmed_attachment_survives_later_tcp_capture_and_clears_on_release()
     response.measured_grasp=pose_message(grasp_record('attach','scene',
         [.02,.03,.1],[1.,0.,0.,0.],stamp_ns=1000))
     response.attached_box_wdh=[.4,.3,.2]
-    from st09_contracts.attachment import invert_transform
-    from st09_contracts.attachment_geometry import freeze_geometry
-    from st09_contracts.payload_envelope import EnvelopeLimits
-    from luggage_planning.attachment_geometry_transport import geometry_to_message
+    from luggage_planning.planning_contract.attachment import invert_transform
+    from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+    from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
+    from luggage_planning.attachment.attachment_geometry_transport import geometry_to_message
     response.conservative_geometry = geometry_to_message(freeze_geometry(
         response.attached_box_wdh, *invert_transform((.02,.03,.1), (1.,0.,0.,0.)),
         EnvelopeLimits(5, (.1,)*3, (0,0), .005)))

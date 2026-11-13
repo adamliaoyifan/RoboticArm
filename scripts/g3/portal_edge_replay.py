@@ -38,7 +38,7 @@ def main():
     from moveit_msgs.action import MoveGroup
     from moveit_msgs.msg import Constraints, JointConstraint, RobotState
     from luggage_msgs.srv import ValidateRouteV2
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
 
     rec = json.load(open(os.path.join(
         RUN, "portal_capture", "portal_%02d.json" % portal_index)))

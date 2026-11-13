@@ -1,6 +1,6 @@
 ---
 description: Placement candidate generation, stacking, scoring, and occupancy handshake
-globs: src/luggage_packing/**,src/luggage_perception/luggage_perception/cargo_volume_mapper.py,src/luggage_perception/scripts/cargo_volume_mapper_node.py,src/luggage_planning/luggage_planning/motion_executor.py,src/luggage_gazebo/scripts/place_only_eval_driver.py,src/luggage_gazebo/scripts/pack_eval_driver.py,src/luggage_gazebo/luggage_gazebo/place_only_fixture.py
+globs: src/luggage_packing/**,src/luggage_perception/luggage_perception/cargo_volume_mapper.py,src/luggage_perception/scripts/cargo_volume_mapper_node.py,src/luggage_planning/luggage_planning/motion/motion_executor.py,src/luggage_gazebo/scripts/place_only_eval_driver.py,src/luggage_gazebo/scripts/pack_eval_driver.py,src/luggage_gazebo/luggage_gazebo/place_only_fixture.py
 alwaysApply: false
 ---
 

@@ -16,7 +16,7 @@ def test_exact_select_scene_is_bound_to_request(tmp_path):
     from luggage_msgs.srv import SelectPlacePathV2
     from moveit_msgs.msg import PlanningScene
     from rclpy.serialization import deserialize_message, serialize_message
-    from luggage_planning.select_replay_capture import capture_select_scene
+    from luggage_planning.capture.select_replay_capture import capture_select_scene
 
     request = SelectPlacePathV2.Request(request_id="first")
     scene = PlanningScene(name="frozen")
@@ -34,7 +34,7 @@ def test_exact_select_scene_is_bound_to_request(tmp_path):
 
 
 def test_missing_scene_is_not_a_replayable_capture(tmp_path):
-    from luggage_planning.select_replay_capture import capture_select_scene
+    from luggage_planning.capture.select_replay_capture import capture_select_scene
 
     with pytest.raises(RuntimeError, match="SELECT_REPLAY_SCENE_UNAVAILABLE"):
         capture_select_scene(tmp_path, "missing", b"request", lambda: None)

@@ -13,7 +13,7 @@ Two different objects live in one request and they must not be mixed
   here is the "ranking-object mismatch" this module exists to prevent.
 
 ``StructuralPayload.from_attachment`` derives both from the frozen
-``st09_contracts.AttachmentGeometry`` (single snapshot, deterministic,
+``luggage_planning.planning_contract.AttachmentGeometry`` (single snapshot, deterministic,
 digest-bound). Flat-pack candidates keep identity rotation, so the
 nominal-centre offset in the container frame equals the tool-frame
 offset ``t_tool_box_translation - conservative.t_tcp_box_translation``.

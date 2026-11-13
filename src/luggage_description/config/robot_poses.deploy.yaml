@@ -16,7 +16,7 @@
 #      measurement is stale: re-measure, do not relabel),
 #   5. only then switch defaults.observe_pose to a measured kind.
 #
-# Validators (luggage_planning.site_pose_schema) reject simulation
+# Validators (luggage_planning.deploy.site_pose_schema) reject simulation
 # provenance and any file whose scene revision is not the frozen deploy
 # scene. robot_poses.yaml.example pickup_observe is SIMULATION; never
 # copy those joints here.

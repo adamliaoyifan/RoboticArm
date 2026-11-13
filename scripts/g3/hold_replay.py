@@ -369,7 +369,7 @@ def main():
         stdout=open(contact_file, "w"), stderr=subprocess.DEVNULL)
 
     # 3. freeze the physical relation (production module, observed pose)
-    from luggage_planning.sim_physical_attachment import (
+    from luggage_planning.attachment.sim_physical_attachment import (
         freeze_physical_relation)
     relation = freeze_physical_relation(
         MODEL, 0, {"position": px, "quaternion_xyzw": pq},
@@ -378,7 +378,7 @@ def main():
         json.dump(relation, fh, indent=1)
 
     # 4. production backend + 30 Hz follow thread
-    from luggage_planning.vacuum_backend import SimVacuumBackend
+    from luggage_planning.attachment.vacuum_backend import SimVacuumBackend
     backend = SimVacuumBackend(
         diag.gz, NoopScene(), follow_rate_hz=30.0,
         carry_filter=lambda on: True)
@@ -431,8 +431,8 @@ def main():
     from moveit_msgs.msg import RobotTrajectory
     mg_traj = RobotTrajectory()
     mg_traj.joint_trajectory = _goal(names, points).trajectory
-    from luggage_planning.timed_execution_budget import timed_execution_wait
-    from luggage_planning.motion_executor import execute_wait_timeout_sec
+    from luggage_planning.motion.timed_execution_budget import timed_execution_wait
+    from luggage_planning.motion.motion_executor import execute_wait_timeout_sec
     prod_wait = min(
         timed_execution_wait(mg_traj.joint_trajectory.points, 60.0),
         execute_wait_timeout_sec(60.0, mg_traj.joint_trajectory.points))

@@ -11,7 +11,7 @@ import unittest
 
 from harness import suction_fakes as fakes
 
-from luggage_planning.suction_pick_session import (
+from luggage_planning.pick.suction_pick_session import (
     EXIT_CANDIDATES_EXHAUSTED,
     EXIT_CARRY_FAULT,
     EXIT_OK,
@@ -20,7 +20,7 @@ from luggage_planning.suction_pick_session import (
     SessionConfig,
     SessionResult,
 )
-from luggage_planning.suction_retry_contracts import (
+from luggage_planning.pick.suction_retry_contracts import (
     RELEASE_DEADLINE_SEC,
     RELEASE_LOW_HOLD_SEC,
     RETRY_BUDGET_EXPIRED,
@@ -515,7 +515,7 @@ class TestRecoveryFaultInjection(unittest.TestCase):
 
     def test_recovery_cartesian_fraction_0p99(self):
         candidates = three_candidates()
-        from luggage_planning.suction_pick_session import SegmentOutcome
+        from luggage_planning.pick.suction_pick_session import SegmentOutcome
         ports = self._ports(
             candidates,
             seal_delays={"C001_001": 99.0, "C002_001": 0.0},
@@ -531,7 +531,7 @@ class TestRecoveryFaultInjection(unittest.TestCase):
 
     def test_controller_failure_on_recovery(self):
         candidates = three_candidates()
-        from luggage_planning.suction_pick_session import SegmentOutcome
+        from luggage_planning.pick.suction_pick_session import SegmentOutcome
         ports = self._ports(
             candidates,
             seal_delays={"C001_001": 99.0, "C002_001": 0.0},
@@ -599,7 +599,7 @@ class TestCarryBoundary(unittest.TestCase):
     """Gate C6: post-DI0 failures preserve vacuum (carry fault)."""
 
     def test_pick_retreat_failure_preserves_vacuum(self):
-        from luggage_planning.suction_pick_session import SegmentOutcome
+        from luggage_planning.pick.suction_pick_session import SegmentOutcome
         candidates = [fakes.make_candidate("C001_001", 1)]
         ports = fakes.make_ports(
             candidates, seal_delays={"C001_001": 0.0},
@@ -639,7 +639,7 @@ class TestCarryBoundary(unittest.TestCase):
         self.assertEqual(ports.vacuum.di0(), 1)
 
     def test_pre_seal_motion_failure_is_not_carry(self):
-        from luggage_planning.suction_pick_session import (
+        from luggage_planning.pick.suction_pick_session import (
             EXIT_SEGMENT, SegmentOutcome)
         candidates = [fakes.make_candidate("C001_001", 1)]
         ports = fakes.make_ports(

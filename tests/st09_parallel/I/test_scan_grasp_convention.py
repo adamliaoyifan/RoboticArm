@@ -11,13 +11,12 @@ for extra in (
         ROOT / "scripts" / "st09_i",
         ROOT / "src" / "luggage_planning",
         ROOT / "src" / "luggage_description",
-        ROOT / "st09_contracts",
 ):
     if str(extra) not in sys.path:
         sys.path.insert(0, str(extra))
 
 from scan_grasp import synthetic_top_grasp  # noqa: E402
-from st09_contracts.attachment import (  # noqa: E402
+from luggage_planning.planning_contract.attachment import (  # noqa: E402
     invert_transform,
     quaternion_angle_between,
     rotate_vector,
@@ -42,7 +41,7 @@ def _face_on_tcp(translation, quaternion, size):
 
 def _container():
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
-    from luggage_planning.typed_driver_adapter import container_transform_fields
+    from luggage_planning.deploy.typed_driver_adapter import container_transform_fields
 
     scene = ROOT / "src" / "luggage_description" / "config" / "scene_tf_deploy.yaml"
     transform = container_transform_fields(load_scene_tf_config(str(scene)))
@@ -53,8 +52,8 @@ def _synthesize(position, quaternion, grasp=None):
     import dataclasses
 
     from luggage_description.frame_transforms import rotate_vector as rotate_container
-    from luggage_planning.attachment_provider import MeasuredAttachmentProvider
-    from luggage_planning.place_targets import (
+    from luggage_planning.attachment.attachment_provider import MeasuredAttachmentProvider
+    from luggage_planning.place.place_targets import (
         box_target_from_candidate,
         expand_place_targets,
     )

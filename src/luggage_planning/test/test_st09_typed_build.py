@@ -4,9 +4,9 @@ import pytest
 from rclpy.serialization import serialize_message, deserialize_message
 from luggage_msgs.srv import BuildMotionSequenceV2
 from luggage_msgs.msg import MotionSegmentV2
-from luggage_planning.place_service import handle_build_v2, _build_motion_messages, pose_message
-from luggage_planning.pose import MotionSegment, Pose, Point, Quaternion
-from luggage_planning.ros_message_adapters import pick_from_detected
+from luggage_planning.place.place_service import handle_build_v2, _build_motion_messages, pose_message
+from luggage_planning.geometry.pose import MotionSegment, Pose, Point, Quaternion
+from luggage_planning.adapters.ros_message_adapters import pick_from_detected
 
 
 def identity():
@@ -30,10 +30,10 @@ def test_pick_build_typed_output():
     box.pose = request.pick_pose.pose
     box.width, box.depth, box.height = 0.8, 0.5, 0.32
     box.height_valid = True
-    from luggage_planning.pick_authorization import HEIGHT_SOURCE_MEASURED_SUPPORT
+    from luggage_planning.pick.pick_authorization import HEIGHT_SOURCE_MEASURED_SUPPORT
     box.height_source = HEIGHT_SOURCE_MEASURED_SUPPORT
     from luggage_planning.routing.producer import _leg_record
-    from st09_contracts.fixtures import make_timed_trajectory
+    from luggage_planning.planning_contract.fixtures import make_timed_trajectory
 
     def encoder(pick, *, request_id, scene_revision, stamp_ns):
         del pick
@@ -70,7 +70,7 @@ def test_place_build_refuses_named():
 
 
 def test_apply_selected_path_to_v2_rewrites_pose_target():
-    from luggage_planning.typed_driver_adapter import (
+    from luggage_planning.deploy.typed_driver_adapter import (
         apply_selected_path_to_v2, pose_segment_message)
 
     built = pose_segment_message(
@@ -90,7 +90,7 @@ def test_apply_selected_path_to_v2_rewrites_pose_target():
 
 
 def test_adopt_v2_identity_keeps_selected_path():
-    from luggage_planning.typed_driver_adapter import (
+    from luggage_planning.deploy.typed_driver_adapter import (
         adopt_v2_identity, apply_selected_path_to_v2, pose_segment_message)
 
     built = pose_segment_message(
@@ -119,8 +119,8 @@ def test_adopt_v2_identity_keeps_selected_path():
 def test_handle_plan_v2_forwards_live_joints_and_execution_timeout(configured_timeout):
     from types import SimpleNamespace
     from luggage_msgs.action import PlanMotionV2
-    from luggage_planning.motion_v2_service import handle_plan_v2
-    from luggage_planning.typed_driver_adapter import pose_segment_message
+    from luggage_planning.motion.motion_v2_service import handle_plan_v2
+    from luggage_planning.deploy.typed_driver_adapter import pose_segment_message
 
     captured = {}
 

@@ -277,7 +277,7 @@ def test_real_root_finalization_binds_latest_issuance_and_releases_lock(mode):
     from luggage_planning.joint_operation.adapters import operation_plan_to_message
     from luggage_planning.joint_operation.prepare_node import JointOperationPrepareNode
     from luggage_planning.joint_operation.preparation_profile import PreparationBudget
-    from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy
+    from luggage_planning.attachment.attachment_geometry_policy import load_attachment_geometry_policy
     from test_preparation_profile import query_and_inputs
     f = setup(blocked=True)
     request, context, _ = query_and_inputs(30.)
@@ -341,7 +341,7 @@ def test_real_core_uses_selected_candidate_and_serializes_finalized_identity(acc
     from luggage_planning.placement_prior.contracts import PlacementCandidate, Transform
     from luggage_planning.joint_operation.preparation_profile import PreparationBudget
     from luggage_planning.joint_operation.preparation_refresh import FinalizedPreparation
-    from st09_contracts.payload_envelope import EnvelopeLimits
+    from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
     from test_joint_operation_candidates import placed_pose, service_response
     from test_preparation_profile import query_and_inputs
     request, context, inputs = query_and_inputs(30.)

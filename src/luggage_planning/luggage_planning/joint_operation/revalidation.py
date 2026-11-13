@@ -22,12 +22,13 @@ from luggage_description.frame_transforms import rotate_vector
 from luggage_planning.joint_operation.certification import _wire_leg, _valid_response
 from luggage_planning.joint_operation.contracts import OPERATION_JOINTS, admit_operation_plan, _same_pose
 from luggage_planning.joint_operation.execution import ValidationReceipt
+from luggage_planning.joint_operation.map_source import OperationMapRefresh
 from luggage_planning.joint_operation.scenes import (
     PHASES, build_operation_scenes, validate_phase_payloads, _reset_payload_contacts,
 )
-from luggage_planning.moveit_state_validity import MAX_CERT_SAMPLE_DT_NS
+from luggage_planning.motion.moveit_state_validity import MAX_CERT_SAMPLE_DT_NS
 from luggage_planning.placement_prior.contracts import Snapshot, Transform
-from st09_contracts.attachment_geometry import AttachmentGeometry
+from luggage_planning.planning_contract.attachment_geometry import AttachmentGeometry
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,7 @@ class OperationRevalidation:
     # New evidence for the original path in the current scene, not a new plan.
     native_validation_id: str = ''
     current_scene_sha256: str = ''
+    map_refresh: object = None
 
 
 def settled_box_from_release(model, plan, geometry, world_from_container, release_drop_m):
@@ -71,7 +73,7 @@ class NativeOperationRevalidationPort:
     def validate(self, plan, *, expected_identity, expected_digest, snapshot,
                  pickup_object_id, next_leg_index, actual_joints, geometry,
                  certificate_current, source_current, admit_actual_contact, admit_settled_box,
-                 deadline, cancelled):
+                 deadline, cancelled, map_refresh=None):
         """Validate remaining original legs from one captured current state.
 
         `geometry` is None before pickup, the provider's actual frozen geometry
@@ -90,7 +92,7 @@ class NativeOperationRevalidationPort:
             digest = geometry.digest() if phase == 'carry' and type(geometry) is AttachmentGeometry else ''
             receipt = ValidationReceipt(plan.identity, plan.plan_digest, plan.certificate_id,
                 next_leg_index, not bool(reason), reason or 'NATIVE_SUFFIX_CHECKED', q, digest)
-            return OperationRevalidation(receipt, validation_id, scene_hash)
+            return OperationRevalidation(receipt, validation_id, scene_hash, map_refresh)
         def stopped():
             return cancelled() or time.monotonic() >= deadline
         def current():
@@ -110,9 +112,12 @@ class NativeOperationRevalidationPort:
                 return result('CURRENT_SNAPSHOT_REQUIRED')
             scene_hash = hashlib.sha256(snapshot.scene_cdr).hexdigest()
             identity = plan.identity
-            if ((snapshot.scene_revision, snapshot.map_revision, snapshot.geometry_hash, snapshot.model_hash) !=
-                    (identity.scene_revision, identity.map_revision, identity.geometry_hash, identity.model_sha256)
-                    or snapshot.model_hash != self.model.model_sha256):
+            same_fixed_identity = ((snapshot.scene_revision, snapshot.geometry_hash, snapshot.model_hash) ==
+                (identity.scene_revision, identity.geometry_hash, identity.model_sha256)
+                and snapshot.model_hash == self.model.model_sha256)
+            map_admitted = (snapshot.map_revision == identity.map_revision if map_refresh is None else
+                type(map_refresh) is OperationMapRefresh and map_refresh.admits(identity, snapshot))
+            if not same_fixed_identity or not map_admitted:
                 return result('CURRENT_SOURCE_IDENTITY_MISMATCH')
             q = vector(actual_joints, 6, 'actual_joints')
             if max(abs(a-b) for a,b in zip(q,plan.legs[next_leg_index].knots[0].positions)) > self.start_tolerance_rad:

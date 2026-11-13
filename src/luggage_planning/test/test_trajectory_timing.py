@@ -3,7 +3,7 @@
 import math
 import unittest
 
-from luggage_planning.trajectory_timing import (
+from luggage_planning.motion.trajectory_timing import (
     HARDWARE_ACC_RAD,
     HARDWARE_DECEL_RAD,
     HARDWARE_VEL_RAD,

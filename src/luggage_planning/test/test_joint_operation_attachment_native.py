@@ -27,11 +27,11 @@ pytestmark = [
 def seal_case(prepare_stack, request):
     from rclpy.serialization import serialize_message
     from luggage_msgs.srv import VacuumCommandV2
-    from luggage_planning.attachment_provider import MeasuredAttachmentProvider
-    from luggage_planning.attachment_frame_adapters import handle_vacuum_command_v2
+    from luggage_planning.attachment.attachment_provider import MeasuredAttachmentProvider
+    from luggage_planning.attachment.attachment_frame_adapters import handle_vacuum_command_v2
     from luggage_planning.joint_operation.actual_contact import RetainedContactObservation
     from luggage_planning.joint_operation.attachment import StationaryOperationAttachmentPort
-    from luggage_planning.place_service import pose_message
+    from luggage_planning.place.place_service import pose_message
     from luggage_planning.placement_prior.contracts import Transform
 
     f = prepare_stack

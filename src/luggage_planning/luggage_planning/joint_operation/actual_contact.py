@@ -19,7 +19,7 @@ from luggage_perception.frozen_suction_service import binding_from_message, bind
 from luggage_perception.ros_suction_domain import require_matching_detection
 from luggage_planning.joint_operation.contracts import OperationIdentity
 from luggage_planning.placement_prior.contracts import Transform
-from st09_contracts.attachment_geometry import AttachmentGeometry
+from luggage_planning.planning_contract.attachment_geometry import AttachmentGeometry
 
 
 @dataclass(frozen=True)

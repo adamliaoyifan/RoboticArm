@@ -17,14 +17,14 @@ from types import SimpleNamespace
 sys.path.insert(0, os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "scripts")))
 
-from luggage_planning.motion_executor import (  # noqa: E402
+from luggage_planning.motion.motion_executor import (  # noqa: E402
     JOINTS,
     TOOL_DOWN_QUAT,
     MotionExecutor,
     SegmentExecResult,
     _TOOL_DOWN_ABS_TOL,
 )
-from luggage_planning.pose import Point, Pose, Quaternion  # noqa: E402
+from luggage_planning.geometry.pose import Point, Pose, Quaternion  # noqa: E402
 from moveit_msgs.msg import MoveItErrorCodes, RobotTrajectory  # noqa: E402
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint  # noqa: E402
 

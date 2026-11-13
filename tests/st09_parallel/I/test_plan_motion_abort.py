@@ -26,7 +26,7 @@ for entry in ("src/luggage_planning",):
 
 pytest.importorskip("luggage_msgs.action")
 
-from luggage_planning.typed_driver_adapter import (  # noqa: E402
+from luggage_planning.deploy.typed_driver_adapter import (  # noqa: E402
     TypedDriverAdapter,
 )
 

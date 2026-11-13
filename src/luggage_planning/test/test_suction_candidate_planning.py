@@ -12,8 +12,8 @@ import unittest
 
 from harness import suction_fakes as fakes
 
-from luggage_planning.pose import Point, Pose, Quaternion
-from luggage_planning.suction_candidate_selection import (
+from luggage_planning.geometry.pose import Point, Pose, Quaternion
+from luggage_planning.pick.suction_candidate_selection import (
     MAX_CANDIDATE_ATTEMPTS,
     REQUIRED_CARTESIAN_FRACTION,
     SUCTION_CANDIDATE_IDENTITY_MISMATCH,
@@ -28,7 +28,7 @@ from luggage_planning.suction_candidate_selection import (
     record_attempt,
     record_rejection,
 )
-from luggage_planning.suction_candidate_waypoints import (
+from luggage_planning.pick.suction_candidate_waypoints import (
     REVERSE_MIN_M,
     attach_pose_error,
     build_candidate_pick_segments,
@@ -39,7 +39,7 @@ from luggage_planning.suction_candidate_waypoints import (
     retry_reverse_segment,
     tool_orientation_for_candidate,
 )
-from luggage_planning.suction_pick_session import (
+from luggage_planning.pick.suction_pick_session import (
     DETECT_NO_SEALABLE_PATCH,
     EXIT_DETECT,
     EXIT_IDENTITY,
@@ -48,7 +48,7 @@ from luggage_planning.suction_pick_session import (
     SessionConfig,
     SessionConfigError,
 )
-from luggage_planning.suction_candidate_waypoints import (
+from luggage_planning.pick.suction_candidate_waypoints import (
     quat_rotate,
 )
 
@@ -500,7 +500,7 @@ class TestMessageAdapters(unittest.TestCase):
         self.MotionSegmentMsg = MotionSegment
         self.BuildMotionSequence = BuildMotionSequence
         self.SuctionCandidate = SuctionCandidate
-        from luggage_planning import ros_message_adapters as adapters
+        from luggage_planning.adapters import ros_message_adapters as adapters
         self.adapters = adapters
 
     def _detected(self):

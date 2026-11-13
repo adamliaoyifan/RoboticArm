@@ -39,7 +39,7 @@ OUT = os.path.join(
 
 class _Node(object):
     def __init__(self, name, q):
-        from st09_contracts.graph import LoadState
+        from luggage_planning.planning_contract.graph import LoadState
 
         self.node_id = name
         self.q = tuple(float(v) for v in q)
@@ -129,7 +129,7 @@ def main():
         builder._ensure_scene(state)  # noqa: SLF001
         submission = builder._portal_submission_scene()  # noqa: SLF001
         if submission is not None:
-            from luggage_planning.planning_scene_client import (
+            from luggage_planning.motion.planning_scene_client import (
                 summarize_planning_scene,
             )
             summary = summarize_planning_scene(submission)

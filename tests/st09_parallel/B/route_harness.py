@@ -12,13 +12,13 @@ import dataclasses
 
 import pytest
 
-from st09_contracts.attachment import PlaceTarget
-from st09_contracts.fixtures import make_attachment
-from st09_contracts.graph import LoadState
-from st09_contracts.planning import GeometryVerdict, PlacementCandidate
+from luggage_planning.planning_contract.attachment import PlaceTarget
+from luggage_planning.planning_contract.fixtures import make_attachment
+from luggage_planning.planning_contract.graph import LoadState
+from luggage_planning.planning_contract.planning import GeometryVerdict, PlacementCandidate
 
 from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
-from luggage_planning.place_targets import GoalSeed
+from luggage_planning.place.place_targets import GoalSeed
 from luggage_planning.atlas.graph import (
     GraphRoutePlanner,
     RouteGraph,
@@ -29,7 +29,7 @@ from luggage_planning.atlas.graph import (
 def build_route_chain(mock_graph_node):
     """Return the graph/planner/adapter/target bundle (skips without IK)."""
     try:
-        from luggage_planning.offline_ik import load_urdf, refine_to_pose
+        from luggage_planning.motion.offline_ik import load_urdf, refine_to_pose
         urdf = load_urdf()
     except Exception as err:
         pytest.skip("offline_ik unavailable: %s" % err)

@@ -9,7 +9,7 @@ from urllib.parse import unquote, urlparse
 import numpy as np
 
 from luggage_planning.joint_operation.aperture_geometry import box_vertices
-from luggage_planning.offline_ik import _origin_of
+from luggage_planning.motion.offline_ik import _origin_of
 
 
 def _mesh_path(uri):

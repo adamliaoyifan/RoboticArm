@@ -32,7 +32,7 @@ def main():
     args = parser.parse_args()
     evidence = args.evidence.resolve()
     evidence.mkdir(parents=True, exist_ok=False)
-    selection = ['--base-paths', 'src', 'st09_contracts', '--packages-up-to', *TARGETS]
+    selection = ['--base-paths', 'src', '--packages-up-to', *TARGETS]
     listing = subprocess.check_output(['colcon', 'list', *selection], cwd=ROOT, text=True)
     packages = [ROOT / line.split()[1] for line in listing.splitlines() if line.strip()]
     before = source_hashes(packages)

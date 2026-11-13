@@ -62,7 +62,7 @@ class E4Harness:
         import rclpy
         E4Harness._seq += 1
         from rclpy.callback_groups import ReentrantCallbackGroup
-        from luggage_planning.hardware_place_planning import (
+        from luggage_planning.deploy.hardware_place_planning import (
             HardwarePlacePlanner)
         self._client = client
         # A dedicated node that flips to sim time AFTER its
@@ -121,7 +121,7 @@ class E4Harness:
     def run(self, box_wdh, scene_revision, geometry_hash, map_revision):
         """One plan() through the product entry; returns a classification
         dict (never raises past the product's own ValueError surface)."""
-        from luggage_planning.hardware_place_planning import MeasuredAttachment
+        from luggage_planning.deploy.hardware_place_planning import MeasuredAttachment
         from luggage_planning.placement_prior.contracts import Transform
         client = self._client
         now = client.clock_now_ns()

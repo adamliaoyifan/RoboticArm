@@ -309,7 +309,7 @@ def _column_height_digest(surface, cells_i, cells_j, cell_states):
     A partial grid is also empty: a digest that silently drops cells
     would make two different maps look identical.
     """
-    from st09_contracts._base import digest_of
+    from luggage_planning.planning_contract._base import digest_of
 
     heights = _column_height_grid(surface)
     if not heights:
@@ -685,7 +685,7 @@ SNAPSHOT_JOIN_WINDOW_SEC = DEFAULT_FRESHNESS_WINDOW_SEC
 
 
 def _contract_violation(reason_value, message):
-    from st09_contracts._base import ContractViolation
+    from luggage_planning.planning_contract._base import ContractViolation
     return ContractViolation("%s: %s" % (reason_value, message))
 
 
@@ -699,8 +699,8 @@ def planning_snapshot_from_surface(surface_map, scene_revision="",
     confidences stay in the surface domain — the contract grid is a
     cell-state view.
     """
-    from st09_contracts._base import digest_of
-    from st09_contracts.planning import PlanningSnapshot
+    from luggage_planning.planning_contract._base import digest_of
+    from luggage_planning.planning_contract.planning import PlanningSnapshot
 
     resolution = float(surface_map["resolution"])
     origin_x = float(surface_map["origin_local"][0])
@@ -783,9 +783,9 @@ def integrate_view_with_report(snapshot, requirement, view_payload):
     ``duplicate`` (revision must not advance twice for one observation).
     Missing sensors never promote cells to free or support.
     """
-    from st09_contracts.planning import PlanningSnapshot
-    from st09_contracts.reasons import Reason
-    from st09_contracts._base import digest_of
+    from luggage_planning.planning_contract.planning import PlanningSnapshot
+    from luggage_planning.planning_contract.reasons import Reason
+    from luggage_planning.planning_contract._base import digest_of
 
     acquisition = int(view_payload.get("acquisition_stamp_ns", 0))
     tf_stamp = int(view_payload.get("tf_stamp_ns", acquisition))

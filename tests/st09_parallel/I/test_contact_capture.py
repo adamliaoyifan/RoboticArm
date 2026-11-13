@@ -138,7 +138,7 @@ def test_inside_box_and_coincidence_use_the_stated_thresholds():
 
 
 def test_follow_trace_is_off_unless_the_env_path_is_set(tmp_path, monkeypatch):
-    from luggage_planning.vacuum_backend import SimVacuumBackend
+    from luggage_planning.attachment.vacuum_backend import SimVacuumBackend
     backend = SimVacuumBackend(object(), object())
     backend._model_name = "pickup_box"
     monkeypatch.delenv("ELFIN_FOLLOW_TRACE", raising=False)

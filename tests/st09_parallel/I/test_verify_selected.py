@@ -121,7 +121,7 @@ def test_start_state_mismatch_refuses_but_wrap_matches():
     # own wrap discipline).
     import math
     wrapped = [0.1 + 2.0 * math.pi, -0.2, 0.3, -0.4, 0.5, -0.6]
-    from st09_contracts.certification import MapDecision
+    from luggage_planning.planning_contract.certification import MapDecision
     producer2 = _Producer(
         _selection(),
         revalidation=SimpleNamespace(
@@ -144,7 +144,7 @@ def test_map_regression_refuses():
 
 
 def test_recertification_failure_surfaces_its_reason():
-    from st09_contracts.certification import MapDecision
+    from luggage_planning.planning_contract.certification import MapDecision
     producer = _Producer(
         _selection(),
         revalidation=SimpleNamespace(
@@ -193,7 +193,7 @@ def test_latest_map_fetch_failure_refuses_without_stale_fallback():
 
 def test_map_revision_advanced_without_edge_impact_allows():
     """[S5.7 lock] Case 3: revision grew but no route edge is affected."""
-    from st09_contracts.certification import MapDecision
+    from luggage_planning.planning_contract.certification import MapDecision
     producer = _Producer(
         _selection(),
         revalidation=SimpleNamespace(
@@ -208,7 +208,7 @@ def test_map_revision_advanced_without_edge_impact_allows():
 
 def test_map_corridor_affected_refuses():
     """[S5.7 lock] Case 4: the new map touches the route corridor."""
-    from st09_contracts.certification import MapDecision
+    from luggage_planning.planning_contract.certification import MapDecision
     producer = _Producer(
         _selection(),
         revalidation=SimpleNamespace(
@@ -223,7 +223,7 @@ def test_map_corridor_affected_refuses():
 
 
 def test_pass_path_returns_leg_digests():
-    from st09_contracts.certification import MapDecision
+    from luggage_planning.planning_contract.certification import MapDecision
     producer = _Producer(
         _selection(),
         revalidation=SimpleNamespace(
@@ -244,7 +244,7 @@ def test_pass_path_returns_leg_digests():
 
 
 def _live_producer(revalidation=None):
-    from st09_contracts.certification import MapDecision
+    from luggage_planning.planning_contract.certification import MapDecision
 
     producer = _Producer(
         _selection(),
@@ -304,7 +304,7 @@ def test_execution_admission_map_regression_refuses():
 
 
 def test_execution_admission_fetch_failure_and_corridor_impact_revoke():
-    from st09_contracts.certification import MapDecision
+    from luggage_planning.planning_contract.certification import MapDecision
 
     producer = _Producer(_selection())
     producer.last_selection["certification_id"] = "cert-1"
@@ -320,7 +320,7 @@ def test_execution_admission_fetch_failure_and_corridor_impact_revoke():
 
 
 def test_execution_admission_live_when_map_advanced_without_impact():
-    from st09_contracts.certification import MapDecision
+    from luggage_planning.planning_contract.certification import MapDecision
 
     producer = _live_producer(revalidation=SimpleNamespace(
         decision=MapDecision.CONTINUE, reason=None, map_revision=7))
@@ -373,7 +373,7 @@ class _Provider(object):
 
 def _release_route_producer(provider=None):
     """One certified place route: carrying legs, release, unloaded legs."""
-    from st09_contracts.certification import MapDecision
+    from luggage_planning.planning_contract.certification import MapDecision
 
     selection = _selection()
     selection["certification_id"] = "cert-1"

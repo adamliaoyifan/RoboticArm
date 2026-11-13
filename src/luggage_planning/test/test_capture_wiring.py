@@ -20,9 +20,9 @@ from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectoryPoint
 from unique_identifier_msgs.msg import UUID
 
-from luggage_planning.async_boundary_capture import AsyncBoundaryCapture, read_stream
-from luggage_planning.diagnostic_action_capture import CaptureNode, EXECUTE, FJT as FJT_NAME, PREFIX
-from luggage_planning.diagnostic_capture_routes import action_remappings
+from luggage_planning.capture.async_boundary_capture import AsyncBoundaryCapture, read_stream
+from luggage_planning.capture.diagnostic_action_capture import CaptureNode, EXECUTE, FJT as FJT_NAME, PREFIX
+from luggage_planning.capture.diagnostic_capture_routes import action_remappings
 
 def cli_remaps(source):
     return [value for pair in action_remappings(source) for value in ('-r', pair[0] + ':=' + pair[1]) ]

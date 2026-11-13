@@ -133,8 +133,8 @@ def candidate_for(model, *, pick_q=None, place_q=None):
     from luggage_planning.joint_operation.planner import OperationCandidate,JointSeedHint
     from luggage_planning.joint_operation.scenes import build_operation_scenes
     from luggage_planning.placement_prior.contracts import Snapshot,Transform
-    from st09_contracts.attachment_geometry import freeze_geometry
-    from st09_contracts.payload_envelope import EnvelopeLimits
+    from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+    from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
     pick_q=pick_q or (0.,-.6,1.2,0.,-.6,math.pi)
     place_q=place_q or (0.,-.4,1.0,0.,-.6,math.pi)
     def pose(q):

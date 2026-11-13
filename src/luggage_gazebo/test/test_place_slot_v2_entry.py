@@ -24,7 +24,7 @@ for entry in (
         sys.path.append(entry)
 
 from motion_occ_eval_driver import MotionOccDriver  # noqa: E402
-from luggage_planning.place_service import pose_message  # noqa: E402
+from luggage_planning.place.place_service import pose_message  # noqa: E402
 
 
 _SCENE = "scene-1"

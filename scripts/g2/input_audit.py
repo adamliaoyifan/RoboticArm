@@ -9,7 +9,7 @@ import sys
 from rclpy.serialization import deserialize_message, serialize_message
 from luggage_msgs.srv import SelectPlacePathV2
 from moveit_msgs.msg import PlanningScene
-from st09_contracts.attachment import invert_transform
+from luggage_planning.planning_contract.attachment import invert_transform
 
 CAP = os.environ["G1_CAPTURE"]
 EXPECT_SHA = "33de07dd031b33bb2ec1ffaf36afbeaffe9d1ce40e08ebfa57e6c9dd0cf3e220"

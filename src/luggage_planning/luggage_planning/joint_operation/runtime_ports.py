@@ -12,7 +12,7 @@ from pathlib import Path
 import threading
 import time
 
-from luggage_planning.attachment_provider import MeasuredAttachmentProvider
+from luggage_planning.attachment.attachment_provider import MeasuredAttachmentProvider
 from luggage_planning.joint_operation.actual_contact import FrozenActualContactPort, RetainedContactObservation
 from luggage_planning.joint_operation.attachment import StationaryOperationAttachmentPort
 from luggage_planning.joint_operation.certification import EndpointModel
@@ -26,8 +26,8 @@ from luggage_planning.joint_operation.motion import MeasuredJointSample
 from luggage_planning.placement_prior.contracts import Transform
 from luggage_planning.placement_prior.snapshot import build_private_snapshot, proposal_scene_hash
 from luggage_planning.placement_prior.requests import admit_placement_targets
-from luggage_planning.trajectory_timing import cartesian_joint_limits
-from luggage_planning.waypoint_generator import PLACE_RELEASE_GAP_M
+from luggage_planning.motion.trajectory_timing import cartesian_joint_limits
+from luggage_planning.place.waypoint_generator import PLACE_RELEASE_GAP_M
 
 
 class OperationRpc:
@@ -348,7 +348,7 @@ class OperationRuntimePorts:
         self.last_owned_world = copy.deepcopy([obj for obj in desired.world.collision_objects if obj.id==self.pickup_id])
 
     def vacuum_request(self,enable):
-        from luggage_planning.place_service import pose_message
+        from luggage_planning.place.place_service import pose_message
         request = self.vacuum_type.Request(enable=enable,request_id=self.plan.identity.request_id,
             scene_revision=self.revision,box_id=self.plan.identity.box_id,generation=self.plan.identity.generation)
         if enable:

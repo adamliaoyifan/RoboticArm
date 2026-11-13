@@ -1,7 +1,7 @@
 """Bounded-allocation implementation of the unchanged legacy map digest.
 
 The compatibility recipe is SHA256 of ``repr(part).encode('utf-8') + NUL``
-for each part, in order (``st09_contracts._base.digest_of``). Only the large
+for each part, in order (``luggage_planning.planning_contract._base.digest_of``). Only the large
 columns tuple is streamed. Its exact Python tuple representation, including
 the empty/singleton cases, remains part of the legacy identity contract.
 This module reads frozen projections; it neither owns nor changes map facts.

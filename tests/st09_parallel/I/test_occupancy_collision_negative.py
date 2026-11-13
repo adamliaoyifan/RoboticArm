@@ -21,11 +21,11 @@ for path in (str(HERE), str(SOURCE), str(ROOT)):
         sys.path.insert(0, path)
 
 import corridor_lattice_score as score  # noqa: E402
-from luggage_planning.moveit_state_validity import (  # noqa: E402
+from luggage_planning.motion.moveit_state_validity import (  # noqa: E402
     SUCTION_INTERFACE_TOUCH_LINKS,
 )
-from luggage_planning.offline_ik import JOINTS, Urdf  # noqa: E402
-from luggage_planning.planning_scene_client import (  # noqa: E402
+from luggage_planning.motion.offline_ik import JOINTS, Urdf  # noqa: E402
+from luggage_planning.motion.planning_scene_client import (  # noqa: E402
     build_attach_scene,
     build_collision_object,
 )
@@ -73,7 +73,7 @@ def _robot_xml(node):
 
 def _acm(node):
     from moveit_msgs.msg import PlanningSceneComponents
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
 
     client = PlanningSceneClient(node)
     if not client.wait_ready(timeout_sec=30.0):

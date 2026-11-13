@@ -20,7 +20,7 @@ for entry in ("src/luggage_planning", "src/luggage_perception"):
         sys.path.append(path)
 
 from luggage_planning.routing.producer import RouteProducer  # noqa: E402
-from st09_contracts.attachment import UNLOADED_ATTACHMENT_DIGEST  # noqa: E402
+from luggage_planning.planning_contract.attachment import UNLOADED_ATTACHMENT_DIGEST  # noqa: E402
 
 JOINTS = ["elfin_joint%d" % i for i in range(1, 7)]
 POSE_VALUES = [0.2, -0.2, 0.3, -0.4, 0.5, -0.6]
@@ -146,7 +146,7 @@ def _ok_certification():
 
 
 def _ok_revalidation(revision=5):
-    from st09_contracts.certification import MapDecision
+    from luggage_planning.planning_contract.certification import MapDecision
 
     return SimpleNamespace(
         decision=MapDecision.CONTINUE, reason=None, map_revision=revision)
@@ -229,7 +229,7 @@ def test_already_there_returns_no_legs_and_promotes_nothing():
 
 
 def test_pass_path_returns_certified_unloaded_legs():
-    from st09_contracts.graph import LoadState
+    from luggage_planning.planning_contract.graph import LoadState
 
     producer = _pass_producer()
     result = _call(producer)

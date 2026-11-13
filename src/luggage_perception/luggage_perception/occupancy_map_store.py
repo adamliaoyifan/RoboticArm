@@ -117,7 +117,7 @@ RESET_LEDGER_CAP = 16
 
 def _digest_of(*parts):
     """Lazy st09_contracts digest (same availability as the planning side)."""
-    from st09_contracts._base import digest_of
+    from luggage_planning.planning_contract._base import digest_of
     return digest_of(*parts)
 
 

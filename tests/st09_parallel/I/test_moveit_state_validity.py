@@ -24,9 +24,9 @@ for entry in (str(ROOT / "src" / "luggage_planning"), str(ROOT)):
     if entry not in sys.path:
         sys.path.append(entry)
 
-from st09_contracts.fixtures import make_timed_trajectory  # noqa: E402
+from luggage_planning.planning_contract.fixtures import make_timed_trajectory  # noqa: E402
 
-from luggage_planning.moveit_state_validity import (  # noqa: E402
+from luggage_planning.motion.moveit_state_validity import (  # noqa: E402
     DECLARED_STRUCTURE_PAIRS,
     PAYLOAD_OBJECT_ID,
     SUCTION_INTERFACE_TOUCH_LINKS,
@@ -34,10 +34,10 @@ from luggage_planning.moveit_state_validity import (  # noqa: E402
     interpolated_positions,
     sample_grid,
 )
-from luggage_planning.planning_scene_client import (  # noqa: E402
+from luggage_planning.motion.planning_scene_client import (  # noqa: E402
     build_attach_scene,
 )
-from luggage_planning.trajectory_certifier import (  # noqa: E402
+from luggage_planning.motion.trajectory_certifier import (  # noqa: E402
     MAX_CERT_SAMPLE_DT_NS,
     TrajectoryCertifier,
 )

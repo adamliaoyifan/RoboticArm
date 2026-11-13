@@ -15,13 +15,13 @@ from helpers import BOX_WDH, PARAMS_FULL, chamfered_surface
 
 from luggage_packing.placement_solver import SnapshotCandidateGenerator
 
-from st09_contracts.fixtures import (
+from luggage_planning.planning_contract.fixtures import (
     make_attachment,
     make_payload,
     make_snapshot,
     snapshot_pair,
 )
-from st09_contracts.planning import (
+from luggage_planning.planning_contract.planning import (
     GeometryVerdict,
     ObservationRequirement,
     PlacementCandidate,

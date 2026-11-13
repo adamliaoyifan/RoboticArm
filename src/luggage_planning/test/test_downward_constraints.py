@@ -17,7 +17,7 @@ import unittest
 
 PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-import luggage_planning.downward_constraint_utils as d  # noqa: E402
+import luggage_planning.geometry.downward_constraint_utils as d  # noqa: E402
 
 
 class TestDownwardMath(unittest.TestCase):

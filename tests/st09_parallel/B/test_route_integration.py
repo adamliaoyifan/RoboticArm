@@ -16,16 +16,16 @@ import math
 
 import pytest
 
-from st09_contracts.attachment import PlaceTarget  # noqa: E402
-from st09_contracts.fixtures import make_attachment, make_snapshot  # noqa: E402
-from st09_contracts.graph import LoadState  # noqa: E402
-from st09_contracts.planning import (  # noqa: E402
+from luggage_planning.planning_contract.attachment import PlaceTarget  # noqa: E402
+from luggage_planning.planning_contract.fixtures import make_attachment, make_snapshot  # noqa: E402
+from luggage_planning.planning_contract.graph import LoadState  # noqa: E402
+from luggage_planning.planning_contract.planning import (  # noqa: E402
     GeometryVerdict,
     PlacementCandidate,
 )
 
 from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter  # noqa: E402
-from luggage_planning.place_targets import GoalSeed  # noqa: E402
+from luggage_planning.place.place_targets import GoalSeed  # noqa: E402
 from luggage_planning.atlas.graph import (  # noqa: E402
     GraphRoutePlanner,
     RouteGraph,
@@ -78,7 +78,7 @@ class TestFullRoute:
                 assert len(row) == 6
 
     def test_route_digests_recompute_from_graph(self, chain):
-        from st09_contracts._base import digest_of
+        from luggage_planning.planning_contract._base import digest_of
         route = chain["planner"].plan_route(
             make_snapshot(1), chain["attachment"], chain["candidate"],
             (chain["target"],), budget_ns=10_000_000_000)

@@ -3,11 +3,11 @@
 import unittest
 
 from luggage_description.container_geometry import cuboid_from_inner_size
-from luggage_planning.occupancy_place_paths import (
+from luggage_planning.place.occupancy_place_paths import (
     OccupancySnapshot,
     occupancy_collision_boxes,
 )
-from luggage_planning.pick_authorization import (
+from luggage_planning.pick.pick_authorization import (
     AUTHORIZE,
     HEIGHT_SOURCE_MEASURED_SUPPORT,
     PickAuthorizationPolicy,

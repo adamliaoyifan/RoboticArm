@@ -25,7 +25,7 @@ BOX_WDH = [0.35, 0.25, 0.20]  # small carryon-class payload
 
 
 def _select_request(chain, request_id, placement, grasp_offset=(0.0, 0.0, 0.10)):
-    from luggage_planning.typed_driver_adapter import (
+    from luggage_planning.deploy.typed_driver_adapter import (
         container_transform_fields,
         grasp_record,
         tcp_record,
@@ -445,7 +445,7 @@ def _tool_pose(chain, frame="world"):
 def _grasp_measured_at_attach(chain, pick, request_id):
     """T_box_tool measured from live TF at the attach contact — the
     same measurement the production driver freezes at attach."""
-    from luggage_planning.typed_driver_adapter import grasp_from_attach
+    from luggage_planning.deploy.typed_driver_adapter import grasp_from_attach
 
     (tool_xyz, tool_quat) = _tool_pose(chain)
     return grasp_from_attach(
@@ -494,7 +494,7 @@ def _loop_select_request(chain, request_id, placement, grasp, near_y):
     """Select request for the loop: the grasp is the one MEASURED at
     attach (not a fabricated profile) and the start TCP is the live TF
     in container_link."""
-    from luggage_planning.typed_driver_adapter import (
+    from luggage_planning.deploy.typed_driver_adapter import (
         container_transform_fields,
         tcp_record,
     )
@@ -551,11 +551,11 @@ def _loop_select_request(chain, request_id, placement, grasp, near_y):
 def _timed_joint_leg(chain, request_id, target_q, duration_s=4.0):
     """One admitted joint_path leg (linear rest-to-rest) for reposition."""
     from luggage_planning.routing.producer import _leg_record
-    from st09_contracts.fixtures import make_timed_trajectory
+    from luggage_planning.planning_contract.fixtures import make_timed_trajectory
 
     from luggage_description.frame_diagnostics import BoundaryContext
-    from luggage_planning.motion_frame_adapters import message_from_admitted
-    from luggage_planning.motion_frame_contracts import (
+    from luggage_planning.motion.motion_frame_adapters import message_from_admitted
+    from luggage_planning.motion.motion_frame_contracts import (
         TARGET_LINK, ExecutionContext,
     )
 
@@ -674,7 +674,7 @@ class TestMockWholeChain:
         whole_chain.record["route_executed"] = True
 
     def test_geometry_mismatch_refuses_named(self, whole_chain):
-        from luggage_planning.typed_driver_adapter import TypedDriverAdapter
+        from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter
 
         chain = whole_chain
         # Same setup as the positive route test (the degenerate mock
@@ -715,7 +715,7 @@ class TestMockWholeChain:
         placement = _compute_placement(chain, "i-route-3")
         if placement is None or not placement.success:
             pytest.skip("placement unavailable for cancel probe")
-        from luggage_planning.typed_driver_adapter import TypedDriverAdapter
+        from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter
 
         adapter = TypedDriverAdapter(chain.node, chain.probe.runtime)
         request = _select_request(chain, "i-route-3", placement)
@@ -788,11 +788,11 @@ class TestMockFullLoop:
         from luggage_description.scene_tf_config_utils import (
             container_inner_floor_z,
         )
-        from luggage_planning.pickup_collision import pickup_collision_aabb
-        from luggage_planning.planning_scene_client import (
+        from luggage_planning.pick.pickup_collision import pickup_collision_aabb
+        from luggage_planning.motion.planning_scene_client import (
             PlanningSceneClient,
         )
-        from luggage_planning.typed_driver_adapter import (
+        from luggage_planning.deploy.typed_driver_adapter import (
             detection_record_from_box,
         )
 

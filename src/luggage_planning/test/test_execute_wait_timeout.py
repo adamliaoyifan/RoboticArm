@@ -8,7 +8,7 @@ legs keep the caller's timeout.
 
 import unittest
 
-from luggage_planning.motion_executor import execute_wait_timeout_sec
+from luggage_planning.motion.motion_executor import execute_wait_timeout_sec
 
 
 def _point(sec, nanosec=0):

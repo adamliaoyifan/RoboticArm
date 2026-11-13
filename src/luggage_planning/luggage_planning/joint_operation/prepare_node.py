@@ -27,7 +27,7 @@ from luggage_description.suction_contact_model import load_suction_contact_model
 from luggage_perception.ros_suction_domain import domain_from_message, domain_to_message, require_matching_detection
 from luggage_description.container_geometry import descriptor_from_scene_config
 from luggage_description.scene_tf_config_utils import load_scene_tf_config
-from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy
+from luggage_planning.attachment.attachment_geometry_policy import load_attachment_geometry_policy
 from luggage_planning.joint_operation.certification import EndpointModel, NativeOperationCertificationPort
 from luggage_planning.joint_operation.connection import NativeSnapshotConnectionPort
 from luggage_planning.joint_operation.contacts import DirectedContactPort
@@ -47,17 +47,17 @@ from luggage_planning.joint_operation.atlas import AtlasOperationHints, load_ope
 from luggage_planning.joint_operation.planner import JointOperationPlanner
 from luggage_planning.joint_operation.preparation import JointOperationPreparation, PreparationInputs
 from luggage_planning.joint_operation.preparation_refresh import LatestMapFinalizer, RefreshCapture
-from luggage_planning.pickup_collision import pickup_collision_aabb
+from luggage_planning.pick.pickup_collision import pickup_collision_aabb
 from luggage_planning.placement_prior.contracts import PlacementCandidate, Transform
 from luggage_planning.placement_prior.requests import enumerate_placements, admit_placement_targets
 from luggage_planning.placement_prior.snapshot import build_private_snapshot, proposal_scene_hash
 from luggage_planning.placement_prior.surface import ConfirmedSurfaceStore
-from luggage_planning.planning_scene_client import BOX_OBJECT_ID
-from luggage_planning.trajectory_timing import cartesian_joint_limits
+from luggage_planning.motion.planning_scene_client import BOX_OBJECT_ID
+from luggage_planning.motion.trajectory_timing import cartesian_joint_limits
 from luggage_planning.joint_operation.preparation_profile import (
     DEFAULT_MAX_PREPARATION_BUDGET_S, PreparationBudget, StageTimings,
 )
-from luggage_planning.waypoint_generator import PLACE_RELEASE_GAP_M, DEFAULT_PLACE_CLEARANCE_Z
+from luggage_planning.place.waypoint_generator import PLACE_RELEASE_GAP_M, DEFAULT_PLACE_CLEARANCE_Z
 
 
 class JointOperationPrepareNode(Node):
@@ -262,7 +262,7 @@ class JointOperationPrepareNode(Node):
         if domain is None or joints is None: raise ValueError('OBSERVATION_OR_JOINTS_UNAVAILABLE')
         if frozen_domain is None:
             self._record('domain_admission_input',domain_to_message(domain))
-            from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
+            from luggage_planning.planning_contract.attachment import ATTACHMENT_MAX_AGE_NS
             if not 0 <= self.get_clock().now().nanoseconds-domain.stamp_ns <= ATTACHMENT_MAX_AGE_NS:
                 raise ValueError('INITIAL_STATIONARY_OBSERVATION_AGE_REFUSED')
         require_matching_detection(domain,request.detection,generation=int(request.generation),
@@ -351,7 +351,7 @@ class JointOperationPrepareNode(Node):
         return self.static_world.admit(self._call(self.scene_client,request,deadline,'scene').scene)
 
     def _placements(self,request,confirmed,volume,*,ranking_geometry=None):
-        from st09_contracts.attachment_geometry import freeze_geometry
+        from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
         dimensions=(request.detection.width,request.detection.depth,request.detection.height)
         mode=getattr(request,'placement_task_mode','')
         if mode not in ('','floor','stack') or (mode and request.slots):

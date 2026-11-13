@@ -8,11 +8,11 @@ from luggage_planning.joint_operation.contracts import seal_operation_plan
 from luggage_planning.joint_operation.execution import (
     JointOperationExecution, ValidationReceipt,
 )
-from st09_contracts.attachment import (
+from luggage_planning.planning_contract.attachment import (
     ATTACHMENT_SCHEMA_VERSION, AttachmentRecord, AttachmentSourceKind,
     AttachmentValidity,
 )
-from st09_contracts.attachment_geometry import freeze_geometry
+from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
 from test_joint_operation_contracts import example_plan
 
 

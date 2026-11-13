@@ -333,7 +333,7 @@ def main():
         stdout=open(contact_file, "w"), stderr=subprocess.DEVNULL)
 
     # 3. freeze the physical relation (production module, observed pose)
-    from luggage_planning.sim_physical_attachment import (
+    from luggage_planning.attachment.sim_physical_attachment import (
         freeze_physical_relation)
     relation = freeze_physical_relation(
         MODEL, 0, {"position": px, "quaternion_xyzw": pq},
@@ -342,7 +342,7 @@ def main():
         json.dump(relation, fh, indent=1)
 
     # 4. production backend + 30 Hz follow thread
-    from luggage_planning.vacuum_backend import SimVacuumBackend
+    from luggage_planning.attachment.vacuum_backend import SimVacuumBackend
     backend = SimVacuumBackend(
         diag.gz, NoopScene(), follow_rate_hz=30.0,
         carry_filter=lambda on: True)

@@ -312,7 +312,7 @@ def _second_slots(surface, placed_position, placed_quat, placed_wdh,
 
 
 def _world_box(container_tf, position, quaternion):
-    from st09_contracts.attachment import compose_transform
+    from luggage_planning.planning_contract.attachment import compose_transform
 
     return compose_transform(
         tuple(float(v) for v in container_tf["translation"]),
@@ -328,7 +328,7 @@ def _load_atlas(node, scene_path):
         load_atlas_runtime,
         load_runtime_atlas,
     )
-    from luggage_planning.urdf_identity import UrdfIdentity
+    from luggage_planning.deploy.urdf_identity import UrdfIdentity
 
     cfg_path = os.environ.get("SCAN_ATLAS_CONFIG") or os.path.join(
         ROOT, "src/luggage_planning/config/atlas_runtime.yaml")
@@ -438,7 +438,7 @@ def main():
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_perception.eval.isolated_domain import isolated_replay_env
     from luggage_planning.routing.lattice import LatticeStateChecker
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
     from luggage_planning.routing.producer import attempt_tier  # noqa: F401
 
     if os.environ.get("SCAN_OUT"):

@@ -19,9 +19,9 @@ for entry in (str(PKG_DIR), str(PKG_DIR / "scripts")):
     if entry not in sys.path:
         sys.path.insert(0, entry)
 
-from luggage_planning import place_service  # noqa: E402
+from luggage_planning.place import place_service  # noqa: E402
 from luggage_planning.routing.producer import _leg_record  # noqa: E402
-from st09_contracts.fixtures import make_timed_trajectory  # noqa: E402
+from luggage_planning.planning_contract.fixtures import make_timed_trajectory  # noqa: E402
 
 JOINTS = tuple("elfin_joint%d" % i for i in range(1, 7))
 
@@ -43,10 +43,10 @@ class RouteLegViews(unittest.TestCase):
 
     def test_motion_messages_admit_as_typed_joint_paths(self):
         from luggage_description.frame_diagnostics import BoundaryContext
-        from luggage_planning.motion_frame_adapters import (
+        from luggage_planning.motion.motion_frame_adapters import (
             message_from_admitted,
         )
-        from luggage_planning.motion_frame_contracts import (
+        from luggage_planning.motion.motion_frame_contracts import (
             TARGET_LINK, ExecutionContext,
         )
         boundary = BoundaryContext(
@@ -60,7 +60,7 @@ class RouteLegViews(unittest.TestCase):
             m.segment_type == "joint_path" for m in messages))
 
     def test_knot_carriers_are_gone(self):
-        import luggage_planning.motion_executor as executor
+        import luggage_planning.motion.motion_executor as executor
         self.assertFalse(hasattr(place_service, "fill_select_response"))
         self.assertTrue(callable(getattr(
             place_service, "fill_select_response_route")))

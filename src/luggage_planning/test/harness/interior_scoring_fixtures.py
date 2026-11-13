@@ -2,7 +2,7 @@
 
 from __future__ import division
 
-from luggage_planning.interior_view_scorer import (
+from luggage_planning.geometry.interior_view_scorer import (
     FREE,
     OCCUPIED,
     UNKNOWN,

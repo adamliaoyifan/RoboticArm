@@ -85,7 +85,7 @@ from luggage_perception.cargo_view_integration import (
     optical_axis_angle_rad,
     stamp_to_sec,
 )
-from luggage_planning.container_aim_utils import look_at_quaternion
+from luggage_planning.geometry.container_aim_utils import look_at_quaternion
 
 _SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 if _SCRIPTS not in sys.path:

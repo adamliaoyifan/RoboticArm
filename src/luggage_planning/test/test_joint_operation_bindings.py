@@ -12,7 +12,7 @@ from luggage_planning.joint_operation.adapters import (
 from luggage_planning.joint_operation.contracts import (
     OPERATION_JOINTS, seal_operation_plan,
 )
-from luggage_planning.motion_frame_contracts import CANONICAL_JOINTS
+from luggage_planning.motion.motion_frame_contracts import CANONICAL_JOINTS
 from test_joint_operation_contracts import example_plan
 
 

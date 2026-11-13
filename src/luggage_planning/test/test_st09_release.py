@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from luggage_msgs.srv import VacuumCommandV2
-from luggage_planning.attachment_frame_adapters import handle_vacuum_command_v2
+from luggage_planning.attachment.attachment_frame_adapters import handle_vacuum_command_v2
 
 
 def fixture():
@@ -74,9 +74,9 @@ def _tool_pose(stamp_ns, position, request_id="attach"):
 def test_attach_locks_live_tool_not_detection_stamp():
     """F18 freeze uses live TCP at attach, not pickup_observe TF."""
     from luggage_msgs.msg import DetectedLuggage
-    from luggage_planning.attachment_frame_contracts import compose_box_world
-    from luggage_planning.pick_authorization import HEIGHT_SOURCE_MEASURED_SUPPORT
-    from luggage_planning.place_service import pose_message
+    from luggage_planning.attachment.attachment_frame_contracts import compose_box_world
+    from luggage_planning.pick.pick_authorization import HEIGHT_SOURCE_MEASURED_SUPPORT
+    from luggage_planning.place.place_service import pose_message
 
     detection_stamp = 1000
     attach_stamp = 2000
@@ -137,8 +137,8 @@ def test_attach_locks_live_tool_not_detection_stamp():
     assert err_xy < 0.02
     # The observe-stamp tool would have frozen a ~0.22 m lateral offset.
     observe_record = dict(record)
-    from luggage_planning.vacuum_attach_utils import invert_transform
-    from luggage_planning.pick_frame_contracts import grasp_transform
+    from luggage_planning.attachment.vacuum_attach_utils import invert_transform
+    from luggage_planning.pick.pick_frame_contracts import grasp_transform
     actual = grasp_transform(
         box_xyz, [0.0, 0.0, 0.0, 1.0], observe_xyz, tool_quat, "scene")
     tool_box = invert_transform(actual["translation"], actual["quaternion_xyzw"])

@@ -18,13 +18,13 @@ import shutil
 import pytest
 import yaml
 
-from luggage_planning import deploy_profile as dp
+from luggage_planning.deploy import deploy_profile as dp
 from luggage_planning.atlas.runtime import (
     load_atlas_runtime,
     load_runtime_atlas,
     resolve_atlas_files,
 )
-from luggage_planning.deploy_graph_assets import (
+from luggage_planning.deploy.deploy_graph_assets import (
     expected_static_identity,
     load_deploy_graph,
     validate_graph_structure,

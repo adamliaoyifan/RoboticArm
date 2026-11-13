@@ -4,8 +4,8 @@ import math
 
 import pytest
 
-from st09_contracts.attachment_geometry import freeze_geometry
-from st09_contracts.payload_envelope import EnvelopeLimits
+from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
 
 
 def test_input_snapshot_and_consumers_never_accumulate_margin():
@@ -50,7 +50,7 @@ def test_eccentric_rotated_pose_roundtrip():
 
 
 def test_tilted_measured_attachment_keeps_nominal_pose_and_roundtrip():
-    from st09_contracts.attachment import transform_point
+    from luggage_planning.planning_contract.attachment import transform_point
 
     tool_box = ((.18, -.09, .1), (math.cos(.02), 0., 0., math.sin(.02)))
     geometry = freeze_geometry((.5, .3, .2), *tool_box,

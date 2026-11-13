@@ -271,14 +271,14 @@ def main():
             rss_peak_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
         import importlib
         import sys
-        for name in ('luggage_description','luggage_msgs','st09_contracts'):
+        for name in ('luggage_description','luggage_msgs','luggage_planning.planning_contract'):
             path = Path(importlib.import_module(name).__file__).resolve()
             if not path.is_relative_to(install):
                 raise RuntimeError('mixed application install: '+str(path))
         manifest['numpy_version'] = np.__version__
         manifest['loaded_artifacts'] = {name:dict(path=str(Path(mod.__file__).resolve()),
             sha256=hashlib.sha256(Path(mod.__file__).read_bytes()).hexdigest())
-            for name,mod in list(sys.modules.items()) if name.startswith(('luggage_','st09_contracts'))
+            for name,mod in list(sys.modules.items()) if name.startswith('luggage_')
             and getattr(mod,'__file__',None) and Path(mod.__file__).is_file()}
         save(out/'ready.json', manifest)
         if a.write_load_hz > 0:

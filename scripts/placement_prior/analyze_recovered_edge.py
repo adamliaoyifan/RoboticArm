@@ -12,7 +12,7 @@ import numpy as np
 from numpy.polynomial import Polynomial
 from rclpy.serialization import deserialize_message
 from moveit_msgs.msg import RobotTrajectory
-from luggage_planning.trajectory_timing import time_parameterize_cartesian, cartesian_joint_limits
+from luggage_planning.motion.trajectory_timing import time_parameterize_cartesian, cartesian_joint_limits
 
 
 def extrema(poly):

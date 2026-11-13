@@ -4,7 +4,7 @@
 Rebuild first (clean env, only /opt/ros/humble sourced):
 
     colcon build --build-base build-st09 --install-base install-st09 \
-        --packages-select st09_contracts luggage_perception \
+        --packages-select luggage_perception \
         luggage_planning luggage_gazebo
 
 Then run this check. For every Python or launch file under the selected
@@ -30,7 +30,6 @@ PACKAGES = {
     "luggage_planning": "src/luggage_planning",
     "luggage_gazebo": "src/luggage_gazebo",
 }
-CONTRACTS_SRC = "st09_contracts"
 SUFFIXES = (".py",)
 SKIP_PARTS = ("test", "__pycache__", "ros1_reference")
 
@@ -96,21 +95,6 @@ def main():
             elif sha256(found) != row["src_sha256"]:
                 problems.append("differs %s/%s" % (package, relative))
             rows.append(row)
-    contracts = root / CONTRACTS_SRC
-    for path in sorted(contracts.rglob("*.py")):
-        relative = path.relative_to(contracts)
-        if "__pycache__" in relative.parts:
-            continue
-        found = next(iter((install / "st09_contracts").glob(
-            "local/lib/python*/dist-packages/st09_contracts/%s"
-            % relative)), None)
-        row = {"package": "st09_contracts", "file": str(relative),
-               "src_sha256": sha256(path), "installed": str(found or "")}
-        if found is None:
-            problems.append("missing st09_contracts/%s" % relative)
-        elif sha256(found) != row["src_sha256"]:
-            problems.append("differs st09_contracts/%s" % relative)
-        rows.append(row)
     manifest = {
         "commit": git(root, "rev-parse", "HEAD"),
         "dirty_files": len(git(root, "status", "--porcelain").splitlines()),

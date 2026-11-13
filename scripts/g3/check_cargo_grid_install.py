@@ -21,7 +21,7 @@ def main():
         'luggage_perception':['luggage_perception/cargo_grid_projection.py','luggage_perception/cargo_volume_mapper.py',
                              'luggage_perception/cargo_volume_snapshot.py','luggage_perception/occupancy_map_store.py','scripts/cargo_volume_mapper_node.py'],
         'luggage_packing':['scripts/placement_planner_node.py'],
-        'luggage_planning':['luggage_planning/placement_prior_volume.py','luggage_planning/hardware_placement_launch.py','launch/hardware_pick.launch.py'],
+        'luggage_planning':['luggage_planning/placement_prior_volume.py','luggage_planning/deploy/hardware_placement_launch.py','launch/hardware_pick.launch.py'],
         'luggage_gazebo':['launch/sim_world.launch.py']}
     hashes={}
     for package,paths in files.items():

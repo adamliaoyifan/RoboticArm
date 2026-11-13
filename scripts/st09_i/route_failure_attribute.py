@@ -27,8 +27,7 @@ for _path in (
         os.path.join(ROOT, "src", "luggage_packing", "scripts"),
         os.path.join(ROOT, "src", "luggage_planning"),
         os.path.join(ROOT, "src", "luggage_description"),
-        os.path.join(ROOT, "st09_contracts"),
-):
+        ):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
@@ -250,8 +249,8 @@ def collide():
     from luggage_perception.eval.isolated_domain import isolated_replay_env
     from luggage_planning.routing.grid_search import ROUTE_TOTAL_WALL_S
     from luggage_planning.routing.lattice import LatticeStateChecker
-    from luggage_planning.planning_scene_client import PlanningSceneClient
-    from luggage_planning.typed_driver_adapter import container_transform_fields
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
+    from luggage_planning.deploy.typed_driver_adapter import container_transform_fields
     import rclpy
     from rclpy.executors import MultiThreadedExecutor
     from rclpy.node import Node

@@ -15,8 +15,8 @@ from luggage_perception.cargo_view_integration import (
     planning_snapshot_from_surface,
 )
 
-from st09_contracts.fixtures import make_snapshot
-from st09_contracts.planning import ObservationRequirement
+from luggage_planning.planning_contract.fixtures import make_snapshot
+from luggage_planning.planning_contract.planning import ObservationRequirement
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
 

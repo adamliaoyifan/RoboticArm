@@ -280,7 +280,7 @@ def test_node_runtime_scope_survives_async_effect_boundary(action_runtime):
 def test_typed_client_uses_scope_only_for_complete_unloaded_certificate(action_runtime):
     import threading
     from luggage_description.ros_frame_bindings.runtime import NodeRuntime
-    from luggage_planning.typed_driver_adapter import TypedDriverAdapter
+    from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter
     from luggage_msgs.msg import MotionSegmentV2
     actions, reports, providers, _now = action_runtime
     for peer, report in reports.items():

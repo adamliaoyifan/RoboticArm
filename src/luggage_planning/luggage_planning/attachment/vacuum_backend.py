@@ -1,0 +1,397 @@
+#!/usr/bin/env python3
+"""Vacuum backend abstraction (no ROS): attach state machine + sim follow.
+
+Three layers per the plan:
+- ``VacuumBackend`` ABC - the hardware/sim contract.
+- ``HardwareVacuumBackend`` - box DO0/DO1 + DI0 (injected IO, no ROS).
+- ``SimVacuumBackend`` - kinematic follow via an injected ``GzPoseClient``
+  (so the state machine is unit-testable with a mock) plus an injected
+  planning-scene attacher.
+- ``StubVacuumBackend`` - state-only, for environments without Gazebo.
+
+The follow loop itself (timer, TF lookups) lives in the node layer; this
+module owns the *decisions*: what attach/detach do to state, how the box
+pose is computed from the locked offset.
+"""
+
+from __future__ import division
+
+import json
+import math
+import os
+import time
+
+
+def compose_pose(panel_xyz, panel_quat, offset_xyz, offset_quat):
+    """Box pose in world = panel pose * locked relative offset.
+
+    ``offset_*`` is the box pose expressed in the panel frame (captured at
+    attach time). Uses the same quaternion math as vacuum_attach_utils.
+    """
+    from luggage_planning.attachment.vacuum_attach_utils import (
+        compose_transform,
+    )
+    return compose_transform(panel_xyz, panel_quat, offset_xyz, offset_quat)
+
+
+def invert_pose(xyz, quat):
+    from luggage_planning.attachment.vacuum_attach_utils import invert_transform
+    return invert_transform(xyz, quat)
+
+
+def relative_offset(panel_xyz, panel_quat, box_xyz, box_quat):
+    """Offset of the box in the panel frame (captured at attach)."""
+    inv_xyz, inv_quat = invert_pose(panel_xyz, panel_quat)
+    return compose_pose(inv_xyz, inv_quat, box_xyz, box_quat)
+
+
+
+class VacuumBackend(object):
+    """Contract for attach/detach implementations."""
+
+    def attach(self, context):
+        """Bind the box. ``context`` carries model name, current panel/box
+        poses and the planning-scene handle. Returns (ok, message)."""
+        raise NotImplementedError
+
+    def detach(self, context):
+        """Release the box. Returns (ok, message)."""
+        raise NotImplementedError
+
+    def is_attached(self):
+        raise NotImplementedError
+
+    def follow_step(self, panel_xyz, panel_quat):
+        """Optional kinematic follow. Stub/hardware default is a no-op."""
+        del panel_xyz, panel_quat
+        return True, ""
+
+
+class HardwareVacuumBackend(VacuumBackend):
+    """实机代码 (site / real-cell). Not part of the Gazebo simulation stack.
+
+    Real suction cup: box DO0=pump, DO1=blow-off, DI0=sealed.
+    Measured 2026-09-09: only DO0=1/DO1=0 seals (DI0 rise ~6.3 s).
+    Both-on never seals. Release is DO0=0 then DO1 pulse; DI0 falls in
+    tens of milliseconds with blow-off.
+
+    ``io`` must provide ``set_do(bit, value) -> (ok, msg)``, ``di0()``,
+    ``sleep(dt)``, and ``now()``.
+    """
+
+    def __init__(
+            self, io, seal_timeout_sec=8.0, seal_poll_sec=0.1,
+            release_timeout_sec=1.0, blowoff_hold_sec=0.1):
+        self._io = io
+        self.seal_timeout_sec = float(seal_timeout_sec)
+        self.seal_poll_sec = float(seal_poll_sec)
+        self.release_timeout_sec = float(release_timeout_sec)
+        self.blowoff_hold_sec = float(blowoff_hold_sec)
+        self._attached = False
+        self.last_error = ""
+
+    def is_attached(self):
+        return self._attached
+
+    def follow_step(self, panel_xyz, panel_quat):
+        del panel_xyz, panel_quat
+        di0 = self._io.di0()
+        if di0 is not None:
+            self._attached = bool(di0)
+        return True, ""
+
+    def attach(self, context):
+        if isinstance(context, dict) and context.get("attach_record") is not None:
+            self.last_attach_record = context["attach_record"]
+        ok, message = self._set_grasp()
+        if not ok:
+            self.last_error = message
+            self._release()
+            return False, "VACUUM_BACKEND_ERROR: %s" % message
+        t0 = self._io.now()
+        while (self._io.now() - t0) < self.seal_timeout_sec:
+            if self._io.di0() == 1:
+                self._attached = True
+                elapsed = self._io.now() - t0
+                return True, "sealed in %.2fs" % elapsed
+            self._io.sleep(self.seal_poll_sec)
+        self.last_error = "VACUUM_SEAL_TIMEOUT"
+        self._release()
+        self._attached = False
+        return False, "VACUUM_SEAL_TIMEOUT after %.1fs" % self.seal_timeout_sec
+
+    def detach(self, context):
+        if isinstance(context, dict) and context.get("detach_record") is not None:
+            self.last_detach_record = context["detach_record"]
+        ok, message = self._release()
+        self._attached = False
+        if not ok:
+            self.last_error = message
+            return False, "VACUUM_BACKEND_ERROR: %s" % message
+        return True, message or "released"
+
+    def _set_grasp(self):
+        # Never 11: blow-off off first, then hold pump.
+        ok, message = self._io.set_do(1, 0)
+        if not ok:
+            return False, message
+        return self._io.set_do(0, 1)
+
+    def _release(self):
+        ok, message = self._io.set_do(0, 0)
+        if not ok:
+            return False, message
+        ok, message = self._io.set_do(1, 1)
+        if not ok:
+            return False, message
+        t0 = self._io.now()
+        while (self._io.now() - t0) < self.release_timeout_sec:
+            if self._io.di0() == 0:
+                break
+            self._io.sleep(min(self.seal_poll_sec, 0.05))
+        self._io.sleep(self.blowoff_hold_sec)
+        return self._io.set_do(1, 0)
+
+
+class StubVacuumBackend(VacuumBackend):
+    """State-only backend (tests, no-Gazebo environments)."""
+
+    def __init__(self):
+        self._attached = False
+
+    def attach(self, context):
+        self._attached = True
+        return True, "stub attached"
+
+    def detach(self, context):
+        self._attached = False
+        return True, "stub detached"
+
+    def is_attached(self):
+        return self._attached
+
+
+class SimVacuumBackend(VacuumBackend):
+    """Simulation backend: gz kinematic follow + planning-scene attach.
+
+    ``gz_client`` must expose ``set_model_pose(model_name, xyz, quat)``
+    (the node wraps the bridged /world/<w>/set_pose service).
+    ``scene`` must expose ``attach_pickup_box(...)`` /
+    ``detach_and_remove(...)`` (planning_scene_client). Both are injected
+    so the state machine runs under plain pytest with mocks.
+
+    Privilege boundary: ``context["scene_box_size"]`` is the MoveIt attach
+    geometry and MUST be the perception-measured size — never the GT spawn
+    size (docs/architecture/privilege_boundary.md). The GT box pose feeds
+    only the kinematic follow offset.
+    """
+
+    def __init__(self, gz_client, scene, follow_rate_hz=30.0, carry_filter=None,
+                 physical_relation_provider=None, physical_release_provider=None,
+                 rigid_physics_attachment=False):
+        self._gz = gz_client
+        self._scene = scene
+        self.follow_rate_hz = float(follow_rate_hz)
+        self._rigid_physics_attachment = bool(rigid_physics_attachment)
+        # ``carry_filter(True)`` excludes p04 from the carried box only.
+        # None in unit tests, which have no Gazebo. The sim node always sets it.
+        self._carry_filter = carry_filter
+        self._physical_relation_provider = physical_relation_provider
+        self._physical_release_provider = physical_release_provider
+        self._physical_release_failure = ''
+        self._attached = False
+        self._model_name = None
+        self._offset_xyz = None
+        self._offset_quat = None
+        self._planning_relation = None
+        self._physical_relation = None
+        self.last_attach_record = None
+        self.last_error = ""
+
+    def is_attached(self):
+        return self._attached
+
+    def planning_box_pose(self, tool_xyz, tool_quat):
+        """Measured relation only. Physics ground truth is not read here."""
+        from luggage_planning.attachment.attachment_frame_contracts import compose_box_world
+        if not self._planning_relation:
+            return None
+        return compose_box_world(self._planning_relation, tool_xyz, tool_quat)
+
+    def attach(self, context):
+        if self._attached:
+            return True, "already attached"
+        record = context.get("attach_record") if isinstance(context, dict) else None
+        if record is not None:
+            physical = context.get("physical_relation")
+            if self._physical_relation_provider is not None:
+                try:
+                    physical = self._physical_relation_provider(
+                        context['model_name'], record['generation'], context['tool_pose'])
+                    if physical is None:
+                        raise ValueError('missing physical relation')
+                except Exception as exc:
+                    self.last_error = str(exc)
+                    return False, 'PHYSICAL_ATTACHMENT_UNAVAILABLE: %s' % exc
+            self.last_attach_record = record
+            self._planning_relation = record
+            self._physical_relation = physical
+            self._model_name = context.get("model_name")
+            try:
+                geometry = record.get('conservative_geometry')
+                if geometry is None:
+                    raise ValueError('ATTACHMENT_GEOMETRY_MISSING')
+                scene_position, scene_quaternion = geometry.conservative_pose_at_box(
+                    record['box_pose']['position'], record['box_pose']['quaternion_xyzw'])
+                scene_ok, scene_msg = self._scene.attach_pickup_box(
+                    self._model_name, scene_position, scene_quaternion,
+                    geometry.conservative.dimensions_wdh,
+                    context.get("attach_link", "suction_contact_frame"))
+            except Exception as exc:  # noqa: BLE001 - backend boundary
+                self.last_error = str(exc)
+                return False, "VACUUM_BACKEND_ERROR: %s" % exc
+            if not scene_ok:
+                self.last_error = scene_msg
+                return False, "VACUUM_BACKEND_ERROR: scene %s" % scene_msg
+            filtered, filter_msg = self._enable_p04_filter()
+            if not filtered:
+                return False, filter_msg
+            self._attached = True
+            return True, "attached measured %s" % self._model_name
+        try:
+            self._model_name = context["model_name"]
+            self._offset_xyz, self._offset_quat = relative_offset(
+                context["panel_xyz"], context["panel_quat"],
+                context["box_xyz"], context["box_quat"])
+            scene_ok, scene_msg = self._scene.attach_pickup_box(
+                context["model_name"], context["box_xyz"],
+                context["box_quat"], context["scene_box_size"],
+                context.get("attach_link", "suction_contact_frame"))
+            if not scene_ok:
+                self.last_error = scene_msg
+                return False, "VACUUM_BACKEND_ERROR: scene %s" % scene_msg
+        except Exception as exc:  # noqa: BLE001 - backend boundary
+            self.last_error = str(exc)
+            return False, "VACUUM_BACKEND_ERROR: %s" % exc
+        filtered, filter_msg = self._enable_p04_filter()
+        if not filtered:
+            return False, filter_msg
+        self._attached = True
+        return True, "attached %s (follow %.1f Hz)" % (
+            self._model_name, self.follow_rate_hz)
+
+    def _enable_p04_filter(self):
+        if self._carry_filter is None:
+            return True, ""
+        try:
+            ok, msg = self._carry_filter(True)
+        except Exception as exc:  # noqa: BLE001 - backend boundary
+            ok, msg = False, str(exc)
+        if ok:
+            return True, msg
+        try:
+            self._scene.detach_and_remove(self._model_name)
+        except Exception:  # noqa: BLE001
+            pass
+        self._planning_relation = None
+        self._physical_relation = None
+        self.last_error = msg
+        return False, "P04_CARRY_FILTER: %s" % msg
+
+    def follow_step(self, panel_xyz, panel_quat):
+        """One follow tick: recompute the box pose and push it to gz.
+
+        Called by the node's timer at ``follow_rate_hz``. No-op unless
+        attached. Returns (ok, message).
+        """
+        if not self._attached or self._model_name is None:
+            return True, ""
+        if self._rigid_physics_attachment:
+            return True, 'physics fixed joint owns attachment'
+        try:
+            if self._physical_relation is not None:
+                from luggage_planning.attachment.attachment_frame_contracts import compose_box_world
+                xyz, quat = compose_box_world(
+                    self._physical_relation, panel_xyz, panel_quat)
+            elif self._planning_relation is not None:
+                # v2 attach stores the measured tool-to-box relation and does
+                # not keep a GT follow offset. Track that relation.
+                posed = self.planning_box_pose(panel_xyz, panel_quat)
+                if not posed:
+                    return False, "follow error: no planning relation"
+                xyz, quat = posed
+            else:
+                xyz, quat = compose_pose(
+                    panel_xyz, panel_quat, self._offset_xyz, self._offset_quat)
+            ok, msg = self._gz.set_model_pose(self._model_name, xyz, quat)
+            self._write_follow_trace(
+                panel_xyz, panel_quat, xyz, quat, bool(ok), msg)
+            if not ok:
+                return False, msg
+        except Exception as exc:  # noqa: BLE001
+            return False, "follow error: %s" % exc
+        return True, ""
+
+    def _write_follow_trace(self, panel_xyz, panel_quat, box_xyz, box_quat,
+                            ok, message):
+        """Append one set_pose tick when ``ELFIN_FOLLOW_TRACE`` is set.
+
+        Observation only. A write failure must not change the follow.
+        """
+        path = os.environ.get("ELFIN_FOLLOW_TRACE", "").strip()
+        if not path:
+            return
+        try:
+            row = {
+                "wall": time.time(),
+                "mono": time.monotonic(),
+                "model": self._model_name,
+                "ok": bool(ok),
+                "message": str(message or ""),
+                "panel_xyz": [float(v) for v in panel_xyz],
+                "panel_quat": [float(v) for v in panel_quat],
+                "box_xyz": [float(v) for v in box_xyz],
+                "box_quat": [float(v) for v in box_quat],
+            }
+            with open(path, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(row) + "\n")
+        except (OSError, TypeError, ValueError):
+            return
+
+    def _unlock_follow(self):
+        """Stop kinematic follow immediately. Scene detach is separate."""
+        self._attached = False
+        self._planning_relation = None
+        self._physical_relation = None
+        self._offset_xyz = None
+        self._offset_quat = None
+
+    def detach(self, context):
+        if self._physical_release_failure:
+            return False,self._physical_release_failure
+        if not self._attached:
+            return True, "not attached"
+        model = self._model_name
+        generation=(self._physical_relation or {}).get('generation')
+        # Unlock at the release command so a later retreat TCP cannot keep
+        # composing the frozen grasp onto the payload.
+        self._unlock_follow()
+        self._model_name = None
+        try:
+            scene_ok, scene_msg = self._scene.detach_and_remove(model)
+        except Exception as exc:  # noqa: BLE001
+            self.last_error = str(exc)
+            return False, "VACUUM_BACKEND_ERROR: detach %s" % exc
+        if not scene_ok:
+            self.last_error = scene_msg
+            return False, "VACUUM_BACKEND_ERROR: detach %s" % scene_msg
+        if self._physical_release_provider is not None:
+            try:
+                released,message=self._physical_release_provider(model,generation)
+            except Exception as error:
+                released,message=False,str(error)
+            if released is not True:
+                self._physical_release_failure='SIM_PHYSICAL_RELEASE_UNRESOLVED:'+message
+                return False,self._physical_release_failure
+        # Leave the box where it is; physics takes over.
+        return True, "detached %s" % model

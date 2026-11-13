@@ -11,15 +11,15 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from luggage_description.scene_tf_config_utils import load_scene_tf_config
-from luggage_planning.geometry_view_generator import generate_interior_downward_views
-from luggage_planning.interior_view_scorer import CameraIntrinsics
+from luggage_planning.geometry.geometry_view_generator import generate_interior_downward_views
+from luggage_planning.geometry.interior_view_scorer import CameraIntrinsics
 from luggage_planning.joint_operation.certification import _wire_leg
 from luggage_planning.joint_operation.connection import NativeSnapshotConnectionPort
 from luggage_planning.joint_operation.contracts import OPERATION_JOINTS,JointKnot,OperationLeg
 from luggage_planning.joint_operation.ik import NativeSnapshotIKPort
 from luggage_planning.joint_operation.polyline_timing import time_parameterize_joint_polyline
 from luggage_planning.joint_operation.release_coverage import projected_missing_columns,camera_aimed_at_missing
-from luggage_planning.moveit_state_validity import MAX_CERT_SAMPLE_DT_NS
+from luggage_planning.motion.moveit_state_validity import MAX_CERT_SAMPLE_DT_NS
 from luggage_planning.placement_prior.contracts import Transform
 
 

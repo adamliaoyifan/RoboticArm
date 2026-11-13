@@ -646,7 +646,7 @@ class CargoVolumeMapperNode(Node):
     def _v1_operation_id(endpoint, center, size, yaw):
         """v1 calls carry no idempotency key: derive one from the
         normalized content so a literal retry maps to one transaction."""
-        from st09_contracts._base import digest_of
+        from luggage_planning.planning_contract._base import digest_of
         return "v1:%s:%s" % (endpoint, digest_of(
             tuple(float(v) for v in center),
             tuple(float(v) for v in size), float(yaw)))

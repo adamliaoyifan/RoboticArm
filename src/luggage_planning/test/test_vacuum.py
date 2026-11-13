@@ -5,14 +5,14 @@ import unittest
 
 import pytest
 
-from luggage_planning.vacuum_backend import (
+from luggage_planning.attachment.vacuum_backend import (
     HardwareVacuumBackend,
     SimVacuumBackend,
     StubVacuumBackend,
     relative_offset,
     compose_pose,
 )
-from luggage_planning.vacuum_gate import (
+from luggage_planning.attachment.vacuum_gate import (
     VACUUM_NOT_IN_CONTACT,
     VACUUM_NO_BOX,
     VACUUM_RETENTION_MARGIN,
@@ -364,7 +364,7 @@ class TestPlanningSceneMessages(unittest.TestCase):
 
     def test_build_shapes(self):
         pytest.importorskip("moveit_msgs")
-        from luggage_planning.planning_scene_client import (
+        from luggage_planning.motion.planning_scene_client import (
             build_add_scene,
             build_attach_scene,
             build_detach_scene,
@@ -393,7 +393,7 @@ class TestPlanningSceneMessages(unittest.TestCase):
 
     def test_mesh_collision_object_casts_int_indices(self):
         pytest.importorskip("moveit_msgs")
-        from luggage_planning.planning_scene_client import (
+        from luggage_planning.motion.planning_scene_client import (
             build_mesh_collision_object,
             mesh_msg_from_arrays,
         )
@@ -412,7 +412,7 @@ class TestPlanningSceneMessages(unittest.TestCase):
         import struct
         import tempfile
         pytest.importorskip("moveit_msgs")
-        from luggage_planning.planning_scene_client import (
+        from luggage_planning.motion.planning_scene_client import (
             load_stl_mesh_msg,
             static_sync_failure_is_permanent,
         )
@@ -456,7 +456,7 @@ class TestPlanningSceneMessages(unittest.TestCase):
     def test_acm_pair_roundtrip(self):
         pytest.importorskip("moveit_msgs")
         from moveit_msgs.msg import AllowedCollisionMatrix
-        from luggage_planning.planning_scene_client import (
+        from luggage_planning.motion.planning_scene_client import (
             acm_pair_allowed,
             set_acm_pair,
         )
@@ -471,7 +471,7 @@ class TestPlanningSceneMessages(unittest.TestCase):
     def test_apply_wraps_planning_scene_request(self):
         pytest.importorskip("moveit_msgs")
         from moveit_msgs.srv import ApplyPlanningScene
-        from luggage_planning.planning_scene_client import (
+        from luggage_planning.motion.planning_scene_client import (
             PlanningSceneClient,
             build_add_scene,
         )
@@ -489,7 +489,7 @@ class TestPlanningSceneMessages(unittest.TestCase):
                 if isinstance(self._request, GetPlanningScene.Request):
                     from moveit_msgs.msg import (
                         AllowedCollisionMatrix, PlanningScene)
-                    from luggage_planning.planning_scene_client import (
+                    from luggage_planning.motion.planning_scene_client import (
                         set_acm_pair,
                     )
 

@@ -31,10 +31,10 @@ from luggage_planning.routing.moveit_edge_adapter import (
     CARTESIAN_MIN_FRACTION,
     synthesize_waypoints,
 )
-from luggage_planning.offline_ik import load_urdf, refine_to_pose
+from luggage_planning.motion.offline_ik import load_urdf, refine_to_pose
 from luggage_planning.atlas.graph import RouteGraph, make_offline_fk
-from st09_contracts.graph import GraphEdge, LoadState
-from st09_contracts.fixtures import make_timed_trajectory
+from luggage_planning.planning_contract.graph import GraphEdge, LoadState
+from luggage_planning.planning_contract.fixtures import make_timed_trajectory
 
 RUN02 = (
     "docs/status/evidence/frame_migration/ST09-parallel-I-s5/m3/"

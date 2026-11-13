@@ -90,7 +90,7 @@ def _load_one(npz_path, reachable_only=False):
 def _default_scene_tf():
     return os.path.abspath(os.path.join(
         os.path.dirname(__file__), "..", "..", "luggage_description",
-        "config", "scene_tf.yaml"))
+        "config", "scene_tf_deploy_update.yaml"))
 
 
 def _aabb_edges(hx, hy, z0, z1):

@@ -58,7 +58,7 @@ from luggage_msgs.srv import (
 )
 
 from luggage_perception import ros_message_adapters as adapters
-from luggage_planning.pick_authorization import (
+from luggage_planning.pick.pick_authorization import (
     DEFAULT_MAX_ATTEMPTS,
     DEFAULT_MAX_ELAPSED_SEC,
     DEFAULT_WAIT_PERIOD_SEC,
@@ -66,8 +66,8 @@ from luggage_planning.pick_authorization import (
     PickAuthorizationPolicy,
     run_authorization_loop,
 )
-from luggage_planning.pickup_collision import pickup_collision_aabb
-from luggage_planning.ros_clock_wait import wait_event
+from luggage_planning.pick.pickup_collision import pickup_collision_aabb
+from luggage_planning.motion.ros_clock_wait import wait_event
 from luggage_perception.cargo_instance_tracker import parse_current_box_payload
 from luggage_perception.join_boundary_trace import classify_hold_boundary
 from luggage_perception.detect_overlay import rotation_from_quaternion
@@ -588,7 +588,7 @@ class PickRetreatEvalDriver(Node):
         self._scene = None
         self._vacuum = None
         if getattr(args, "use_vacuum", False):
-            from luggage_planning.planning_scene_client import (
+            from luggage_planning.motion.planning_scene_client import (
                 PlanningSceneClient,
             )
             self._scene = PlanningSceneClient(
@@ -618,7 +618,7 @@ class PickRetreatEvalDriver(Node):
         self._frame_motion_index = 0
         self._frame_request_seq = 0
         if getattr(args, "frame_runtime", False):
-            from luggage_planning.typed_driver_adapter import (
+            from luggage_planning.deploy.typed_driver_adapter import (
                 TypedDriverAdapter, adopt_runtime_identity)
             peer = str(getattr(args, "frame_peer", "") or "motion_occ_driver")
             runtime, _registry = adopt_runtime_identity(self, peer=peer)
@@ -642,7 +642,7 @@ class PickRetreatEvalDriver(Node):
         than falling back to a hand-converted slot.
         """
         from luggage_description.frame_contracts import ContractError
-        from luggage_planning.typed_driver_adapter import (
+        from luggage_planning.deploy.typed_driver_adapter import (
             container_transform_fields)
         slot_record = getattr(self, "_frame_slot_record", None)
         grasp = getattr(self, "_frame_grasp", None)
@@ -683,7 +683,7 @@ class PickRetreatEvalDriver(Node):
         rotation = tf_msg.transform.rotation
         stamp = tf_msg.header.stamp
         tool_stamp_ns = int(stamp.sec) * 10 ** 9 + int(stamp.nanosec)
-        from luggage_planning.typed_driver_adapter import grasp_from_attach
+        from luggage_planning.deploy.typed_driver_adapter import grasp_from_attach
         box_id, generation = self._frame_box_identity()
         self._frame_grasp = grasp_from_attach(
             self._frame_request_id("grasp"), self._frame_scene_revision,
@@ -713,9 +713,9 @@ class PickRetreatEvalDriver(Node):
         self._last_vacuum_attach_evidence = None
         pick_msg = pick_msg or getattr(self, "_frame_pick_msg", None)
         if self._typed is not None and pick_msg is not None:
-            from luggage_planning.typed_driver_adapter import (
+            from luggage_planning.deploy.typed_driver_adapter import (
                 detection_record_from_box)
-            from luggage_planning.attachment_frame_adapters import (
+            from luggage_planning.attachment.attachment_frame_adapters import (
                 vacuum_attach_revision_dump)
             from luggage_description.frame_contracts import ContractError
             box_id, generation = self._frame_box_identity()
@@ -745,8 +745,8 @@ class PickRetreatEvalDriver(Node):
                 if not getattr(response, 'has_measured_attachment', False):
                     self._frame_grasp = None
                     return False, 'MEASURED_ATTACHMENT_MISSING'
-                from luggage_planning.hardware_place_planning import attachment_from_response
-                from luggage_planning.typed_driver_adapter import grasp_record
+                from luggage_planning.deploy.hardware_place_planning import attachment_from_response
+                from luggage_planning.deploy.typed_driver_adapter import grasp_record
                 try:
                     actual = attachment_from_response(response, request_id=request_id,
                         box_id=box_id, generation=generation, scene_revision=self._frame_scene_revision)
@@ -1067,7 +1067,7 @@ class PickRetreatEvalDriver(Node):
         named refusal, not a v1 detour (non frame-runtime gazebo runs
         lose goto by design — GOTO_V2_UNAVAILABLE).
         """
-        from luggage_planning.named_robot_poses import is_current_pose_name
+        from luggage_planning.deploy.named_robot_poses import is_current_pose_name
 
         pose_name = str(self._args.observe_pose or "")
         if is_current_pose_name(pose_name):

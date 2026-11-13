@@ -55,7 +55,7 @@ def _nodes(context):
 def generate_launch_description():
     share = get_package_share_directory('luggage_description')
     return LaunchDescription([
-        DeclareLaunchArgument('scene_tf_config', default_value=os.path.join(share, 'config', 'scene_tf.yaml')),
+        DeclareLaunchArgument('scene_tf_config', default_value=os.path.join(share, 'config', 'scene_tf_deploy_update.yaml')),
         DeclareLaunchArgument('frame_scene_revision', default_value=''),
         DeclareLaunchArgument('evidence_dir', default_value=''),
         DeclareLaunchArgument('collision_margin_m', default_value='0.05'),

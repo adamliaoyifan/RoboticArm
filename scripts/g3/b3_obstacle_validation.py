@@ -73,7 +73,7 @@ def main():
     from rclpy.node import Node
     from rclpy.serialization import deserialize_message
     from luggage_msgs.srv import ValidateRouteV2
-    from luggage_planning.moveit_state_validity import _scene_digest
+    from luggage_planning.motion.moveit_state_validity import _scene_digest
 
     document = json.load(open(G2_FINAL01))
     request = deserialize_message(

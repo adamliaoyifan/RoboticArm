@@ -6,7 +6,7 @@ import tempfile
 import textwrap
 import unittest
 
-from luggage_planning.named_robot_poses import (
+from luggage_planning.deploy.named_robot_poses import (
     CURRENT_POSE_NAMES,
     default_observe_pose_name,
     format_pose_yaml,

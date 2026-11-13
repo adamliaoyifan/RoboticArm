@@ -1778,7 +1778,7 @@ class SnapshotCandidateGenerator:
     # -- internals -------------------------------------------------------
 
     def _surface_from_snapshot(self, snapshot):
-        from st09_contracts.planning import OccupancyCellState
+        from luggage_planning.planning_contract.planning import OccupancyCellState
         resolution = float(snapshot.resolution_m)
         cells_i = tuple(snapshot.cells_i)
         cells_j = tuple(snapshot.cells_j)
@@ -1833,7 +1833,7 @@ class SnapshotCandidateGenerator:
         }
 
     def _to_contract(self, candidate, hull_present):
-        from st09_contracts.planning import GeometryVerdict, PlacementCandidate
+        from luggage_planning.planning_contract.planning import GeometryVerdict, PlacementCandidate
         yaw = float(candidate.get("heading_theta", 0.0) or 0.0)
         half = 0.5 * yaw
         quaternion = (0.0, 0.0, math.sin(half), math.cos(half))
@@ -1858,7 +1858,7 @@ class SnapshotCandidateGenerator:
     # -- frozen protocol -------------------------------------------------
 
     def generate_candidates(self, snapshot, payload_digest):
-        from st09_contracts.planning import ObservationRequirement
+        from luggage_planning.planning_contract.planning import ObservationRequirement
         payload = self._payload
         expected = getattr(payload, "digest", None)
         if expected is not None and payload_digest is not None:

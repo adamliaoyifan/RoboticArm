@@ -47,7 +47,7 @@ from luggage_description.scene_tf_config_utils import (
 )
 from luggage_msgs.action import GoToRobotPose, PlanMotion, PlanMotionV2
 from luggage_msgs.srv import ProbeMotionSegment, ProbeMotionSegmentV2
-from luggage_planning.debug_capture import write_failure_capture
+from luggage_planning.capture.debug_capture import write_failure_capture
 from luggage_planning.atlas.runtime import (
     PARAM_SPEC,
     apply_query_semantics,
@@ -58,17 +58,17 @@ from luggage_planning.atlas.runtime import (
     load_atlas_runtime_for_scene,
     load_runtime_atlas,
 )
-from luggage_planning.urdf_identity import UrdfIdentity
-from luggage_planning.motion_boundary import robot_traj_to_dict, write_boundary_dump
-from luggage_planning.motion_executor import MotionExecutor, _wrap_near
-from luggage_planning.motion_ownership import MotionOwnership, OwnedActionClient, run_legacy_motion
-from luggage_planning.named_robot_poses import (
+from luggage_planning.deploy.urdf_identity import UrdfIdentity
+from luggage_planning.motion.motion_boundary import robot_traj_to_dict, write_boundary_dump
+from luggage_planning.motion.motion_executor import MotionExecutor, _wrap_near
+from luggage_planning.motion.motion_ownership import MotionOwnership, OwnedActionClient, run_legacy_motion
+from luggage_planning.deploy.named_robot_poses import (
     JOINTS,
     load_poses_config,
     plan_goto_joints,
     resolve_pose_name,
 )
-from luggage_planning.occupancy_place_paths import (
+from luggage_planning.place.occupancy_place_paths import (
     OccupancyMismatch,
     OccupancySnapshot,
     exempt_footprint_locals,
@@ -76,16 +76,16 @@ from luggage_planning.occupancy_place_paths import (
     load_selector_weights,
     resolve_payload_wdh,
 )
-from luggage_planning.waypoint_generator import tool_down_yaw
-from luggage_planning.current_box_payload import (
+from luggage_planning.place.waypoint_generator import tool_down_yaw
+from luggage_planning.pick.current_box_payload import (
     measured_from_current_box_json,
 )
-from luggage_planning.planning_scene_client import (
+from luggage_planning.motion.planning_scene_client import (
     PlanningSceneClient,
     summarize_planning_scene,
 )
-from luggage_planning.ros_clock_wait import ClockTimeout, wait_event
-from luggage_planning.settle_criterion import SettleTracker
+from luggage_planning.motion.ros_clock_wait import ClockTimeout, wait_event
+from luggage_planning.motion.settle_criterion import SettleTracker
 
 
 def occupancy_scope(names_csv, segment_name):
@@ -461,7 +461,7 @@ class MotionPlannerNode(Node):
         from luggage_description.frame_contracts import ContractError
         from luggage_description.scene_tf_config_utils import base_in_world
         from luggage_description.scene_tf_publisher import rpy_to_quaternion
-        from luggage_planning.motion_frame_contracts import (
+        from luggage_planning.motion.motion_frame_contracts import (
             framed_query_offset, lift_vector,
         )
         origin, rpy = origin_in_world(self._scene)
@@ -533,7 +533,7 @@ class MotionPlannerNode(Node):
             return None
 
     def _target_in_container(self, map_xyz):
-        from luggage_planning.geometry_view_generator import (
+        from luggage_planning.geometry.geometry_view_generator import (
             point_inside_container_inner_box)
         world = self._map_to_world(list(map_xyz))
         return bool(point_inside_container_inner_box(world, self._scene))
@@ -549,7 +549,7 @@ class MotionPlannerNode(Node):
         Unrefinable seeds are dropped.
         """
         try:
-            from luggage_planning.offline_ik import (
+            from luggage_planning.motion.offline_ik import (
                 load_urdf, refine_to_pose)
             urdf = load_urdf(scene_tf_config=str(
                 self.get_parameter("scene_tf_config").value or "") or None)
@@ -600,7 +600,7 @@ class MotionPlannerNode(Node):
         executing, so this stays fail-closed.
         """
         try:
-            from luggage_planning.offline_ik import (
+            from luggage_planning.motion.offline_ik import (
                 load_urdf, refine_to_pose)
             urdf = load_urdf(scene_tf_config=str(
                 self.get_parameter("scene_tf_config").value or "") or None)
@@ -615,8 +615,8 @@ class MotionPlannerNode(Node):
                           float(pose.position.z)))
             current = [float(v) for v in live_joints]
             start_fk = urdf.tcp(current, path)[:3, 3]
-            from luggage_planning.joint_path import wrap_near
-            from luggage_planning.occupancy_place_paths import _sample_polyline
+            from luggage_planning.motion.joint_path import wrap_near
+            from luggage_planning.place.occupancy_place_paths import _sample_polyline
             sampled = _sample_polyline(
                 [tuple(float(v) for v in start_fk)] + chain, 0.04)[1:]
             knots = [list(current)]
@@ -658,7 +658,7 @@ class MotionPlannerNode(Node):
     def _verify_tcp(self, joints):
         """World TCP of ``joints`` from the installed URDF. Root stays ``world``."""
         from scipy.spatial.transform import Rotation
-        from luggage_planning.offline_ik import load_urdf
+        from luggage_planning.motion.offline_ik import load_urdf
         urdf = load_urdf(scene_tf_config=str(
             self.get_parameter("scene_tf_config").value or "") or None)
         transform = urdf.tcp(list(joints), self._offline_tcp_path(urdf))
@@ -669,7 +669,7 @@ class MotionPlannerNode(Node):
         )
 
     def _handle_probe_segment_v2(self, request, response):
-        from luggage_planning.motion_v2_service import handle_probe_v2
+        from luggage_planning.motion.motion_v2_service import handle_probe_v2
         if getattr(self, "_frame_runtime", None) is not None:
             from luggage_description.frame_contracts import ContractError
             try:
@@ -752,7 +752,7 @@ class MotionPlannerNode(Node):
             "PlanMotionV2", self._execute_plan_motion_v2_owned)
 
     def _execute_plan_motion_v2_owned(self, goal_handle):
-        from luggage_planning.motion_v2_service import handle_plan_v2
+        from luggage_planning.motion.motion_v2_service import handle_plan_v2
         result = PlanMotionV2.Result()
         if getattr(self, "_frame_runtime", None) is not None:
             # Motion effect: the v2 chain is admitted end to end or refused.
@@ -820,7 +820,7 @@ class MotionPlannerNode(Node):
 
     def _map_to_world(self, xyz):
         from luggage_description.scene_tf_publisher import rpy_to_quaternion
-        from luggage_planning.motion_frame_contracts import map_container_point
+        from luggage_planning.motion.motion_frame_contracts import map_container_point
         origin, rpy = origin_in_world(self._scene)
         return map_container_point(xyz, origin, rpy_to_quaternion(rpy))
 
@@ -902,7 +902,7 @@ class MotionPlannerNode(Node):
             exempt=exempt)
         from luggage_description.frame_contracts import ContractError
         from luggage_description.scene_tf_publisher import rpy_to_quaternion
-        from luggage_planning.motion_frame_contracts import (
+        from luggage_planning.motion.motion_frame_contracts import (
             compose_orientation, map_container_point,
         )
         origin, rpy = origin_in_world(self._scene)

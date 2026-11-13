@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from st09_contracts.fixtures import make_snapshot
+from luggage_planning.planning_contract.fixtures import make_snapshot
 
 ROUTE_TOTAL_WALL_S = 10.0
 

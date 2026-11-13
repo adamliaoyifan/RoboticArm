@@ -55,7 +55,7 @@ def test_corruption_is_a_miss(tmp_path):
 def test_size_update_reuses_only_knots_and_certifies_current_geometry(tmp_path, native_accepts):
     """Port behaviour only: this double does not establish physical containment."""
     import hashlib
-    from st09_contracts.attachment_geometry import freeze_geometry
+    from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
     from test_joint_operation_scenes import baseline, compose
     bundle = list(ports())
     old = prepare(bundle).plan

@@ -95,7 +95,7 @@ def apply_full_scene(client, scene):
 def one_target(node, client, record, scene, effective, urdf_limits, rnd):
     import copy
     from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
-    from luggage_planning.planning_scene_client import acm_pair_allowed
+    from luggage_planning.motion.planning_scene_client import acm_pair_allowed
 
     goal = [float(v) for v in record["goal_q"]]
     ok, why = apply_full_scene(client, scene)

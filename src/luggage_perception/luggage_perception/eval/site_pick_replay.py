@@ -75,7 +75,7 @@ from luggage_perception.ros_message_adapters import camera_info_frame_from_msg
 from luggage_perception.semantic_segmenter import draw_detections_overlay
 from luggage_perception.top_support_estimator import TopSupportConfig
 
-# Keep in lockstep with luggage_planning.waypoint_generator.DEFAULT_PICK_CLEARANCES
+# Keep in lockstep with luggage_planning.place.waypoint_generator.DEFAULT_PICK_CLEARANCES
 # (perception eval must not import luggage_planning: that package already
 # depends on this one).
 _PICK_CLEARANCES = {

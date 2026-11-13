@@ -236,7 +236,7 @@ class GraphProbe:
                 message.readiness_code or "")
 
     def adopt(self, timeout=STARTUP_BUDGET_S):
-        from luggage_planning.typed_driver_adapter import adopt_runtime_identity
+        from luggage_planning.deploy.typed_driver_adapter import adopt_runtime_identity
         self.runtime, _registry = adopt_runtime_identity(
             self.node, peer=self.peer, timeout_sec=timeout)
         from rclpy.executors import SingleThreadedExecutor
@@ -323,7 +323,7 @@ class GraphProbe:
                                 newer.map_revision) > int(
                                     surface.map_revision):
                             surface = newer
-        from luggage_planning.typed_driver_adapter import TypedDriverAdapter
+        from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter
         from luggage_description.frame_contracts import ContractError
         adapter = TypedDriverAdapter(self.node, self.runtime)
         revision = self.runtime.identity["scene_revision"]
@@ -501,7 +501,7 @@ def run_fault(name, command, out_dir, env, timeout=STARTUP_BUDGET_S):
             record["v1_call"] = _v1_compute_refusal(probe)
         else:
             from luggage_description.frame_contracts import ContractError
-            from luggage_planning.typed_driver_adapter import TypedDriverAdapter
+            from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter
             try:
                 response = TypedDriverAdapter(
                     probe.node, probe.runtime).compute_placement(
@@ -592,7 +592,7 @@ def rogue_main(kind, identity_path, domain):
     peers = [p for p in str(payload["frame_peers"]).split(",") if p]
     rclpy.init()
     node = rclpy.create_node("rogue_publisher")
-    import luggage_planning.typed_driver_adapter as adapter_module
+    import luggage_planning.deploy.typed_driver_adapter as adapter_module
     runtime = NodeRuntime(
         node, peer="vacuum_controller", identity=deepcopy(identity),
         peers=peers, resolved_config={"rogue": kind},

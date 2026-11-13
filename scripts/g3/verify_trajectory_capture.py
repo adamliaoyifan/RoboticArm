@@ -22,7 +22,7 @@ from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectoryPoint
 from unique_identifier_msgs.msg import UUID
 
-from luggage_planning.ros_boundary_capture import RosBoundaryRecorder, load_boundary_record
+from luggage_planning.capture.ros_boundary_capture import RosBoundaryRecorder, load_boundary_record
 
 
 def main():

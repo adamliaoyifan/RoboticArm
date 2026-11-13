@@ -18,7 +18,7 @@ import math
 import os
 import unittest
 
-from luggage_planning.motion_executor import (
+from luggage_planning.motion.motion_executor import (
     JOINTS,
     MotionExecutor,
     SegmentExecResult,
@@ -30,7 +30,7 @@ from luggage_planning.motion_executor import (
     pose_target_joint_delta,
     wrist_margin,
 )
-from luggage_planning.pose import Point, Pose, Quaternion
+from luggage_planning.geometry.pose import Point, Pose, Quaternion
 from moveit_msgs.msg import MoveItErrorCodes
 from moveit_msgs.srv import GetPositionIK
 

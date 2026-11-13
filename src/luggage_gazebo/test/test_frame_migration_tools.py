@@ -393,7 +393,7 @@ class RuntimeGraphIdentity(unittest.TestCase):
         peers = resolve_peers("motion_occ_driver")
         endpoints = identity_endpoints(endpoint_registry(peers))
         with tempfile.TemporaryDirectory() as directory:
-            scene_path = Path(directory) / "scene_tf.yaml"
+            scene_path = Path(directory) / "scene_tf_deploy_update.yaml"
             scene_path.write_text(yaml.safe_dump(scene))
             npz = Path(directory) / "atlas.npz"
             meta = Path(directory) / "atlas.yaml"
@@ -526,7 +526,7 @@ class TypedDriverAdapterTools(unittest.TestCase):
 
     def test_records_match_profiles(self):
         from luggage_description.frame_contracts import validate_pose
-        from luggage_planning.typed_driver_adapter import (
+        from luggage_planning.deploy.typed_driver_adapter import (
             grasp_record, slot_record, tcp_record)
         slot = slot_record("request", "scene", (0.2, -0.1, 0.7), 0.25)
         validate_pose(slot, "slot", "scene")
@@ -539,7 +539,7 @@ class TypedDriverAdapterTools(unittest.TestCase):
     def test_grasp_forward_roundtrip(self):
         import numpy as np
         from scipy.spatial.transform import Rotation
-        from luggage_planning.typed_driver_adapter import grasp_from_attach
+        from luggage_planning.deploy.typed_driver_adapter import grasp_from_attach
         box_position = [1.2, -0.4, 0.9]
         box_quaternion = Rotation.from_euler("xyz", [0.0, 0.0, 0.7]).as_quat()
         tool_position = [1.31, -0.35, 1.06]
@@ -559,7 +559,7 @@ class TypedDriverAdapterTools(unittest.TestCase):
 
     def test_container_transform_matches_scene_origin(self):
         import yaml
-        from luggage_planning.typed_driver_adapter import (
+        from luggage_planning.deploy.typed_driver_adapter import (
             container_transform_fields)
         from luggage_description.scene_tf_config_utils import origin_in_world
         scene = {
@@ -573,7 +573,7 @@ class TypedDriverAdapterTools(unittest.TestCase):
                 "rotation_rpy": [0.0, 0.0, 0.9]}],
         }
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "scene_tf.yaml"
+            path = Path(directory) / "scene_tf_deploy_update.yaml"
             path.write_text(yaml.safe_dump(scene))
             import sys
             sys.path.insert(0, str(Path(__file__).resolve().parents[2]
@@ -597,10 +597,10 @@ class TypedDriverAdapterTools(unittest.TestCase):
             from luggage_msgs.msg import DetectedLuggage
         except ImportError:
             self.skipTest("generated messages unavailable")
-        from luggage_planning.typed_driver_adapter import (
+        from luggage_planning.deploy.typed_driver_adapter import (
             detection_record_from_box)
-        from luggage_planning.attachment_frame_adapters import measured_dict
-        from luggage_planning.attachment_frame_contracts import (
+        from luggage_planning.attachment.attachment_frame_adapters import measured_dict
+        from luggage_planning.attachment.attachment_frame_contracts import (
             require_measured_pose_agreement)
         from luggage_description.frame_contracts import validate_pose
         box = DetectedLuggage()
@@ -639,7 +639,7 @@ class SceneIdentityTools(unittest.TestCase):
         scene = copy.deepcopy(self.SCENE)
         scene["static_transforms"][0]["rotation_rpy"] = list(rpy)
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "scene_tf.yaml"
+            path = Path(directory) / "scene_tf_deploy_update.yaml"
             path.write_text(yaml.safe_dump(scene))
             from luggage_description.scene_tf_config_utils import (
                 load_scene_tf_config)

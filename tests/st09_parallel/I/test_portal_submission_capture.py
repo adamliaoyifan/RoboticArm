@@ -7,11 +7,11 @@ from pathlib import Path
 from moveit_msgs.msg import AllowedCollisionMatrix, PlanningScene
 
 from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
-from luggage_planning.moveit_state_validity import (
+from luggage_planning.motion.moveit_state_validity import (
     DECLARED_STRUCTURE_PAIRS,
     FrozenSceneComposer,
 )
-from luggage_planning.planning_scene_client import (
+from luggage_planning.motion.planning_scene_client import (
     acm_pair_allowed,
     set_acm_pair,
 )

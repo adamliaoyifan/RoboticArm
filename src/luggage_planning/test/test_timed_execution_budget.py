@@ -2,11 +2,11 @@ from types import SimpleNamespace as NS
 from trajectory_msgs.msg import JointTrajectoryPoint
 from builtin_interfaces.msg import Duration
 from moveit_msgs.msg import MoveItErrorCodes
-from luggage_planning.motion_executor import MotionExecutor
+from luggage_planning.motion.motion_executor import MotionExecutor
 
 
 def test_native_executor_wait_includes_exact_admitted_duration(monkeypatch):
-    from luggage_planning import motion_frame_adapters
+    from luggage_planning.motion import motion_frame_adapters
     points = [JointTrajectoryPoint(positions=[q]*6, velocities=[0.0]*6,
               time_from_start=Duration(sec=t, nanosec=0)) for q,t in [(0.0,0),(0.1,175)]]
     monkeypatch.setattr(motion_frame_adapters, 'timed_trajectory',

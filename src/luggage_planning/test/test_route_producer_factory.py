@@ -19,7 +19,7 @@ for entry in (str(PKG), str(SCRIPTS), str(ROOT)):
         sys.path.insert(0, entry)
 
 SCENE = str(
-    ROOT / "src" / "luggage_description" / "config" / "scene_tf_deploy.yaml")
+    ROOT / "src" / "luggage_description" / "config" / "scene_tf_deploy_update.yaml")
 
 
 class _Param(object):
@@ -101,12 +101,12 @@ class FactoryCollaborators(unittest.TestCase):
         from luggage_description.scene_tf_config_utils import (
             load_scene_tf_config,
         )
-        from luggage_planning.attachment_provider import (
+        from luggage_planning.attachment.attachment_provider import (
             MeasuredAttachmentProvider,
         )
         from luggage_planning.routing.grid_search import route_budget_ns
-        from luggage_planning.map_revalidation import MapRevalidator
-        from luggage_planning.planning_scene_client import PlanningSceneClient
+        from luggage_planning.place.map_revalidation import MapRevalidator
+        from luggage_planning.motion.planning_scene_client import PlanningSceneClient
         from luggage_planning.routing.producer import (
             RouteProducer,
             certification_policy_from_contract,
@@ -115,14 +115,13 @@ class FactoryCollaborators(unittest.TestCase):
         from luggage_planning.routing.factory import (
             build_production_route_producer,
         )
-        from luggage_planning.trajectory_certifier import TrajectoryCertifier
+        from luggage_planning.motion.trajectory_certifier import TrajectoryCertifier
         import json
-        from ament_index_python.packages import get_package_share_directory
-        import os
+        from luggage_planning.planning_contract.location import (
+            resolved_planning_contract_path,
+        )
 
-        contract_path = os.path.join(
-            get_package_share_directory("st09_contracts"),
-            "resolved_planning_contract.json")
+        contract_path = resolved_planning_contract_path()
         with open(contract_path, encoding="utf-8") as handle:
             document = json.load(handle)
         node = _Node()

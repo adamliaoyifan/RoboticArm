@@ -21,7 +21,7 @@ for entry in ("src/luggage_planning", "src/luggage_perception"):
 
 import luggage_planning.routing.producer as rp  # noqa: E402
 from luggage_planning.routing.producer import RouteProducer  # noqa: E402
-from st09_contracts.attachment import UNLOADED_ATTACHMENT_DIGEST  # noqa: E402
+from luggage_planning.planning_contract.attachment import UNLOADED_ATTACHMENT_DIGEST  # noqa: E402
 
 
 class _Traj(object):
@@ -120,7 +120,7 @@ def _ok_certification():
 
 
 def _ok_revalidation(revision=5):
-    from st09_contracts.certification import MapDecision
+    from luggage_planning.planning_contract.certification import MapDecision
 
     return SimpleNamespace(
         decision=MapDecision.CONTINUE, reason=None, map_revision=revision)
@@ -189,7 +189,7 @@ def test_ik_unavailable_is_a_named_row():
 
 
 def test_pass_path_binds_unloaded_admission_and_selection():
-    from st09_contracts.graph import LoadState
+    from luggage_planning.planning_contract.graph import LoadState
 
     producer = _Producer(
         snapshot=_snapshot(), refine_q=[0.2, -0.2, 0.3, -0.4, 0.5, -0.6],

@@ -1,7 +1,7 @@
 from copy import deepcopy
 from luggage_msgs.srv import SelectPlacePathV2, PreparePlacementPriorV2
 from luggage_msgs.msg import PlacementPriorChoiceV2
-from luggage_planning.place_service import pose_message
+from luggage_planning.place.place_service import pose_message
 from luggage_planning.placement_prior.adoption import order_select_candidates
 from test_placement_prior_requests import slot_record
 
@@ -41,7 +41,7 @@ def test_changed_attachment_or_snapshot_falls_back_without_dropping_candidates()
 
 
 def test_real_typed_adapter_uses_bound_prior_and_calls_full_selector_once():
-    from luggage_planning.typed_driver_adapter import TypedDriverAdapter
+    from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter
     from test_placement_prior_requests import slot_record
     request,prior=inputs()
     adapter=object.__new__(TypedDriverAdapter)

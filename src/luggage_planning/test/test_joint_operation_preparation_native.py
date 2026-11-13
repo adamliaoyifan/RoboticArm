@@ -51,7 +51,7 @@ def prepare_stack(native_stack,request):
     from luggage_planning.joint_operation.contracts import OPERATION_JOINTS
     from luggage_planning.placement_prior.surface import ConfirmedSurface
     from luggage_planning.placement_prior.requests import enumerate_placements
-    from luggage_planning.place_service import pose_message
+    from luggage_planning.place.place_service import pose_message
     from test_suction_patch_evaluator import make_model
     from types import SimpleNamespace
 

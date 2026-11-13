@@ -63,13 +63,13 @@ from luggage_description.scene_tf_config_utils import (
 )
 from luggage_description.scene_tf_publisher import rpy_to_quaternion
 from luggage_description.suitcase_visual import pickup_visual_sdf
-from luggage_planning.motion_executor import MotionExecutor
-from luggage_planning.motion_boundary import (
+from luggage_planning.motion.motion_executor import MotionExecutor
+from luggage_planning.motion.motion_boundary import (
     load_latest_boundary,
     replay_manifest,
 )
-from luggage_planning.planning_scene_client import summarize_planning_scene
-from luggage_planning.waypoint_generator import nearest_box_yaw, tool_down_yaw
+from luggage_planning.motion.planning_scene_client import summarize_planning_scene
+from luggage_planning.place.waypoint_generator import nearest_box_yaw, tool_down_yaw
 
 from luggage_gazebo.pose_text import PoseTextDecoder, parse_pose_samples
 from luggage_gazebo.capture_budget import CONTROLLER_STATE_TOPIC
@@ -1400,7 +1400,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             container_usable_dimensions, xyz_world_to_base_link)
         from luggage_msgs.msg import SlotSpec
         from luggage_planning.routing.grid_search import route_budget_s
-        from luggage_planning.typed_driver_adapter import (
+        from luggage_planning.deploy.typed_driver_adapter import (
             container_transform_fields, tcp_record)
 
         surface_msg = getattr(self, "_surface_v2_msg", None)
@@ -1895,7 +1895,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         makes the absence a named refusal (LEG_DIGEST_UNAVAILABLE), so
         the helper now exists here too.
         """
-        from st09_contracts.graph import TimedTrajectory
+        from luggage_planning.planning_contract.graph import TimedTrajectory
         trajectory = None
         if getattr(segment, "joint_trajectory", None) is not None:
             trajectory = getattr(segment.joint_trajectory, "trajectory",
@@ -3932,11 +3932,11 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         detector-window row carries its own size, so a later read can see
         whether authorization, the window row and the scene box agree.
         """
-        from luggage_planning.pick_authorization import (
+        from luggage_planning.pick.pick_authorization import (
             authorized_pick_boundary,
             observation_gate,
         )
-        from luggage_planning.pickup_collision import pickup_collision_aabb
+        from luggage_planning.pick.pickup_collision import pickup_collision_aabb
 
         pick = auth.box
         fields = {}

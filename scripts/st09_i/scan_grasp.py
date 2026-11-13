@@ -15,7 +15,7 @@ import math
 
 def synthetic_top_grasp(size, offset=None):
     """Return ``(position, quaternion_xyzw)`` of the TCP in the box frame."""
-    from st09_contracts.attachment import compose_transform, invert_transform
+    from luggage_planning.planning_contract.attachment import compose_transform, invert_transform
 
     half_height = 0.5 * float(size[2])
     grasp_t, grasp_q = invert_transform(

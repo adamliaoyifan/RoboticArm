@@ -2,10 +2,10 @@
 import math
 import pytest
 from luggage_msgs.msg import AttachmentGeometryV2
-from st09_contracts._base import ContractViolation
-from st09_contracts.attachment_geometry import freeze_geometry
-from st09_contracts.payload_envelope import EnvelopeLimits
-from luggage_planning.attachment_geometry_transport import geometry_from_message, geometry_to_message
+from luggage_planning.planning_contract._base import ContractViolation
+from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
+from luggage_planning.attachment.attachment_geometry_transport import geometry_from_message, geometry_to_message
 
 
 def sample():
@@ -42,7 +42,7 @@ def test_changed_geometry_refused(field):
 
 def test_capacity_adapter_uses_conservative_dimensions_and_preserves_nominal_input():
     from luggage_msgs.srv import ComputePlacementV2
-    from luggage_planning.typed_driver_adapter import TypedDriverAdapter
+    from luggage_planning.deploy.typed_driver_adapter import TypedDriverAdapter
     geometry = freeze_geometry((.5,.3,.2), (.08,-.03,.1), (1,0,0,0),
                                EnvelopeLimits(0, (.1,.1,.1), (0,0), .005))
     adapter = object.__new__(TypedDriverAdapter)

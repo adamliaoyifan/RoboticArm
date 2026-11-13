@@ -93,8 +93,8 @@ def operation(model, *, obstacle=False, broad_obstacle_default=False):
     from luggage_planning.joint_operation.planner import OperationCandidate, timed_operation_leg
     from luggage_planning.joint_operation.scenes import build_operation_scenes
     from luggage_planning.placement_prior.contracts import Snapshot,Transform
-    from st09_contracts.attachment_geometry import freeze_geometry
-    from st09_contracts.payload_envelope import EnvelopeLimits
+    from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+    from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
     q = [(i*.01,0.,0.,0.,0.,0.) for i in range(7)]
     poses=[]
     for row in q:

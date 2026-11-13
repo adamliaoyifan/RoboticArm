@@ -103,7 +103,7 @@ def _executed_legs():
 
 
 def _trajectory(samples):
-    from st09_contracts.graph import TimedTrajectory
+    from luggage_planning.planning_contract.graph import TimedTrajectory
 
     positions = tuple(tuple(joints) for _stamp, joints in samples)
     zeros = tuple(tuple(0.0 for _ in JOINTS) for _ in samples)
@@ -143,10 +143,10 @@ def _payload():
 
 
 def _certify_edges(node, edges, states, budget_s):
-    from luggage_planning.moveit_state_validity import (
+    from luggage_planning.motion.moveit_state_validity import (
         FrozenSceneComposer, MoveItStateValidityAdapter,
     )
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
 
     client = PlanningSceneClient(node)
     call_log = []
@@ -230,7 +230,7 @@ def _sync(node, scene_json, surface, with_box, with_occupancy):
             if obj.get("id") != "placed_0_0_0"]
     world = classify._sync_world(node, scene_config, copied)  # noqa: SLF001
     if not with_box:
-        from luggage_planning.planning_scene_client import PlanningSceneClient
+        from luggage_planning.motion.planning_scene_client import PlanningSceneClient
         PlanningSceneClient(node).remove_object("placed_0_0_0")
     probes._clear_occupancy(node)  # noqa: SLF001
     cells = probes._add_occupancy(node, surface) if with_occupancy else 0  # noqa: SLF001
@@ -241,9 +241,9 @@ def _sync(node, scene_json, surface, with_box, with_occupancy):
 def _plan_probe(node, probe, budget_s):
     from luggage_description.scene_tf_config_utils import load_scene_tf_config
     from luggage_planning.routing.lattice import LatticeStateChecker
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
     from luggage_planning.routing.producer import register_attach_from_request
-    from luggage_planning.moveit_state_validity import MoveItStateValidityAdapter
+    from luggage_planning.motion.moveit_state_validity import MoveItStateValidityAdapter
 
     document, surface, _scene, _slot = classify._request_document(  # noqa: SLF001
         probe["request_path"], probe["surface_path"],

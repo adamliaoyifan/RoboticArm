@@ -10,7 +10,7 @@ import copy
 import hashlib
 
 from luggage_planning.placement_prior.contracts import Snapshot, Transform
-from st09_contracts.attachment_geometry import AttachmentGeometry
+from luggage_planning.planning_contract.attachment_geometry import AttachmentGeometry
 
 
 PHASES = ("pick", "carry", "retreat")

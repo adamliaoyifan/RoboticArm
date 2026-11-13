@@ -18,8 +18,8 @@ from luggage_planning.joint_operation.execution import JointOperationExecution
 from luggage_planning.joint_operation.motion import StrictOperationMotionPort
 from luggage_planning.joint_operation.map_source import map_source_to_message
 from luggage_planning.joint_operation.runtime_ports import OperationRuntimePorts
-from luggage_planning.settle_criterion import SettleTracker
-from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
+from luggage_planning.motion.settle_criterion import SettleTracker
+from luggage_planning.planning_contract.attachment import ATTACHMENT_MAX_AGE_NS
 
 
 class OperationJournal:

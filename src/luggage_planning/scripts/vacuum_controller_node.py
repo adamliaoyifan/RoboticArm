@@ -34,16 +34,16 @@ from std_srvs.srv import SetBool
 from luggage_msgs.msg import VacuumState
 from luggage_msgs.srv import GetCurrentBox, VacuumCommand, VacuumCommandV2
 
-from luggage_planning.current_box_payload import (
+from luggage_planning.pick.current_box_payload import (
     identity_from_current_box_payload,
     measured_from_current_box_payload,
 )
-from luggage_planning.vacuum_backend import (
+from luggage_planning.attachment.vacuum_backend import (
     HardwareVacuumBackend,
     SimVacuumBackend,
     StubVacuumBackend,
 )
-from luggage_planning.vacuum_gate import VacuumGate
+from luggage_planning.attachment.vacuum_gate import VacuumGate
 
 WORLD = "world"
 
@@ -179,7 +179,7 @@ class VacuumControllerNode(Node):
         group = ReentrantCallbackGroup()
 
         self.declare_parameter("backend", "sim")  # sim | stub | hardware
-        from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy
+        from luggage_planning.attachment.attachment_geometry_policy import load_attachment_geometry_policy
         geometry_path = self.declare_parameter('attachment_geometry_config', '').value
         self._geometry_policy = load_attachment_geometry_policy(geometry_path)
         self.declare_parameter("world", "airport_loading")
@@ -281,8 +281,8 @@ class VacuumControllerNode(Node):
                 blowoff_hold_sec=float(
                     self.get_parameter("blowoff_hold_sec").value))
         else:
-            from luggage_planning.planning_scene_client import PlanningSceneClient
-            from luggage_planning.sim_physical_release import SimPhysicalReleaseClient
+            from luggage_planning.motion.planning_scene_client import PlanningSceneClient
+            from luggage_planning.attachment.sim_physical_release import SimPhysicalReleaseClient
             scene = PlanningSceneClient(self, callback_group=group)
             gz_client = GzSetPoseClient(
                 self, group, str(self.get_parameter("world").value))
@@ -309,7 +309,7 @@ class VacuumControllerNode(Node):
             callback_group=group)
         self._observer_payload_mask = None
         if self.declare_parameter('observer_payload_mask_barrier', False).value:
-            from luggage_planning.observer_payload_mask import ObserverPayloadMaskBarrier
+            from luggage_planning.attachment.observer_payload_mask import ObserverPayloadMaskBarrier
             self._observer_payload_mask = ObserverPayloadMaskBarrier(self, group, self._panel_frame)
         # ST09 F21: identity heartbeat + peer readiness. Attachment effects
         # are admitted per request; refusal preserves backend state (a
@@ -365,7 +365,7 @@ class VacuumControllerNode(Node):
             self.get_logger().info("current_box cleared")
 
     def _resolve_physical_attachment(self, model, generation, tool):
-        from luggage_planning.sim_physical_attachment import freeze_physical_relation
+        from luggage_planning.attachment.sim_physical_attachment import freeze_physical_relation
         # This provider is installed only on the sim actuator backend. The
         # response, scene attachment and prior continue to use measured data.
         relation = freeze_physical_relation(
@@ -426,7 +426,7 @@ class VacuumControllerNode(Node):
     # ------------------------------------------------------------------
 
     def _handle_command_v2(self, request, response):
-        from luggage_planning.attachment_frame_adapters import (
+        from luggage_planning.attachment.attachment_frame_adapters import (
             bound_attachment_scene_revision, handle_vacuum_command_v2)
         from luggage_planning.atlas.runtime import compute_scene_tf_hash
         from luggage_description.scene_tf_config_utils import resolve_scene_tf_config_path
@@ -445,7 +445,7 @@ class VacuumControllerNode(Node):
                 return response
         # Bind the freeze to the launch-measured identity when the v2
         # runtime is on. Hashing the default scene file here would stamp
-        # the tool with scene_tf.yaml.example (the atlas example
+        # the tool with scene_tf_deploy_update.yaml (the atlas example
         # scene_revision) while the driver stamps the detection with the
         # live deploy scene.
         runtime = getattr(self, "_frame_runtime", None)

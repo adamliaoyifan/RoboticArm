@@ -19,7 +19,7 @@ from std_msgs.msg import String
 from pack_eval_driver import PackEvalDriver, merge_args
 from luggage_gazebo.transit_capture_exit import TransitCaptureExit
 from luggage_gazebo.place_metrics import PlaceTrial
-from luggage_planning.async_boundary_capture import AsyncBoundaryCapture
+from luggage_planning.capture.async_boundary_capture import AsyncBoundaryCapture
 
 
 def install_capture_exit(driver, directory, run_id):

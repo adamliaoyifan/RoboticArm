@@ -111,7 +111,7 @@ def _sync_world(node, scene_config):
         pedestal_enabled,
     )
     from luggage_description.scene_tf_publisher import rpy_to_quaternion
-    from luggage_planning.planning_scene_client import (
+    from luggage_planning.motion.planning_scene_client import (
         PlanningSceneClient,
         load_stl_mesh_msg,
     )
@@ -142,8 +142,8 @@ def _sync_world(node, scene_config):
 
 
 def _scenes(client, start_q, grasp, box_world, box_quat, box_wdh):
-    from luggage_planning.moveit_state_validity import FrozenSceneComposer
-    from luggage_planning.planning_scene_client import (
+    from luggage_planning.motion.moveit_state_validity import FrozenSceneComposer
+    from luggage_planning.motion.planning_scene_client import (
         build_attach_scene,
         build_collision_object,
     )
@@ -277,7 +277,7 @@ def _mask(client, scenes, queries, timing=None):
 
 
 def _request_for(document, candidate, limits):
-    from st09_contracts.attachment import compose_transform
+    from luggage_planning.planning_contract.attachment import compose_transform
 
     from luggage_description.scene_tf_config_utils import (
         load_scene_tf_config,
@@ -358,7 +358,7 @@ def _same_chain(left, right):
 def score_slots(evidence_dir, request_path, scene_path):
     import rclpy
     from luggage_perception.eval.isolated_domain import isolated_replay_env
-    from luggage_planning.offline_ik import load_urdf, refine_to_pose
+    from luggage_planning.motion.offline_ik import load_urdf, refine_to_pose
 
     residuals = _residuals()
     if residuals:

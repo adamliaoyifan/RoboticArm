@@ -271,8 +271,8 @@ def actual_ros():
     from luggage_planning.joint_operation.actual_contact import FrozenActualContactPort
     from luggage_planning.joint_operation.contracts import OperationIdentity
     from luggage_planning.placement_prior.contracts import Transform
-    from st09_contracts.attachment_geometry import freeze_geometry
-    from st09_contracts.payload_envelope import EnvelopeLimits
+    from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+    from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
     from scipy.spatial.transform import Rotation
     domain_id=int(os.environ['FROZEN_SUCTION_ROS_DOMAIN_ID'])
     directory=Path(os.environ['FROZEN_SUCTION_ROS_EVIDENCE_DIR']);directory.mkdir(parents=True,exist_ok=False)
@@ -350,7 +350,7 @@ def test_actual_ros_rejects_identity_model_and_revocation(actual_ros,pinned,kind
     if kind=='source_model':f.current.model.boundary_margin_m+=.001
     elif kind=='revoked':f.handler.store.revoke('operation','view')
     elif kind=='size':
-        from st09_contracts.attachment_geometry import freeze_geometry
+        from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
         g=f.geometry();changes['geometry']=freeze_geometry((.71,.45,.3),g.t_tool_box_translation,
             g.t_tool_box_quaternion_xyzw,g.conservative.limits)
     else:

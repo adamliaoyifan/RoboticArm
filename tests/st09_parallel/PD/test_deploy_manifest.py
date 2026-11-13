@@ -196,7 +196,7 @@ def test_real_manifest_if_present():
     if not (assets_present() and os.path.isfile(MANIFEST_PATH)):
         pytest.skip("deploy manifest not generated yet")
     manifest = yaml.safe_load(MANIFEST_PATH.read_text("utf-8"))
-    from luggage_planning.deploy_profile import default_resolver
+    from luggage_planning.deploy.deploy_profile import default_resolver
     validated = validate_deploy_manifest(manifest, default_resolver())
     assert len(validated["atlas"]) == 4
     assert validated["urdf"]["joint_names"][0] == "elfin_joint1"

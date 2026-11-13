@@ -23,8 +23,8 @@ import pytest
 
 scipy_rot = pytest.importorskip("scipy.spatial.transform").Rotation
 
-from st09_contracts.graph import GraphEdge, LoadState  # noqa: E402
-from st09_contracts.fixtures import make_timed_trajectory  # noqa: E402
+from luggage_planning.planning_contract.graph import GraphEdge, LoadState  # noqa: E402
+from luggage_planning.planning_contract.fixtures import make_timed_trajectory  # noqa: E402
 
 from luggage_planning.atlas import graph as rg  # noqa: E402
 from luggage_planning.atlas.graph import (  # noqa: E402

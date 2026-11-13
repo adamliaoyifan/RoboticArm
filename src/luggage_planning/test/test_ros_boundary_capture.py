@@ -16,8 +16,8 @@ from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectoryPoint
 from unique_identifier_msgs.msg import UUID
 
-from luggage_planning.motion_frame_adapters import timed_trajectory
-from luggage_planning.ros_boundary_capture import RosBoundaryRecorder, load_boundary_record
+from luggage_planning.motion.motion_frame_adapters import timed_trajectory
+from luggage_planning.capture.ros_boundary_capture import RosBoundaryRecorder, load_boundary_record
 
 
 def action_request(accelerations):
@@ -85,10 +85,10 @@ def test_existing_typed_submit_conversion_preserves_explicit_empty_acceleration(
 def test_typed_admission_and_executor_submit_preserve_acceleration_semantics(accelerations):
     from types import SimpleNamespace
     import threading
-    from luggage_planning.motion_executor import MotionExecutor
-    from luggage_planning.motion_frame_adapters import record_from_message
-    from luggage_planning.motion_frame_contracts import ExecutionContext, TARGET_LINK
-    from luggage_planning.place_service import _route_boundary, _route_motion_messages
+    from luggage_planning.motion.motion_executor import MotionExecutor
+    from luggage_planning.motion.motion_frame_adapters import record_from_message
+    from luggage_planning.motion.motion_frame_contracts import ExecutionContext, TARGET_LINK
+    from luggage_planning.place.place_service import _route_boundary, _route_motion_messages
     from luggage_planning.routing.producer import _leg_record
 
     trajectory = action_request(accelerations).goal.trajectory

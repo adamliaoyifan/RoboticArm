@@ -179,7 +179,7 @@ class Diag2c(Node):
 
 
 def box_pose():
-    from luggage_planning.sim_physical_attachment import observe_model_pose
+    from luggage_planning.attachment.sim_physical_attachment import observe_model_pose
     try:
         return observe_model_pose(MODEL)
     except Exception:  # noqa: BLE001 - box may not exist yet

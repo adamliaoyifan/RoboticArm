@@ -26,8 +26,8 @@ for entry in (str(PKG_DIR), str(SCRIPTS)):
         sys.path.insert(0, entry)
 
 from luggage_description.frame_contracts import ContractError  # noqa: E402
-from luggage_planning import place_service  # noqa: E402
-from luggage_planning import place_tcp  # noqa: E402
+from luggage_planning.place import place_service  # noqa: E402
+from luggage_planning.place import place_tcp  # noqa: E402
 
 GRASP = {
     "contract_version": 2,
@@ -70,7 +70,7 @@ class SelectionSurfaceRemoved(unittest.TestCase):
                 importlib.import_module(name)
 
     def test_deleted_entry_points_are_gone(self):
-        import luggage_planning.place_tcp as tcp
+        import luggage_planning.place.place_tcp as tcp
         import luggage_planning.atlas.graph as graph
         import luggage_planning.routing.grid_search as search
         for module, names in (

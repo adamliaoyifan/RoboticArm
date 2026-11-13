@@ -32,21 +32,21 @@ from luggage_perception.frame_message_adapters import (
     contact_to_message, contact_from_message,
     detection_to_message, detection_from_message,
 )
-from luggage_planning.pick_frame_contracts import (
+from luggage_planning.pick.pick_frame_contracts import (
     ApproachSnapshot, SUCTION_TARGET_LINK, approach_snapshot, grasp_transform,
     retry_segment_from_snapshot, stale_calibration_reason,
 )
-from luggage_planning.pose import Point, Pose
-from luggage_planning.suction_candidate_selection import (
+from luggage_planning.geometry.pose import Point, Pose
+from luggage_planning.pick.suction_candidate_selection import (
     SUCTION_REJECT_TF, ProbeRecord, contact_record_admission,
     judge_probe, observation_identity_consistent,
 )
-from luggage_planning.suction_candidate_waypoints import (
+from luggage_planning.pick.suction_candidate_waypoints import (
     attach_pose_error, pose_along_normal, quat_rotate,
     tool_orientation_for_candidate,
 )
-from luggage_planning.suction_pick_session import PickSession, SessionConfig
-from luggage_planning.suction_retry_contracts import RetryState
+from luggage_planning.pick.suction_pick_session import PickSession, SessionConfig
+from luggage_planning.pick.suction_retry_contracts import RetryState
 
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),

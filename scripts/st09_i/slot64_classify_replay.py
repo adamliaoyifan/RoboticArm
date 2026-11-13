@@ -107,7 +107,7 @@ def _request_document(request_path, surface_path, scene_path, slot_index):
 
 
 def _build_request(document, surface, slot, scene_revision, stamp_ns):
-    from st09_contracts.attachment import invert_transform
+    from luggage_planning.planning_contract.attachment import invert_transform
 
     attachment = document["attachment_transform"]
     grasp_pos, grasp_quat = invert_transform(
@@ -169,7 +169,7 @@ def _sync_world(node, scene_config, scene_json):
         pedestal_enabled,
     )
     from luggage_description.scene_tf_publisher import rpy_to_quaternion
-    from luggage_planning.planning_scene_client import (
+    from luggage_planning.motion.planning_scene_client import (
         PlanningSceneClient,
         load_stl_mesh_msg,
     )
@@ -195,7 +195,7 @@ def _sync_world(node, scene_config, scene_json):
             (length, width, height), frame_id="world")
         if not _applied(ok):
             raise RuntimeError("pedestal apply failed: %r" % (ok,))
-        from luggage_planning.moveit_state_validity import (
+        from luggage_planning.motion.moveit_state_validity import (
             DECLARED_STRUCTURE_PAIRS,
         )
 
@@ -227,12 +227,12 @@ def _producer(node, scene_config, scene_path, atlas, stamp_ns, budget_s=None):
         pedestal_dimensions,
         pedestal_enabled,
     )
-    from luggage_planning.attachment_provider import MeasuredAttachmentProvider
-    from luggage_planning.map_revalidation import MapRevalidator
+    from luggage_planning.attachment.attachment_provider import MeasuredAttachmentProvider
+    from luggage_planning.place.map_revalidation import MapRevalidator
     from luggage_planning.routing.moveit_edge_adapter import MoveItEdgeAdapter
-    from luggage_planning.moveit_state_validity import MoveItStateValidityAdapter
-    from luggage_planning.offline_ik import load_urdf, refine_to_pose
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.moveit_state_validity import MoveItStateValidityAdapter
+    from luggage_planning.motion.offline_ik import load_urdf, refine_to_pose
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
     from luggage_planning.atlas.graph import RouteGraph, make_offline_fk
     from luggage_planning.routing.producer import (
         ROUTE_TOTAL_WALL_NS,
@@ -240,12 +240,12 @@ def _producer(node, scene_config, scene_path, atlas, stamp_ns, budget_s=None):
         certification_policy_from_contract,
         revalidation_policy_from_contract,
     )
-    from luggage_planning.trajectory_certifier import TrajectoryCertifier
-    from ament_index_python.packages import get_package_share_directory
+    from luggage_planning.motion.trajectory_certifier import TrajectoryCertifier
+    from luggage_planning.planning_contract.location import (
+        resolved_planning_contract_path,
+    )
 
-    contract_path = os.path.join(
-        get_package_share_directory("st09_contracts"),
-        "resolved_planning_contract.json")
+    contract_path = resolved_planning_contract_path()
     with open(contract_path, encoding="utf-8") as handle:
         contract = json.load(handle)
     urdf = load_urdf(scene_tf_config=scene_path)
@@ -452,7 +452,7 @@ def _sigma_min(chain, q):
 
 
 def _classify_steps(urdf, tcp_path, chain, limits, start_q, poses):
-    from luggage_planning.offline_ik import refine_to_pose
+    from luggage_planning.motion.offline_ik import refine_to_pose
 
     def wrap(delta):
         return (float(delta) + math.pi) % (2.0 * math.pi) - math.pi
@@ -606,7 +606,7 @@ def _diagnose(node, builder, urdf, tcp_path, trace, chain, attachment, box_wdh):
             report["split"] = "COLLISION_ALONG_PATH"
             contacts = []
             for position, quaternion in poses[:3]:
-                from luggage_planning.offline_ik import refine_to_pose
+                from luggage_planning.motion.offline_ik import refine_to_pose
                 joints, _info = refine_to_pose(
                     urdf, tcp_path, position, quaternion,
                     list(attempt["frontier_q"]), pos_tol=2e-3, rot_tol=2e-2)
@@ -660,7 +660,7 @@ def _descend_and_exit(document, slot, scene_config):
 def _apply_unloaded(builder, document, slot):
     """Detached tool, released box at the candidate, no second payload."""
     from luggage_planning.routing.moveit_edge_adapter import BoxSpec, SceneState
-    from st09_contracts.attachment import compose_transform
+    from luggage_planning.planning_contract.attachment import compose_transform
 
     transform = document["container_transform"]
     pose = slot["slot_pose"]
@@ -711,7 +711,7 @@ def run_retreat_probe(node, scene_config, document, slot, urdf, tcp_path):
         MoveItEdgeAdapter,
         synthesize_waypoints,
     )
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
     from luggage_planning.atlas.graph import make_offline_fk
 
     geometry = _descend_and_exit(document, slot, scene_config)
@@ -866,8 +866,8 @@ def run_reverse_probe(node, scene_config, document, slot, urdf, tcp_path):
         MoveItEdgeAdapter,
         synthesize_waypoints,
     )
-    from luggage_planning.offline_ik import refine_to_pose
-    from luggage_planning.planning_scene_client import PlanningSceneClient
+    from luggage_planning.motion.offline_ik import refine_to_pose
+    from luggage_planning.motion.planning_scene_client import PlanningSceneClient
     from luggage_planning.atlas.graph import make_offline_fk
 
     geometry = _release_anchors(document, scene_config)
@@ -1070,7 +1070,7 @@ def main():
     }
     _dump(os.path.join(OUT, "manifest.json"), manifest)
     if args.retreat_probe:
-        from luggage_planning.offline_ik import load_urdf
+        from luggage_planning.motion.offline_ik import load_urdf
         urdf = load_urdf(scene_tf_config=SCENE_TF)
         tcp_path = urdf.path_to("suction_contact_frame")
         report = run_retreat_probe(
@@ -1096,7 +1096,7 @@ def main():
         rclpy.shutdown()
         return 0
     if args.reverse:
-        from luggage_planning.offline_ik import load_urdf
+        from luggage_planning.motion.offline_ik import load_urdf
         urdf = load_urdf(scene_tf_config=SCENE_TF)
         tcp_path = urdf.path_to("suction_contact_frame")
         report = run_reverse_probe(

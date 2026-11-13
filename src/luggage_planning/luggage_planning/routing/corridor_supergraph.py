@@ -53,7 +53,7 @@ BASE = (
 )
 SCENE_YAML = (
     "/tmp/elfin-st09-converge-i/src/luggage_description/"
-    "config/scene_tf_deploy.yaml"
+    "config/scene_tf_deploy_update.yaml"
 )
 RUNS = (
     ("std60", "g3_online_n3_0d856c7", "standard"),
@@ -542,7 +542,7 @@ def _probe_record(geometry, surface, placed, seed, center, yaw, tcp_locals,
 def try_ik(probes, placed_request_start):
     """Refine one captured seed onto probe TCP poses. Failure is not emptiness."""
     try:
-        from luggage_planning.offline_ik import load_urdf, refine_to_pose
+        from luggage_planning.motion.offline_ik import load_urdf, refine_to_pose
         urdf = load_urdf(scene_tf_config=SCENE_YAML)
         path = urdf.path_to("suction_contact_frame")
     except Exception as exc:  # noqa: BLE001 — capture boundary, not a guess

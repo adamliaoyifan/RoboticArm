@@ -16,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
-from st09_contracts.graph import GraphEdge, LoadState  # noqa: E402
-from st09_contracts.fixtures import make_timed_trajectory  # noqa: E402
-from st09_contracts.planning import (  # noqa: E402
+from luggage_planning.planning_contract.graph import GraphEdge, LoadState  # noqa: E402
+from luggage_planning.planning_contract.fixtures import make_timed_trajectory  # noqa: E402
+from luggage_planning.planning_contract.planning import (  # noqa: E402
     GeometryVerdict,
     PlacementCandidate,
 )
@@ -189,7 +189,7 @@ class TestContractValuePins:
 
     def test_budgets_match_resolved_contract(self):
         contract = json.loads(
-            (REPO_ROOT / "st09_contracts" / "resolved_planning_contract.json")
+            (REPO_ROOT / "src" / "luggage_planning" / "config" / "planning_contract" / "resolved_planning_contract.json")
             .read_text())
         budgets = contract["planning_budgets"]
         assert ROUTE_TOTAL_WALL_S == budgets["route_total_wall_s"]["value"]

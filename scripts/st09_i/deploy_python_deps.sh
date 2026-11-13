@@ -230,7 +230,7 @@ for entry in sorted(os.listdir(target)):
 record["distributions"] = dists
 with open(os.path.join(target, "DEPLOYED.json"), "w") as handle:
     json.dump(record, handle, indent=2, sort_keys=True)
-manifest_path = os.path.join(ws, "st09_contracts",
+manifest_path = os.path.join(ws, "src", "luggage_planning", "config", "planning_contract",
                              "st09_acceptance_manifest.json")
 with open(manifest_path) as handle:
     manifest = json.load(handle)

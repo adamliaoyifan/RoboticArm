@@ -186,7 +186,7 @@ def test_disconnected_constraint_regions_do_not_return_a_path_between_valid_endp
     from geometry_msgs.msg import Pose
     from moveit_msgs.msg import PositionConstraint
     from shape_msgs.msg import SolidPrimitive
-    from luggage_planning.offline_ik import Urdf
+    from luggage_planning.motion.offline_ik import Urdf
     req=backend.request()
     model=Urdf(robot_fixture()[0]);path=model.path_to('suction_contact_frame')
     constraint=PositionConstraint()

@@ -251,7 +251,7 @@ def _placement_prior_nodes(context, *args, **kwargs):
 def _placement_service_nodes(context, *args, **kwargs):
     if not _placement_enabled(context):
         return []
-    from luggage_planning.hardware_placement_launch import placement_nodes
+    from luggage_planning.deploy.hardware_placement_launch import placement_nodes
     from luggage_mapping.configuration import owner_configuration
     backend = LaunchConfiguration('occupancy_backend', default='observer').perform(context)
     observer_share = get_package_share_directory('uld_occ_observer')
@@ -295,7 +295,7 @@ def _deploy_profile_gate(context, *args, **kwargs):
     atlas/manifest identity checks run with the planning chain; a
     detect-only bringup still resolves the scene and config strictly.
     """
-    from luggage_planning.deploy_profile import resolve_deploy_profile
+    from luggage_planning.deploy.deploy_profile import resolve_deploy_profile
 
     scene = LaunchConfiguration("scene_tf_config").perform(context)
     atlas_cfg = str(

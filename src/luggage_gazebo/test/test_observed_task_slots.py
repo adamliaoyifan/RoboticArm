@@ -3,7 +3,7 @@ import math
 import pytest
 from test_joint_operation_observer import configuration,snapshot
 from luggage_gazebo.observed_task_slots import observed_task_slots
-from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy
+from luggage_planning.attachment.attachment_geometry_policy import load_attachment_geometry_policy
 
 
 @pytest.mark.parametrize('mode',('floor','stack'))

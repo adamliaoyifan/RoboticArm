@@ -53,7 +53,7 @@ def test_moveit_configuration_matches_installed_distro(monkeypatch,distro,plugin
 
 
 def test_explicit_manifest_is_passed_to_strict_profile_gate(monkeypatch):
-    from luggage_planning import deploy_profile
+    from luggage_planning.deploy import deploy_profile
     module=launch_module()
     captured=[]
     def resolve(scene, atlas, **kwargs):
@@ -72,7 +72,7 @@ def test_explicit_manifest_is_passed_to_strict_profile_gate(monkeypatch):
 @pytest.mark.parametrize('grid_resolution', ['', '0.01', '0.05'])
 @pytest.mark.parametrize('enabled_by', ['start_placement','start_placement_prior'])
 def test_placement_launch_starts_required_providers_with_shared_identity(monkeypatch, enabled_by, grid_resolution):
-    from luggage_planning import hardware_placement_launch
+    from luggage_planning.deploy import hardware_placement_launch
     from luggage_description.runtime_graph import STACK_PEERS, endpoint_registry, resolve_peers
     module=launch_module()
     context=LaunchContext()

@@ -976,10 +976,10 @@ def _frozen_groups(repo):
     scene = os.environ.get("M3_SCENE_TF", "")
     atlas_dir = os.environ.get("M3_ATLAS_DIR", "")
     scene = scene or os.path.join(
-        repo, "src", "luggage_description", "config", "scene_tf_deploy.yaml")
+        repo, "src", "luggage_description", "config", "scene_tf_deploy_update.yaml")
     atlas_dir = atlas_dir or os.path.join(
         repo, "src", "luggage_planning", "data",
-        "reachability_atlas_deploy_sim")
+        "reachability_atlas_deploy_update")
     atlas_files = sorted(
         os.path.join(atlas_dir, name) for name in os.listdir(atlas_dir)
         if name.endswith((".npz", ".yaml"))) if os.path.isdir(atlas_dir) else []
@@ -991,7 +991,7 @@ def _frozen_groups(repo):
         "extractor": [os.path.join(
             repo, "scripts", "frame_migration_st09_extract.py")],
         "resolved_profile": [os.path.join(
-            repo, "st09_contracts", "resolved_planning_contract.json")],
+            repo, "src", "luggage_planning", "config", "planning_contract", "resolved_planning_contract.json")],
         "scene": [scene],
         "model": [container_model],
         "atlas": atlas_files,

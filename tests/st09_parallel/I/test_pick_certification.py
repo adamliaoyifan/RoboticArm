@@ -25,17 +25,17 @@ from luggage_planning.routing.producer import (  # noqa: E402
     certify_unloaded_legs,
     pick_leg_records,
 )
-from luggage_planning.trajectory_certifier import (  # noqa: E402
+from luggage_planning.motion.trajectory_certifier import (  # noqa: E402
     CertificationPolicy,
     TrajectoryCertifier,
 )
-from st09_contracts.attachment import UNLOADED_ATTACHMENT_DIGEST  # noqa: E402
-from st09_contracts.fixtures import (  # noqa: E402
+from luggage_planning.planning_contract.attachment import UNLOADED_ATTACHMENT_DIGEST  # noqa: E402
+from luggage_planning.planning_contract.fixtures import (  # noqa: E402
     make_attachment,
     make_graph_fixture,
     make_snapshot,
 )
-from st09_contracts.reasons import Reason  # noqa: E402
+from luggage_planning.planning_contract.reasons import Reason  # noqa: E402
 
 
 class _Traj(object):
@@ -111,7 +111,7 @@ def _certify(edges, adapter):
 
 
 def test_certify_unloaded_legs_passes_and_binds_unloaded_digest():
-    from luggage_planning.moveit_validity_adapter import (
+    from luggage_planning.motion.moveit_validity_adapter import (
         StaticMoveItValidityAdapter,
         ValiditySample,
     )
@@ -131,7 +131,7 @@ def test_certify_unloaded_legs_passes_and_binds_unloaded_digest():
 
 
 def test_certify_unloaded_legs_collision_is_named_refusal():
-    from luggage_planning.moveit_validity_adapter import (
+    from luggage_planning.motion.moveit_validity_adapter import (
         StaticMoveItValidityAdapter,
         ValiditySample,
     )

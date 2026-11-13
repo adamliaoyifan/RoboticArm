@@ -12,8 +12,8 @@ for _path in (ROOT, ROOT / "src" / "luggage_planning"):
     if str(_path) not in sys.path:
         sys.path.append(str(_path))
 
-from st09_contracts.fixtures import make_attachment, make_snapshot  # noqa: E402
-from st09_contracts.graph import GraphEdge, LoadState  # noqa: E402
+from luggage_planning.planning_contract.fixtures import make_attachment, make_snapshot  # noqa: E402
+from luggage_planning.planning_contract.graph import GraphEdge, LoadState  # noqa: E402
 
 from luggage_planning.routing.corridor_lattice import (  # noqa: E402
     CorridorRequest,

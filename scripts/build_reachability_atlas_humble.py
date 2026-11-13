@@ -109,7 +109,7 @@ def _detach_payload(node):
     """Drop a payload left by an earlier build so the next scene is empty-load."""
     import rclpy
     from moveit_msgs.srv import ApplyPlanningScene
-    from luggage_planning.planning_scene_client import build_detach_scene
+    from luggage_planning.motion.planning_scene_client import build_detach_scene
     client = node.create_client(ApplyPlanningScene, "/apply_planning_scene")
     if not client.wait_for_service(timeout_sec=15.0):
         print("payload detach: apply_planning_scene unavailable", flush=True)

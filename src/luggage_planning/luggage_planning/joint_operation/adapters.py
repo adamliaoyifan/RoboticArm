@@ -11,7 +11,7 @@ from luggage_description.ros_frame_bindings.identity import require_message
 from luggage_description.ros_frame_bindings.joints import (
     joints_from_message, joints_to_message,
 )
-from luggage_planning.attachment_geometry_transport import (
+from luggage_planning.attachment.attachment_geometry_transport import (
     geometry_from_message, geometry_to_message,
 )
 from luggage_planning.joint_operation.contracts import (

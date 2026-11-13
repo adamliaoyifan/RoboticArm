@@ -13,8 +13,8 @@ from luggage_description.frame_contracts import vector
 from luggage_planning.joint_operation.contracts import (
     OperationIdentity, admit_operation_plan, require,
 )
-from st09_contracts.attachment import AttachmentRecord, AttachmentValidity
-from st09_contracts.attachment_geometry import AttachmentGeometry
+from luggage_planning.planning_contract.attachment import AttachmentRecord, AttachmentValidity
+from luggage_planning.planning_contract.attachment_geometry import AttachmentGeometry
 
 
 @dataclass(frozen=True)

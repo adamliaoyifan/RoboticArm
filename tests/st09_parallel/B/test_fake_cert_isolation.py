@@ -3,7 +3,7 @@
 Until ST09-C lands, tests may use explicitly fake certification results;
 production B code must be structurally incapable of emitting one. This is
 asserted three ways: an AST scan proving the four production modules
-never import st09_contracts.fixtures and never construct a
+never import luggage_planning.planning_contract.fixtures and never construct a
 CertificationResult; a structural check that PlannedRoute has no
 certification field to smuggle one through; and an end-to-end offline
 plan_route whose output digest is byte-identical with and without a fake
@@ -18,21 +18,21 @@ from pathlib import Path
 
 import pytest
 
-from st09_contracts.graph import GraphEdge, LoadState, PlannedRoute  # noqa: E402
-from st09_contracts.fixtures import (  # noqa: E402
+from luggage_planning.planning_contract.graph import GraphEdge, LoadState, PlannedRoute  # noqa: E402
+from luggage_planning.planning_contract.fixtures import (  # noqa: E402
     make_attachment,
     make_snapshot,
     make_timed_trajectory,
 )
-from st09_contracts.planning import (  # noqa: E402
+from luggage_planning.planning_contract.planning import (  # noqa: E402
     GeometryVerdict,
     PlacementCandidate,
 )
-from st09_contracts.attachment import PlaceTarget  # noqa: E402
-from st09_contracts.certification import CertificationResult  # noqa: E402
-from st09_contracts.reasons import Reason  # noqa: E402
+from luggage_planning.planning_contract.attachment import PlaceTarget  # noqa: E402
+from luggage_planning.planning_contract.certification import CertificationResult  # noqa: E402
+from luggage_planning.planning_contract.reasons import Reason  # noqa: E402
 
-from luggage_planning.place_targets import GoalSeed  # noqa: E402
+from luggage_planning.place.place_targets import GoalSeed  # noqa: E402
 
 from luggage_planning.routing.grid_search import (  # noqa: E402
     RoutePlanningError,
@@ -52,7 +52,7 @@ PRODUCTION_MODULES = [
     "moveit_edge_adapter.py",
 ]
 
-BANNED_IMPORTS = ("st09_contracts.fixtures",)
+BANNED_IMPORTS = ("luggage_planning.planning_contract.fixtures",)
 BANNED_CONSTRUCTIONS = {"CertificationResult", "make_certification"}
 
 
@@ -68,7 +68,7 @@ class TestProductionAstHygiene:
                 assert ".".join(
                     filter(None, [node.module or "", node.level * "."])) \
                     not in BANNED_IMPORTS, module_name
-                assert node.module != "st09_contracts.fixtures", module_name
+                assert node.module != "luggage_planning.planning_contract.fixtures", module_name
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     assert alias.name not in BANNED_IMPORTS, module_name

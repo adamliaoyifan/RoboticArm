@@ -10,8 +10,8 @@ from luggage_planning.joint_operation.contracts import (
     OPERATION_JOINTS,
 )
 from luggage_planning.placement_prior.contracts import Transform
-from st09_contracts.attachment_geometry import freeze_geometry
-from st09_contracts.payload_envelope import EnvelopeLimits
+from luggage_planning.planning_contract.attachment_geometry import freeze_geometry
+from luggage_planning.planning_contract.payload_envelope import EnvelopeLimits
 
 
 def example_plan():

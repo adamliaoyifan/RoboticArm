@@ -103,7 +103,7 @@ def test_complete_fixture_replays_atlas_on_and_off():
 
 
 def test_character_split_json_targets_replay():
-    from luggage_planning.planning_capture import normalize_targets
+    from luggage_planning.capture.planning_capture import normalize_targets
     encoded = "[[[0.1, 0.2, 0.8], [0.0, 0.0, 0.0, 1.0]]]"
     pairs = normalize_targets(list(encoded))
     assert pairs == [[[0.1, 0.2, 0.8], [0.0, 0.0, 0.0, 1.0]]]
@@ -116,7 +116,7 @@ def test_character_split_json_targets_replay():
 
 
 def test_stringified_targets_are_parsed_before_replay():
-    from luggage_planning.planning_capture import candidates_from_rows
+    from luggage_planning.capture.planning_capture import candidates_from_rows
     rows = [{
         "candidate_id": "cand-0",
         "slot_index": 4,

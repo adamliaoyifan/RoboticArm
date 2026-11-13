@@ -546,17 +546,20 @@ def load_atlas_runtime_for_scene(scene_path, explicit_path=None):
     An explicit runtime yaml wins. Otherwise each installed cell
     (simulation ``atlas_runtime.yaml``, deploy ``atlas_runtime_deploy.yaml``)
     is matched by the ``scene_tf_hash`` stored on its empty-load atlas.
-    ``scene_tf.yaml.example`` therefore selects the simulation reachable
-    points, and ``scene_tf_deploy.yaml`` selects the deploy points. No
-    match, or two matches, keeps the simulation cell so strict identity
-    can refuse a foreign scene.
+    Since 2026-11-11 the installed cell set is the single site cell
+    (deploy_update); a scene that does not match it keeps that cell so
+    strict identity can refuse a foreign scene.
     """
     explicit = str(explicit_path or "").strip()
     if explicit:
         return load_atlas_runtime(explicit)
     scene_hash = compute_scene_tf_hash(scene_path)
     matched = []
-    for name in (CONFIG_NAME, "atlas_runtime_deploy.yaml"):
+    # [2026-11-11 single-cell ruling] The example/deploy/deploy_sim
+    # cells were retired with their scenes; the live cell is
+    # deploy_update (site-aligned). CONFIG_NAME points at the same
+    # cell, so the registry is a single entry.
+    for name in (CONFIG_NAME,):
         path = atlas_runtime_config_path(name=name)
         if not path:
             continue

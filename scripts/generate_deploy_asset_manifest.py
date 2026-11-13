@@ -32,7 +32,7 @@ from luggage_description.deploy_manifest import (  # noqa: E402
     DEPLOY_PAYLOAD_ENVELOPES,
     build_deploy_manifest,
 )
-from luggage_planning.deploy_profile import default_resolver  # noqa: E402
+from luggage_planning.deploy.deploy_profile import default_resolver  # noqa: E402
 
 ATLAS_PROFILES = (
     (None, "s20_container_collision_aware", "s20_deploy_empty"),

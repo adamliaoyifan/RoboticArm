@@ -4,7 +4,7 @@
 from types import SimpleNamespace
 import unittest
 
-from luggage_planning.motion_executor import MotionExecutor, cartesian_hops
+from luggage_planning.motion.motion_executor import MotionExecutor, cartesian_hops
 
 
 def _executor():

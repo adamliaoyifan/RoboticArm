@@ -198,13 +198,13 @@ class TestG0CacheInvalidation(unittest.TestCase):
 
     def _graph_with_edge(self):
         graph = RouteGraph("test")
-        from st09_contracts.graph import GraphEdge, LoadState
+        from luggage_planning.planning_contract.graph import GraphEdge, LoadState
         
         # Register nodes in shared regions
         for node_id, region in (("home_q", "home"), ("staging_q", "staging")):
             graph._nodes[node_id] = FakeNode(node_id, region)
         # Build a verified edge with a real TimedTrajectory
-        from st09_contracts.graph import TimedTrajectory as TT
+        from luggage_planning.planning_contract.graph import TimedTrajectory as TT
         traj = TT(
             joint_names=["elfin_joint1"],
             positions=[[0.0], [1.0]],
@@ -311,7 +311,7 @@ class TestG0SupportPenetration(unittest.TestCase):
     """Case 8: legal supported release valid; deliberate penetration fails."""
 
     def test_payload_touch_links_are_limited(self):
-        from luggage_planning.moveit_state_validity import (
+        from luggage_planning.motion.moveit_state_validity import (
             SUCTION_INTERFACE_TOUCH_LINKS)
         # Touch links are ONLY the suction seal, not blanket exemptions
         self.assertEqual(
@@ -324,7 +324,7 @@ class TestG0SupportPenetration(unittest.TestCase):
                          SUCTION_INTERFACE_TOUCH_LINKS)
 
     def test_support_object_is_container_mesh_not_placed_box(self):
-        from luggage_planning.moveit_state_validity import (
+        from luggage_planning.motion.moveit_state_validity import (
             SUPPORT_OBJECT_HINTS)
         # Support resolution prefers the container mesh; placed boxes are
         # obstacles, not landing surfaces for the ACM's support allowance

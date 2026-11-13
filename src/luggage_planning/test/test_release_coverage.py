@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from luggage_planning.joint_operation.release_coverage import release_coverage,projected_missing_columns
 from luggage_planning.placement_prior.contracts import Transform
-from luggage_planning.interior_view_scorer import CameraIntrinsics
+from luggage_planning.geometry.interior_view_scorer import CameraIntrinsics
 
 
 def surface():

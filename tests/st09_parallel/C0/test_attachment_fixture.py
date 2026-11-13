@@ -9,7 +9,7 @@ import math
 
 import pytest
 
-from st09_contracts import (
+from luggage_planning.planning_contract import (
     ATTACHMENT_SCHEMA_VERSION,
     AttachmentRecord,
     AttachmentSourceKind,
@@ -19,8 +19,8 @@ from st09_contracts import (
     Reason,
     resolve_place_targets,
 )
-from st09_contracts._base import ContractViolation
-from st09_contracts.attachment import (
+from luggage_planning.planning_contract._base import ContractViolation
+from luggage_planning.planning_contract.attachment import (
     ATTACHMENT_MAX_AGE_NS,
     GRASP_TOLERANCE_M,
     GRASP_TOLERANCE_RAD,
@@ -29,7 +29,7 @@ from st09_contracts.attachment import (
     expand_symmetric_heading,
     invert_transform,
 )
-from st09_contracts.fixtures import (
+from luggage_planning.planning_contract.fixtures import (
     DEPLOY_CALIBRATION,
     DEPLOY_SCENE,
     SIM_CALIBRATION,
@@ -74,7 +74,7 @@ class TestTargetFixtureMatrix:
             target.position, target.quaternion_xyzw, t_box_tcp, q_box_tcp)
         assert max(abs(a - b) for a, b in zip(target_t.position, exp_t)) <= 1e-9
         # quaternion equivalence: rotation angle between them is 0 (sign-free)
-        from st09_contracts.attachment import quaternion_angle_between
+        from luggage_planning.planning_contract.attachment import quaternion_angle_between
         assert quaternion_angle_between(target_t.quaternion_xyzw, exp_q) <= 1e-9
 
     def test_centre_height_never_readds_half_box(self):
@@ -121,7 +121,7 @@ class TestTargetFixtureMatrix:
                      if t.heading_theta == flipped.heading_theta)
         # same rotation despite q/-q: positions equal, orientations equal in angle
         assert one.position == other.position
-        from st09_contracts.attachment import quaternion_angle_between
+        from luggage_planning.planning_contract.attachment import quaternion_angle_between
         assert quaternion_angle_between(one.quaternion_xyzw, other.quaternion_xyzw) <= 1e-9
 
 
@@ -248,8 +248,8 @@ class TestPolicyValuesMirrorContractJson:
         import json
         from pathlib import Path
         contract = json.loads(
-            (Path(__file__).resolve().parents[3] / "st09_contracts"
-             / "resolved_planning_contract.json").read_text())
+            (Path(__file__).resolve().parents[3] / "src" / "luggage_planning"
+             / "config" / "planning_contract" / "resolved_planning_contract.json").read_text())
         att = contract["attachment_policy"]
         assert att["tf_sync_max_skew_ns"]["value"] == TF_SYNC_MAX_SKEW_NS
         assert att["attachment_max_age_ns"]["value"] == ATTACHMENT_MAX_AGE_NS

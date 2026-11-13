@@ -57,7 +57,7 @@ def _semantic_srdf():
 
 def generate_launch_description():
     desc_share = get_package_share_directory("luggage_description")
-    default_scene = os.path.join(desc_share, "config", "scene_tf_deploy.yaml")
+    default_scene = os.path.join(desc_share, "config", "scene_tf_deploy_update.yaml")
     xacro_path = os.path.join(
         desc_share, "urdf", "elfin_s20_with_camera.urdf.xacro")
 

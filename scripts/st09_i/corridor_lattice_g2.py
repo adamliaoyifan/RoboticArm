@@ -172,7 +172,7 @@ def main():
         load_scene_tf_config,
     )
     from luggage_perception.eval.isolated_domain import isolated_replay_env
-    from luggage_planning.offline_ik import load_urdf, refine_to_pose
+    from luggage_planning.motion.offline_ik import load_urdf, refine_to_pose
 
     os.makedirs(OUT, exist_ok=True)
     manifest = {
