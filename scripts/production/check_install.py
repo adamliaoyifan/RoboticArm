@@ -12,6 +12,7 @@ MODULES = (
     'luggage_mapping.configuration',
     'luggage_mapping.regions',
     'luggage_planning.joint_operation.prepare_node',
+    'luggage_planning.joint_operation.local_branch_search',
     'luggage_planning.joint_operation.aperture_geometry',
     'luggage_planning.joint_operation.aperture_tool_geometry',
     'luggage_planning.joint_operation.aperture',

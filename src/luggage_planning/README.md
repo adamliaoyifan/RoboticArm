@@ -89,6 +89,13 @@ The simulation profile exposes per-edge connection time and global/per-candidate
 branch limits. Its diagnostic search uses 5s per edge and 8 total branches,
 at most 2 per coupled candidate, within the existing 300s preparation watchdog.
 These are search budgets, not reachability decisions or a production latency SLA.
+Production preparation also proposes a uniform integer-turn variant of each
+native place branch using the loaded revolute-joint bounds and the entire local
+path. Each place family gets its preferred winding before raw fallbacks; every
+variant retains provenance and must pass full native certification. Issued paths
+are never wrapped at execution. Carry search shares remaining time among known
+branch attempts within existing caps, keeping one opening search from consuming
+another known branch's share. This does not schedule unenumerated future slots.
 Native connection replies are recorded by their own completion callback even
 when the parent search has stopped waiting. Such late evidence never promotes
 the stopped call into a plan or sends another request. Pending transport still

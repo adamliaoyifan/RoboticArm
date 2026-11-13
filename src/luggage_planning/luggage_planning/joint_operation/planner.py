@@ -182,7 +182,8 @@ class JointOperationPlanner:
                  velocity_scale, acceleration_scale, certification_reserve_s,
                  max_candidates=MAX_PLACEMENT_CANDIDATES * len(DIRECTED_CONTACT_REVERSALS),
                  max_branch_attempts=3,
-                 max_branch_attempts_per_candidate=None, aperture_router=None, path_cache=None, clock=time.monotonic):
+                 max_branch_attempts_per_candidate=None, aperture_router=None, path_cache=None,
+                 branch_search=None, clock=time.monotonic):
         for name, value in (("velocity_scale", velocity_scale),
                             ("acceleration_scale", acceleration_scale)):
             if type(value) not in (int, float) or not math.isfinite(value) or not 0 < value <= 1:
@@ -198,6 +199,7 @@ class JointOperationPlanner:
         self.endpoints, self.connections, self.certification = endpoint_port, connection_port, certification_port
         self.aperture_router = aperture_router
         self.path_cache = path_cache
+        self.branch_search = branch_search
         self.velocity_scale, self.acceleration_scale = velocity_scale, acceleration_scale
         self.reserve_s = float(certification_reserve_s)
         # This cap counts bound placement/contact combinations, not placement slots.
@@ -267,8 +269,11 @@ class JointOperationPlanner:
             # be recovered by another pick q at exactly the same spatial grasp.
             alignment = {}
             candidate_attempts = 0
-            for pick in evidence.pick_branches:
-                for place in evidence.place_branches:
+            branch_sets = tuple((pick, self.branch_search.placements(pick,evidence.place_branches,trace=trace)
+                if self.branch_search is not None else evidence.place_branches)
+                for pick in evidence.pick_branches)
+            for pick_index, (pick, places) in enumerate(branch_sets):
+                for place_index, place in enumerate(places):
                     if (self.candidate_branch_cap < self.max_branch_attempts
                             and candidate_attempts >= self.candidate_branch_cap):
                         break
@@ -292,8 +297,15 @@ class JointOperationPlanner:
                         # Place alternatives cannot repair this pick approach.
                         # Preserve the remaining budget for another pick branch.
                         break
+                    known_remaining = len(places)-place_index+sum(len(rows) for _,rows in branch_sets[pick_index+1:])
+                    available_attempts = min(known_remaining,self.max_branch_attempts-attempts+1,
+                                             self.candidate_branch_cap-candidate_attempts+1)
+                    now = self.clock()
+                    carry_deadline = now+(planning_deadline-now)/available_attempts
+                    trace.append(('carry_branch_budget',branch_id,available_attempts,
+                                  max(0.,carry_deadline-now),planning_deadline))
                     carry_kwargs = dict(request_id=identity.request_id+":"+branch_id+":carry",
-                        deadline=planning_deadline, cancelled=cancelled)
+                        deadline=carry_deadline, cancelled=cancelled)
                     if self.aperture_router is None:
                         response = timing.call('carry_connection',self.connections.connect,candidate.scenes.carry,
                             pick.outgoing[-1], place.incoming[0], **carry_kwargs)
@@ -302,7 +314,9 @@ class JointOperationPlanner:
                             pick.outgoing[-1], place.incoming[0], trace=trace, **carry_kwargs)
                     if stopped(planning_deadline):
                         return finish("CANCELLED" if cancelled() else "SEARCH_INCOMPLETE")
-                    carrying = _connection_rows(response, pick.outgoing[-1], place.incoming[0])
+                    # A late child result cannot borrow the next branch's slice.
+                    carrying = (None if stopped(carry_deadline) else
+                        _connection_rows(response, pick.outgoing[-1], place.incoming[0]))
                     if carrying is None:
                         trace.append((branch_id, "CARRY_CONNECTION_MISS"))
                         continue

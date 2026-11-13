@@ -46,6 +46,7 @@ from luggage_planning.joint_operation.aperture import ApertureRouter
 from luggage_planning.joint_operation.scene_admission import StaticWorldAdmission
 from luggage_planning.joint_operation.atlas import AtlasOperationHints, load_operation_atlas
 from luggage_planning.joint_operation.planner import JointOperationPlanner
+from luggage_planning.joint_operation.local_branch_search import LocalBranchSearch
 from luggage_planning.joint_operation.preparation import JointOperationPreparation, PreparationInputs
 from luggage_planning.joint_operation.preparation_refresh import LatestMapFinalizer, RefreshCapture
 from luggage_planning.pick.pickup_collision import pickup_collision_aabb
@@ -141,7 +142,8 @@ class JointOperationPrepareNode(Node):
             acceleration_scale=acceleration,certification_reserve_s=float(param('certification_reserve_s',5.)),
             max_branch_attempts=param('max_branch_attempts',3),
             max_branch_attempts_per_candidate=param('max_branch_attempts_per_candidate',2),
-            aperture_router=aperture_router,path_cache=path_cache)
+            aperture_router=aperture_router,path_cache=path_cache,
+            branch_search=LocalBranchSearch(self.model))
         atlas,atlas_reason = None,'ATLAS_UNAVAILABLE_ONLINE_IK'
         atlas_paths = [str(param(name,'')) for name in
             ('atlas_npz','atlas_yaml','atlas_qualification_file','atlas_scene_tf_config')]

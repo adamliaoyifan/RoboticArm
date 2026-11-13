@@ -195,6 +195,42 @@ def test_complete_plan_uses_real_native_endpoints_connections_and_certificate(na
         'start_joints':plan.start_joints,'knots_per_leg':[len(leg.knots) for leg in plan.legs]},indent=2))
 
 
+def test_equivalent_whole_place_branch_passes_native_six_leg_certificate(native_stack):
+    from dataclasses import asdict
+    from luggage_planning.joint_operation.local_branch_search import LocalBranchSearch
+    from luggage_planning.joint_operation.planner import JointOperationPlanner
+    from luggage_planning.joint_operation.contracts import admit_operation_plan
+    identity, start, candidate = candidate_for(native_stack.model,
+        pick_q=(0., -.6, 1.2, 0., -.6, -3.3),
+        place_q=(0., -.4, 1., 0., -.6, 3.3))
+    receipts = []
+
+    class RecordedEndpoints:
+        def solve(self, *args, **kwargs):
+            receipt = native_stack.endpoints.solve(*args, **kwargs)
+            receipts.append(receipt)
+            return receipt
+
+    planner = JointOperationPlanner(RecordedEndpoints(), native_stack.connections, native_stack.certifier,
+        velocity_scale=.2, acceleration_scale=.1, certification_reserve_s=2.5,
+        branch_search=LocalBranchSearch(native_stack.model))
+    result = planner.prepare(identity, start, (candidate,), budget_s=12.)
+    evidence = dict(result_status=result.status, trace=result.trace,
+        local_receipts=[asdict(receipt) for receipt in receipts],
+        plan=asdict(result.plan) if result.plan else None)
+    (native_stack.directory/'equivalent_branch_case.json').write_text(json.dumps(evidence, indent=2))
+    assert result.status == 'PLAN_READY', result.trace
+    assert any(row[0] == 'equivalent_local_branch' for row in result.trace)
+    assert any(branch.incoming[0][-1] > 3. for branch in receipts[0].place_branches)
+    plan = result.plan
+    admit_operation_plan(plan, identity, plan.plan_digest)
+    assert len(plan.legs) == 6
+    assert plan.legs[4].knots[0].positions[-1] < -2.
+    assert native_stack.model.matches(plan.legs[4].knots[-1].positions, candidate.world_from_release_tool)
+    assert plan.world_from_pick_tool == candidate.world_from_pick_tool
+    assert plan.world_from_place_box == candidate.world_from_release_box
+
+
 def test_legacy_empty_hints_still_produce_native_local_paths(native_stack):
     _,_,candidate=candidate_for(native_stack.model)
     candidate=replace(candidate,pick_entry_seeds=(),place_entry_seeds=())

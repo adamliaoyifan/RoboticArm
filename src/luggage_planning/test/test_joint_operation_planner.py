@@ -114,6 +114,43 @@ def test_failed_carry_tries_another_pick_branch_and_preserves_full_joint6_windin
     assert cert.calls[0][2]['deadline'] > connection.calls[0][3]['deadline']
 
 
+def test_carry_child_expiry_preserves_time_for_next_known_branch():
+    bundle = ports(max_branch_attempts=2)
+    _, _, endpoints, connection, certifier, clock, _ = bundle
+    endpoints.evidence = replace(endpoints.evidence,
+        pick_branches=endpoints.evidence.pick_branches[:1],
+        place_branches=(branch('s0', .08), branch('s1', .12)))
+    original = connection.connect
+
+    def expire_first(snapshot, start, goal, **kwargs):
+        response = original(snapshot, start, goal, **kwargs)
+        if kwargs['request_id'].endswith(':s0:carry'):
+            clock.now = kwargs['deadline'] + .001
+        return response  # Even a success arriving late must be discarded.
+
+    connection.connect = expire_first
+    result = prepare(bundle)
+    assert result.status == 'PLAN_READY', result.trace
+    calls = [call for call in connection.calls if call[3]['request_id'].endswith(':carry')]
+    assert len(calls) == 2
+    assert calls[0][3]['deadline'] == pytest.approx(12.4)
+    assert calls[1][3]['deadline'] == pytest.approx(14.8)
+    assert len(certifier.calls) == 1
+    assert certifier.calls[0][2]['deadline'] == 15.
+    assert result.plan.legs[4].knots[0].positions == branch('s1', .12).incoming[0]
+    assert clock.now < 14.8
+
+
+def test_single_known_branch_keeps_full_remaining_planning_time():
+    bundle = ports()
+    bundle[2].evidence = replace(bundle[2].evidence,
+        pick_branches=bundle[2].evidence.pick_branches[:1])
+    result = prepare(bundle)
+    assert result.status == 'PLAN_READY'
+    carry = [call for call in bundle[3].calls if call[3]['request_id'].endswith(':carry')]
+    assert len(carry) == 1 and carry[0][3]['deadline'] == pytest.approx(14.8)
+
+
 @pytest.mark.parametrize('field,value', [('complete',False), ('model_sha256','stale'),
     ('candidate_id','other'), ('phase_scene_digests',('stale',)*3), ('attachment_digest','stale'),
     ('pick_branches',()), ('place_branches',())])
