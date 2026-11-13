@@ -58,6 +58,7 @@ from luggage_description.scene_tf_config_utils import (
     pickup_platform_config,
 )
 from luggage_gazebo.platform_model import platform_sdf
+from luggage_gazebo.simulation_pickup_workspace import simulation_segmenter_node
 from luggage_description.xacro_robot_with_scene_base import expand_and_patch
 
 from luggage_description.cargo_grid_parameters import resolve_resolution
@@ -1055,23 +1056,13 @@ def _launch_setup(context):
                 os.pathsep.join(nvidia_libs), os.pathsep,
                 EnvironmentVariable("LD_LIBRARY_PATH", default_value=""),
             ]
-    segmenter = Node(
-        package="luggage_perception",
-        executable="semantic_segmenter_node.py",
-        name="semantic_segmenter",
-        output="screen",
-        additional_env=segmenter_env,
+    segmenter = simulation_segmenter_node(
+        scene_config=scene_tf_config,
+        semantic_config=semantic_config,
+        model_path=semantic_model_path,
+        require_backend=require_backend,
+        environment=segmenter_env,
         condition=IfCondition(_bool_text(cfg["use_semantic"])),
-        parameters=[semantic_config, {
-            "use_sim_time": True,
-            "require_backend": require_backend,
-            "model_name": semantic_model_path,
-            # Bare class names score below 0.2 on the textured top-down
-            # mesh (diagnostic frame: 0 detections). The yaml's
-            # scene-descriptive prompts are the query that fires
-            # (same frame: luggage-from-above at 0.61). Do not override
-            # them here.
-        }],
     )
     point_filter = Node(
         package="luggage_perception",

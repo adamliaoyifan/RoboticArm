@@ -110,6 +110,7 @@ def test_extra_bag_inputs_only_enabled_for_explicit_fixture():
     diagnostic=runner.sensor_capture_topics(detector_inputs=True)
     extra={'/luggage/perception/detection_frame','/luggage/semantic/mask',
         '/luggage/semantic/instance_mask','/luggage/semantic/yolo_detections',
-        '/luggage/semantic/cargo_points_untracked'}
+        '/luggage/semantic/cargo_points_untracked','/luggage/semantic/cargo_points',
+        '/luggage/preprocessed/camera/color/camera_info','/semantic_segmenter/stats_json'}
     assert set(diagnostic)-set(ordinary)==extra
     assert len(diagnostic)==len(set(diagnostic)) and set(ordinary).issubset(diagnostic)

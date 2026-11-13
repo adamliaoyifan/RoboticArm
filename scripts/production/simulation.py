@@ -101,7 +101,9 @@ def sensor_capture_topics(*, detector_inputs=False):
     if detector_inputs:
         topics.extend(['/luggage/perception/detection_frame','/luggage/semantic/mask',
             '/luggage/semantic/instance_mask','/luggage/semantic/yolo_detections',
-            '/luggage/semantic/cargo_points_untracked'])
+            '/luggage/semantic/cargo_points_untracked','/luggage/semantic/cargo_points',
+            '/luggage/preprocessed/camera/color/camera_info',
+            '/semantic_segmenter/stats_json'])
     return topics
 
 

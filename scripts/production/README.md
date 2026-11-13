@@ -68,7 +68,8 @@ budget once per box; producer planning and recovery deadlines remain unchanged.
 
 The explicit depth-fault mode also enables the detector's existing same-stamp
 ambiguity capture under `detector_inputs/` and records semantic masks, detections
-and cargo clouds in the bounded sensor bag. Its anomaly receipts pin exact
+and tracked/untracked cargo clouds, color intrinsics and segmenter decision
+statistics in the bounded sensor bag. Its anomaly receipts pin exact
 original/output depth without selecting a grasp. Up to four unselected tail
 frames survive teardown; they are marked as such and cannot stand in for an
 actual selected acquisition. All saved frame roles share sixteen payload slots
@@ -76,3 +77,10 @@ of at most2MiB;trace is limited to31MiB,leaving metadata within64MiB retained.
 Missing exact anomaly inputs are explicit;no nearest image is substituted.
 Failure/invalid domain diagnostics are excluded from selected-pick inventories.
 These additions affect only explicitly enabled diagnostic capture.
+
+The Gazebo segmenter reads pickup workspace center, half extents, top-plane Z
+and world frame from the selected `scene_tf_config` platform. These override the
+historical semantic YAML region; confidence and workspace margin stay unchanged.
+The existing plane predicate requires a horizontal platform. With the platform
+disabled, its acceptance predicate is disabled. This uses known static scene
+geometry, not box geometry or planned occupancy; hardware entry is unaffected.
