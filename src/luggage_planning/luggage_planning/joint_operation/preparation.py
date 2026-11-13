@@ -15,6 +15,7 @@ from luggage_perception.observed_suction_domain import ObservedSuctionDomain
 from luggage_planning.placement_prior.contracts import PlacementCandidate, Snapshot, Transform
 from luggage_planning.joint_operation.preparation_profile import PreparationBudget, StageTimings
 from luggage_planning.joint_operation.preparation_refresh import FinalizedPreparation
+from luggage_planning.joint_operation.search_evidence import PreparationSearchEvidence
 
 
 @dataclass(frozen=True)
@@ -63,10 +64,12 @@ class JointOperationPreparation:
         response.success,response.reason = False,'SEARCH_INCOMPLETE'
         response.plan = JointOperationPlanV2()
         trace = [('atlas','QUALIFIED_PROPOSALS' if self.atlas else self.atlas_unavailable_reason)]
+        search_evidence = PreparationSearchEvidence(inputs.domain)
         timing = StageTimings('candidate_preparation', trace, clock=self.clock)
         def stopped(): return cancelled() or self.clock() >= deadline
         def finish(reason):
             response.reason = reason
+            trace.append(('preparation_search_evidence',search_evidence.record(reason)))
             response.trace_json = json.dumps(trace,separators=(',',':'),allow_nan=False)
             response.elapsed_s = max(0.,self.clock()-began)
             return response
@@ -111,6 +114,7 @@ class JointOperationPreparation:
                         for stream in streams:
                             proposal = timing.call('contact_proposal',next,stream,None)
                             if proposal is None:continue
+                            search_evidence.proposal(proposal)
                             trace.append((proposal.query_id,proposal.reason,proposal.checked_centres))
                             if proposal.reason == 'OBSERVED_FOOTPRINT_PROPOSAL':proposed.append(proposal)
                         if not proposed:break
@@ -119,6 +123,7 @@ class JointOperationPreparation:
                         evidence = timing.call('contact_quality',self.contacts.evaluate,domain,request.detection,
                             [p.to_message() for p in proposed],self.model,deadline=planning_deadline,cancelled=cancelled,
                             retained_observation=inputs.retained_observation)
+                        search_evidence.quality(evidence)
                         trace.append((placement.slot_id,evidence.reason,evidence.verdicts))
                         if not evidence.complete:continue
                         for rank,contact in enumerate(evidence.contacts):
@@ -132,6 +137,7 @@ class JointOperationPreparation:
                                     deadline=planning_deadline,cancelled=cancelled,clock=self.clock)
                                 trace.extend(atlas_trace)
                             selected = candidate
+                            search_evidence.candidate_yielded()
                             yield candidate
             if stopped(): return finish('CANCELLED_OR_DEADLINE')
             result = self.planner.prepare(identity,tuple(float(v) for v in request.start_joints),candidates(),

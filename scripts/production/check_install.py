@@ -18,6 +18,7 @@ MODULES = (
     'luggage_planning.joint_operation.scene_admission',
     'luggage_planning.joint_operation.preparation_profile',
     'luggage_planning.joint_operation.preparation_refresh',
+    'luggage_planning.joint_operation.search_evidence',
     'luggage_planning.joint_operation.runtime',
     'luggage_planning.joint_operation.runtime_ports',
     'luggage_planning.joint_operation.observer',

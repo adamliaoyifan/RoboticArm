@@ -214,8 +214,92 @@ def test_generated_prepare_rpc_returns_whole_certified_plan(prepare_stack):
     assert result.elapsed_s<=prepare_stack.request.budget_s
     rounds=[row for row in json.loads(result.trace_json) if row[0]=='contact_round']
     assert rounds and all(row[2]==0 for row in rounds)
+    search=_search_evidence(result)
+    assert search['domain_sha256']==prepare_stack.domain.digest()
+    assert search['furthest_stage']=='NATIVE_CANDIDATE' and search['native_candidates_yielded']>0
     (prepare_stack.directory/'result.json').write_text(json.dumps(dict(reason=result.reason,
         elapsed_s=result.elapsed_s,trace=json.loads(result.trace_json)),indent=2))
+
+
+def _search_evidence(result):
+    records=[row[1] for row in json.loads(result.trace_json) if row[0]=='preparation_search_evidence']
+    assert len(records)==1
+    assert records[0]['schema']=='preparation_search_evidence_v1'
+    assert records[0]['terminal_reason']==result.reason
+    assert records[0]['observation_deficiency']=='NOT_ESTABLISHED'
+    return records[0]
+
+
+@pytest.mark.parametrize('fault',['unproven_support','rough_quality','quality_backend'])
+def test_prepare_search_receipts_distinguish_support_quality_and_transport(prepare_stack,fault):
+    """Constructed measured-input faults; no camera deficiency is fabricated."""
+    from rclpy.serialization import serialize_message
+    from luggage_perception.directed_suction_quality import DirectedSuctionContext
+    from luggage_perception.ros_suction_domain import domain_to_message
+    from luggage_planning.joint_operation.contacts import ContactBatchEvidence
+    f=prepare_stack
+    directory=f.directory/('search_'+fault);directory.mkdir()
+    # The fixture clock is frozen at the original acquisition; variants must
+    # precede it rather than creating an inadmissible future observation.
+    domain=replace(f.domain,stamp_ns=f.domain.stamp_ns-1-['unproven_support','rough_quality','quality_backend'].index(fault))
+    samples=copy.deepcopy(f.quality_context._height_map)
+    if fault=='unproven_support':
+        domain=replace(domain,support=bytes(len(domain.support)))
+    elif fault=='rough_quality':
+        # Deliberately rough synthetic surface; no calibrated hardware bound.
+        heights=(np.indices(samples.shape).sum(axis=0)%2*2-1)*.02
+        samples.median_h=heights.copy();samples.smooth_h=heights.copy()
+    context=DirectedSuctionContext(domain,samples,f.quality_context._model)
+    request=copy.deepcopy(f.request)
+    request.request_id+='-search-'+fault
+    request.observation_id+='-search-'+fault
+    request.detection.header.stamp.sec,request.detection.header.stamp.nanosec=divmod(domain.stamp_ns,10**9)
+    f.quality.replace_context(context)
+    with f.root._state_lock:f.root.domain_history.remember(domain)
+    (directory/'domain.cdr').write_bytes(serialize_message(domain_to_message(domain)))
+    np.savez_compressed(directory/'quality_samples.npz',support=domain.cells(),**{
+        field.name:getattr(samples,field.name) for field in dataclasses.fields(samples)
+        if isinstance(getattr(samples,field.name),np.ndarray)})
+    original_evaluate=f.root.preparation.contacts.evaluate
+    def unavailable(*args,**kwargs):
+        actual=original_evaluate(*args,**kwargs)
+        (directory/'quality_injection.json').write_text(json.dumps(dict(
+            actual_reason=actual.reason,injected_reason='CONTACT_QUALITY_BACKEND_UNAVAILABLE',
+            scope='test-only unavailable boundary receipt after actual frozen quality RPC')))
+        return ContactBatchEvidence(False,'CONTACT_QUALITY_BACKEND_UNAVAILABLE')
+    if fault=='quality_backend':f.root.preparation.contacts.evaluate=unavailable
+    try:
+        result=f.call(request)
+        (directory/'prepare_response.cdr').write_bytes(serialize_message(result))
+        (directory/'result.json').write_text(json.dumps(dict(reason=result.reason,
+            trace=json.loads(result.trace_json)),indent=2))
+        assert not result.success and result.reason=='SEARCH_INCOMPLETE',result.reason
+        assert not result.plan.legs and not result.plan.barriers
+        record=_search_evidence(result)
+        assert record['domain_sha256']==domain.digest()
+        assert record['native_candidates_yielded']==0
+        if fault=='unproven_support':
+            assert record['supported_cells']==0
+            assert record['unproven_cells']==len(domain.support)
+            assert record['furthest_stage']=='CONTACT_PROPOSAL'
+            assert record['proposals_accepted']==record['quality_batches_complete']==record['quality_batches_incomplete']==0
+        elif fault=='rough_quality':
+            assert record['furthest_stage']=='DIRECTED_QUALITY'
+            assert record['quality_batches_complete']>0 and record['quality_contacts_refused']>0
+            assert record['quality_batches_incomplete']==record['quality_contacts_accepted']==0
+        else:
+            assert record['furthest_stage']=='DIRECTED_QUALITY'
+            assert record['quality_batches_incomplete']>0
+            assert record['quality_batches_complete']==record['quality_contacts_refused']==0
+            assert set(record['quality_batch_reasons'])=={'CONTACT_QUALITY_BACKEND_UNAVAILABLE'}
+        assert not f.root._active.locked()
+    finally:
+        f.root.preparation.contacts.evaluate=original_evaluate
+        f.quality.replace_context(f.quality_context)
+    # Explicit healthy request after fault; no automatic observation or motion.
+    restored=f.call(copy.deepcopy(f.request))
+    assert restored.success,restored.reason
+    assert _search_evidence(restored)['native_candidates_yielded']>0
 
 
 def test_prepare_keeps_requested_acquisition_when_newer_topic_precedes_rpc(prepare_stack):
@@ -320,6 +404,10 @@ def test_both_primary_contacts_refused_recover_same_target_with_native_alternate
         if not allow_alternates:
             assert not result.success and result.reason=='SEARCH_INCOMPLETE'
             assert not result.plan.legs and len(tried)==2
+            search=_search_evidence(result)
+            assert search['native_candidates_yielded']==2
+            assert search['quality_contacts_accepted']>=2
+            assert search['furthest_stage']=='NATIVE_CANDIDATE'
             (f.directory/'prepick_contact_recovery_disabled.json').write_text(json.dumps(dict(
                 reason=result.reason,trace=json.loads(result.trace_json)),indent=2))
             return

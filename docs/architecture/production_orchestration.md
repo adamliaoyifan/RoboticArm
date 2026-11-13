@@ -136,6 +136,17 @@ controller; pure consumer tests do not certify that adoption. Existing startup,
 operator correlation and map ownership requirements apply to the complete-plan
 path as well as the nominal cycle above.
 
+The motion-free preparation core appends a `preparation_search_evidence_v1`
+receipt to its response trace, bound to the measured top-domain digest. It
+separates proposal work, complete quality refusals, incomplete quality receipts
+and candidates yielded to the native planner. A yielded candidate does not prove
+the native solver attempted it: shared work caps and deadlines remain effective.
+Binary unproven support cells do not distinguish missing depth from off-face or
+defective support. This receipt therefore leaves observation deficiency
+`NOT_ESTABLISHED`; it cannot authorize an automatic observation movement or
+convert finite search failure into physical unreachability. Pre-core missing
+inputs retain their separate node-level reason/evidence.
+
 `NativeOperationRevalidationPort` supplies the read-only native portion of
 these validation effects. It accepts only the original canonical six-leg chain
 and exact pick/pick/carry/carry/carry/retreat phases. Every current capture must
