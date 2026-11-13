@@ -112,6 +112,46 @@ Legacy `run.py` / `action.py` are the original geometry-only workspace study;
 the request-driven public chain is `placement_request.py` -> `request_planner.py`
 -> `plan_artifact.py` -> `physical_executor.py`. They must not be confused.
 
+## Read-only placement prior
+
+`upper_prior.UpperPlacementPrior.query(request, goals, budget) -> PriorHints` is
+a deterministic hint source consumed by `UpperPlacementPlanner` when
+`prior_enabled` is true in the runtime configuration (default false). It holds
+no agent, no LLM and no second OCC; it cannot write the occupancy snapshot,
+command motion or change vacuum, and every hint it returns is a seed or an
+ordering suggestion that the normal planner re-checks end to end.
+
+Inputs are the ordinary request objects plus the allowed final box-centre SE3
+goals. The prior recomputes, from the live source model in every process, the
+link6-fixed assembly projection and the necessary ceiling-fit window per goal:
+a candidate is pre-dropped only when its whole assembly and box lie inside the
+ceiling footprint with a confirmed attachment and the recomputed required gap
+exceeds the available gap. Entrance or tilted candidates whose tool lies partly
+outside the footprint are never killed by that global threshold; they keep the
+exact mesh checks of the normal chain. Detached requests only receive
+informational windows under archived representative attachments.
+
+Archived artefacts are consulted read-only when `prior_index_path` names the
+primary-workspace posture-prior catalogue: route templates (stage waypoints,
+handoff/push families) whose snapshot/attachment identity mismatches are marked
+stale, keep `seed_only` authority and never become executable certificates;
+their archived handoff support and motion-only duration are re-evaluated against
+the current runtime configuration (COM margin, execution budget). IK branch
+seeds come from the four-direction atlas by position/rotation neighborhood
+after the archived joint-XML signature matches the live URDF; seeds are initial
+values only and are refined onto exact targets by consumers.
+
+Lifecycle: the assembly projection, archive index and atlas trees are private,
+read-only and cached for the process; `PriorHints` is immutable and valid for
+one request only. Any snapshot, model, start, attachment or configuration
+change requires a new query. Missing, unreadable or signature-incompatible
+indexes, empty neighborhoods and exhausted per-goal budget slices (fair shares,
+5 s total by default) degrade to plain search without crashing. Effective
+switch, radius, branch, budget and index values are recorded in
+`prior_query.json` per request. The prior never resamples a confirmed grasp and
+never widens the caller's goal set; ordering and necessary rejection are its
+only planning effects.
+
 The checked single-case settings are `profiles/nominal_physics_planning.yaml`
 and `profiles/nominal_physics_execution.yaml`. They explicitly request one
 complete plan, enable source-mass screening and E-EDGE1, use slow controller

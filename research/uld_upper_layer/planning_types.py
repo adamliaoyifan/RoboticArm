@@ -61,6 +61,13 @@ class UpperConfig:
     payload_effort_reserve_nm: float = 5.
     payload_effort_joint_step_rad: float = .02
     gravity_world_mps2: tuple = (0.,0.,-9.8)
+    # Read-only placement prior; disabled by default, explicit profiles enable.
+    prior_enabled: bool = False
+    prior_index_path: str = ''
+    prior_query_radius_m: float = .100
+    prior_query_radius_deg: float = 15.
+    prior_branches_per_stage: int = 8
+    prior_query_budget_s: float = 5.
 
     def __post_init__(self):
         for field in fields(self):
@@ -68,10 +75,21 @@ class UpperConfig:
             if isinstance(value, tuple):
                 if not value or not all(math.isfinite(v) for v in value):
                     raise ValueError(f'invalid {field.name}')
+            elif isinstance(value, str):
+                if field.name != 'prior_index_path':
+                    raise ValueError(f'invalid {field.name}')
             elif not math.isfinite(value) or value < 0:
                 raise ValueError(f'invalid {field.name}')
         if type(self.payload_effort_screen_enabled) is not bool or self.payload_effort_reserve_nm<=0 or self.payload_effort_joint_step_rad<=0:
             raise ValueError('INVALID_PAYLOAD_EFFORT_POLICY')
+        if type(self.prior_enabled) is not bool:
+            raise ValueError('INVALID_PRIOR_ENABLE')
+        if (isinstance(self.prior_branches_per_stage, bool) or not isinstance(self.prior_branches_per_stage, int)
+                or self.prior_branches_per_stage < 1):
+            raise ValueError('INVALID_PRIOR_BRANCHES_PER_STAGE')
+        for name in ('prior_query_radius_m','prior_query_radius_deg','prior_query_budget_s'):
+            if getattr(self, name) <= 0:
+                raise ValueError(f'{name} must be positive')
         if len(self.gravity_world_mps2)!=3:raise ValueError('INVALID_GRAVITY_VECTOR')
         if not 0 < self.support_area_ratio_min <= 1:
             raise ValueError('support_area_ratio_min outside (0, 1]')

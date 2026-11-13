@@ -24,6 +24,8 @@ from selection_policy import SelectionPolicy
 from execution_policy import ExecutionPolicy
 from plan_clearance import model_identity
 from plan_selection import rank_nominal_plans
+from upper_prior import (UpperPlacementPrior,PlacementGoal,PriorQueryBudget,
+    apply_prior_to_actions,compose_seed_list)
 
 
 def request_from_record(record):
@@ -69,6 +71,7 @@ class UpperPlacementPlanner:
             source_hashes=hashes,config=asdict(config),selection_policy=asdict(selection),execution_policy=asdict(execution),
             execution_policy_revision=execution.revision,selection_policy_revision=selection.revision,
             scene_config=str(self._scene_path),scene_config_sha256=sha256(self._scene_path),seed=seed,
+            prior_enabled=config.prior_enabled,prior_index_path=config.prior_index_path or None,
             python=platform.python_version(),dependency_versions={n:version(n) for n in
                 ('numpy','scipy','python-fcl','ompl','trimesh','shapely')},
             capture_complete=False,replay_possible=False,scored_units=0,profile='ideal_snapshot_request_driven')
@@ -84,10 +87,27 @@ class UpperPlacementPlanner:
             atomic_json(output/'models.json',dict(hashes=scene.model_hashes,asset_hashes=assets['hashes']))
             with (output/'request_boundaries.jsonl').open('w') as trace:
                 def emit(row):trace.write(json.dumps(row,allow_nan=False)+'\n');trace.flush()
+                hints=None
+                if config.prior_enabled:
+                    prior=UpperPlacementPrior(assets,index_path=config.prior_index_path or None)
+                    goals=tuple(PlacementGoal(f'goal_{index}',tuple(value))
+                                for index,value in enumerate(request.final_box_poses))
+                    prior_started=time.monotonic()
+                    hints=prior.query(request,goals,PriorQueryBudget.from_config(config,execution))
+                    atomic_json(output/'prior_query.json',hints.as_record())
+                    emit(dict(event='prior_query',elapsed_s=time.monotonic()-prior_started,
+                        fallback_required=hints.diagnostics_dict().get('fallback_required'),
+                        index_status=hints.diagnostics_dict().get('index_status')))
                 actions,report=target_actions(assets,request,config,emit,deadline)
+                if hints is not None:
+                    ordered,dropped=apply_prior_to_actions(actions,hints)
+                    for row in dropped:emit(dict(event='prior_necessary_rejection',**row))
+                    emit(dict(event='prior_order_applied',generated=len(actions),
+                        kept=len(ordered),dropped=len(dropped)))
+                    actions=ordered
                 atomic_json(output/'candidates.json',[asdict(a) for a in actions]);atomic_json(output/'geometry_report.json',report)
                 rng=np.random.default_rng(seed)
-                seeds=[list(request.start_q)]+rng.uniform(limits[:,0],limits[:,1],size=(config.ik_seed_count-1,6)).tolist()
+                random_seeds=rng.uniform(limits[:,0],limits[:,1],size=(config.ik_seed_count-1,6)).tolist()
                 plans=[];attempts=0;ranking=None;rejections=Counter();common_failure=None
                 atomic_json(output/'plans.json',plans)
                 for action in actions:
@@ -95,6 +115,7 @@ class UpperPlacementPlanner:
                     if remaining<=0:break
                     attempts+=1
                     emit(dict(event='action_input',action_id=action.action_id,remaining_s=remaining))
+                    seeds=compose_seed_list(request.start_q,config,hints,action,random_seeds)
                     result=plan_bounded(self._repo,request.snapshot,request.box,action,list(request.start_q),
                         seeds,config,selection,execution,output/f'action_{attempts:04d}',remaining,seed+attempts,
                         start_attached=request.start_attached,scene_path=self._scene_path)
