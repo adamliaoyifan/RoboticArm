@@ -45,17 +45,52 @@ def stop(process,timeout=15.):
             process.wait(timeout=5.)
 
 
+def client_command(run_dir, evidence, *, start=False, three_box=False,
+                   failure_hold_s=25., prepick_replans=0, view_poses=None):
+    """One actual installed driver, with motion authorized only by start."""
+    command=['ros2','run','luggage_gazebo','joint_operation_sim_driver.py',
+             '--run-dir',str(run_dir),'--evidence',str(evidence)]
+    if start:
+        command.append('--start')
+        if three_box:command.append('--three-box')
+        command.extend(['--failure-hold-s',str(failure_hold_s),
+                        '--prepick-replans',str(prepick_replans)])
+    if view_poses:command.extend(['--view-poses',str(view_poses)])
+    return command
+
+
+def client_timeout_s(*, start=False, three_box=False, prepick_replans=0):
+    # Diagnostic action budgets, not a production latency requirement.
+    return (3 if three_box else 1)*(900.+650.*prepick_replans) if start else 180.
+
+
+def final_result(manifest, client_result, *, start, three_box):
+    """Execution, evidence capture and teardown have independent failure facts."""
+    result=client_result or int(bool(manifest.get('exception') or not manifest['capture_complete']))
+    if manifest['residuals_after']:return 'TEARDOWN_INCOMPLETE',result or 1
+    success=('THREE_BOX_PASS' if three_box else 'FULL_CYCLE_PASS') if start else 'STARTUP_READY'
+    return (success if result==0 else 'INCOMPLETE'),result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--evidence',required=True,type=Path)
     parser.add_argument('--semantic-deps',required=True,type=Path)
     parser.add_argument('--build-receipt',required=True,type=Path)
     parser.add_argument('--start',action='store_true')
+    parser.add_argument('--three-box',action='store_true',help='Observed floor/floor/stack; requires --start')
+    parser.add_argument('--failure-hold-s',default=25.,type=float)
+    parser.add_argument('--prepick-replans',default=0,type=int,choices=(0,1,2))
+    parser.add_argument('--capture-physics',action='store_true',help='Separate offline poses/contact ledger')
     parser.add_argument('--view-poses',type=Path,help='Explicit model/scene-bound diagnostic observation goals')
     parser.add_argument('--domain',default=7,type=int)
     args = parser.parse_args()
+    if args.three_box and not args.start:parser.error('--three-box requires --start')
+    if not 0 < args.failure_hold_s <= 60:parser.error('failure hold must be within (0,60] seconds')
     folder = args.evidence.resolve();folder.mkdir(parents=True,exist_ok=False)
-    env = dict(os.environ,ROS_DOMAIN_ID=str(args.domain),ROS_LOCALHOST_ONLY='1')
+    env = dict(os.environ,ROS_DOMAIN_ID=str(args.domain),ROS_LOCALHOST_ONLY='1',
+               IGN_PARTITION='loading_'+str(os.getpid())+'_'+str(time.time_ns()))
+    if args.capture_physics:env['ELFIN_BOX_CONTACT_TOPIC']='/loading/eval_contacts'
     manifest = dict(started_at=datetime.now().astimezone().isoformat(),start_authorized=args.start,
         revision=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
         dirty=subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True).splitlines(),
@@ -121,7 +156,9 @@ def main():
              'profile_config:='+str(profile),'operation_run_dir:='+str(folder/'runtime'),
              'semantic_pydeps_dir:='+str(args.semantic_deps)]
     manifest['launch_command']=command;write()
-    launch=bag=client=None
+    manifest.update(ign_partition=env['IGN_PARTITION'],three_box=args.three_box,
+                    eval_contact_topic=env.get('ELFIN_BOX_CONTACT_TOPIC',''))
+    launch=bag=client=physics=None
     result=1
     try:
         with (folder/'launch.log').open('w') as log:
@@ -141,6 +178,14 @@ def main():
                 time.sleep(.1)
             manifest['configuration_ready']=config_ready;write()
             if not config_ready:raise RuntimeError('LAUNCH_CONFIGURATION_NOT_READY')
+            if args.capture_physics:
+                physics_command=['/usr/bin/python3',str(ROOT/'scripts/production/physics_reference.py'),
+                    '--run-dir',str(folder/'runtime'),'--output',str(folder/'reference'),
+                    '--contact-topic',env['ELFIN_BOX_CONTACT_TOPIC']]
+                manifest['physics_command']=physics_command;write()
+                with (folder/'physics.log').open('w') as physics_log:
+                    physics=subprocess.Popen(physics_command,env=env,stdout=physics_log,
+                        stderr=subprocess.STDOUT,start_new_session=True)
             topics=['/camera/color/image_raw','/camera/depth/image_raw','/camera/depth/camera_info',
                 '/luggage/preprocessed/camera/color/image','/luggage/preprocessed/camera/depth/image',
                 '/luggage/preprocessed/camera/depth/camera_info','/tf','/tf_static','/joint_states',
@@ -153,14 +198,14 @@ def main():
                 bag=subprocess.Popen(bag_command,env=env,stdout=baglog,stderr=subprocess.STDOUT,start_new_session=True)
                 def run_client(name,start=False):
                     nonlocal client
-                    command=['ros2','run','luggage_gazebo','joint_operation_sim_driver.py',
-                        '--run-dir',str(folder/'runtime'),'--evidence',str(folder/name)]
-                    if start:command.append('--start')
-                    if view_input:command.extend(['--view-poses',str(view_input)])
+                    command=client_command(folder/'runtime',folder/name,start=start,
+                        three_box=args.three_box,failure_hold_s=args.failure_hold_s,
+                        prepick_replans=args.prepick_replans,view_poses=view_input)
                     row=dict(stage=name,command=command,begin=time.monotonic());manifest['stages'].append(row);write()
                     with (folder/(name+'.log')).open('w') as output:
                         client=subprocess.Popen(command,env=env,stdout=output,stderr=subprocess.STDOUT,start_new_session=True)
-                        deadline=time.monotonic()+(720. if start else 180.)
+                        deadline=time.monotonic()+client_timeout_s(start=start,
+                            three_box=args.three_box,prepick_replans=args.prepick_replans)
                         while client.poll() is None and launch.poll() is None and time.monotonic()<deadline:
                             time.sleep(.2)
                         if client.poll() is None:stop(client)
@@ -190,9 +235,12 @@ def main():
                 if not manifest['capture_complete']:manifest['missing'].append('nonempty bounded sensor bag')
                 write()
     except Exception as error:
+        result=1
         manifest['exception']=type(error).__name__+':'+str(error);write()
     finally:
-        stop(client);stop(bag)
+        stop(client);stop(bag);stop(physics)
+        if physics is not None:
+            manifest['physics_exit_code']=physics.returncode
         if launch is not None:
             teardown=subprocess.run([str(ROOT/'scripts/stop_sim.sh'),'--owned-pgid',str(launch.pid),
                 '--pidfile',str(pidfile)],capture_output=True,text=True,timeout=45.)
@@ -202,8 +250,7 @@ def main():
             except subprocess.TimeoutExpired:manifest['missing'].append('launch terminal result')
         manifest['residuals_after']=residuals()
         manifest['replay_possible']=manifest['capture_complete']
-        manifest['outcome']=('STARTUP_READY' if not args.start else 'FULL_CYCLE_PASS') if result==0 else 'INCOMPLETE'
-        if manifest['residuals_after']:manifest['outcome']='TEARDOWN_INCOMPLETE'
+        manifest['outcome'],result=final_result(manifest,result,start=args.start,three_box=args.three_box)
         manifest['finished_at']=datetime.now().astimezone().isoformat();write()
     print(json.dumps({key:manifest[key] for key in ('outcome','capture_complete','residuals_after')}))
     return result or (1 if manifest['residuals_after'] else 0)

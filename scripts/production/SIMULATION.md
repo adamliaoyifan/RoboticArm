@@ -83,3 +83,23 @@ The client binds preparation to a real current O snapshot lease. GetValidity
 metadata is transition-time evidence, not the latest map revision. Settled view
 RGB/depth/intrinsics/joints and the initial full PlanningScene are saved at their
 stage boundaries so later motion cannot evict them from the failure sensor ring.
+
+The same owned runner can execute the observed floor/floor/stack workload:
+
+```bash
+scripts/production/run.sh /usr/bin/python3 scripts/production/simulation.py \
+  --evidence /absolute/fresh/three-box \
+  --semantic-deps /absolute/frozen/semantic/dependencies \
+  --build-receipt /absolute/passing/build/manifest.json \
+  --start --three-box --capture-physics
+```
+
+Three-box uses the installed production driver, one initially-empty O epoch,
+the existing task budgets and a bounded 25s failure capture. It does not select
+another planner. `--prepick-replans` explicitly enables up to two existing
+pre-pick retries; default is zero. Readiness never forwards motion/cycle flags.
+`--capture-physics` enables a separate eval-only Gazebo pose/contact recorder;
+its examples retain original acquisition stamps and execution phases. That
+reference is never a sensor/geometry input. Report functional execution and
+sampled physical model coverage separately; capture absence is not proof of no
+physical contact. Recorder failures stay visible in its reference summary.

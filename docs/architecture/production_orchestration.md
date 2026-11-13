@@ -406,6 +406,16 @@ All slots are filtered/ranked from exact pinned observed surface+volume; simulat
 spawn dimensions/poses remain actuator/eval-only. This diagnostic flag is not a
 new planner or a claim that bare launch defaults changed.
 
+The production simulation runner forwards that workload to the same installed
+driver. Three-box diagnostics retain a separate acquisition-keyed pickup input
+window (RGB-D/intrinsics, semantic/instance masks, cargo cloud and available TF/
+joints) before each prepare request. A missing exact-acquisition input is reported
+explicitly; a later image cannot substitute for it. This capture is passive and
+cannot change perception or motion admission. It covers the retained recent
+window, not unrecorded older geometry extrema. An optional separate Gazebo
+reference process records actual poses and contact examples by execution phase;
+reference data never enter the online sensor/map/attachment interfaces.
+
 ### Joint simulation sensor density and render-resource lifecycle
 
 The named joint profile samples actual paired depth pixels with stride2; bare

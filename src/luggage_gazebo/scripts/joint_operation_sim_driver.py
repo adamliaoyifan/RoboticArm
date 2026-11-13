@@ -51,6 +51,7 @@ JOINTS = ['elfin_joint%d'%i for i in range(1,7)]
 
 
 from luggage_gazebo.operation_cycle import can_reprepare_before_pick,run_observed_cycle
+from luggage_gazebo.acquisition_capture import AcquisitionCapture
 
 
 def load_diagnostic_views(path, launch):
@@ -94,6 +95,25 @@ class OperationSimDriver(Node):
         self._static_tf_blocks={}
         self._capture_number=1
         self.completed_boxes=[]
+        self.pickup_capture=AcquisitionCapture() if getattr(args,'three_box',False) else None
+        self.pickup_capture_active=self.pickup_capture is not None
+        self.pickup_capture_count=0
+        self.pickup_capture_required=(
+            '/luggage/preprocessed/camera/color/image',
+            '/luggage/preprocessed/camera/depth/image',
+            '/luggage/preprocessed/camera/depth/camera_info',
+            '/luggage/semantic/mask','/luggage/semantic/instance_mask',
+            '/luggage/semantic/cargo_points')
+        if self.pickup_capture is not None:
+            inputs=[(name,Image) for name in self.pickup_capture_required[:2]]
+            inputs.extend([(self.pickup_capture_required[2],CameraInfo),
+                (self.pickup_capture_required[3],Image),(self.pickup_capture_required[4],Image),
+                (self.pickup_capture_required[5],PointCloud2),
+                ('/luggage/preprocessed/camera/color/camera_info',CameraInfo),
+                ('/luggage/perception/detection_frame',DetectionFrame)])
+            for topic,cls in inputs:
+                self.create_subscription(cls,topic,
+                    lambda msg,t=topic,c=cls:self.capture_pickup_input(t,c,msg),qos_profile_sensor_data)
         if getattr(args, 'failure_hold_s', 0.) > 0:
             self.failure_capture = ObserverFailureCapture(self.folder/'observer_failure',
                 disk_limit=(768 if getattr(args,'capture_operation',False) else (384 if getattr(args,'three_box',False) else 256))*1024*1024)
@@ -153,8 +173,20 @@ class OperationSimDriver(Node):
         key=tuple(sorted(v.child_frame_id for v in message.transforms)) if topic=='/tf_static' else False
         if key:self._static_tf_blocks[key]=(topic,kind,raw)
         self.failure_capture.add(topic,kind,raw,persistent=key)
+        if self.pickup_capture_active and topic in ('/tf','/joint_states'):
+            stamp=(message.transforms[0].header.stamp if topic=='/tf' and message.transforms
+                   else message.header.stamp if hasattr(message,'header') else None)
+            if stamp is not None:self.pickup_capture.add(topic,kind,
+                stamp.sec*10**9+stamp.nanosec,raw)
+
+    def capture_pickup_input(self,topic,cls,message):
+        if not self.pickup_capture_active:return
+        stamp=message.header.stamp
+        self.pickup_capture.add(topic,cls.__module__+'.'+cls.__name__,
+            stamp.sec*10**9+stamp.nanosec,serialize_message(message))
 
     def rotate_capture(self):
+        self.pickup_capture_active=self.pickup_capture is not None
         if self.failure_capture is None:return
         self.failure_capture.close()
         if self.failure_capture.dropped:raise RuntimeError('OBSERVER_WINDOW_DROPPED_RECORDS')
@@ -370,6 +402,14 @@ class OperationSimDriver(Node):
             lambda remaining:self.call(self.detect,DetectLuggage.Request(),'detect',timeout=remaining),
             lambda:self.domain,deadline=time.monotonic()+30.)
         self.record('top_domain',domain)
+        if self.pickup_capture is not None:
+            self.pickup_capture_count+=1
+            stamp=domain.header.stamp
+            receipt=self.pickup_capture.write(
+                self.folder/('pickup_acquisition_'+str(self.pickup_capture_count)),
+                stamp.sec*10**9+stamp.nanosec,required_topics=self.pickup_capture_required)
+            self.record('pickup_acquisition_receipt',json.dumps(receipt).encode())
+            self.pickup_capture_active=False
         for key,message in self.images.items():self.record('detection_'+key,message)
         validity = self.call(self.validity,GetValidity.Request(),'prepare_validity')
         # GetValidity records the validity transition; its map_revision is not
