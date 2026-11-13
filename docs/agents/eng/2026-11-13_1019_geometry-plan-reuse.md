@@ -55,6 +55,8 @@ Development/functional acceptance passes at `4e9b9622367d33020fbcd0bef4661468418
 later owned changes affect tests/eval documentation only. Full physical payload
 qualification remains NOT_PASSED. Actual LiDAR source qualification and real-world
 baseline remain NOT_EVALUATED. No margin/rounding tuned to simulator truth.
+Final behavioural tests and retained integration audit are committed at
+`25a10b0c86500f18352fdda529dfd83564f63a23`.
 
 ## Pointers
 
