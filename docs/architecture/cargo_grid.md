@@ -176,3 +176,22 @@ the existing stationary joint gate. It does not implement moving-scan deskew or
 new robot self segmentation. Actual returns from self/scene are not silently
 erased. Both modalities share the owner grid/config and retain distinct sensor
 IDs and receipts. This source/interface support is not a full-cycle validation.
+
+## Calibrated LiDAR structure terminals
+
+The optional LiDAR preprocessing path uses `lidar_structure.StructureAssociation`
+with measured identified-empty-patch calibration bound to ULD geometry hash,
+sensor frame and mount identity. Calibration positions, normals, plane offset
+and spatial bounds are container-absolute; range/incidence/patch coverage is
+empirical, never an absolute accuracy or thin-obstacle detection guarantee.
+Uncalibrated/ambiguous/out-of-coverage points keep ordinary hit semantics.
+
+The additive PointCloud2 UINT8 `structure_terminal` field is per original point:
+zero is an ordinary obstacle endpoint, one is a calibrated static structure ray
+terminal. The self mask preserves this field. O retains exact XYZ and casts the
+same free ray up to that endpoint, suppressing only the occupied update for that
+point. It never forcibly clears the terminal cell or any cell behind it. Static
+ULD planning collision geometry remains authoritative. RGB-D has unchanged hit
+semantics. This does not change native source resolution or authorize historical
+occupied-cell deletion. A measured patch/calibration is required before enabling
+`operation_lidar_structure_calibration_file`; missing calibration retains hits.

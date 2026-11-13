@@ -205,6 +205,21 @@ class ObserverNode : public rclcpp::Node {
     observation.uld_from_optical = rigid_transform(tf,cloud.header.frame_id);
     observation.points_m = optical_points(cloud);
     observation.lidar_xyz = lidar;
+    if (lidar) {
+      bool found = false;
+      for (const auto& field : cloud.fields) {
+        if (field.name != "structure_terminal") continue;
+        if (found || field.datatype != sensor_msgs::msg::PointField::UINT8 || field.count != 1
+            || field.offset >= cloud.point_step) throw Error("INVALID_STRUCTURE_TERMINAL_FIELD");
+        found = true;
+        for (std::size_t row=0; row<cloud.height; ++row)
+          for (std::size_t col=0; col<cloud.width; ++col) {
+            const auto label=cloud.data[row*cloud.row_step+col*cloud.point_step+field.offset];
+            if (label > 1) throw Error("INVALID_STRUCTURE_TERMINAL_LABEL");
+            observation.structure_terminal.push_back(label);
+          }
+      }
+    }
     return observation;
   }
   msg::UpdateReceipt publish_message(msg::UpdateReceipt receipt) {

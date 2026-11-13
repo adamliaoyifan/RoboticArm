@@ -118,7 +118,9 @@ void OccupancyGrid::collect(OccupancyScan& scan, const Vec3& origin_uld,
                                 OccupancyScanOptions options, OccupancyDiagnostic& diagnostic) {
   scan.complete_ = false;
   clear_scan(scan);
-  if (options.discretize_endpoints) {
+  if (options.structure_terminal && options.structure_terminal->size() != endpoints_uld.size())
+    throw Error("STRUCTURE_TERMINAL_SIZE_MISMATCH");
+  if (options.discretize_endpoints && !options.structure_terminal) {
     collectDiscretized(scan, origin_uld, endpoints_uld, domain, diagnostic);
     scan.complete_ = true;
     return;
@@ -131,13 +133,16 @@ void OccupancyGrid::collect(OccupancyScan& scan, const Vec3& origin_uld,
       throw Error("ORIGIN_OUT_OF_KEY_RANGE");
     const octomap::point3d origin_point(origin.x, origin.y, origin.z);
     octomap::KeyRay ray;
+    std::size_t endpoint_index = 0;
     for (const auto& endpoint : endpoints_uld) {
+      const bool hit = !options.structure_terminal || !(*options.structure_terminal)[endpoint_index];
+      ++endpoint_index;
       const auto point = domain.octomap_coordinates(endpoint);
       octomap::OcTreeKey endpoint_key;
       if (!tree_->coordToKeyChecked(point.x, point.y, point.z, endpoint_key))
         throw Error("ENDPOINT_OUT_OF_KEY_RANGE");
       castFreeRay(scan, diagnostic, domain, origin_point, ray, endpoint,
-                  octomap::point3d(point.x, point.y, point.z), endpoint_key, true);
+                  octomap::point3d(point.x, point.y, point.z), endpoint_key, hit);
     }
     diagnostic.free_keys_before_hit_removal(scan.free_cells.size());
     scan.free_cells.erase(std::remove_if(scan.free_cells.begin(), scan.free_cells.end(),

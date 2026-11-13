@@ -724,6 +724,21 @@ int main() {
     std::cout << "dedup_compare points=" << cloud.size()
               << " free=" << ref_cloud.frees.size() << " hit=" << ref_cloud.hits.size()
               << " set_ms=" << set_ms << " keyset_ms=" << key_ms << "\n";
+    {
+      OccupancyGrid grid(resolution);
+      const Vec3 origin{0.,0.,1.2};
+      const std::vector<Vec3> endpoints{{0.,0.,0.53003},{.1,0.,.8}};
+      const std::vector<std::uint8_t> labels{1,0};
+      const auto before = collect_of(grid,origin,endpoints,domain,{},nullptr);
+      const auto after = collect_of(grid,origin,endpoints,domain,{true,&labels},nullptr);
+      require(after.rays_attempted == before.rays_attempted, "structure ray was dropped");
+      auto hits = cells_of(after.occupied_cells);
+      const auto floor_cell = cell_index_from_key(endpoint_key(domain,resolution,endpoints[0]));
+      require(hits.count(floor_cell)==0, "structure endpoint became an occupied cargo hit");
+      require(hits.size()==1, "ordinary cargo hit disappeared");
+      require(cells_of(after.free_cells).count(floor_cell)==0, "structure terminal was forcibly cleared");
+      require(cells_of(after.free_cells)==cells_of(before.free_cells), "structure ray freed beyond its terminal");
+    }
     check_discretize(domain, resolution);
     check_chamfer_hit();
     check_profile_diagnostics(domain, resolution, origin, points);

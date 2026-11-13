@@ -182,7 +182,7 @@ class JointOperationPlanner:
                  velocity_scale, acceleration_scale, certification_reserve_s,
                  max_candidates=MAX_PLACEMENT_CANDIDATES * len(DIRECTED_CONTACT_REVERSALS),
                  max_branch_attempts=3,
-                 max_branch_attempts_per_candidate=None, aperture_router=None, clock=time.monotonic):
+                 max_branch_attempts_per_candidate=None, aperture_router=None, path_cache=None, clock=time.monotonic):
         for name, value in (("velocity_scale", velocity_scale),
                             ("acceleration_scale", acceleration_scale)):
             if type(value) not in (int, float) or not math.isfinite(value) or not 0 < value <= 1:
@@ -197,6 +197,7 @@ class JointOperationPlanner:
             raise ValueError('candidate branch cap must fit the global attempt budget')
         self.endpoints, self.connections, self.certification = endpoint_port, connection_port, certification_port
         self.aperture_router = aperture_router
+        self.path_cache = path_cache
         self.velocity_scale, self.acceleration_scale = velocity_scale, acceleration_scale
         self.reserve_s = float(certification_reserve_s)
         # This cap counts bound placement/contact combinations, not placement slots.
@@ -236,6 +237,24 @@ class JointOperationPlanner:
             if not self._candidate_matches(candidate, identity):
                 trace.append((getattr(candidate, 'candidate_id', '<invalid>'), "CANDIDATE_IDENTITY_MISMATCH"))
                 continue
+            if self.path_cache is not None:
+                cached = timing.call('successful_path_lookup',self.path_cache.proposal,identity,start,candidate)
+                if cached is not None:
+                    trace.append(('cached_geometry_revalidation',cached.source_plan_digest,
+                        cached.source_geometry_digest,candidate.predicted_attachment.digest(),
+                        cached.source_acquisition_stamp_ns,identity.observation_stamp_ns,
+                        'RECERTIFY_ORIGINAL_PATH_WITH_CURRENT_MODEL'))
+                    cached = cached.plan
+                    receipt = timing.call('cached_whole_chain_certification',self.certification.certify,
+                        cached,candidate,deadline=deadline,cancelled=cancelled)
+                    if not stopped(deadline) and certificate_matches(receipt,cached,candidate):
+                        plan = seal_operation_plan(replace(cached,certificate_id=receipt.certificate_id))
+                        trace.append((candidate.candidate_id,'SUCCESSFUL_PATH_RECERTIFIED'))
+                        return finish('PLAN_READY',plan)
+                    trace.append((candidate.candidate_id,'CACHED_PATH_REFUSED_FALLBACK',
+                                  getattr(receipt,'reason','INVALID_RECEIPT')))
+                else:
+                    trace.append((candidate.candidate_id,'SUCCESSFUL_PATH_MISS'))
             evidence = timing.call('local_paths',self.endpoints.solve,candidate, request_id=identity.request_id,
                 deadline=planning_deadline, cancelled=cancelled)
             if stopped(planning_deadline):

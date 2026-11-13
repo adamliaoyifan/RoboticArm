@@ -128,11 +128,15 @@ class JointOperationPrepareNode(Node):
         certifier = NativeOperationCertificationPort(self,self.model,velocity_limits=(vmax,)*6,
             acceleration_limits=(amax,)*6,release_drop_m=PLACE_RELEASE_GAP_M,recorder=recorder('certification'),
             aperture_router=aperture_router)
+        from luggage_planning.joint_operation.path_cache import SuccessfulPathCache
+        cache_directory = str(param('successful_path_cache_directory',
+            str(Path.home()/'.ros'/'luggage_successful_paths')))
+        path_cache = SuccessfulPathCache(cache_directory) if cache_directory else None
         planner = JointOperationPlanner(endpoints,connections,certifier,velocity_scale=velocity,
             acceleration_scale=acceleration,certification_reserve_s=float(param('certification_reserve_s',5.)),
             max_branch_attempts=param('max_branch_attempts',3),
             max_branch_attempts_per_candidate=param('max_branch_attempts_per_candidate',2),
-            aperture_router=aperture_router)
+            aperture_router=aperture_router,path_cache=path_cache)
         atlas,atlas_reason = None,'ATLAS_UNAVAILABLE_ONLINE_IK'
         atlas_paths = [str(param(name,'')) for name in
             ('atlas_npz','atlas_yaml','atlas_qualification_file','atlas_scene_tf_config')]

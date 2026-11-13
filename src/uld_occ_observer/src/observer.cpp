@@ -30,6 +30,10 @@ std::string fingerprint(const OpticalObservation& observation) {
   stream << ':' << t.x << ':' << t.y << ':' << t.z << ':' << observation.uld_from_optical.stamp_ns;
   for (const auto& point : observation.points_m)
     stream << ';' << point.x << ',' << point.y << ',' << point.z;
+  if (!observation.structure_terminal.empty()) {
+    stream << ";structure:";
+    for (auto label : observation.structure_terminal) stream << static_cast<int>(label);
+  }
   return sha256(stream.str());
 }
 }
@@ -114,11 +118,25 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
       return receipt;
     }
     FilterResult filtered;
+    std::vector<std::uint8_t> structure_terminal;
+    if (!observation.structure_terminal.empty() &&
+        (!observation.lidar_xyz || observation.structure_terminal.size() != observation.points_m.size()))
+      throw Error("INVALID_STRUCTURE_TERMINALS");
+    for (auto label : observation.structure_terminal)
+      if (label > 1) throw Error("INVALID_STRUCTURE_TERMINAL");
     { auto span = diagnostic.span(ProfileStage::DepthFilter);
       if (observation.lidar_xyz) {
         filtered.raw_count = observation.points_m.size();
-        for (const auto& p : observation.points_m)
-          if (finite(p) && (p.x != 0 || p.y != 0 || p.z != 0)) filtered.optical_points.push_back(p);
+        for (std::size_t i = 0; i < observation.points_m.size(); ++i) {
+          const auto& p = observation.points_m[i];
+          if (finite(p) && (p.x != 0 || p.y != 0 || p.z != 0)) {
+            filtered.optical_points.push_back(p);
+            if (!observation.structure_terminal.empty()) {
+              if (observation.structure_terminal[i] > 1) throw Error("INVALID_STRUCTURE_TERMINAL");
+              structure_terminal.push_back(observation.structure_terminal[i]);
+            }
+          }
+        }
       } else filtered = preprocessor_.prepare(observation.points_m); }
     UldObservation frame;
     { auto span = diagnostic.span(ProfileStage::Transform);
@@ -130,7 +148,7 @@ UpdateReceipt ObservationStore::integrate(const OpticalObservation& observation,
 
     OccupancyScan scan;
     grid_.collect(scan, frame.origin, frame.points, *domain_,
-                  OccupancyScanOptions{discretize_endpoints_}, diagnostic);
+                  OccupancyScanOptions{discretize_endpoints_, structure_terminal.empty() ? nullptr : &structure_terminal}, diagnostic);
     receipt.free_keys = scan.free_cells.size();
     receipt.hit_keys = scan.occupied_cells.size();
     const auto prepared = Clock::now();

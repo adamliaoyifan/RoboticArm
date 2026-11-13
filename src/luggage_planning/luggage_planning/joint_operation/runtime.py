@@ -88,6 +88,10 @@ class JointOperationRuntime:
         self.directory=None;self.records=[];self.bytes=0
         self.evidence_limit=int(param('operation_evidence_limit_bytes',128*1024*1024))
         if self.evidence_limit<1:raise ValueError('POSITIVE_OPERATION_EVIDENCE_CAP_REQUIRED')
+        from luggage_planning.joint_operation.path_cache import SuccessfulPathCache
+        cache_directory=str(param('successful_path_cache_directory',
+            str(Path.home()/'.ros'/'luggage_successful_paths')))
+        self.path_cache=SuccessfulPathCache(cache_directory) if cache_directory else None
         self.ports=OperationRuntimePorts(node,record=self.record)
         self.motion=StrictOperationMotionPort(node,motion_lock=self.owner.motion_lock,
             start_tolerance_rad=self.ports.start_tolerance,
@@ -320,6 +324,15 @@ class JointOperationRuntime:
                     self.journal.write(dict(plan_digest=handle.request.plan.plan_digest,
                         stage=result.outcome,may_have_payload=result.may_have_payload,
                         motion_owned=self.owner.motion_lock.locked(),reason=result.reason))
+            if result.success and plan is not None and self.path_cache is not None:
+                try:
+                    promoted=self.path_cache.remember(plan,success=result.success,
+                        motion_terminal=result.motion_terminal,may_have_payload=result.may_have_payload)
+                    self.record('successful_path_promotion',json.dumps(dict(promoted=promoted,
+                        plan_digest=plan.plan_digest)).encode())
+                except (OSError,ValueError) as error:
+                    # Persistence is optional; it cannot undo completed motion.
+                    self.node.get_logger().warning('PATH_CACHE_WRITE_FAILED:'+str(error))
             if self.directory is not None:self.record('execute_result',result)
         except Exception as error:
             self._uncertain=True

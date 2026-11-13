@@ -14,6 +14,7 @@ class UldDomain;
 // free ray. Occupied cells are still collected from every original endpoint.
 struct OccupancyScanOptions {
   bool discretize_endpoints = false;
+  const std::vector<std::uint8_t>* structure_terminal = nullptr;
 };
 
 struct OccupancyScan {

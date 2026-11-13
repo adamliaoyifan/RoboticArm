@@ -134,3 +134,17 @@ ROS service types/names, executable names and launch arguments are preserved.
 Build with `scripts/production/build.sh`: it removes only mapped obsolete Python
 modules after the replacement install succeeds. The installed checker imports
 every moved module, compares its source bytes and rejects old import paths.
+
+### Successful whole-operation path reuse
+
+`joint_operation/path_cache.py` stores bounded geometric/timed proposals only
+after terminal, payload-free successful execution. `successful_path_cache_directory`
+(default `~/.ros/luggage_successful_paths`; empty disables) must be the same for
+prepare and execution owners. Its exact key binds robot/model, ULD/scene identity,
+start joints and spatial pick/release tool poses. Body poses, map revision and dimensions
+are deliberately outside the key: a hit is reconstructed with current identity
+and attachment and independently passes the full native whole-chain certifier.
+No cached certificate, contact permission or map evidence is reused. Failure
+returns to local/connection search. Current execution checks and event barriers
+still apply. The first implementation requires exact spatial keys; it does not
+claim approximate endpoint repair or measured latency improvement.

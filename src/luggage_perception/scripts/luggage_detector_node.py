@@ -771,6 +771,10 @@ class LuggageDetector(Node):
         self.create_subscription(
             String, self.get_parameter("current_box_topic").value,
             self._on_current_box, transient, callback_group=self._group)
+        from luggage_msgs.msg import VacuumState
+        self._geometry_payload_attached = False
+        self.create_subscription(VacuumState,'/vacuum/state',self._on_geometry_vacuum,
+                                 transient,callback_group=self._group)
         self.create_subscription(
             String, self.get_parameter("preprocessor_status_topic").value,
             self._on_status, transient, callback_group=self._group)
@@ -1316,6 +1320,14 @@ class LuggageDetector(Node):
             while len(store) > 8:
                 del store[min(store)]
 
+    def _on_geometry_vacuum(self, message):
+        # The stationary pickup premise ends at suction. Carry observations
+        # cannot be accumulated with pre-pick world positions of the same box.
+        active=bool(message.attached or message.vacuum_on)
+        if active != self._geometry_payload_attached and hasattr(self,'_body_geometry_window'):
+            self._body_geometry_window.reset()
+        self._geometry_payload_attached=active
+
     def _on_current_box(self, msg):
         box_id, generation = parse_current_box_payload(msg.data)
         epoch_changed = int(generation) != int(self._box_generation)
@@ -1680,6 +1692,18 @@ class LuggageDetector(Node):
                 adapters.suction_candidate_msg_from_record(
                     record, cloud_msg.header.stamp, self._world_frame)
                 for record in suction.accepted]
+        if height_valid and not getattr(self,'_geometry_payload_attached',False):
+            from luggage_perception.geometry_window import StationaryGeometryWindow
+            if not hasattr(self, '_body_geometry_window'):
+                self._body_geometry_window = StationaryGeometryWindow()
+            estimate = self._body_geometry_window.observe(
+                (str(self._box_id), int(self._box_generation)),
+                int(msg.header.stamp.sec)*1_000_000_000+int(msg.header.stamp.nanosec),
+                (msg.pose.position.x,msg.pose.position.y,msg.pose.position.z),
+                float(top.yaw),(msg.width,msg.depth,msg.height))
+            msg.width,msg.depth,msg.height = estimate.dimensions
+            msg.pose.position.x,msg.pose.position.y,msg.pose.position.z = estimate.center
+            self._timing['body_geometry_window'] = estimate.diagnostic()
         return msg
 
     def _pca_from_cloud_msg(self, cloud_msg, yolo_msg=None):

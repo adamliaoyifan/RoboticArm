@@ -438,12 +438,13 @@ Offline replay (`packing_replay.FreeSpaceModelStrategy`) and
 
 ### Execution target admission and search ranking
 
-An already selected grid placement is re-admitted against the complete finite
-shared-query target set from the current typed surface and same-snapshot XYZ
-volume. Candidate ranking and retained search-pool size do not authorize or
-refuse that target. Requested slots in whole-operation preparation use the same
-rule. Directed quarter-turn orientation, support, hull, unknown-volume and
-non-penetration gates remain unchanged; full-model trajectory validation owns
+An already selected placement is re-admitted at its actual continuous pose
+against the current typed surface and same-snapshot XYZ volume. The production
+query and execution admission share `SelectedPoseAdmission`: directed quarter
+turns, continuous footprint support, hull, known-volume and non-penetration.
+The finite search lattice, ranking and retained pool size generate proposals;
+they do not authorize or refuse a previously selected pose. A dimension update
+never snaps that pose onto a new lattice. Full-model trajectory validation owns
 arm and conservative attached-payload motion clearance.
 
 A new whole-operation preparation admits the original stationary pickup

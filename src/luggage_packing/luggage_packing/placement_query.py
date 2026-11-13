@@ -60,13 +60,19 @@ def placement_query(surface, box_size, *, allowed_yaws=DIRECTED_PLACEMENT_YAWS,
                payload_symmetry='none')
     verifier = volume_verifier if volume_verifier is not None else KnownFreeVolume(None)
 
+    from luggage_packing.selected_pose_admission import SelectedPoseAdmission
+    admission = SelectedPoseAdmission(surface, box_size, volume_verifier=verifier,
+                                      params=cfg, placed_aabbs=placed_aabbs)
+
     def validate(candidate):
-        return placement_constraint_verdict(
+        reason = admission(candidate)
+        # Capacity classification stays independent of observational refusal.
+        _, capacity = placement_constraint_verdict(
             candidate, surface['inner_size'][2], placed_aabbs=placed_aabbs,
             inner_size=surface['inner_size'], smallest_size=box_size, hull=hull,
-            floor_z=hull.floor_z,
-            same_layer_clearance_m=cfg['same_layer_clearance_m'],
+            floor_z=hull.floor_z, same_layer_clearance_m=cfg['same_layer_clearance_m'],
             support_tol=cfg.get('support_tol', .05), corridor_as_ranking=True)
+        return reason, capacity
 
     result = solve_placement(surface, box_size, allowed_yaws=allowed_yaws,
         params=cfg, candidate_validator=validate, volume_verifier=verifier,

@@ -251,3 +251,25 @@ This integration is qualified by native behavioral tests (nonzero collision
 origin, external point retention, missing-one-body-TF refusal), saved full-model
 cloud replay, and separate full-model end-to-end evidence. Passing the adapter
 checks alone is not a completed loading cycle.
+
+## Stationary box geometry history and freezing
+
+`geometry_window.StationaryGeometryWindow` owns bounded same-instance, ordered
+acquisition history. Positions are world XYZ, orientation is measured world yaw,
+and dimensions are body extents. The detector retains lateral body extent and
+observed bottom in a constant-size first-yaw box; nominal top stays at the
+current observed contact plane. Top variation is reported as repeatability
+evidence, never used to move suction contact. Smaller/occluded later estimates
+cannot silently shrink already observed lateral extent or raise the bottom;
+identity/generation changes or explicit loss of the stationary-box premise reset
+it. Frame medians and spreads report repeatability only, not calibrated absolute
+accuracy. Observed lid extent is not automatically the complete physical body.
+Additional pre-pick views and independent body-error calibration remain separate.
+Vacuum-on/attached ends pickup history accumulation; release starts a fresh
+stationary window. Retained operation geometry is unaffected by stream updates.
+
+The observed suction plane/support cells remain the current original acquisition;
+body history never fills support cells or updates acquisition time. Whole-operation
+preparation freezes one matching detection/domain and its attachment. New sensor
+frames do not overwrite that operation. Selected placement is admitted at its
+actual pose; changed collision geometry requires native trajectory recertification.

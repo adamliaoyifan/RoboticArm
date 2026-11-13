@@ -17,6 +17,7 @@ import yaml
 
 from luggage_description.runtime_identity import scene_revision_from_path
 from luggage_description.scene_tf_config_utils import load_scene_tf_config, world_transform
+from luggage_description.container_geometry import descriptor_from_scene_config
 from luggage_mapping.configuration import owner_configuration
 from luggage_planning.atlas.runtime import load_atlas_runtime_for_scene, resolve_atlas_files
 
@@ -154,7 +155,10 @@ def operation_composition(config, robot_xml, semantic_xml):
         Node(package='luggage_perception', executable='observer_lidar_node.py', name='observer_lidar',
             output='screen', parameters=[dict(use_sim_time=True,
                 lidar_topic=config.get('operation_lidar_topic','/livox/lidar'),
-                lidar_frame=config.get('operation_lidar_frame','livox_frame'))],
+                lidar_frame=config.get('operation_lidar_frame','livox_frame'),
+                structure_calibration_file=config.get('operation_lidar_structure_calibration_file',''),
+                structure_geometry_hash=descriptor_from_scene_config(source).geometry_hash,
+                structure_sensor_mount_id=config.get('operation_lidar_structure_sensor_mount_id',''))],
             remappings=[('/luggage/observation/lidar_points',
                          '/luggage/observation/lidar_points_unmasked')]),
         Node(package='luggage_perception', executable='observer_self_mask_node', name='observer_self_mask',

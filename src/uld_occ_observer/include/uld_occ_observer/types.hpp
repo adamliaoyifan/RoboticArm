@@ -42,6 +42,9 @@ struct OpticalObservation {
   RigidTransform uld_from_optical;
   // Legacy DTO name retained; XYZ returns bypass camera optical-Z filtering.
   bool lidar_xyz{false};
+  // Optional calibrated static-structure labels, one per ORIGINAL point.
+  // 1 means ray terminal without an occupied hit; never clear its endpoint.
+  std::vector<std::uint8_t> structure_terminal;
 };
 
 struct DepthZConfig {
