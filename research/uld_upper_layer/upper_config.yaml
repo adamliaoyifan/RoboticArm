@@ -60,3 +60,6 @@ prior_query_radius_m: 0.100
 prior_query_radius_deg: 15.0
 prior_branches_per_stage: 8
 prior_query_budget_s: 5.0
+# Families with this many consecutive no-endpoint-IK failures move to the
+# back of the candidate queue (reorder only, never dropped). 0 = static order.
+family_demote_barren_limit: 3

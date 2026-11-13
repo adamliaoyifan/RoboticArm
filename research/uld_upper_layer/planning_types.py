@@ -68,6 +68,8 @@ class UpperConfig:
     prior_query_radius_deg: float = 15.
     prior_branches_per_stage: int = 8
     prior_query_budget_s: float = 5.
+    # Endpoint-barren family demotion limit; 0 keeps the static candidate order.
+    family_demote_barren_limit: int = 3
 
     def __post_init__(self):
         for field in fields(self):
@@ -90,6 +92,10 @@ class UpperConfig:
         for name in ('prior_query_radius_m','prior_query_radius_deg','prior_query_budget_s'):
             if getattr(self, name) <= 0:
                 raise ValueError(f'{name} must be positive')
+        if (isinstance(self.family_demote_barren_limit, bool)
+                or not isinstance(self.family_demote_barren_limit, int)
+                or self.family_demote_barren_limit < 0):
+            raise ValueError('INVALID_FAMILY_DEMOTE_LIMIT')
         if len(self.gravity_world_mps2)!=3:raise ValueError('INVALID_GRAVITY_VECTOR')
         if not 0 < self.support_area_ratio_min <= 1:
             raise ValueError('support_area_ratio_min outside (0, 1]')

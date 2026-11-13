@@ -69,7 +69,9 @@ def default_matrix(prior_index, live_request, planning_profile, execution_profil
         planning_profile=str(Path(planning_profile).resolve()),
         execution_profile=str(Path(execution_profile).resolve()),
         unit_search_budget_s=1200., watchdog_s=1320., total_budget_s=14 * 3600.,
-        solution_count_target=3, minimum_executable_solutions=1, seeds=(0, 1, 2),
+        # User-authorized amendment 2026-11-13: units stop at the first complete
+        # plan (target 1) so unit time measures time-to-first-plan; see plan 22.
+        solution_count_target=1, minimum_executable_solutions=1, seeds=(0, 1, 2),
         sizes=[dict(size_id=name, dimensions=dims, mass_kg=8.0) for name, dims in BASE_SIZES],
         rehearsal_budget_s=1800.,
         # Deterministic unattached-start candidates, tried in order at prepare
@@ -244,8 +246,22 @@ def run_unit(matrix_path, evidence, size_id, mode, seed, extra_budget=None):
     finally:
         staged.unlink(missing_ok=True)
         outcome, detail = classify_unit(unit_dir, timed_out=False)
+        first_plan = None
+        boundaries = unit_dir / 'request_boundaries.jsonl'
+        if boundaries.is_file():
+            pending_remaining = None
+            for line in boundaries.read_text().splitlines():
+                row = json.loads(line)
+                if row.get('event') == 'action_input':
+                    pending_remaining = row.get('remaining_s')
+                elif row.get('event') == 'action_output' and row.get('valid') \
+                        and pending_remaining is not None:
+                    first_plan = dict(action_id=row.get('action_id'),
+                                      elapsed_s=float(config.search_budget_s - pending_remaining))
+                    break
         atomic_json(unit_dir / 'unit_summary.json', dict(
             size_id=size_id, mode=mode, seed=seed, outcome=outcome, detail=detail,
+            first_plan=first_plan,
             started_wall=time.time(), elapsed_s=time.monotonic() - started,
             machine=platform.platform(), python=platform.python_version(),
             load_average=[float(v) for v in os.getloadavg()],
@@ -464,20 +480,32 @@ def write_reports(matrix, evidence):
             prior = units.get((size_id, seed, 'prior'))
             b_out = baseline['outcome'] if baseline else 'not_evaluated'
             p_out = prior['outcome'] if prior else 'not_evaluated'
+
+            def first_plan(row):
+                return ((row or {}).get('first_plan') or {}).get('elapsed_s')
+
             pairs.append(dict(size_id=size_id, seed=seed, baseline=b_out, prior=p_out,
                               baseline_elapsed_s=baseline['elapsed_s'] if baseline else None,
                               prior_elapsed_s=prior['elapsed_s'] if prior else None,
+                              baseline_first_plan_s=first_plan(baseline),
+                              prior_first_plan_s=first_plan(prior),
                               regression=(b_out == 'NOMINAL_VALID' and p_out != 'NOMINAL_VALID'),
                               both_valid=(b_out == 'NOMINAL_VALID' and p_out == 'NOMINAL_VALID')))
     both = [p for p in pairs if p['both_valid']]
-    both_times = sorted(p['baseline_elapsed_s'] for p in both) or []
-    prior_times = sorted(p['prior_elapsed_s'] for p in both) or []
+    both_times = sorted(p['baseline_elapsed_s'] for p in both if p['baseline_elapsed_s'] is not None)
+    prior_times = sorted(p['prior_elapsed_s'] for p in both if p['prior_elapsed_s'] is not None)
+    base_firsts = sorted(p['baseline_first_plan_s'] for p in both
+                         if p['baseline_first_plan_s'] is not None)
+    prior_firsts = sorted(p['prior_first_plan_s'] for p in both
+                          if p['prior_first_plan_s'] is not None)
     median = lambda values: (values[len(values) // 2]
                              if len(values) % 2 else (values[len(values) // 2 - 1]
                                                       + values[len(values) // 2]) / 2) if values else None
     base_pairs = [p for p in pairs if p['size_id'] == 'base_550x400x250']
     speed = (dict(double_success_pairs=len(both),
                   baseline_median_s=median(both_times), prior_median_s=median(prior_times),
+                  baseline_first_plan_median_s=median(base_firsts),
+                  prior_first_plan_median_s=median(prior_firsts),
                   scope='wall time of double-success pairs only; medians, no significance test')
              if len(both) >= 3 else
              dict(double_success_pairs=len(both), comparison='not_evaluated',

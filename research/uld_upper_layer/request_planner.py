@@ -40,6 +40,49 @@ def request_from_record(record):
     return PlacementRequest(box=BoxState(**box),snapshot=SceneSnapshot(**snapshot),**row)
 
 
+BARREN_FAMILY_REASONS=frozenset(('NO_SAMPLED_HANDOFF_ENDPOINT_SOLUTION',
+                                 'NO_SAMPLED_PUSH_ENDPOINT_SOLUTION'))
+
+def action_family(action):
+    """Candidate family: handoff tool orientation plus rigid push-face spin."""
+    return (round(float(action.tool_yaw_deg)),hash(tuple(action.tool_T_push_surface)))
+
+
+class AdaptiveFamilyQueue:
+    """Demote-only family scheduling from endpoint-barren failure evidence.
+
+    A family whose candidates repeatedly produce no endpoint IK solutions is
+    moved to the back of the queue; nothing is ever dropped and non-barren
+    outcomes reset the streak because the family demonstrably has endpoints.
+    Similar failures only reorder; no family is declared unreachable.
+    """
+    def __init__(self,actions,barren_limit):
+        self._pending=list(actions);self._backlog=[]
+        self._barren_limit=int(barren_limit);self._consecutive=Counter()
+
+    def pop(self):
+        if not self._pending:
+            self._pending,self._backlog=self._backlog,self._pending
+            if not self._pending:return None
+        return self._pending.pop(0)
+
+    def record(self,action,reason):
+        if self._barren_limit<=0:return None
+        family=action_family(action)
+        if reason not in BARREN_FAMILY_REASONS:
+            self._consecutive[family]=0
+            return None
+        self._consecutive[family]+=1
+        if self._consecutive[family]<self._barren_limit:return None
+        moved=[a for a in self._pending if action_family(a)==family]
+        if not moved:return None
+        self._pending=[a for a in self._pending if action_family(a)!=family]
+        self._backlog.extend(moved)
+        self._consecutive[family]=0
+        return dict(event='family_demoted',tool_yaw_deg=round(float(action.tool_yaw_deg)),
+            consecutive_barren_failures=self._barren_limit,candidates_moved=len(moved))
+
+
 class UpperPlacementPlanner:
     """Stateless public boundary. Each call reloads runtime YAML configuration."""
     def __init__(self,repo,scene_path,config_path=None,selection_path=None,execution_path=None):
@@ -110,7 +153,10 @@ class UpperPlacementPlanner:
                 random_seeds=rng.uniform(limits[:,0],limits[:,1],size=(config.ik_seed_count-1,6)).tolist()
                 plans=[];attempts=0;ranking=None;rejections=Counter();common_failure=None
                 atomic_json(output/'plans.json',plans)
-                for action in actions:
+                queue=AdaptiveFamilyQueue(actions,config.family_demote_barren_limit)
+                while True:
+                    action=queue.pop()
+                    if action is None:break
                     remaining=deadline-time.monotonic()
                     if remaining<=0:break
                     attempts+=1
@@ -120,6 +166,8 @@ class UpperPlacementPlanner:
                         seeds,config,selection,execution,output/f'action_{attempts:04d}',remaining,seed+attempts,
                         start_attached=request.start_attached,scene_path=self._scene_path)
                     emit(dict(event='action_output',action_id=action.action_id,valid=result.get('valid'),reason=result.get('reason')))
+                    demotion=queue.record(action,result.get('reason'))
+                    if demotion:emit(demotion)
                     if not result.get('valid'):rejections[result.get('reason') or 'ACTION_PLANNING_REJECTED']+=1
                     if result.get('reason')=='INITIAL_STATE_INVALID':
                         common_failure='INITIAL_STATE_INVALID'

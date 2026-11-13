@@ -35,7 +35,7 @@ def matrix(tmp, **changes):
         planning_profile=str(REPO / 'research/uld_upper_layer/profiles/nominal_physics_planning.yaml'),
         execution_profile=str(REPO / 'research/uld_upper_layer/profiles/nominal_physics_execution.yaml'),
         unit_search_budget_s=1200., watchdog_s=1320., total_budget_s=14 * 3600.,
-        solution_count_target=3, minimum_executable_solutions=1, seeds=(0, 1, 2),
+        solution_count_target=1, minimum_executable_solutions=1, seeds=(0, 1, 2),
         sizes=[dict(size_id=name, dimensions=dims, mass_kg=8.0) for name, dims in ep.BASE_SIZES],
         rehearsal_budget_s=1800.,
         start_q_candidates=[[0.] * 6, [3.5702, -1.3263, -1.0965, 3.9564, 1.6234, 0.4522]])
@@ -138,7 +138,7 @@ class ConfigPairingContracts(unittest.TestCase):
         diff = {key for key in baseline if baseline[key] != prior[key]}
         self.assertEqual(diff, {'prior_enabled', 'prior_index_path'})
         self.assertEqual(configs['baseline'].search_budget_s, 1200.)
-        self.assertEqual(configs['baseline'].solution_count_target, 3)
+        self.assertEqual(configs['baseline'].solution_count_target, 1)
         self.assertEqual(configs['baseline'].minimum_executable_solutions, 1)
         self.assertTrue(configs['baseline'].payload_effort_screen_enabled)
         self.assertFalse(configs['baseline'].prior_enabled)
