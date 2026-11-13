@@ -1,9 +1,0 @@
-........................................................................ [ 84%]
-.............                                                            [100%]
-=============================== warnings summary ===============================
-src/luggage_planning/test/test_hardware_plan_only_launch.py::test_plan_only_gates_actual_node_parameters_and_executor_include[true-False-stub-False]
-  /opt/ros/humble/local/lib/python3.10/dist-packages/xacro/__init__.py:115: DeprecationWarning: private variables, such as '_ConstructUnits__ConstructUnitsValue', will be normal attributes in 3.11
-    __ConstructUnitsValue = collections.namedtuple('__ConstructUnitsValue', ['tag', 'conversion_constant'])
-
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-85 passed, 1 warning in 0.61s

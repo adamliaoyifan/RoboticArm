@@ -1,1 +1,0 @@
-{"baseline_pass": false, "migration_ready": false, "cases": 50, "failed_cases": ["existing_base_helper"], "errors": [], "pending_interfaces": 24, "evidence": "/tmp/st09-e2-frame-contracts-log", "exit_code": 1}

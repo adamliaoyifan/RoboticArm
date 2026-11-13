@@ -1,1 +1,0 @@
-{"boundary":"frontier fallback on existing test stub","reason":"optional derived cache attribute missing on legacy stub","seed":null,"replay":"pytest test_frontier_count_vectorized.py","capture_complete":true,"replay_possible":true,"primary_OCC_mismatch":false}

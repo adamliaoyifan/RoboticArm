@@ -1,5 +1,0 @@
-{
-  "jtc_2.53.3.cpp": "https://raw.githubusercontent.com/ros-controls/ros2_controllers/2.53.3/joint_trajectory_controller/src/joint_trajectory_controller.cpp",
-  "moveit_tem_2.5.9.cpp": "https://raw.githubusercontent.com/moveit/moveit2/2.5.9/moveit_ros/planning/trajectory_execution_manager/src/trajectory_execution_manager.cpp",
-  "moveit_fjt_2.5.9.cpp": "https://raw.githubusercontent.com/moveit/moveit2/2.5.9/moveit_plugins/moveit_simple_controller_manager/src/follow_joint_trajectory_controller_handle.cpp"
-}

@@ -1,3 +1,0 @@
-descriptor_json: '{"ceiling_z":1.6,"floor_z":0.6,"frame_id":"container_link","geometry_hash":"318a099535d258dcc18256c79c48d26555d57ae5706d9d793478f5695bd82343","length":1.6,"schema_version":1,"width":1.6}'
-descriptor_sha256: 0068c57450d52cc704c3b6b30858adca36e80eda203af8c2ffd3923792bdbf66
-schema: uld_geometry_export_v1

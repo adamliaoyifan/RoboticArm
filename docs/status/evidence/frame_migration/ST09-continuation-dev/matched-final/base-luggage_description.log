@@ -1,9 +1,0 @@
-..................................................................................... [ 45%]
-........................................................................ [ 83%]
-..............................                                           [100%]
-=============================== warnings summary ===============================
-src/luggage_description/test/test_he1_cad_seed.py::BoardTests::test_pdf_page_size
-  Warning: the load_module() method is deprecated and slated for removal in Python 3.12; use exec_module() instead
-
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-187 passed, 1 warning, 59 subtests passed in 2.05s

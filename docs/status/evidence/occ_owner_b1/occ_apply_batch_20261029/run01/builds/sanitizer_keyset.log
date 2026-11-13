@@ -1,6 +1,0 @@
-mutation_bytes=1344 mutations=56
-ERROR: First line of OcTree file header does not start with "# Octomap OcTree file
-dedup_compare points=4000 free=430 hit=112 set_ms=64.7813 keyset_ms=10.2619
-bitmap_checks=ok seed=20261028 resolutions=0.01,0.05 frames=20
-ERROR: First line of OcTree file header does not start with "# Octomap OcTree file
-discretize_checks=ok

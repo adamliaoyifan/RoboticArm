@@ -1,9 +1,0 @@
-{
-  "old": "docs/status/evidence/occ_owner_b1/occ_block_storage_20261029/run01/a_to_b/windows/o5_b0_c30000_r0_off_6691c409/frames.jsonl",
-  "new": "docs/status/evidence/occ_owner_b1/occ_apply_batch_20261029/run01/baseline_to_a/windows/o5_b0_c30000_r0_off_e35a285d/frames.jsonl",
-  "frames": [
-    33,
-    33
-  ],
-  "mismatches": []
-}

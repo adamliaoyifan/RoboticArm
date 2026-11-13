@@ -1,1 +1,0 @@
-{"executed": true, "pid": 2398328, "returncode": 0, "status": "EPOCH_MISMATCH", "reason": "EPOCH_MISMATCH", "observation_id": "epoch-reject", "epoch": 1, "sensor_id": "cam0", "tree_nodes": 0, "content_sha256": null, "tf": {"present": true, "stamp_ns": 1000000000}}

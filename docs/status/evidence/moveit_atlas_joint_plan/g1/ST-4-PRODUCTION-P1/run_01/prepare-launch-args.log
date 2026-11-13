@@ -1,8 +1,0 @@
-Arguments (pass arguments as '<name>:=<value>'):
-
-    'model_parameters':
-        Pinned native/root ROS parameter file
-
-    'start_native_backends':
-        no description given
-        (default: 'true')

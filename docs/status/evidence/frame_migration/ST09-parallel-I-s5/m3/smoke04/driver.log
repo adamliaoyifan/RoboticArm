@@ -1,5 +1,0 @@
-[INFO] [1791024788.837704376] [pick_retreat_eval_driver]: frame runtime adopted (peer=motion_occ_driver, scene=98313fb8b3)
-graph ok; M3 n=1 sequence=carryon
-[INFO] [1791024804.251305129] [pick_retreat_eval_driver]: place place_exit ok=False frac=0.000 f_ompl=0 vac=0
-{"fail_code": "EXIT_FAILED_STUCK", "finalize": null, "index": 0}
-{"box_count": 2, "claim": "finite 2-box coverage; no population reliability claim", "failures": [], "missing": ["frozen.box_count", "frozen.sequence_ids", "2 cases"], "revision_handoff_count": 0, "sample_count": 0, "status": "not_evaluated"}

@@ -37,10 +37,12 @@ __pycache__/
 !.cursor/rules/
 !.cursor/rules/**
 
-# Agent notes, mailbox, generated status/evidence, and working plans
+# Docs kept in git: architecture/ and hardware/ only.
+# Session notes, plans, research notes, and status/evidence stay local.
 docs/agents/
-docs/status/
 docs/plans/
+docs/research/
+docs/status/
 
 # Misc
 *.swp

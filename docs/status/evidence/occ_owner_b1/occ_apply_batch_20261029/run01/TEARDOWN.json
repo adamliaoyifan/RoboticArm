@@ -1,7 +1,0 @@
-{
-  "active_campaign_cli_pids": [],
-  "performance_lock": "available",
-  "gazebo_started": false,
-  "ros_node_launched": false,
-  "product_package_status": ""
-}

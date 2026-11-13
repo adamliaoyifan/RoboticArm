@@ -1,2 +1,0 @@
-{"baseline_pass": true, "migration_ready": false, "cases": 50, "failed_cases": [], "errors": [], "pending_interfaces": 5, "evidence": "/tmp/elfin-frame-migration-st08/docs/status/evidence/frame_migration/ST08-20260930/run/checker/migration", "exit_code": 2}
-MIGRATION_EXIT:2

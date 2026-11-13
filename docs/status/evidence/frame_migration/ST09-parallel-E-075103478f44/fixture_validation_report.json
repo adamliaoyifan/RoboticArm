@@ -1,7 +1,0 @@
-{
-  "missing_count": 0,
-  "observed_count": 11,
-  "sample_manifest": "sample_manifest.json",
-  "schema": "st09.fixture_validation_report/1",
-  "status": "pass"
-}

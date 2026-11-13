@@ -1,8 +1,0 @@
-{
-  "input_id": "1793435719823639654",
-  "epoch": 1,
-  "status": "REJECTED",
-  "reason": "\"container_link\" passed to lookupTransform argument target_frame does not exist. ",
-  "sensor_id": "cam0",
-  "capture_complete": true
-}

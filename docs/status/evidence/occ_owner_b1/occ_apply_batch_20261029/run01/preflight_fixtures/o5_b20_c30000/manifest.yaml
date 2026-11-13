@@ -1,6 +1,0 @@
-case_id: o5_b20_c30000
-frames:
-- expect_status: INTEGRATED
-  path: /home/adamliao/work/elfin_humble_ws/docs/status/evidence/occ_owner_b1/occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c30000/frame_0.yaml
-  sha256: 32b1c084b06409b884c45ba45fcde98633443406de0e71230bea494d0e17c1dc
-  warmup: false

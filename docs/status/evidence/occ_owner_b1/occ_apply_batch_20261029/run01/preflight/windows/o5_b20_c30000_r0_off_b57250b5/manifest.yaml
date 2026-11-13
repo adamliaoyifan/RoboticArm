@@ -1,9 +1,0 @@
-case_id: o5_b20_c30000
-mode: 'off'
-surface: true
-state_digest: true
-frames:
-- path: ../../../../../occ_octomap_perf_diag_g1_20261026/run01/fixtures/o5_b20_c30000/frame_0.yaml
-  sha256: 32b1c084b06409b884c45ba45fcde98633443406de0e71230bea494d0e17c1dc
-  warmup: false
-  expect_status: INTEGRATED

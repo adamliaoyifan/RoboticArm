@@ -1,6 +1,0 @@
-usage: diagnostic_capture_node.py [-h] --directory DIRECTORY --run-id RUN_ID
-
-options:
-  -h, --help            show this help message and exit
-  --directory DIRECTORY
-  --run-id RUN_ID

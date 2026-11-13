@@ -1,6 +1,0 @@
-{
-  "source": "src/luggage_gazebo/scripts/place_smoke_driver.py",
-  "installed": "install/luggage_gazebo/lib/luggage_gazebo/place_smoke_driver.py",
-  "sha256": "b6200e20e9507a537cff4d21b40733343fac42cc86e2f947612026ed9ec4a460",
-  "identical": true
-}

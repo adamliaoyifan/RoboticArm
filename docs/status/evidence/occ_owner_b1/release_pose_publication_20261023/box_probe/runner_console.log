@@ -1,5 +1,0 @@
-scene_md5 603f9b6523e104f675cbeea77805e1ff
-[10:14:27] launch pid=752139 out=/tmp/elfin-master-pack-baseline-g3/docs/status/evidence/occ_owner_b1/release_pose_publication_20261023/box_probe/startup run_id=n3func_101425
-[10:15:27] startup terminal failure before gain verification
-[10:15:27] aborting before any motion: param-delivery fix not active
-[10:15:43] runner exit=5

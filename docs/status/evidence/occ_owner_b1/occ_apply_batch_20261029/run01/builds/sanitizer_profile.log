@@ -1,6 +1,0 @@
-PASS block addressing sizeof(CellBlock)=4168
-PASS block batch lifecycle
-PASS contiguous block sizeof(CellBlock)=4168
-fusion_profile saturation resolution=0.01 new=0 old=1 saturated=5 reversed=12
-fusion_profile saturation resolution=0.05 new=0 old=1 saturated=5 reversed=12
-PASS profiling semantic equivalence: 39 cases x3 modes; counters/timings/cache paths

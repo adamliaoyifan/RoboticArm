@@ -1,1 +1,0 @@
-scripts/production/run.sh python3 scripts/production/test_source.py -q src/luggage_mapping/test/test_regions.py src/luggage_planning/test/test_joint_operation_observer.py src/luggage_packing/test/test_placement_query_consumers.py src/luggage_packing/test/test_placement_query.py src/luggage_planning/test/test_map_owner_launch.py --junitxml=<root>/tests-01.xml

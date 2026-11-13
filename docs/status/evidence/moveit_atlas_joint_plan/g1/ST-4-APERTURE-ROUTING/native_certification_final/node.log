@@ -1,4 +1,0 @@
-[INFO] [1794486325.748292192] [moveit_robot_model.robot_model]: Loading robot model 'connection_fixture'...
-[INFO] [1794486325.748352717] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
-[INFO] [1794486325.749823733] [validate_route_v2]: validate_route_v2 ready (model root connection_fixture, 6 variables)
-[INFO] [1794486326.383998052] [rclcpp]: signal_handler(SIGINT/SIGTERM)

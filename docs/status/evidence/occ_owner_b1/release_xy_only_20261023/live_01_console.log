@@ -1,6 +1,0 @@
-scene_md5 603f9b6523e104f675cbeea77805e1ff
-[11:09:15] launch pid=765956 out=/tmp/elfin-master-pack-baseline-g3/docs/status/evidence/occ_owner_b1/release_xy_only_20261023/live_01 run_id=n3func_110913
-[11:09:20] gain verify OK (0.8)
-[11:09:26] driver start (n=3)
-[11:14:20] driver rc=1
-[11:14:23] runner exit=1

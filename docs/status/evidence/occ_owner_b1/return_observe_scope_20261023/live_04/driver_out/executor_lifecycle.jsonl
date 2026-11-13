@@ -1,4 +1,0 @@
-{"event": "start", "mono": 3346415.067248096, "phase": "running", "wall": 1792733936.9206967}
-{"event": "stop_requested", "mono": 3347665.098531959, "phase": "stopping", "wall": 1792735186.951981}
-{"event": "spin_return", "failed": false, "mono": 3347665.098749903, "phase": "stopping", "wall": 1792735186.952199}
-{"event": "nodes_destroyed", "mono": 3347665.14061574, "phase": "closed", "wall": 1792735186.9940646}

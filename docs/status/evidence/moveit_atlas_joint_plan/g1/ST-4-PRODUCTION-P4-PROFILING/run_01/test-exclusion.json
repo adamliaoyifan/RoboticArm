@@ -1,6 +1,0 @@
-{
-  "deselected": [
-    "test_native_port_consumes_service_and_terminates_executor"
-  ],
-  "reason": "Explicit transport opt-in starts ROS executor; this gate has independent native evidence and is not part of the chosen offline matrix. No claim of its coverage."
-}

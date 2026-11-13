@@ -1,4 +1,0 @@
-[INFO] [1794485599.943587410] [moveit_rdf_loader.rdf_loader]: Loaded robot model in 0.0113004 seconds
-[INFO] [1794485599.943622487] [moveit_robot_model.robot_model]: Loading robot model 'endpoint_fixture'...
-[INFO] [1794485599.943625803] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
-[INFO] [1794485603.951269133] [rclcpp]: signal_handler(SIGINT/SIGTERM)

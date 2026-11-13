@@ -1,9 +1,0 @@
-{
-  "scope": "offline unit test of recorder, not robot behavior",
-  "initial_result": "8 failed, 1 passed",
-  "observation": "ROS UUID fields expose numpy uint8 values; a Python-int-only check rejected valid UUID messages before persistence.",
-  "fix": "Accept numbers.Integral byte values while rejecting bool, floats and out-of-range values.",
-  "preserved_input": "selfcheck_final/000003/message.cdr contains equivalent valid SendGoal UUID and complete synthetic empty-acceleration input",
-  "final_result": "12 passed",
-  "simulations_started": 0
-}
