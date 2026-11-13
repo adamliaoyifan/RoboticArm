@@ -99,16 +99,25 @@ def _association_from_message(message):
 
 
 class PickupViewService:
-    def __init__(self, *, context_lookup):
+    def __init__(self, *, context_lookup, frozen_context_lookup=None):
         self.context_lookup=context_lookup
+        self.frozen_context_lookup=frozen_context_lookup
 
     def get(self, request, response):
-        from luggage_msgs.msg import PickupViewEvidenceV2
+        from luggage_msgs.msg import PickupViewEvidenceV2,FrozenSuctionObservationV2
+        from luggage_perception.frozen_suction_service import binding_from_message
         response.success,response.reason,response.view=False,'PICKUP_VIEW_UNAVAILABLE',PickupViewEvidenceV2()
         try:
             if not request.domain_sha256:
                 raise ValueError('EXPLICIT_PICKUP_ACQUISITION_REQUIRED')
-            context=self.context_lookup(request.domain_sha256)
+            if request.binding != FrozenSuctionObservationV2():
+                binding=binding_from_message(request.binding)
+                if self.frozen_context_lookup is None:
+                    raise ValueError('FROZEN_PICKUP_VIEW_OWNER_UNAVAILABLE')
+                lookup=lambda:self.frozen_context_lookup(binding)
+            else:
+                lookup=lambda:self.context_lookup(request.domain_sha256)
+            context=lookup()
             if context is None or context.domain_sha256!=request.domain_sha256:
                 raise ValueError('PICKUP_ACQUISITION_UNAVAILABLE_OR_EXPIRED')
             require_matching_detection(context.domain,request.detection,generation=int(request.generation),
@@ -118,7 +127,7 @@ class PickupViewService:
                 raise ValueError(context.pickup_view_reason)
             result=view_to_message(view)
             # Revoke/expiry may race with copying a multi-megabyte image.
-            current=self.context_lookup(request.domain_sha256)
+            current=lookup()
             if (current is None or current.pickup_view is None
                     or current.pickup_view.digest()!=view.digest()):
                 raise ValueError('PICKUP_VIEW_SOURCE_CHANGED_DURING_READ')

@@ -742,7 +742,9 @@ class LuggageDetector(Node):
                 model_provider=lambda:self._suction_evaluator.contact_model)
             from luggage_msgs.srv import GetPickupViewEvidenceV2
             from luggage_perception.pickup_view_service import PickupViewService
-            self._pickup_view_service=PickupViewService(context_lookup=self._current_directed_suction_context)
+            self._pickup_view_service=PickupViewService(
+                context_lookup=self._current_directed_suction_context,
+                frozen_context_lookup=self._frozen_suction_service.pickup_context)
             self._pickup_view_ros_service=self.create_service(GetPickupViewEvidenceV2,
                 '/luggage/get_pickup_view_evidence_v2',self._pickup_view_service.get,
                 callback_group=self._group)

@@ -108,7 +108,9 @@ candidate acceptance.
 The same detector export additionally captures optional immutable camera inputs
 for pre-pick observation recovery. `GetPickupViewEvidenceV2` at
 `/luggage/get_pickup_view_evidence_v2` queries an explicitly named domain digest,
-detection and generation from the existing short handoff owner. It never reads
+detection and generation from the existing short handoff owner. An explicit
+frozen-observation binding instead reads only that task's retained acquisition;
+an invalid or unavailable binding never falls back to the short handoff. It never reads
 the latest CameraInfo/TF, polls diagnostic files, renews retention or substitutes
 a different acquisition. Source revocation during payload copying refuses.
 
@@ -123,7 +125,15 @@ This is not a generated CameraInfo calibration, suction permit or motion permit.
 Per-view input bytes are capped at8MiB. The handoff history separately bounds
 optional view retention (16MiB default resource allowance), dropping camera inputs
 without evicting ordinary quality rows solely for camera pressure. Long-lived
-frozen quality retention does not copy these optional raw images. Missing metadata,
+frozen observation retention also owns the selected acquisition's immutable camera
+inputs within its existing total byte/record/lifetime limits. Camera bytes cannot
+evict ordinary quality rows solely to admit another optional image. Mandatory
+quality retention can drop optional images first; the quality context's identity
+and original binding remain unchanged. New camera publication cannot displace
+these task-owned inputs. Retention replies report optional camera availability,
+its reason and actual retained bytes. Reads and duplicate retention never refresh
+expiry or reacquire a missing camera payload. Bound reads recheck binding and
+current contact policy before and after copying. Missing metadata,
 view eviction or failed view binding leaves ordinary quality checks unchanged.
 Contradictory view bytes/metadata for an otherwise identical domain and quality
 acquisition invalidate that acquisition's optional view only; matching ordinary
@@ -144,7 +154,8 @@ The owner copies sample buffers and the model. Subsequent camera publication
 does not replace retained evidence. Read/duplicate retention does not renew it;
 expiry, resource eviction, explicit revocation or an actual model/policy change
 refuses subsequent checks. Resource defaults are 16 records / 64 MiB sampled
-payload and metadata / 300 monotonic seconds, exposed as detector parameters.
+payload, metadata and optional selected camera inputs / 300 monotonic seconds,
+exposed as detector parameters.
 These are retention limits, not a calibrated physical freshness policy.
 
 `/luggage/evaluate_frozen_suction_v2` evaluates directed candidate queries on

@@ -6,7 +6,7 @@ permission. Those require the execution owner's actual vacuum/provider gates.
 There are no guessed missing-depth, contact-height or contact-angle tolerances.
 """
 from collections import OrderedDict
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, fields, replace
 import math
 import json
 import threading
@@ -64,6 +64,21 @@ class _Retained:
     context: DirectedSuctionContext
     expires_at: float
     size_bytes: int
+    pickup_view: object = None
+    pickup_view_reason: str = 'PICKUP_VIEW_NOT_CAPTURED'
+
+
+@dataclass(frozen=True)
+class RetainedPickupInputs:
+    """Read-only camera projection of a retained entry, not a quality context."""
+    domain: object
+    pickup_view: object
+    pickup_view_reason: str
+    retained_observation_bytes: int
+
+    @property
+    def domain_sha256(self):
+        return self.domain.digest()
 
 
 class FrozenSuctionObservations:
@@ -134,13 +149,32 @@ class FrozenSuctionObservations:
             for other,entry in tuple(self._entries.items()):
                 if now >= entry.expires_at:
                     self._remove(other)
+            # Optional camera bytes must not make a mandatory quality snapshot
+            # evict another quality row. Keep its context object stable too:
+            # in-flight actual-footprint checks retain that exact object.
+            for other, entry in tuple(self._entries.items()):
+                if self._bytes + size <= self.max_bytes:
+                    break
+                if entry.pickup_view is not None:
+                    released = entry.pickup_view.size_bytes
+                    self._entries[other] = replace(entry, pickup_view=None,
+                        pickup_view_reason='FROZEN_PICKUP_VIEW_RESOURCE_EVICTED',
+                        size_bytes=entry.size_bytes-released)
+                    self._bytes -= released
             while self._entries and (len(self._entries) >= self.max_records or self._bytes+size > self.max_bytes):
                 self._remove(next(iter(self._entries)))
+            view, view_reason = context.pickup_view, context.pickup_view_reason
+            if view is not None:
+                if self._bytes + size + view.size_bytes <= self.max_bytes:
+                    size += view.size_bytes
+                else:
+                    view, view_reason = None, 'FROZEN_PICKUP_VIEW_BYTE_LIMIT'
             domain = owned.domain
             binding = FrozenObservationBinding(request_id,observation_id,uuid.uuid4().hex,
                 domain.box_id,domain.generation,domain.stamp_ns,domain.contact_model_hash,
                 owned.domain_sha256,owned.policy_sha256,owned.samples_sha256)
-            self._entries[key] = _Retained(binding,owned,now+self.lifetime_s,size)
+            self._entries[key] = _Retained(binding,owned,now+self.lifetime_s,size,
+                                         view,view_reason)
             self._bytes += size
             return binding
 
@@ -152,6 +186,17 @@ class FrozenSuctionObservations:
             if entry is None or entry.binding != binding or self._now() >= entry.expires_at:
                 return None
             return entry.context
+
+    def pickup_context(self, binding):
+        """Same original binding/expiry; camera pressure never replaces quality."""
+        if type(binding) is not FrozenObservationBinding:
+            return None
+        with self._lock:
+            entry = self._entries.get((binding.request_id,binding.observation_id))
+            if entry is None or entry.binding != binding or self._now() >= entry.expires_at:
+                return None
+            return RetainedPickupInputs(entry.context.domain, entry.pickup_view,
+                entry.pickup_view_reason, entry.size_bytes)
 
     def revoke(self, request_id, observation_id):
         with self._lock:

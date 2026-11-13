@@ -129,9 +129,11 @@ class PickupViewPrepareOwner:
             self.node.get_logger().warning('PICKUP_VIEW_CONTEXT_UNAVAILABLE:'+str(error))
 
     def _acquisition(self,context,deadline):
+        from luggage_perception.frozen_suction_service import binding_to_message
         original=context.request()
         request=self.evidence_service.Request(domain_sha256=context.domain.digest(),
-            detection=original.detection,generation=context.domain.generation)
+            detection=original.detection,generation=context.domain.generation,
+            binding=binding_to_message(context.observation.binding))
         result=self.node._call(self.evidence_client,request,deadline,'pickup_view_acquisition')
         if not result.success:raise ValueError('PICKUP_VIEW_ACQUISITION_UNAVAILABLE:'+result.reason)
         return view_from_message(result.view,context.domain)

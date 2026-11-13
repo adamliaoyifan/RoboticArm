@@ -50,6 +50,8 @@ MODULES = (
     'luggage_perception.ros_suction_domain',
     'luggage_perception.pickup_view_evidence',
     'luggage_perception.pickup_view_service',
+    'luggage_perception.frozen_suction_observation',
+    'luggage_perception.frozen_suction_service',
     'luggage_perception.pickup_view_association',
     'luggage_perception.ros_pickup_association',
     'luggage_perception.stationary_pickup_association',

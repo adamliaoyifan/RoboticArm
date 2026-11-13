@@ -11,3 +11,7 @@ luggage_msgs/FrozenSuctionObservationV2 expected_binding
 bool retained
 string reason
 luggage_msgs/FrozenSuctionObservationV2 binding
+# Optional recovery inputs; these diagnostics do not change quality admission.
+bool pickup_view_available
+string pickup_view_reason
+uint64 retained_observation_bytes

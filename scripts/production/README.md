@@ -78,6 +78,14 @@ Missing exact anomaly inputs are explicit;no nearest image is substituted.
 Failure/invalid domain diagnostics are excluded from selected-pick inventories.
 These additions affect only explicitly enabled diagnostic capture.
 
+Selected pickup camera inputs are retained with the task's frozen observation,
+inside its existing record/byte/lifetime bounds. View preparation forwards the
+exact frozen binding to the read-only evidence service; rolling-frame pressure
+cannot replace its images. Retention responses expose camera availability and
+retained bytes. Missing camera inputs leave ordinary quality checks usable;
+bound view reads refuse without a latest-frame fallback. Generated services and
+all consumers must be rebuilt together after this interface change.
+
 The Gazebo segmenter reads pickup workspace center, half extents, top-plane Z
 and world frame from the selected `scene_tf_config` platform. These override the
 historical semantic YAML region; confidence and workspace margin stay unchanged.

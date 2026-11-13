@@ -40,6 +40,9 @@ class FrozenSuctionService:
     def retain(self, request, response):
         from luggage_msgs.msg import FrozenSuctionObservationV2
         response.retained,response.reason,response.binding = False,'FROZEN_OBSERVATION_UNAVAILABLE',FrozenSuctionObservationV2()
+        response.pickup_view_available = False
+        response.pickup_view_reason = 'FROZEN_OBSERVATION_UNAVAILABLE'
+        response.retained_observation_bytes = 0
         try:
             epoch = self.store.current_epoch()
             expected = (binding_from_message(request.expected_binding)
@@ -73,11 +76,24 @@ class FrozenSuctionService:
                     or _digest(self.model_provider().as_dict()) != binding.quality_policy_sha256):
                 self.store.revoke(binding.request_id,binding.observation_id)
                 raise ValueError('CURRENT_CONTACT_POLICY_CHANGED')
+            camera = self.pickup_context(binding)
+            if camera is None:
+                raise ValueError('FROZEN_OBSERVATION_REVOKED_DURING_RETENTION')
             response.binding = binding_to_message(binding)
+            response.pickup_view_available = camera.pickup_view is not None
+            response.pickup_view_reason = camera.pickup_view_reason
+            response.retained_observation_bytes = camera.retained_observation_bytes
             response.retained,response.reason = True,'MEASURED_OBSERVATION_RETAINED'
         except Exception as error:
             response.reason = 'FROZEN_OBSERVATION_REFUSED:'+type(error).__name__+':'+str(error)
         return response
+
+    def pickup_context(self, binding):
+        """Read optional task-owned images under the current contact policy."""
+        camera = self.store.pickup_context(binding)
+        if camera is None or _digest(self.model_provider().as_dict()) != binding.quality_policy_sha256:
+            return None
+        return camera
 
     def evaluate(self, request, response):
         """Reuse the existing directed kernel on one retained sampling context."""
