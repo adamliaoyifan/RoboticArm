@@ -4,6 +4,8 @@ from types import SimpleNamespace
 import threading
 
 import pytest
+from rclpy.serialization import serialize_message
+from pickup_continuation_fixtures import case_archive
 
 from luggage_msgs.srv import PrepareJointOperationV2
 from luggage_planning.joint_operation.preparation_profile import PreparationBudget, StageTimings
@@ -41,17 +43,32 @@ def query_and_inputs(budget):
 
 @pytest.mark.parametrize('budget,cap,accepted', [(30., 60., True), (30., 20., False),
     (0., 60., False), (float('nan'), 60., False), (float('inf'), 60., False)])
-def test_real_root_callback_budget_gate_timing_and_unlock(budget, cap, accepted):
-    request, _, _ = query_and_inputs(budget)
+def test_real_root_callback_budget_gate_timing_and_unlock(budget, cap, accepted, case_archive):
+    request, context, _ = query_and_inputs(budget)
     looked_up, records = [], []
+    forgotten, remembered = [], []
+    (case_archive.directory/'root_request.cdr').write_bytes(serialize_message(request))
+    case_archive.save('root_inputs', dict(domain=context.domain, budget=repr(budget),
+        cap=cap, expected_accepted=accepted, fixture='domain admission raises; no motion'))
+    def record(kind, value):
+        records.append(kind)
+        (case_archive.directory/(kind+'.cdr')).write_bytes(serialize_message(value))
     def domain(query):
         looked_up.append(query.request_id)
         raise ValueError('DOMAIN_ADMISSION_PROBE')
     root = SimpleNamespace(_active=threading.Lock(), budget=PreparationBudget(cap),
         model=SimpleNamespace(model_sha256=request.expected_model_sha256), _current=domain,
-        _record=lambda kind, value:records.append(kind),
+        _record=record,
+        pickup_views=SimpleNamespace(contexts=SimpleNamespace(forget=forgotten.append),
+            remember=lambda *args:remembered.append(args[0].request_id)),
         get_logger=lambda:SimpleNamespace(error=lambda text:None))
-    response = JointOperationPrepareNode._prepare(root, request, PrepareJointOperationV2.Response())
+    response = PrepareJointOperationV2.Response()
+    try:
+        response = JointOperationPrepareNode._prepare(root, request, response)
+    finally:
+        (case_archive.directory/'root_response.cdr').write_bytes(serialize_message(response))
+        case_archive.save('root_terminal', dict(looked_up=looked_up, records=records,
+            forgotten=forgotten, remembered=remembered, lock_held=root._active.locked()))
     assert not response.success and not response.plan.plan_digest
     assert bool(looked_up) is accepted
     assert ('DOMAIN_ADMISSION_PROBE' in response.reason) is accepted
@@ -63,6 +80,7 @@ def test_real_root_callback_budget_gate_timing_and_unlock(budget, cap, accepted)
     assert root._active.acquire(blocking=False)
     root._active.release()
     assert records == ['prepare_request', 'prepare_response']
+    assert forgotten == remembered == [request.request_id]
 
 
 @pytest.mark.parametrize('requested,expected', [(30., 'SEARCH_INCOMPLETE'),

@@ -337,6 +337,22 @@ Zero disables; no measured production default is implied. A successful Action
 proves terminal empty motion and fresh joint settling only. The returned settling
 stamp is a lower bound for a later acquisition, never proof of new support,
 same-box identity, useful information gain or complete recovery.
+
+The read-only `/joint_operation/reprepare_after_pickup_view` adapter accepts the
+exact owner-issued view plus caller-forwarded actual settle stamp and new
+measured detection. It cannot prove that the view was physically executed.
+It reconstructs the original physical need and sole placement target from the
+owner's immutable context, compares exact raw acquisitions under an explicit
+matching policy, and hands new measured geometry/current node joints to ordinary
+whole-operation preparation. A private recovery flag captures latest O in the
+same epoch/config after fresh domain admission; the resulting bound request is
+recorded. All ordinary contact, geometry, payload, six-leg, final-map and issuance
+checks remain authoritative. No gain may invent support. Independent preparation
+may admit already decidable contact alternatives even when measured gain is zero.
+The adapter neither executes nor adopts ledger aliases. Runtime must forward its
+actual terminal receipt and adopt the returned exact match under the original
+task before another recovery motion; default-cycle wiring remains separate.
+
 The exact-domain pickup-view evidence port optionally retains the original RGB
 image and every candidate reported by that acquisition's detector message,
 including competing and duplicate boxes, plus the selected ROI index. RGB,

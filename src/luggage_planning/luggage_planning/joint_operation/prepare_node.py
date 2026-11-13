@@ -189,6 +189,8 @@ class JointOperationPrepareNode(Node):
             velocity_scale=velocity,acceleration_scale=acceleration,
             velocity_limits=certifier.velocity_limits,acceleration_limits=certifier.acceleration_limits,
             max_samples=certifier.max_samples)
+        from luggage_planning.joint_operation.view_reprepare import PickupViewReprepareOwner
+        self.pickup_view_reprepare = PickupViewReprepareOwner(self.pickup_views)
         # Detector publishes a sensor stream. A RELIABLE reader cannot receive
         # a BEST_EFFORT writer; frozen quality RPCs provide retained evidence.
         sensor_qos = QoSProfile(depth=10,reliability=ReliabilityPolicy.BEST_EFFORT)
@@ -445,7 +447,7 @@ class JointOperationPrepareNode(Node):
         # then the shallow alternatives. Never fabricate a half turn here.
         return pool
 
-    def _prepare(self,request,response):
+    def _prepare(self,request,response,*,latest_map=False):
         from luggage_msgs.msg import JointOperationPlanV2
         started = time.monotonic();response.success = False;response.plan = JointOperationPlanV2()
         response.unresolved_contacts = []
@@ -484,7 +486,16 @@ class JointOperationPrepareNode(Node):
                 deadline=deadline,cancelled=lambda:False)
             if not retained.retained:raise ValueError(retained.reason)
             observed = retained.observation
-            confirmed,volume,map_source = timing.call('map_capture',self._capture_map,request,deadline)
+            if latest_map:
+                # Private recovery handoff: capture latest O once, within the
+                # original epoch/config, after fresh domain admission.
+                confirmed,volume,map_source = timing.call('map_capture',self._capture_map,
+                    request,deadline,latest=True)
+                if map_source is None:raise ValueError('CONTINUATION_REQUIRES_O_SOURCE')
+                request.expected_map_revision = map_source.map_revision
+                self._record('continuation_map_bound_request',request)
+            else:
+                confirmed,volume,map_source = timing.call('map_capture',self._capture_map,request,deadline)
             record = confirmed.record()
             if (record['geometry_hash'],record['map_revision'],record['scene_revision']) != (
                     request.geometry_hash,request.expected_map_revision,self.revision):

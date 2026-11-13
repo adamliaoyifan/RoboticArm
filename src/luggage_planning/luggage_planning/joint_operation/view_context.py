@@ -68,9 +68,8 @@ class IssuedPickupView:
 
     @property
     def size_bytes(self):
-        a=self.view.acquisition
-        return (len(self.message_cdr)+len(self.snapshot.scene_cdr)+len(a.depth_mm)
-            +len(a.instance_region)+len(repr(self.plan).encode()))
+        return (len(self.message_cdr)+len(self.snapshot.scene_cdr)+self.view.size_bytes
+            +len(repr(self.plan).encode()))
 
 
 @dataclass(frozen=True)

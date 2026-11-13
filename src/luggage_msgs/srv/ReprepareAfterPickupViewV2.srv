@@ -1,0 +1,25 @@
+# Read only. Caller forwards its actual terminal/settled motion receipt.
+# This service cannot establish that the view was actually executed.
+string request_id
+luggage_msgs/PickupViewPlanV2 previous_view
+bool settled_stamp_valid
+uint64 settled_stamp_ns
+bool pickup_stationary
+luggage_msgs/DetectedLuggage detection
+uint64 generation
+luggage_msgs/StationaryPickupPolicyV2 association_policy
+uint32[2] information_sample_shape
+float64 budget_s
+---
+bool success
+string reason
+luggage_msgs/JointOperationPlanV2 plan
+luggage_msgs/DetectedLuggage detection
+luggage_msgs/SuctionTopDomainV2 top_domain
+# Association does not authorize suction or any motion.
+bool associated
+string association_json
+string information_json
+luggage_msgs/SuctionSupportProbeV2[] unresolved_contacts
+string trace_json
+float64 elapsed_s

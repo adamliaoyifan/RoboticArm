@@ -25,6 +25,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PickupViewPlanV2.msg"
   "srv/PreparePickupViewV2.srv"
   "srv/CheckPreparedPickupViewV2.srv"
+  "msg/StationaryPickupPolicyV2.msg"
+  "srv/ReprepareAfterPickupViewV2.srv"
   "msg/PreparePickupViewRequestV2.msg"
   "action/ExecutePickupViewV2.action"
   "msg/CargoMapQueryIdentityV2.msg"

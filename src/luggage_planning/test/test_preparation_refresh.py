@@ -10,6 +10,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from pickup_continuation_fixtures import case_archive
 from moveit_msgs.msg import PlanningScene
 from rclpy.serialization import deserialize_message, serialize_message
 
@@ -270,7 +271,8 @@ def test_latest_capture_preserves_epoch_but_does_not_request_old_revision():
 
 
 @pytest.mark.parametrize('mode', ['pass', 'native_refuses', 'observation_revoked', 'capture_failure'])
-def test_real_root_finalization_binds_latest_issuance_and_releases_lock(mode):
+@pytest.mark.parametrize('latest_map', [False, True])
+def test_real_root_finalization_binds_latest_issuance_and_releases_lock(mode, latest_map, case_archive):
     import threading
     import numpy as np
     from luggage_msgs.srv import PrepareJointOperationV2
@@ -283,11 +285,32 @@ def test_real_root_finalization_binds_latest_issuance_and_releases_lock(mode):
     request, context, _ = query_and_inputs(30.)
     request.request_id = f.plan.identity.request_id
     request.expected_map_epoch = f.old.source.epoch
-    calls, records, leases = [], [], []
+    if latest_map:
+        # Recovery starts with a stale caller revision; the first latest read
+        # binds revision7. A subsequent change to8 still needs finalization.
+        request.expected_map_revision = 6
+    calls, records, leases, prepared = [], [], [], []
+    forgotten, remembered = [], []
+    (case_archive.directory/'root_request.cdr').write_bytes(serialize_message(request))
+    case_archive.save('root_inputs', dict(mode=mode, latest_map=latest_map,
+        domain=context.domain, plan=f.plan, candidate=f.candidate,
+        old_source=f.old.source, fresh_source=f.fresh.source,
+        old_surface=f.old.surface.record(), fresh_surface=f.fresh.surface.record(),
+        old_volume=f.old.volume, fresh_volume=f.fresh.volume,
+        old_snapshot=f.old.snapshot, fresh_snapshot=f.fresh.snapshot,
+        old_baseline_cdr=bytes(serialize_message(f.old.baseline)),
+        fresh_baseline_cdr=bytes(serialize_message(f.fresh.baseline)),
+        fixture='actual root/finalizer with scripted native certification'))
+    def record(kind, value):
+        records.append(kind)
+        raw = value if isinstance(value, bytes) else serialize_message(value)
+        (case_archive.directory/(kind+'.cdr')).write_bytes(raw)
     def capture_map(query, deadline, **kwargs):
         leases.append(kwargs.get('latest', False))
         if kwargs.get('latest'):
             if mode == 'capture_failure':raise ValueError('OBSERVER_CAPTURE_FAILED')
+            if latest_map and len(leases) == 1:
+                return f.old.surface, f.old.volume, f.old.source
             return f.fresh.surface, f.fresh.volume, f.fresh.source
         return f.old.surface, f.old.volume, f.old.source
     observation = SimpleNamespace(binding='frozen-binding')
@@ -295,6 +318,7 @@ def test_real_root_finalization_binds_latest_issuance_and_releases_lock(mode):
         revoked = mode == 'observation_revoked' and bool(kwargs.get('expected_observation'))
         return SimpleNamespace(retained=not revoked, observation=observation, reason='OBSERVATION_REVOKED')
     def run(query, response, inputs, **kwargs):
+        prepared.append(query.expected_map_revision)
         result = kwargs['finalize'](f.plan, f.candidate, inputs, kwargs['deadline'])
         response.reason, response.trace_json = result.reason, json.dumps(result.trace)
         if result.plan:
@@ -305,8 +329,10 @@ def test_real_root_finalization_binds_latest_issuance_and_releases_lock(mode):
     root = SimpleNamespace(_active=threading.Lock(), budget=PreparationBudget(60.),
         model=SimpleNamespace(model_sha256='model', urdf=SimpleNamespace(tcp=lambda *args:np.eye(4)), path='fixture'),
         _current=lambda *args, **kwargs:context.domain,
-        _record=lambda kind, value:records.append(kind), _capture_map=capture_map,
-        _scene=lambda deadline:f.fresh.baseline if True in leases else f.old.baseline,
+        _record=record, _capture_map=capture_map,
+        pickup_views=SimpleNamespace(contexts=SimpleNamespace(forget=forgotten.append),
+            remember=lambda *args:remembered.append(args[0].request_id)),
+        _scene=lambda deadline:f.fresh.baseline if len(leases) > 1 else f.old.baseline,
         _placements=lambda *args,**kwargs:(), observed_contacts=SimpleNamespace(retain=retain),
         limits=load_attachment_geometry_policy(),
         observer=SimpleNamespace(planning_current=lambda captured, **kwargs:captured.source == f.fresh.source),
@@ -316,12 +342,25 @@ def test_real_root_finalization_binds_latest_issuance_and_releases_lock(mode):
         pickup_id='pickup_box', store=SimpleNamespace(current=lambda:None),
         issued=SimpleNamespace(issue=lambda plan, **kwargs:calls.append((plan, kwargs))),
         get_logger=lambda:SimpleNamespace(error=lambda text:None))
-    response = JointOperationPrepareNode._prepare(root, request, PrepareJointOperationV2.Response())
+    response = PrepareJointOperationV2.Response()
+    try:
+        response = JointOperationPrepareNode._prepare(root, request, response, latest_map=latest_map)
+    finally:
+        (case_archive.directory/'root_response.cdr').write_bytes(serialize_message(response))
+        case_archive.save('root_terminal', dict(records=records, leases=leases,
+            prepared_map_revisions=prepared, issued_plan_digests=[p.plan_digest for p,_ in calls],
+            forgotten=forgotten, remembered=remembered, lock_held=root._active.locked(),
+            final_request_map_revision=request.expected_map_revision))
     assert response.success is (mode == 'pass'), response.reason
     assert bool(calls) is (mode == 'pass')
     assert root._active.acquire(blocking=False)
     root._active.release()
-    assert records == ['prepare_request', 'prepare_response']
+    bound = latest_map and mode != 'capture_failure'
+    assert records == ['prepare_request']+(['continuation_map_bound_request'] if bound else [])+['prepare_response']
+    assert forgotten == remembered == [request.request_id]
+    assert leases[0] is latest_map
+    assert prepared == ([] if latest_map and mode == 'capture_failure' else [7])
+    assert request.expected_map_revision == (6 if latest_map and mode == 'capture_failure' else 7)
     if calls:
         plan, bound = calls[0]
         assert plan.identity.map_revision == response.plan.map_revision == 8
