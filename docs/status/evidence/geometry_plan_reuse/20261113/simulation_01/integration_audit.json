@@ -1,0 +1,317 @@
+{
+  "revision": "4e9b9622367d33020fbcd0bef4661468418e53a8",
+  "dirty_inputs_preserved": true,
+  "functional_three_box": "PASS",
+  "physical_payload_containment": "FAIL",
+  "physical_qualification": "NOT_PASSED",
+  "statistical_reliability": "NOT_EVALUATED",
+  "source_files": 1965,
+  "installed_matches": 534,
+  "source_changes_after_freeze": [
+    "src/luggage_planning/luggage_planning/smart_explore_termination.py",
+    "src/luggage_planning/luggage_planning/cargo_nbv_planner.py",
+    "src/luggage_planning/luggage_planning/interior_probe_planner.py",
+    "src/luggage_planning/luggage_planning/constrained_view_planner.py",
+    "src/luggage_planning/luggage_planning/active_view_recovery.py",
+    "src/luggage_planning/luggage_planning/geometry_view_generator.py",
+    "src/luggage_planning/config/active_view_recovery.yaml.example",
+    "src/luggage_planning/test/test_interior_probe_planner.py",
+    "src/luggage_planning/test/test_placement_prior_requests.py",
+    "src/luggage_planning/test/test_active_view_recovery.py",
+    "src/luggage_planning/test/test_successful_path_cache.py",
+    "src/luggage_planning/test/test_smart_explore_termination.py",
+    "src/luggage_planning/test/data/active_view_pfr7_g4_windows.json",
+    "src/luggage_planning/scripts/distill_active_view_fixture.py"
+  ],
+  "installed_changes_after_freeze": [],
+  "source_change_scope": "Two owned test updates; additional concurrent workspace cleanup after first audit. See integration_audit_first.json. Installed runtime artifacts unchanged.",
+  "verified_artifact_counts": {
+    "driver": 265,
+    "prepare": 753,
+    "execution": 5831,
+    "reference": 85
+  },
+  "integrity_errors": [],
+  "model_sha256": "51df00b411c9bbf57390a2a256828d195b637becd2b3ab31a5f77a49005624a5",
+  "scene_revision": "413055f4740a733fb8ef18867db86adb",
+  "atlas_status": "REVIEWED_IDENTITY_MATCH_REQUIRES_ONLINE_VALIDATION",
+  "mapping_backend": "observer",
+  "resolution_m": 0.02,
+  "cycle_stages": [
+    {
+      "stage": "readiness",
+      "begin": 5151245.435509137,
+      "outcome": "pass",
+      "elapsed_s": 1.7112886030226946
+    },
+    {
+      "stage": "initialize_empty",
+      "begin": 5151247.148401778,
+      "outcome": "pass",
+      "elapsed_s": 0.04502445925027132
+    },
+    {
+      "stage": "return_pick_observe",
+      "begin": 5151247.193526798,
+      "outcome": "pass",
+      "elapsed_s": 1.5415450753644109
+    },
+    {
+      "stage": "box1_physics_spawn",
+      "begin": 5151248.73573044,
+      "outcome": "pass",
+      "elapsed_s": 2.654245306737721
+    },
+    {
+      "stage": "box1_prepare",
+      "begin": 5151251.391247074,
+      "outcome": "pass",
+      "elapsed_s": 77.88255911134183
+    },
+    {
+      "stage": "box1_execute",
+      "begin": 5151329.275154869,
+      "outcome": "pass",
+      "elapsed_s": 183.28318477980793
+    },
+    {
+      "stage": "return_pick_box2",
+      "begin": 5151512.994115488,
+      "outcome": "pass",
+      "elapsed_s": 28.227156199514866
+    },
+    {
+      "stage": "box2_physics_spawn",
+      "begin": 5151541.222944969,
+      "outcome": "pass",
+      "elapsed_s": 2.5512399449944496
+    },
+    {
+      "stage": "box2_prepare",
+      "begin": 5151543.775498965,
+      "outcome": "pass",
+      "elapsed_s": 39.61257540155202
+    },
+    {
+      "stage": "box2_execute",
+      "begin": 5151583.390811093,
+      "outcome": "pass",
+      "elapsed_s": 168.09120647981763
+    },
+    {
+      "stage": "return_pick_box3",
+      "begin": 5151752.035149571,
+      "outcome": "pass",
+      "elapsed_s": 24.991590976715088
+    },
+    {
+      "stage": "box3_physics_spawn",
+      "begin": 5151777.028812546,
+      "outcome": "pass",
+      "elapsed_s": 2.550366380251944
+    },
+    {
+      "stage": "box3_prepare",
+      "begin": 5151779.581010219,
+      "outcome": "pass",
+      "elapsed_s": 56.29635542631149
+    },
+    {
+      "stage": "box3_execute",
+      "begin": 5151835.879184494,
+      "outcome": "pass",
+      "elapsed_s": 316.3012147611007
+    }
+  ],
+  "completed_boxes": [
+    {
+      "index": 1,
+      "task_mode": "floor",
+      "plan_digest": "dc2e644388e9fcfb36540cb050a9e85101a7ad0921290cc402b216a1ebaade21",
+      "map_epoch": 2,
+      "map_revision": 57,
+      "success": true
+    },
+    {
+      "index": 2,
+      "task_mode": "floor",
+      "plan_digest": "acfe93d660273b72bfd349dd262ebabe0bf7a7aa09fc6de609677e1755b21d6f",
+      "map_epoch": 2,
+      "map_revision": 107,
+      "success": true
+    },
+    {
+      "index": 3,
+      "task_mode": "stack",
+      "plan_digest": "40f287f43736894b7180d25a2216d38923db60afb456985cd435e9e57a45f011",
+      "map_epoch": 2,
+      "map_revision": 229,
+      "success": true
+    }
+  ],
+  "promoted_paths": [
+    {
+      "promoted": true,
+      "plan_digest": "dc2e644388e9fcfb36540cb050a9e85101a7ad0921290cc402b216a1ebaade21"
+    },
+    {
+      "promoted": true,
+      "plan_digest": "acfe93d660273b72bfd349dd262ebabe0bf7a7aa09fc6de609677e1755b21d6f"
+    },
+    {
+      "promoted": true,
+      "plan_digest": "40f287f43736894b7180d25a2216d38923db60afb456985cd435e9e57a45f011"
+    }
+  ],
+  "retained_cache_proposals": [
+    {
+      "file": "successful_path_cache/64515bb4fae7d72e7ee6e081c0490395a5c5e7c5f4de8b196a74537cf79aeb39.json.gz",
+      "stored_sha256": "a95a5f0b825fe1603b34dbd2683c633b94be1660970fa210331a3571c9cf3699",
+      "source_plan_digest": "40f287f43736894b7180d25a2216d38923db60afb456985cd435e9e57a45f011",
+      "source_geometry_digest": "917003a1f990d58e9a0b45d508198318b00afa499923803616c45558419012b7",
+      "source_acquisition_stamp_ns": 523975000000,
+      "legs": 6,
+      "execution_authorization_stored": false
+    },
+    {
+      "file": "successful_path_cache/2db382436fbff4d502cbf9f88ebe3b73873c16ce9e059d9b17555da7ac10f221.json.gz",
+      "stored_sha256": "f73812fc4f03aaa8d39fe72230f98e522108b3cca5c1f87e409243c0b83aaf02",
+      "source_plan_digest": "acfe93d660273b72bfd349dd262ebabe0bf7a7aa09fc6de609677e1755b21d6f",
+      "source_geometry_digest": "88bbf4127f79063cc71925348594a3785f3e25d2d3e7caf72ad6f176596b6521",
+      "source_acquisition_stamp_ns": 300762000000,
+      "legs": 6,
+      "execution_authorization_stored": false
+    },
+    {
+      "file": "successful_path_cache/2070ace0d7dd7c740478fc613e8fdcd66c43efa8714d3987814bc8d97caca8a1.json.gz",
+      "stored_sha256": "5c40cf907ca3d2c376964c42f1c64d1610047f0aad635887acfbd9a88c688423",
+      "source_plan_digest": "dc2e644388e9fcfb36540cb050a9e85101a7ad0921290cc402b216a1ebaade21",
+      "source_geometry_digest": "8f8920460637e9b106d350c3b968f1cf8c86b78f3e91ec79953f94ed640d3c81",
+      "source_acquisition_stamp_ns": 14587000000,
+      "legs": 6,
+      "execution_authorization_stored": false
+    }
+  ],
+  "cache_hit_speedup": "NOT_EVALUATED; actual promotions plus deterministic reuse/refusal/fallback tests only",
+  "envelope_audit": [
+    {
+      "instance": "pickup_box_0001_carryon",
+      "samples": 7,
+      "outside_samples": 0,
+      "maximum_corner_excess_by_axis_m": [
+        -0.022425994441687913,
+        -0.0030591473943866188,
+        -0.026853154554323827
+      ],
+      "actual_collision_aabb_dimensions": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "measured_dimensions": [
+        0.49554880183407507,
+        0.3697679695278667,
+        0.24714832818638227
+      ],
+      "envelope_dimensions": [
+        0.475097974260141,
+        0.593708638738845,
+        0.30660564206900554
+      ]
+    },
+    {
+      "instance": "pickup_box_0002_carryon",
+      "samples": 7,
+      "outside_samples": 7,
+      "maximum_corner_excess_by_axis_m": [
+        0.0037930347636374317,
+        0.006630079050282178,
+        -0.026852096017913718
+      ],
+      "actual_collision_aabb_dimensions": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "measured_dimensions": [
+        0.5026605693988162,
+        0.3637128797550948,
+        0.24710750114170305
+      ],
+      "envelope_dimensions": [
+        0.4666865334784318,
+        0.5990194307118892,
+        0.306547417549117
+      ]
+    },
+    {
+      "instance": "pickup_box_0003_carryon",
+      "samples": 15,
+      "outside_samples": 15,
+      "maximum_corner_excess_by_axis_m": [
+        0.006143309180187795,
+        -0.0017851300650182367,
+        -0.026866352902661067
+      ],
+      "actual_collision_aabb_dimensions": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "measured_dimensions": [
+        0.4962151095239433,
+        0.3593009486153289,
+        0.2471598037527134
+      ],
+      "envelope_dimensions": [
+        0.5891962745194599,
+        0.45842054686368594,
+        0.3067291901285649
+      ]
+    }
+  ],
+  "contact_scope": "Captured contact stream; not a proof of no unobserved contacts.",
+  "contact_messages": 991407,
+  "captured_contact_pairs": [
+    [
+      "airport_container_real::container_link::collision_mesh",
+      "pickup_box_0001_carryon::suitcase_link::body_collision"
+    ],
+    [
+      "airport_container_real::container_link::collision_mesh",
+      "pickup_box_0002_carryon::suitcase_link::body_collision"
+    ],
+    [
+      "pickup_box_0001_carryon::suitcase_link::rim_collision_nx",
+      "pickup_box_0003_carryon::suitcase_link::body_collision"
+    ],
+    [
+      "pickup_box_0001_carryon::suitcase_link::rim_collision_ny",
+      "pickup_box_0003_carryon::suitcase_link::body_collision"
+    ],
+    [
+      "pickup_box_0001_carryon::suitcase_link::rim_collision_px",
+      "pickup_box_0003_carryon::suitcase_link::body_collision"
+    ],
+    [
+      "pickup_box_0001_carryon::suitcase_link::rim_collision_py",
+      "pickup_box_0003_carryon::suitcase_link::body_collision"
+    ],
+    [
+      "pickup_box_0002_carryon::suitcase_link::body_collision",
+      "pickup_platform::platform_link::collision"
+    ],
+    [
+      "pickup_box_0003_carryon::suitcase_link::body_collision",
+      "pickup_platform::platform_link::collision"
+    ]
+  ],
+  "captured_robot_contact_pairs": [],
+  "contact_error": "",
+  "teardown_returncode": 0,
+  "residual_owned_processes": [],
+  "lidar_source_qualification": "NOT_EVALUATED; RGB-D/O integration and separate native LiDAR-label wire gate",
+  "raw_perception_failure_window": "MISSING for boxes 2/3; cannot replay segmentation/fit from this run",
+  "containment_replay_possible": true,
+  "next_investigation": "Capture synchronized raw sensor/mask/cargo-cloud and pre/post history geometry; replay whole-body footprint estimation separately from seal support. Do not tune against simulator truth."
+}

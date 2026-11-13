@@ -1,0 +1,5 @@
+START ready
+FINISH ready {'stage': 'ready', 'returncode': 0, 'elapsed_s': 9.041567640379071}
+START cycle
+FINISH cycle {'stage': 'cycle', 'returncode': 0, 'elapsed_s': 908.5584769360721}
+{"outcome": "PASS", "reason": null, "stages": [{"stage": "ready", "returncode": 0, "elapsed_s": 9.041567640379071}, {"stage": "cycle", "returncode": 0, "elapsed_s": 908.5584769360721}], "teardown_returncode": 0}

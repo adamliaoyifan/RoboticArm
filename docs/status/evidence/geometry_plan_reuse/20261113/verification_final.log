@@ -1,0 +1,9 @@
+........................................................................ [ 51%]
+...................................................................      [100%]
+=============================== warnings summary ===============================
+src/luggage_gazebo/test/test_operation_launch.py::test_every_default_can_actually_resolve_from_declared_launch_arguments
+  /opt/ros/humble/local/lib/python3.10/dist-packages/xacro/__init__.py:115: DeprecationWarning: private variables, such as '_ConstructUnits__ConstructUnitsValue', will be normal attributes in 3.11
+    __ConstructUnitsValue = collections.namedtuple('__ConstructUnitsValue', ['tag', 'conversion_constant'])
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+139 passed, 1 warning in 2.35s

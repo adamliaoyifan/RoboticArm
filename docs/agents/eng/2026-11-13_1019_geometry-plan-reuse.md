@@ -4,17 +4,18 @@
 - agent: codex
 - model: gpt-6
 - cli: codex
-- status: open
+- status: done
 - parent: GEOMETRY-PLAN-REUSE-20261113
 - subtask: FOUR-ITEM-INTEGRATION
 - base_revision: ed2c47f434497226601a0c2ea7fc712a4db52e98
 - started_at: 2026-11-13T10:19:18+08:00
-- completed_at: n/a
+- completed_at: 2026-11-13T11:27:00+08:00
 
 ## Summary
 
-Implementing the four user-authorized changes in order, with original observation
-identity, fixed attachment and mandatory native trajectory certification.
+Implemented all four authorized changes. Three-box functional execution passed;
+separate physical payload containment failed for boxes 2/3. This is not a fully
+qualified physical baseline or a claim of calibrated geometry accuracy.
 
 ## Requirement
 
@@ -25,19 +26,43 @@ updates retain physical goals; real penetration must reject. No blanket deadband
 
 - SelectedPoseAdmission shared by search and execution admission.
 - Bounded stationary geometry observation window, separate observed seal support.
+- Measured source/mount/hull-bound LiDAR structure labels and native O ingestion.
+- Successful-only durable trajectory proposals with mandatory current certification.
+- Closest architecture contracts and behavioural regressions updated together.
 
 ## Verification
 
-- Initial placement matrix: 28 passed; log under evidence pointer.
+- `bash docs/status/evidence/geometry_plan_reuse/20261113/verify_affected.sh`:
+  139 passed (`verification_final.log`).
+- `ctest --test-dir build-production/uld_occ_observer -R 'observer_(initial_input|keyset)_checks' --output-on-failure`:
+  2 passed (`native_structure_tests_enabled.log`).
+- `ROS_DOMAIN_ID=187 ROS_LOCALHOST_ONLY=1 STRUCTURE_OBSERVER_EXECUTABLE=$PWD/install-production/uld_occ_observer/lib/uld_occ_observer/observer_node python3 -m pytest -q src/luggage_perception/test/test_lidar_structure_native.py --basetemp=docs/status/evidence/geometry_plan_reuse/20261113/native_wire_02`:
+  1 passed; isolated installed-O subscription probe (`native_wire_02.log`).
+- After sourcing ROS and install-production,
+  `python3 docs/status/evidence/geometry_plan_reuse/20261113/run_diagnostic.py --name simulation_01 --build build_01 --contacts --cycle --three-box --failure-hold-s 25 --prepick-replans 1`:
+  THREE_BOX_PASS, floor/floor/stack, 3 successful path promotions, normal teardown.
+- Offline `replay_diagnostic53_admission.py`: exact archived source/map and unchanged
+  targets, 28/32 retained versus old 0/32; four remaining rejections violate existing
+  20 mm margin after growth, not physical hull penetration.
+- Offline `audit_integration.py`: 6,934 retained boundary/reference records hash
+  verified; 534 installed files unchanged. Physical containment FAIL: boxes2/3
+  exceed envelope by at most6.630/6.143 mm in sampled references. Raw perception
+  root-cause replay lacks the full synchronized boxes2/3 sensor windows.
 
 ## Result
 
-In progress. Three-box integration and LiDAR qualification not yet evaluated.
+Development/functional acceptance passes at `4e9b9622367d33020fbcd0bef4661468418e53a8`;
+later owned changes affect tests/eval documentation only. Full physical payload
+qualification remains NOT_PASSED. Actual LiDAR source qualification and real-world
+baseline remain NOT_EVALUATED. No margin/rounding tuned to simulator truth.
 
 ## Pointers
 
 - docs/plans/GEOMETRY_PLAN_REUSE_20261113.md
 - docs/status/evidence/geometry_plan_reuse/20261113/
+- docs/status/evidence/geometry_plan_reuse/20261113/REPORT.md
+- docs/status/evidence/geometry_plan_reuse/20261113/simulation_01/integration_audit.json
+- docs/agents/discuss/2026-11-13_1019_geometry-plan-reuse.md
 
 ### 2026-11-13T10:58:00+08:00 — Implementation freeze before integration
 

@@ -1,0 +1,31 @@
+{
+  "scope": "One deterministic timing observation; no reliability or hardware claim.",
+  "prefix_s": 0.031086480244994164,
+  "dimensions": [
+    149,
+    197,
+    148
+  ],
+  "resolution_m": 0.01,
+  "box_size": [
+    0.55,
+    0.4,
+    0.25
+  ],
+  "rows": [
+    {
+      "name": "baseline",
+      "elapsed_s": 4.047290937975049,
+      "success": true,
+      "enumerated": null,
+      "retained": 32
+    },
+    {
+      "name": "continuous_admission",
+      "elapsed_s": 6.156166708096862,
+      "success": true,
+      "enumerated": null,
+      "retained": 32
+    }
+  ]
+}

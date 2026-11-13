@@ -121,4 +121,8 @@ def test_target_admission_is_independent_of_rank_cap_but_requires_known_volume()
     volume = confirmed_volume()
     shifted = Transform(tuple(a + (.001 if i == 0 else 0.)
                               for i,a in enumerate(target.translation)), target.quaternion_xyzw)
-    assert admit_placement_targets(confirmed, (.2,.1,.2), (shifted,), volume=volume) == (False,)
+    # A physically valid target need not belong to a regenerated search lattice.
+    assert admit_placement_targets(confirmed, (.2,.1,.2), (shifted,), volume=volume) == (True,)
+    outside = Transform((.6, target.translation[1], target.translation[2]),
+                        target.quaternion_xyzw)
+    assert admit_placement_targets(confirmed, (.2,.1,.2), (outside,), volume=volume) == (False,)

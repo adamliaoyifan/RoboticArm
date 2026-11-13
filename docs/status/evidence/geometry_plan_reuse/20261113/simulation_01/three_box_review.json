@@ -1,0 +1,682 @@
+{
+  "scope": "Offline integration audit over retained typed online records and separate physics.\n\nNo simulator reference is returned to perception, placement, O, or a planner.\n",
+  "driver_outcome": "THREE_BOX_PASS",
+  "driver_completed_boxes": [
+    {
+      "index": 1,
+      "task_mode": "floor",
+      "plan_digest": "dc2e644388e9fcfb36540cb050a9e85101a7ad0921290cc402b216a1ebaade21",
+      "map_epoch": 2,
+      "map_revision": 57,
+      "success": true
+    },
+    {
+      "index": 2,
+      "task_mode": "floor",
+      "plan_digest": "acfe93d660273b72bfd349dd262ebabe0bf7a7aa09fc6de609677e1755b21d6f",
+      "map_epoch": 2,
+      "map_revision": 107,
+      "success": true
+    },
+    {
+      "index": 3,
+      "task_mode": "stack",
+      "plan_digest": "40f287f43736894b7180d25a2216d38923db60afb456985cd435e9e57a45f011",
+      "map_epoch": 2,
+      "map_revision": 229,
+      "success": true
+    }
+  ],
+  "floor_z_container": 0.53,
+  "resolution_m": 0.02,
+  "boxes": [
+    {
+      "execution": "5151329285915302_dc2e644388e9fcfb",
+      "instance_id": "pickup_box_0001_carryon",
+      "generation": 2,
+      "certificate_id": "3d2d5cebff50932db3637e64d177559244f8d9bd70482f8d43e892cf3c046042",
+      "plan_digest": "dc2e644388e9fcfb36540cb050a9e85101a7ad0921290cc402b216a1ebaade21",
+      "model_sha256": "51df00b411c9bbf57390a2a256828d195b637becd2b3ab31a5f77a49005624a5",
+      "target_xyz_container": [
+        0.4849999999999999,
+        -0.675,
+        0.6535741640931911
+      ],
+      "target_bottom_z_container": 0.53,
+      "target_bottom_above_floor_m": 0.0,
+      "measured_dimensions": [
+        0.49554880183407507,
+        0.3697679695278667,
+        0.24714832818638227
+      ],
+      "measured_pick_offset_in_tool_m": [
+        -0.06077043809216045,
+        -0.13097129509135186,
+        0.1236706642226037
+      ],
+      "legs": [
+        {
+          "name": "align",
+          "phase": "pick",
+          "points": 3,
+          "duration_s": 10.331885136,
+          "joint_travel_rad": [
+            0.10121686115469752,
+            0.11104976325732796,
+            0.2411055989032176,
+            0.2973852346668169,
+            0.20276975583673273,
+            1.6793327759657655
+          ]
+        },
+        {
+          "name": "pick_contact",
+          "phase": "pick",
+          "points": 62,
+          "duration_s": 2.6124265700000002,
+          "joint_travel_rad": [
+            5.627743292713205e-06,
+            0.08167517639364763,
+            0.3194248203101153,
+            0.4011000024745526,
+            3.5137882159475e-08,
+            5.627636446903228e-06
+          ]
+        },
+        {
+          "name": "pick_lift",
+          "phase": "carry",
+          "points": 72,
+          "duration_s": 2.929770531,
+          "joint_travel_rad": [
+            6.565703802419165e-06,
+            0.08277047298461992,
+            0.3899990741732624,
+            0.4714292700375955,
+            4.099422579173506e-08,
+            6.565579150241696e-06
+          ]
+        },
+        {
+          "name": "carry",
+          "phase": "carry",
+          "points": 13,
+          "duration_s": 74.184812633,
+          "joint_travel_rad": [
+            4.677926217966714,
+            2.6275881473032356,
+            3.9301361451808616,
+            7.93877238491674,
+            6.249360165853689,
+            9.596705855711555
+          ]
+        },
+        {
+          "name": "place_release",
+          "phase": "carry",
+          "points": 31,
+          "duration_s": 1.548307967,
+          "joint_travel_rad": [
+            3.5206091952844076e-07,
+            0.05420689149995095,
+            0.10427226590614225,
+            0.15847915934860146,
+            1.0904079861262517e-09,
+            3.5206460280434726e-07
+          ]
+        },
+        {
+          "name": "place_retreat",
+          "phase": "retreat",
+          "points": 51,
+          "duration_s": 2.14128479,
+          "joint_travel_rad": [
+            5.867681571736227e-07,
+            0.06728357045462319,
+            0.21881871388919327,
+            0.2861022875813293,
+            1.8173460514248063e-09,
+            5.867742971510381e-07
+          ]
+        }
+      ],
+      "observed_views": [
+        {
+          "view": "interior_probe_07",
+          "source": {
+            "scene_revision": "413055f4740a733fb8ef18867db86adb",
+            "geometry_hash": "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+            "epoch": 2,
+            "map_revision": 57,
+            "observed_revision": 788,
+            "last_integrated_stamp_ns": 266971000000,
+            "config_digest": "42f7ad854005351484321381cbdd2ab43e135611381653d298c82f86e12a8c56",
+            "clock_domain": "ros",
+            "validity_generation": 4,
+            "content_sha256": "242a1e6f7b91bd52e961ba0bddf75374154f3ca16622d512daef02fb7eed11ea",
+            "initialization_id": "initial-empty-cycle",
+            "declared_by": "explicit_operator_start",
+            "initialization_stamp_ns": 7109000000
+          },
+          "coverage": {
+            "accepted": true,
+            "min_observed_ratio": 0.6,
+            "observed_ratio": 0.9157894736842105,
+            "expected_columns": 475,
+            "matched_columns": 435,
+            "expected_top_z_container": 0.7771483281863824,
+            "matched_area_m2": 0.17400000000000002,
+            "state_counts": {
+              "free": 35,
+              "occupied": 440
+            }
+          }
+        }
+      ],
+      "actual_physics": {
+        "scope": "simulator reference only",
+        "last_reference": "81_COMPLETE_6.pose.txt.gz",
+        "world_xyz": [
+          -1.9706307201032855,
+          1.270510801934663,
+          0.6540056417500408
+        ],
+        "world_quaternion_xyzw": [
+          5.621590514153217e-07,
+          2.212764883419377e-06,
+          0.7077130618364991,
+          -0.7064999802553398
+        ],
+        "last_samples": 3,
+        "position_span_m": [
+          3.4961020656254505e-07,
+          1.1004109938816953e-06,
+          8.178443897666199e-07
+        ],
+        "sample_interval_s": 20.237114667892456
+      },
+      "physical_spawn_reference": {
+        "dimensions": [
+          0.515886202454567,
+          0.390038400888443,
+          0.23746279627084732
+        ],
+        "reference": "reference/0025_physics_spawn_response.cdr"
+      },
+      "release_dynamic": true,
+      "settled_contact": {
+        "file": "contacts_00_5151329285915302_dc2e644388e9fcfb.txt.gz",
+        "pairs": [
+          [
+            "airport_container_real::container_link::collision_mesh",
+            "pickup_box_0001_carryon::suitcase_link::body_collision"
+          ]
+        ],
+        "bytes": 89632
+      },
+      "result": {
+        "success": true,
+        "outcome": "COMPLETE",
+        "reason": "OBSERVED_OPERATION_COMPLETE",
+        "motion_terminal": true,
+        "may_have_payload": false,
+        "epoch": 2,
+        "map_revision": 57
+      }
+    },
+    {
+      "execution": "5151583401782339_acfe93d660273b72",
+      "instance_id": "pickup_box_0002_carryon",
+      "generation": 4,
+      "certificate_id": "b7abb1ab7169dd5b398355c0e5ddbbe4ac77165cb3b96b2e46c2e5a34d034fb0",
+      "plan_digest": "acfe93d660273b72bfd349dd262ebabe0bf7a7aa09fc6de609677e1755b21d6f",
+      "model_sha256": "51df00b411c9bbf57390a2a256828d195b637becd2b3ab31a5f77a49005624a5",
+      "target_xyz_container": [
+        0.004999999999999893,
+        -0.0050000000000000044,
+        0.6535537505708515
+      ],
+      "target_bottom_z_container": 0.53,
+      "target_bottom_above_floor_m": 0.0,
+      "measured_dimensions": [
+        0.5026605693988162,
+        0.3637128797550948,
+        0.24710750114170305
+      ],
+      "measured_pick_offset_in_tool_m": [
+        -0.0620567196323774,
+        0.09317541131469144,
+        0.1236531415569514
+      ],
+      "legs": [
+        {
+          "name": "align",
+          "phase": "pick",
+          "points": 3,
+          "duration_s": 10.369831736,
+          "joint_travel_rad": [
+            0.06214453268232667,
+            0.17586403979509457,
+            0.5740582519795356,
+            0.37133461164693227,
+            0.1968909874740552,
+            1.688839651410101
+          ]
+        },
+        {
+          "name": "pick_contact",
+          "phase": "pick",
+          "points": 61,
+          "duration_s": 2.718104273,
+          "joint_travel_rad": [
+            1.8819652420898336e-06,
+            0.10836302438968315,
+            0.3247630287177128,
+            0.4331330689964883,
+            3.517442817013716e-06,
+            3.729873728569588e-06
+          ]
+        },
+        {
+          "name": "pick_lift",
+          "phase": "carry",
+          "points": 72,
+          "duration_s": 3.027631375,
+          "joint_travel_rad": [
+            1.86194714935084e-06,
+            0.11146358904654452,
+            0.39188091006048587,
+            0.5033445010347597,
+            1.1595167936917505e-08,
+            1.8619120062957073e-06
+          ]
+        },
+        {
+          "name": "carry",
+          "phase": "carry",
+          "points": 10,
+          "duration_s": 48.632324550999996,
+          "joint_travel_rad": [
+            3.436245631434069,
+            1.8638361519146043,
+            4.268829438273238,
+            0.6858827741930762,
+            3.1486344367783814,
+            4.918713072136713
+          ]
+        },
+        {
+          "name": "place_release",
+          "phase": "carry",
+          "points": 31,
+          "duration_s": 1.754223333,
+          "joint_travel_rad": [
+            3.910240995441683e-07,
+            0.13021570639052582,
+            0.07463172261506124,
+            0.20484743134989003,
+            7.73248132190929e-10,
+            3.9103037341448044e-07
+          ]
+        },
+        {
+          "name": "place_retreat",
+          "phase": "retreat",
+          "points": 52,
+          "duration_s": 2.441532698,
+          "joint_travel_rad": [
+            9.236566678172409e-07,
+            0.19870163476022595,
+            0.14470311406052017,
+            0.34340475435832474,
+            1.8265149392959756e-09,
+            9.236714877403074e-07
+          ]
+        }
+      ],
+      "observed_views": [
+        {
+          "view": "interior_probe_00",
+          "source": {
+            "scene_revision": "413055f4740a733fb8ef18867db86adb",
+            "geometry_hash": "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+            "epoch": 2,
+            "map_revision": 107,
+            "observed_revision": 1418,
+            "last_integrated_stamp_ns": 497377000000,
+            "config_digest": "42f7ad854005351484321381cbdd2ab43e135611381653d298c82f86e12a8c56",
+            "clock_domain": "ros",
+            "validity_generation": 4,
+            "content_sha256": "ad2d937a822445e1da51d7389649dabdea201db9b1ab4f968d299df076b94f53",
+            "initialization_id": "initial-empty-cycle",
+            "declared_by": "explicit_operator_start",
+            "initialization_stamp_ns": 7109000000
+          },
+          "coverage": {
+            "accepted": true,
+            "min_observed_ratio": 0.6,
+            "observed_ratio": 0.9109311740890689,
+            "expected_columns": 494,
+            "matched_columns": 450,
+            "expected_top_z_container": 0.7771075011417031,
+            "matched_area_m2": 0.18000000000000002,
+            "state_counts": {
+              "free": 39,
+              "occupied": 455
+            }
+          }
+        }
+      ],
+      "actual_physics": {
+        "scope": "simulator reference only",
+        "last_reference": "81_COMPLETE_6.pose.txt.gz",
+        "world_xyz": [
+          -1.4992499998039834,
+          0.5966605418434388,
+          0.6540032796128699
+        ],
+        "world_quaternion_xyzw": [
+          -1.26086363159838e-06,
+          -1.3271963199502533e-06,
+          0.7247007429536465,
+          -0.6890637366449359
+        ],
+        "last_samples": 3,
+        "position_span_m": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "sample_interval_s": 20.237114667892456
+      },
+      "physical_spawn_reference": {
+        "dimensions": [
+          0.515886202454567,
+          0.390038400888443,
+          0.23746279627084732
+        ],
+        "reference": "reference/0120_physics_spawn_response.cdr"
+      },
+      "release_dynamic": true,
+      "settled_contact": {
+        "file": "contacts_01_5151583401782339_acfe93d660273b72.txt.gz",
+        "pairs": [
+          [
+            "airport_container_real::container_link::collision_mesh",
+            "pickup_box_0001_carryon::suitcase_link::body_collision"
+          ]
+        ],
+        "bytes": 89637
+      },
+      "result": {
+        "success": true,
+        "outcome": "COMPLETE",
+        "reason": "OBSERVED_OPERATION_COMPLETE",
+        "motion_terminal": true,
+        "may_have_payload": false,
+        "epoch": 2,
+        "map_revision": 107
+      }
+    },
+    {
+      "execution": "5151835894021159_40f287f43736894b",
+      "instance_id": "pickup_box_0003_carryon",
+      "generation": 6,
+      "certificate_id": "3d3cf256e711b8467ef9e2f35b487d245a8694bbe0d4ea0cac2b1e39e8ef259f",
+      "plan_digest": "40f287f43736894b7180d25a2216d38923db60afb456985cd435e9e57a45f011",
+      "model_sha256": "51df00b411c9bbf57390a2a256828d195b637becd2b3ab31a5f77a49005624a5",
+      "target_xyz_container": [
+        0.4249999999999998,
+        -0.645,
+        0.9135799018763565
+      ],
+      "target_bottom_z_container": 0.7899999999999998,
+      "target_bottom_above_floor_m": 0.2599999999999998,
+      "measured_dimensions": [
+        0.4962151095239433,
+        0.3593009486153289,
+        0.2471598037527134
+      ],
+      "measured_pick_offset_in_tool_m": [
+        -0.09890187607465079,
+        -0.06389250445731896,
+        0.1236449656098692
+      ],
+      "legs": [
+        {
+          "name": "align",
+          "phase": "pick",
+          "points": 3,
+          "duration_s": 18.585645296,
+          "joint_travel_rad": [
+            0.042168302305698235,
+            0.16647527736817902,
+            0.5759604468331376,
+            0.3659569468557198,
+            0.20156117303817367,
+            3.0596493594985796
+          ]
+        },
+        {
+          "name": "pick_contact",
+          "phase": "pick",
+          "points": 62,
+          "duration_s": 2.721373903,
+          "joint_travel_rad": [
+            4.749664900138839e-05,
+            0.10826276680816238,
+            0.3255796517013463,
+            0.43384271767223836,
+            5.250424139902066e-08,
+            4.7497560823117624e-05
+          ]
+        },
+        {
+          "name": "pick_lift",
+          "phase": "carry",
+          "points": 72,
+          "duration_s": 3.03112491,
+          "joint_travel_rad": [
+            5.5412322798265023e-05,
+            0.11130410895788767,
+            0.3927749933621374,
+            0.5040794513406732,
+            6.125334417461659e-08,
+            5.5413386600200454e-05
+          ]
+        },
+        {
+          "name": "carry",
+          "phase": "carry",
+          "points": 14,
+          "duration_s": 114.487705533,
+          "joint_travel_rad": [
+            11.062155228545906,
+            3.0713548826741484,
+            5.404867116009553,
+            9.415707945122083,
+            7.9211452187803175,
+            8.89715137975885
+          ]
+        },
+        {
+          "name": "place_release",
+          "phase": "carry",
+          "points": 31,
+          "duration_s": 1.8946058510000001,
+          "joint_travel_rad": [
+            3.6960107396843966e-07,
+            0.014051820782185143,
+            0.20335743902060033,
+            0.20740485464026448,
+            7.741474128408754e-10,
+            3.696070036696142e-07
+          ]
+        },
+        {
+          "name": "place_retreat",
+          "phase": "retreat",
+          "points": 65,
+          "duration_s": 2.880192607,
+          "joint_travel_rad": [
+            6.160017991252431e-07,
+            0.0572268235700224,
+            0.4299645401826667,
+            0.39082572676895366,
+            1.2902425794436567e-09,
+            6.160116823306083e-07
+          ]
+        }
+      ],
+      "observed_views": [
+        {
+          "view": "interior_probe_07",
+          "source": {
+            "scene_revision": "413055f4740a733fb8ef18867db86adb",
+            "geometry_hash": "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+            "epoch": 2,
+            "map_revision": 210,
+            "observed_revision": 2139,
+            "last_integrated_stamp_ns": 808962000000,
+            "config_digest": "42f7ad854005351484321381cbdd2ab43e135611381653d298c82f86e12a8c56",
+            "clock_domain": "ros",
+            "validity_generation": 4,
+            "content_sha256": "90ace0e00e7d74ccb50b08438050b414e3169b02c888ca26603f5da617fed5f9",
+            "initialization_id": "initial-empty-cycle",
+            "declared_by": "explicit_operator_start",
+            "initialization_stamp_ns": 7109000000
+          },
+          "coverage": {
+            "accepted": false,
+            "min_observed_ratio": 0.6,
+            "observed_ratio": 0.3488888888888889,
+            "expected_columns": 450,
+            "matched_columns": 157,
+            "expected_top_z_container": 1.0371598037527132,
+            "matched_area_m2": 0.06280000000000001,
+            "state_counts": {
+              "free": 75,
+              "occupied": 375
+            }
+          }
+        },
+        {
+          "view": "interior_probe_07",
+          "source": {
+            "scene_revision": "413055f4740a733fb8ef18867db86adb",
+            "geometry_hash": "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+            "epoch": 2,
+            "map_revision": 215,
+            "observed_revision": 2144,
+            "last_integrated_stamp_ns": 809952000000,
+            "config_digest": "42f7ad854005351484321381cbdd2ab43e135611381653d298c82f86e12a8c56",
+            "clock_domain": "ros",
+            "validity_generation": 4,
+            "content_sha256": "267a4e2f90bc30b160ff861d3c7bcd6564e404d568e13579a9e8edfe14d75945",
+            "initialization_id": "initial-empty-cycle",
+            "declared_by": "explicit_operator_start",
+            "initialization_stamp_ns": 7109000000
+          },
+          "coverage": {
+            "accepted": false,
+            "min_observed_ratio": 0.6,
+            "observed_ratio": 0.3488888888888889,
+            "expected_columns": 450,
+            "matched_columns": 157,
+            "expected_top_z_container": 1.0371598037527132,
+            "matched_area_m2": 0.06280000000000001,
+            "state_counts": {
+              "free": 75,
+              "occupied": 375
+            }
+          }
+        },
+        {
+          "view": "interior_probe_04",
+          "source": {
+            "scene_revision": "413055f4740a733fb8ef18867db86adb",
+            "geometry_hash": "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+            "epoch": 2,
+            "map_revision": 229,
+            "observed_revision": 2176,
+            "last_integrated_stamp_ns": 824736000000,
+            "config_digest": "42f7ad854005351484321381cbdd2ab43e135611381653d298c82f86e12a8c56",
+            "clock_domain": "ros",
+            "validity_generation": 4,
+            "content_sha256": "40f565945aeb76ef6348d7959ffe172b0d539fc62bcb731a7a73407f848569ed",
+            "initialization_id": "initial-empty-cycle",
+            "declared_by": "explicit_operator_start",
+            "initialization_stamp_ns": 7109000000
+          },
+          "coverage": {
+            "accepted": true,
+            "min_observed_ratio": 0.6,
+            "observed_ratio": 0.9155555555555556,
+            "expected_columns": 450,
+            "matched_columns": 412,
+            "expected_top_z_container": 1.0371598037527132,
+            "matched_area_m2": 0.1648,
+            "state_counts": {
+              "free": 20,
+              "occupied": 430
+            }
+          }
+        }
+      ],
+      "actual_physics": {
+        "scope": "simulator reference only",
+        "last_reference": "81_COMPLETE_6.pose.txt.gz",
+        "world_xyz": [
+          -1.9342227424939555,
+          1.2398420259093992,
+          0.9040058394723882
+        ],
+        "world_quaternion_xyzw": [
+          -1.184234554306659e-06,
+          1.9478605435722022e-06,
+          0.9998591273951586,
+          0.016784676326806434
+        ],
+        "last_samples": 3,
+        "position_span_m": [
+          1.791990611010874e-06,
+          2.8178561570779692e-06,
+          5.77878656815578e-07
+        ],
+        "sample_interval_s": 20.237114667892456
+      },
+      "physical_spawn_reference": {
+        "dimensions": [
+          0.515886202454567,
+          0.390038400888443,
+          0.23746279627084732
+        ],
+        "reference": "reference/0215_physics_spawn_response.cdr"
+      },
+      "release_dynamic": true,
+      "settled_contact": {
+        "file": "contacts_02_5151835894021159_40f287f43736894b.txt.gz",
+        "pairs": [
+          [
+            "airport_container_real::container_link::collision_mesh",
+            "pickup_box_0001_carryon::suitcase_link::body_collision"
+          ],
+          [
+            "airport_container_real::container_link::collision_mesh",
+            "pickup_box_0002_carryon::suitcase_link::body_collision"
+          ]
+        ],
+        "bytes": 76251
+      },
+      "result": {
+        "success": true,
+        "outcome": "COMPLETE",
+        "reason": "OBSERVED_OPERATION_COMPLETE",
+        "motion_terminal": true,
+        "may_have_payload": false,
+        "epoch": 2,
+        "map_revision": 229
+      }
+    }
+  ]
+}

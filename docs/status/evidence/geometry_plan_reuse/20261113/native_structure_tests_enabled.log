@@ -1,0 +1,10 @@
+Internal ctest changing into directory: /home/adamliao/work/elfin_humble_ws/build-production/uld_occ_observer
+Test project /home/adamliao/work/elfin_humble_ws/build-production/uld_occ_observer
+    Start 1: observer_initial_input_checks
+1/2 Test #1: observer_initial_input_checks ....   Passed    0.00 sec
+    Start 3: observer_keyset_checks
+2/2 Test #3: observer_keyset_checks ...........   Passed    0.09 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Total Test time (real) =   0.09 sec

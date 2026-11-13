@@ -1,0 +1,39 @@
+{
+  "scope": "Export the latest complete archived native O snapshot; no scene/GT insertion.",
+  "source": {
+    "scene_revision": "413055f4740a733fb8ef18867db86adb",
+    "geometry_hash": "cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856",
+    "epoch": 2,
+    "map_revision": 235,
+    "observed_revision": 2182,
+    "last_integrated_stamp_ns": 825924000000,
+    "config_digest": "42f7ad854005351484321381cbdd2ab43e135611381653d298c82f86e12a8c56",
+    "clock_domain": "ros",
+    "validity_generation": 4,
+    "content_sha256": "7981e4a84e71dabecb87813a41364a46e2c99d084e2908fbb9d48329fc10467b",
+    "initialization_id": "initial-empty-cycle",
+    "declared_by": "explicit_operator_start",
+    "initialization_stamp_ns": 7109000000
+  },
+  "resolution_m": 0.02,
+  "dimensions_xyz": [
+    75,
+    99,
+    74
+  ],
+  "archived_complete_snapshots_examined": 164,
+  "selected_folder": "cycle",
+  "selected_release_boundary": "0261_observer_release_request.cdr",
+  "cell_counts": {
+    "0": 0,
+    "1": 530462,
+    "2": 3238,
+    "3": 15750
+  },
+  "surface_counts": {
+    "unknown": 0,
+    "free": 6244,
+    "occupied": 1181,
+    "inactive": 0
+  }
+}
