@@ -238,6 +238,50 @@ def test_prepare_keeps_requested_acquisition_when_newer_topic_precedes_rpc(prepa
         f.publishers[2].publish(f.messages[2])
 
 
+@pytest.mark.parametrize('missing,reason',[
+    (('observed_domain',),'OBSERVED_DOMAIN_UNAVAILABLE'),
+    (('joint_state',),'CURRENT_JOINT_STATE_UNAVAILABLE'),
+    (('observed_domain','joint_state'),'OBSERVATION_AND_JOINTS_UNAVAILABLE'),
+])
+def test_prepare_reports_each_missing_input_before_search_and_recovers(prepare_stack,missing,reason):
+    """Generated RPC faults distinguish missing transport inputs from bad views."""
+    f=prepare_stack
+    records=[]
+    original_record=f.root._record
+    def capture(boundary,value):
+        if boundary=='domain_handoff_unavailable':records.append(json.loads(value))
+        return original_record(boundary,value)
+    f.root._record=capture
+    with f.root._state_lock:
+        saved_joints=f.root.joints
+        if 'observed_domain' in missing:f.root.domain_history.clear('TEST_MISSING_INPUT')
+        if 'joint_state' in missing:f.root.joints=None
+    calls_before=f.state.scene_calls
+    try:
+        result=f.call(copy.deepcopy(f.request))
+        assert not result.success and not result.plan.legs and not result.plan.barriers
+        assert result.reason=='PREPARATION_REFUSED:ValueError:'+reason
+        assert f.state.scene_calls==calls_before
+        assert len(records)==1
+        assert records[0]['reason']==reason
+        assert records[0]['missing_inputs']==list(missing)
+        assert records[0]['domain_available']==('observed_domain' not in missing)
+        assert records[0]['joints_available']==('joint_state' not in missing)
+        assert records[0]['requested_stamp_ns']==f.domain.stamp_ns
+        assert not f.root._active.locked()
+        (f.directory/('unavailable_'+reason+'.json')).write_text(json.dumps(records[0],indent=2))
+    finally:
+        f.root._record=original_record
+        with f.root._state_lock:
+            f.root.joints=saved_joints
+            f.root.domain_history.remember(f.domain)
+    # Recovery here is another explicit request after restored real inputs,
+    # not an automatic view, latest-frame substitution or movement.
+    result=f.call(copy.deepcopy(f.request))
+    assert result.success,result.reason
+    assert result.reason=='PLAN_READY'
+
+
 def test_prepare_refuses_empty_static_world_before_native_motion_search(prepare_stack):
     saved=copy.deepcopy(prepare_stack.state.scene)
     try:

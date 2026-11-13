@@ -192,6 +192,11 @@ This preserves an already-selected observation across map RPC latency; it does
 not substitute geometry, renew timestamps or exempt freshness/quality checks.
 Perception resolves that domain's digest to the exact original quality samples.
 Unavailable, invalidated or conflicting handoff inputs refuse preparation.
+An unavailable domain and an unavailable current joint state have distinct
+refusal reasons; if both are absent the boundary records both. Input
+unavailability alone does not establish an observation-coverage deficit and
+must not trigger an automatic camera motion. The failure archive retains the
+requested acquisition, individual availability and history clear provenance.
 
 Candidate quality queries use the independent
 `EvaluateFrozenSuctionV2` service; the existing current-frame service is unchanged.

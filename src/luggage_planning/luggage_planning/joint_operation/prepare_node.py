@@ -277,11 +277,21 @@ class JointOperationPrepareNode(Node):
                     detection.header.frame_id,self.preparation.model.identity_hash))
         if domain is None or joints is None:
             stamp=request.detection.header.stamp
+            missing_inputs = [name for name,available in (
+                ('observed_domain',domain is not None),('joint_state',joints is not None))
+                if not available]
+            # This is input availability, not evidence that another camera view
+            # would help. Keep all absent inputs when both are unavailable.
+            reason = ('OBSERVATION_AND_JOINTS_UNAVAILABLE' if len(missing_inputs)==2
+                else 'OBSERVED_DOMAIN_UNAVAILABLE' if domain is None
+                else 'CURRENT_JOINT_STATE_UNAVAILABLE')
             self._record('domain_handoff_unavailable',json.dumps(dict(
+                reason=reason,missing_inputs=missing_inputs,
                 requested_box_id=request.detection.id,requested_generation=int(request.generation),
                 requested_stamp_ns=int(stamp.sec)*10**9+int(stamp.nanosec),
-                joints_available=joints is not None,history=self.domain_history.diagnostics())).encode())
-            raise ValueError('OBSERVATION_OR_JOINTS_UNAVAILABLE')
+                domain_available=domain is not None,joints_available=joints is not None,
+                history=self.domain_history.diagnostics())).encode())
+            raise ValueError(reason)
         if frozen_domain is None:
             self._record('domain_admission_input',domain_to_message(domain))
             from luggage_planning.planning_contract.attachment import ATTACHMENT_MAX_AGE_NS
