@@ -263,10 +263,10 @@ def test_backend_binding_rejects_cross_backend_splice():
     gate = m.AdmissionGate()
     gate.observe_validity(m.ValidityObservation(
         "VALID", 1, 3, backend=m.BACKEND_OBSERVER_O))
-    # A G UUID spliced onto the O stream: identity collision impossible,
-    # and the backend key must reject it even if epochs were made equal.
+    # A legal G UUID spliced onto the O stream must report backend mismatch.
+    # Integers are not G identities and fail before reaching this gate.
     decision = gate.observe_map(m.MapObservation(
-        epoch=1, generation=3, backend=m.BACKEND_GRID_G))
+        epoch=G_UUID, generation=3, backend=m.BACKEND_GRID_G))
     assert not decision.admitted
     assert decision.reason == m.AdmissionGate.REASON_MAP_BACKEND
     # Missing epoch fails closed, never defaults to 0.

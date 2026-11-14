@@ -31,6 +31,15 @@ in real_scenario.md; launch alone does not certify free space. G's separate snap
 surface/volume evidence boundary. This selection does not by itself qualify the
 legacy selector or a complete-operation execution client for both backends.
 
+Shared admission identities bind the backend and its lossless canonical epoch.
+O epochs are uint64 integers or decimal strings in [0, 2**64-1]; G epochs are
+full UUID strings (32 hex or dashed 8-4-4-4-12). G integers are not UUIDs. UUID
+normalization preserves leading zeros and lowercases hex; O decimal leading
+zeros carry no identity. Malformed declared identities raise EpochFormatError;
+missing strings stay missing for the existing admission gate to reject. Legacy
+undeclared-backend constructions retain their existing integer/string semantics.
+This codec contract does not imply backend-neutral complete-operation execution.
+
 `luggage_mapping.regions` defines exact source-grid half-open integer cell
 regions and immutable blocks. Blocks keep the original grid, explicit covered
 bounds, source identity bytes, x-fastest states and active mask. They cannot be

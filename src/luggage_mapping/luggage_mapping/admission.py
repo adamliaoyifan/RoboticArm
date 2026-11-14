@@ -62,6 +62,8 @@ _UUID_HEX_RE = re.compile(r"^[0-9a-f]{32}$")
 _UUID_DASHED_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _UINT64_RE = re.compile(r"^[0-9]+$")
+_UINT64_MAX = (1 << 64) - 1
+_UINT64_MAX_DECIMAL = str(_UINT64_MAX)
 
 
 class EpochFormatError(ValueError):
@@ -71,7 +73,7 @@ class EpochFormatError(ValueError):
 def normalize_epoch(value: Any, backend: str = "") -> str:
     """Canonical string form of one epoch, lossless per backend.
 
-    - int (legacy/observer wire): canonical decimal string.
+    - int (legacy/observer wire): canonical decimal string; not a G UUID.
     - ``observer_o``: uint64 only — digits canonicalized via ``str(int)``
       (leading zeros are not part of a uint64's identity).
     - ``grid_g``: full UUID only — 32 hex or 8-4-4-4-12, lowercased,
@@ -79,12 +81,17 @@ def normalize_epoch(value: Any, backend: str = "") -> str:
       as a number (an all-digit UUID with leading zeros survives verbatim).
     - backend undeclared (tests/legacy constructions): ints canonicalize,
       non-empty strings pass verbatim.
+    - empty/whitespace string: missing identity, left for the caller to reject.
     """
     if isinstance(value, bool):
         raise EpochFormatError("epoch must not be a bool")
     if isinstance(value, int):
+        if backend == BACKEND_GRID_G:
+            raise EpochFormatError("grid epoch must be a full UUID string")
         if value < 0:
             raise EpochFormatError("negative epoch: %r" % (value,))
+        if backend == BACKEND_OBSERVER_O and value > _UINT64_MAX:
+            raise EpochFormatError("observer epoch exceeds uint64: %r" % (value,))
         return str(value)
     if not isinstance(value, str):
         raise EpochFormatError("epoch must be int or str, got %r"
@@ -103,11 +110,13 @@ def normalize_epoch(value: Any, backend: str = "") -> str:
         raise EpochFormatError("grid epoch is not a full UUID: %r" % (text,))
     if backend == BACKEND_OBSERVER_O:
         if _UINT64_RE.match(text):
-            return str(int(text))
+            canonical = text.lstrip("0") or "0"
+            # Bound the conversion itself, including arbitrarily long strings.
+            if (len(canonical) <= len(_UINT64_MAX_DECIMAL)
+                    and int(canonical) <= _UINT64_MAX):
+                return canonical
         raise EpochFormatError(
             "observer epoch is not a uint64: %r" % (text,))
-    if not text:
-        raise EpochFormatError("empty epoch")
     return text
 
 
